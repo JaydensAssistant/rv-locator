@@ -1,0 +1,672 @@
+.rv-locator-view {
+	--rv-locator-name-color: var(--text-accent);
+	--rv-locator-visits-color: var(--text-accent);
+	--rv-locator-rail-inactive: var(--color-base-50, var(--text-faint));
+	--rv-locator-days-color: var(--text-accent);
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden;
+	color: var(--text-normal);
+	background: var(--background-primary);
+}
+
+.rv-locator-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow: auto;
+	-webkit-overflow-scrolling: touch;
+}
+
+.rv-locator-banner {
+	display: flex;
+	gap: 8px;
+	align-items: flex-start;
+	margin: 8px 12px 0;
+	padding: 8px 10px;
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
+.rv-locator-banner.is-error {
+	color: var(--text-normal);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.rv-locator-banner.is-quiet {
+	margin: 2px 12px 0;
+	padding: 0;
+	background: transparent;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-locator-banner.is-quiet .rv-locator-banner-icon {
+	display: none;
+}
+
+.rv-locator-banner.is-quiet.is-error {
+	border: 0;
+	color: var(--text-muted);
+}
+
+.rv-locator-banner.is-test {
+	margin: 8px 12px 0;
+	padding: 8px 10px;
+	border: 1px solid var(--interactive-accent);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.rv-locator-banner-icon {
+	display: flex;
+	flex: 0 0 auto;
+	margin-top: 1px;
+	color: var(--text-accent);
+}
+
+.rv-locator-banner-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-locator-attr {
+	flex: 0 0 auto;
+	padding: 6px 12px 8px;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-locator-empty-value {
+	color: var(--text-faint);
+}
+
+.rv-locator-empty {
+	padding: 28px 16px;
+	color: var(--text-muted);
+	text-align: center;
+}
+
+.rv-locator-table {
+	border-collapse: separate;
+	border-spacing: 0;
+	width: max-content;
+	min-width: 100%;
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-locator-table th,
+.rv-locator-table td {
+	padding: 3px 6px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	max-width: 180px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: middle;
+	text-align: left;
+}
+
+.rv-locator-table th {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	font-weight: var(--font-medium);
+}
+
+.rv-locator-table tbody tr:hover td {
+	background: var(--background-modifier-hover);
+}
+
+.rv-locator-table .is-file {
+	max-width: 200px;
+}
+
+.rv-locator-table .is-distance {
+	white-space: nowrap;
+}
+
+.rv-locator-distance-wrap {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.45em;
+	max-width: 100%;
+}
+
+.rv-locator-city {
+	font-weight: 400;
+	color: var(--text-muted);
+}
+
+.rv-locator-table .is-number {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+}
+
+.rv-locator-th-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	max-width: 100%;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	cursor: pointer;
+}
+
+.rv-locator-th-btn.is-active {
+	color: var(--text-normal);
+}
+
+.rv-locator-th-btn:focus-visible {
+	outline: 2px solid var(--text-accent);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+.rv-locator-th-icon,
+.rv-locator-th-sort {
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+
+.rv-locator-th-icon svg,
+.rv-locator-th-sort svg,
+.rv-locator-icon-link svg {
+	width: 12px;
+	height: 12px;
+}
+
+.rv-locator-th-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rv-locator-th-sort.is-idle {
+	opacity: 0.35;
+}
+
+.rv-locator-file-link {
+	color: var(--rv-locator-name-color, var(--text-accent));
+	font-weight: var(--font-medium);
+	text-decoration: none;
+	cursor: pointer;
+}
+
+.rv-locator-file-link:hover {
+	text-decoration: underline;
+}
+
+.rv-locator-distance {
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	color: var(--text-accent);
+}
+
+.rv-locator-icon-link {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.rv-locator-icon-link:hover {
+	color: var(--text-accent);
+}
+
+.rv-locator-group td,
+.rv-locator-group-label {
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-weight: 600;
+}
+
+.rv-locator-group-label {
+	padding: 12px 14px 4px;
+	font-size: var(--font-ui-small);
+}
+
+.rv-locator-sortbar {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	align-items: center;
+	position: sticky;
+	top: 0;
+	z-index: 2;
+	padding: 8px 12px;
+	border-bottom: 1px solid var(--background-modifier-border);
+	background: var(--background-primary);
+}
+
+.rv-locator-sort-label {
+	display: inline-flex;
+	align-items: center;
+	gap: 8px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+.rv-locator-sort-select,
+.rv-locator-sort-direction {
+	font: inherit;
+	color: var(--text-normal);
+	background: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	padding: 6px 8px;
+}
+
+.rv-locator-sort-direction:disabled {
+	opacity: 0.5;
+}
+
+.rv-locator-sort-preset {
+	margin: 0;
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font: inherit;
+	font-size: var(--font-ui-small);
+	line-height: 1.2;
+}
+
+.rv-locator-sort-preset.is-active {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-weight: 700;
+}
+
+.rv-locator-glancable .rv-locator-banner {
+	display: block;
+	margin: 0 14px;
+	padding: 6px 0 0;
+	border: 0;
+	border-radius: 0;
+	background: none;
+	box-shadow: none;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.3;
+}
+
+.rv-locator-glancable .rv-locator-banner-icon {
+	display: none;
+}
+
+.rv-locator-glancable .rv-locator-banner.is-test {
+	display: flex;
+	margin: 8px 12px 4px;
+	padding: 8px 10px;
+	border: 1px solid var(--interactive-accent);
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
+}
+
+.rv-locator-glancable .rv-locator-banner.is-test .rv-locator-banner-icon {
+	display: flex;
+}
+
+.rv-locator-glancable {
+	container-name: rvlocator;
+	container-type: inline-size;
+	overflow-x: hidden;
+}
+
+.rv-locator-glancable .rv-locator-scroll {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	padding: 6px 10px 10px;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+/* Cards must not shrink. overflow:hidden on a flex child makes its min-height 0 and clips the name and chips. */
+.rv-locator-glancable .rv-locator-scroll > * {
+	flex: 0 0 auto;
+	max-width: 100%;
+}
+
+.rv-locator-glancable .rv-locator-sortbar {
+	flex-wrap: wrap;
+	margin: 0;
+	padding: 6px 10px 2px;
+	border: 0;
+	background: var(--background-primary);
+}
+
+.rv-locator-card-grid {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr);
+	gap: 8px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.rv-locator-glancable .rv-locator-card {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 3px;
+	min-width: 0;
+	max-width: 100%;
+	min-height: min-content;
+	margin: 0;
+	padding: 8px 10px 8px 12px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 12px;
+	background: var(--background-secondary);
+	box-shadow: inset 4px 0 0 var(--background-modifier-border);
+}
+
+.rv-locator-glancable .rv-locator-card.has-actions {
+	padding-right: 52px;
+}
+
+.rv-locator-glancable .rv-locator-card[data-priority="0"] { box-shadow: inset 4px 0 0 var(--rv-locator-rail-inactive, var(--text-faint)); }
+.rv-locator-glancable .rv-locator-card[data-priority="1"] { box-shadow: inset 4px 0 0 var(--color-blue); }
+.rv-locator-glancable .rv-locator-card[data-priority="2"] { box-shadow: inset 4px 0 0 var(--color-green); }
+.rv-locator-glancable .rv-locator-card[data-priority="3"] { box-shadow: inset 4px 0 0 var(--color-yellow); }
+.rv-locator-glancable .rv-locator-card[data-priority="4"] { box-shadow: inset 4px 0 0 var(--color-orange); }
+.rv-locator-glancable .rv-locator-card[data-priority="5"] { box-shadow: inset 4px 0 0 var(--color-red); }
+
+.rv-locator-glancable .rv-locator-place {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 2px 8px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.rv-locator-glancable .rv-locator-card-name {
+	min-width: 0;
+	max-width: 100%;
+	margin: 0;
+	color: var(--text-normal);
+	font-size: 20px;
+	line-height: 1.15;
+	font-weight: 700;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
+	color: var(--text-normal);
+	font-size: inherit;
+	font-weight: 700;
+	line-height: inherit;
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-locator-file-link:hover {
+	color: var(--text-normal);
+	text-decoration: underline;
+}
+
+.rv-locator-glancable .rv-locator-visits,
+.rv-locator-glancable .rv-locator-visits .rv-locator-slot-icon,
+.rv-locator-glancable .rv-locator-visits .rv-locator-slot-text {
+	color: var(--rv-locator-visits-color, var(--text-accent));
+	font-weight: 700;
+}
+
+.rv-locator-glancable .rv-locator-city-lg {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: 13px;
+	font-weight: 600;
+	line-height: 1.25;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-distance-lg {
+	flex: 0 0 auto;
+	color: var(--text-accent);
+	font-size: 13px;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	line-height: 1.25;
+}
+
+.rv-locator-glancable .rv-locator-distance-lg.is-missing {
+	color: var(--text-faint);
+	font-weight: 400;
+}
+
+.rv-locator-glancable .rv-locator-card-street {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	margin: 0;
+	overflow: hidden;
+	color: var(--text-faint);
+	font-size: 12px;
+	font-weight: 400;
+	line-height: 1.25;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-when,
+.rv-locator-glancable .rv-locator-card-foot {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 4px 10px;
+	max-width: 100%;
+	margin: 0;
+	min-width: 0;
+}
+
+.rv-locator-glancable .rv-locator-slot {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	min-width: 0;
+	max-width: 100%;
+	color: var(--text-muted);
+	font-size: 12px;
+	line-height: 1.2;
+}
+
+.rv-locator-glancable .rv-locator-slot.is-empty {
+	color: var(--text-faint);
+}
+
+.rv-locator-glancable .rv-locator-slot-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	color: var(--text-faint);
+}
+
+.rv-locator-glancable .rv-locator-slot-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.rv-locator-glancable .rv-locator-slot-text,
+.rv-locator-glancable .rv-locator-slot .rv-locator-date {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-map-pin {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	text-decoration: none;
+}
+
+.rv-locator-glancable .rv-locator-map-pin svg {
+	width: 15px;
+	height: 15px;
+}
+
+.rv-locator-glancable .rv-locator-card-actions {
+	position: absolute;
+	right: 14px;
+	bottom: 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	margin: 0;
+}
+
+.rv-locator-date {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.4em;
+	min-width: 0;
+	max-width: 100%;
+	vertical-align: baseline;
+}
+
+.rv-locator-clock {
+	flex: 0 0 auto;
+	color: var(--text-normal);
+	font-weight: 700;
+	white-space: nowrap;
+}
+
+.rv-locator-cal {
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: 0.72em;
+	font-weight: 400;
+	line-height: 1.15;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-locator-days {
+	flex: 0 0 auto;
+	margin-left: 0.35em;
+	color: var(--rv-locator-days-color, var(--text-accent));
+	font-size: 1em;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-priority-pill {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	font-family: inherit;
+	font-size: 13px;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.rv-locator-priority-btn {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-accent);
+	font: inherit;
+	font-weight: 700;
+	font-variant-numeric: tabular-nums;
+	cursor: pointer;
+}
+
+@container rvlocator (min-width: 680px) {
+	.rv-locator-card-grid {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+@container rvlocator (min-width: 1040px) {
+	.rv-locator-card-grid {
+		grid-template-columns: repeat(3, minmax(0, 1fr));
+	}
+}
+
+.rv-locator-dow,
+.rv-locator-time {
+	font-weight: 700;
+	color: var(--text-normal);
+}
+
+.rv-locator-suggest-title {
+	font-weight: var(--font-medium);
+}
+
+.rv-locator-suggest-meta,
+.rv-locator-privacy,
+.rv-locator-modal-copy,
+.rv-locator-progress {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
+.rv-locator-suggest-actions,
+.rv-locator-privacy {
+	padding: 8px 12px;
+}
+
+.rv-locator-modal {
+	width: min(560px, calc(100vw - 24px));
+}
+
+.rv-locator-about p {
+	margin: 0 0 8px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+}
+
+@media (max-width: 700px) {
+	.rv-locator-table th,
+	.rv-locator-table td {
+		padding: 8px;
+	}
+
+	.rv-locator-glancable .rv-locator-card {
+		padding: 8px 10px;
+	}
+}

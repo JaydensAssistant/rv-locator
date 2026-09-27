@@ -1,0 +1,9 @@
+{
+	"id": "rv-locator",
+	"name": "RV Locator",
+	"version": "1.1.0",
+	"minAppVersion": "1.10.0",
+	"description": "Geocode return-visit addresses and browse live distance in Bases.",
+	"author": "RV Locator",
+	"isDesktopOnly": false
+}
