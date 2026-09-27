@@ -12,6 +12,6 @@ export function redactSecrets(message: string, apiKey: string | null | undefined
 		}
 	}
 	out = out.replace(/([?&]apiKey=)[^&\s]+/gi, '$1[redacted]');
-	out = out.replace(/(api[_-]?key[\"']?\s*[:=]\s*[\"']?)[^\"'\s&,}]+/gi, '$1[redacted]');
+	out = out.replace(/(api[_-]?key["']?\s*[:=]\s*["']?)[^"'\s&,}]+/gi, '$1[redacted]');
 	return out;
 }
