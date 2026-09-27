@@ -23,7 +23,7 @@ Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 
 Address: `INPUT[text:Address]`
 
-Map Link: `VIEW[{Map Link}][link]`
+Map Link: `VIEW[{["Map Link"]}][link]`
 
 > [!info]- 👤 RV Dashboard
 >
@@ -76,4 +76,3 @@ actions:
 ## <% rv.stamp %>
 
 > [!note]- Attempt Log
-> - <% rv.stamp %> — success

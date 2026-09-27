@@ -24,7 +24,7 @@ Prefer desktop install + vault sync. Details: `docs/SETUP-iOS-1.1.0.md`.
 
 ## New RV note (Templater)
 
-Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted and Successful Visits at 0, then runs `rv-locator:geocode-current-note`. Hubs, Address, and Map Link stay outside a collapsed RV Dashboard. The Glancable `## Wed, 2pm — Sep 9, 2026` heading sits above a collapsed Attempt Log callout. Home / Not home buttons are on the note. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
+Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted and Successful Visits at 0, then runs `rv-locator:geocode-current-note`. Hubs, Address, and Map Link stay outside a collapsed RV Dashboard. Map Link uses `VIEW[{["Map Link"]}][link]` so the spaced property name parses. The Glancable `## Wed, 2pm — Sep 9, 2026` heading sits above an empty collapsed Attempt Log callout. Home / Not home buttons are on the note. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
 
 ## Verify
 

@@ -497,7 +497,8 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('Successful Visits: 0'), true);
 		assert.equal(createdText.includes('Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`'), true);
 		assert.equal(createdText.includes('Address: `INPUT[text:Address]`'), true);
-		assert.equal(createdText.includes('Map Link: `VIEW[{Map Link}][link]`'), true);
+		assert.equal(createdText.includes('Map Link: `VIEW[{["Map Link"]}][link]`'), true);
+		assert.equal(createdText.includes('`VIEW[{Map Link}][link]`'), false);
 		assert.equal(createdText.includes('> [!info]- 👤 RV Dashboard'), true);
 		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
 		assert.equal(createdText.includes('templateFile: Templates/RV Log Home.md'), true);
@@ -507,7 +508,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('City'), false);
 		const hubsAt = createdText.indexOf('Hubs:');
 		const addressInputAt = createdText.indexOf('Address: `INPUT[text:Address]`');
-		const mapAt = createdText.indexOf('Map Link: `VIEW[{Map Link}][link]`');
+		const mapAt = createdText.indexOf('Map Link: `VIEW[{["Map Link"]}][link]`');
 		const dashAt = createdText.indexOf('> [!info]- 👤 RV Dashboard');
 		const stampAt = createdText.indexOf(`## ${stamp}`);
 		const logAt = createdText.indexOf('> [!note]- Attempt Log');
@@ -525,7 +526,9 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`## ${stamp}`), true);
 		assert.equal(createdText.includes('## Attempt Log'), false);
 		assert.equal(createdText.includes('> [!note]- Attempt Log'), true);
-		assert.equal(createdText.includes(`> - ${stamp} — success`), true);
+		assert.equal(createdText.includes('— success'), false);
+		assert.equal(createdText.split('\n').some((line) => /^>\s*- /.test(line)), false);
+		assert.match(createdText, /> \[!note\]- Attempt Log\s*$/);
 		assert.equal(createdText.includes('Location:'), false);
 
 		const hook = hooks[0];
@@ -543,7 +546,8 @@ describe('disk proof', () => {
 		assert.equal(disk.includes(`## ${stamp}`), true);
 		assert.equal(disk.includes('## Attempt Log'), false);
 		assert.equal(disk.includes('> [!note]- Attempt Log'), true);
-		assert.equal(disk.includes(`> - ${stamp} — success`), true);
+		assert.equal(disk.includes('— success'), false);
+		assert.match(disk, /> \[!note\]- Attempt Log\s*$/);
 		assert.equal(disk.includes(`Met: ${yamlQuote(created)}`), true);
 		assert.equal(disk.includes('Visits: 0'), true);
 		assert.equal(disk.includes('rv-dashboard'), true);

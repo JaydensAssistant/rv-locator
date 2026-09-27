@@ -20,13 +20,12 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 1. Prompts **Householder name**, then **Address** (`tp.system.prompt`). Cancel leaves that field empty. The template still calls `tp.user.newRv(tp)` for the prompts, the rename, and the geocode schedule.
 2. Renames the note to `{Name} on {Street}` when both are present. Examples: `Alex on Maple`, `Riley on Cypress`. The street is the first address line with the house number, a leading directional (`N`, `SW`), a trailing suffix (`St`, `Lane`), and an apartment tail removed. `10 Oak Hammock Lane` becomes `Oak Hammock`.
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
-4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Seeds **Visits** and **Successful Visits** at `0`. The first success bullet records the Met moment; it does not increment either count. Later Home taps increment both.
-5. Replaces the old `## YYYY-MM-DD` line with a Glancable drive date: `## Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A date-only value omits the hour.
-6. Adds a collapsed Attempt Log callout and the first bullet, the same stamp the priority-tap Home logger uses:
+4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. That is the first-met moment. Seeds **Visits** and **Successful Visits** at `0`. Creating the note does not write a success bullet. Later Home taps increment both counts and append a real success line.
+5. Writes a Glancable drive date for that first-met moment: `## Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A date-only value omits the hour. A later Home tap adds its own `##` stamp above the log for that visit.
+6. Adds an empty collapsed Attempt Log. Header only, no seed bullet:
 
 ```markdown
 > [!note]- Attempt Log
-> - Wed, 2pm — Sep 9, 2026 — success
 ```
 
 7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills Map Link, which the always-visible Map Link view then shows as a link.
@@ -39,7 +38,7 @@ These three sit outside every callout, in this order:
 
 1. `Hubs: ` + `INPUT[inlineListSuggester(optionQuery("")):Hub]` (the property is still `Hub`)
 2. Address text input bound to `Address`
-3. Map Link, read-only: `` `VIEW[{Map Link}][link]` ``. A URL becomes a clickable link. Before geocode the property is empty, so the view is blank.
+3. Map Link, read-only: `` `VIEW[{["Map Link"]}][link]` ``. The property name has a space, so the bind target uses Meta Bind’s bracket form inside the view braces (the same rule as `INPUT[number:["Successful Visits"]]`). `{Map Link}` is parsed as a file path and then Meta Bind expects `#`. A URL becomes a clickable link. Before geocode the property is empty, so the view is blank.
 
 ## Collapsed dashboard
 
