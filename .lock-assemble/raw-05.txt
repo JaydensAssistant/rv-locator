@@ -286,7 +286,7 @@
 		"node_modules/eslint-plugin-json-schema-validator": {
 			"version": "5.1.0",
 			"resolved": "https://registry.npmjs.org/eslint-plugin-json-schema-validator/-/eslint-plugin-json-schema-validator-5.1.0.tgz",
-			"integrity": "sha512-ZmVyxRIjm58oqe2kPOqCo5R9FbeWvbgsPYWivSurTBKW88VQxtP3c4aWMG9Hz/GfJlJVdXEJ3c8LqS+u2w==",
+			"integrity": "sha512-ZmVyxRIjm58oqe2kTuy90PpmZPrrKvOjRPXKzq8WCgRgAkidCgm5X8domL2KSfadZ3QFAmifMgGTcVNhZ5ez2g==",
 			"dev": true,
 			"license": "MIT",
 			"dependencies": {
