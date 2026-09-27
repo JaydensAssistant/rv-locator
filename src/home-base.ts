@@ -1,57 +1,42 @@
 import type { GeocodeHit } from './types';
 
-const STREET_SUFFIXES = new Set([
-	'street', 'st', 'avenue', 'ave', 'road', 'rd', 'drive', 'dr', 'lane', 'ln',
-	'boulevard', 'blvd', 'court', 'ct', 'place', 'pl', 'circle', 'cir', 'way',
-	'trail', 'trl', 'parkway', 'pkwy', 'highway', 'hwy', 'terrace', 'ter',
-	'loop', 'alley', 'aly', 'plaza', 'plz', 'square', 'sq', 'run', 'path',
-	'pike', 'route', 'rte', 'expressway', 'expy', 'crossing', 'xing', 'point', 'pt',
-]);
-
-const DIRECTIONALS: Record<string, string> = {
-	n: 'n',
-	north: 'n',
-	s: 's',
-	south: 's',
-	e: 'e',
-	east: 'e',
-	w: 'w',
-	west: 'w',
-	ne: 'ne',
-	northeast: 'ne',
-	nw: 'nw',
-	northwest: 'nw',
-	se: 'se',
-	southeast: 'se',
-	sw: 'sw',
-	southwest: 'sw',
-};
-
 export interface GeocodePick {
-	/** The one in-county candidate whose street words match. Absent means show the picker. */
+	/** The one in-home hit that may be saved without asking. Absent means show the picker. */
 	hit: GeocodeHit | null;
 }
 
 /**
+ * Geoapify `rank.confidence` is a number from 0 to 1.
+ * JSON `1` and `1.00` are the same value. Anything else, including a missing
+ * confidence, is not an automatic match.
+ */
+export function isFullConfidence(confidence: number | undefined): boolean {
+	if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return false;
+	return Math.abs(confidence - 1) <= 1e-9;
+}
+
+/**
  * Auto-pick only when the home-base list is non-empty, exactly one result is in
- * that list, and that result's street words match the typed address.
- * Anything else, including an empty home list, stays on the confirm modal.
+ * that set, and that result's Geoapify `rank.confidence` is 1.00.
+ * Zero or two-or-more in-home hits, a missing confidence, or an empty home list
+ * stays on the confirm modal. Street text is not compared.
  */
 export function decideGeocodePick(
-	typedAddress: string,
 	hits: readonly GeocodeHit[],
 	homeCounties: readonly string[],
 ): GeocodePick {
 	const homes = homeCounties.map(normalizeCounty).filter((name) => name.length > 0);
 	if (homes.length === 0) return { hit: null };
-	const inHome = hits.filter((hit) => {
-		const county = hit.county ? normalizeCounty(hit.county) : '';
-		return county.length > 0 && homes.includes(county);
-	});
+	const inHome = hits.filter((hit) => inHomeCounty(hit, homes));
 	if (inHome.length !== 1) return { hit: null };
 	const only = inHome[0];
-	if (!only || !streetTokensMatch(typedAddress, only)) return { hit: null };
+	if (!only || !isFullConfidence(only.confidence)) return { hit: null };
 	return { hit: only };
+}
+
+function inHomeCounty(hit: GeocodeHit, homes: readonly string[]): boolean {
+	const county = hit.county ? normalizeCounty(hit.county) : '';
+	return county.length > 0 && homes.includes(county);
 }
 
 /** "Orange" and "Orange County" are the same home-base entry. */
@@ -83,61 +68,4 @@ export function normalizeCountyList(value: unknown): string[] {
 		names.push(trimmed);
 	}
 	return names;
-}
-
-/**
- * Significant street words must be the same list, in order.
- * Suffixes (`Lane` / `Ln`) are ignored only as the last word.
- * Directionals stay, so `N Oak` does not match `Oak`.
- * Extra words fail the match: `Oak Lane` is not `Oak Hammock Lane` or `Red Oak Lane`.
- * A typed house number must be the same number on the candidate.
- */
-export function streetTokensMatch(typedAddress: string, hit: GeocodeHit): boolean {
-	const typedLine = firstSegment(typedAddress);
-	const candidateLine = candidateStreetLine(hit);
-	const typedNumber = leadingHouseNumber(typedLine);
-	const candidateNumber = (hit.housenumber?.trim().toLowerCase()
-		|| leadingHouseNumber(candidateLine)
-		|| leadingHouseNumber(hit.formattedAddress)
-		|| '');
-	if (typedNumber && candidateNumber !== typedNumber) return false;
-	const left = significantStreetTokens(typedLine);
-	const right = significantStreetTokens(candidateLine);
-	if (left.length === 0 || right.length === 0 || left.length !== right.length) return false;
-	return left.every((token, index) => token === right[index]);
-}
-
-export function candidateStreetLine(hit: GeocodeHit): string {
-	const street = hit.street?.trim() ?? '';
-	const number = hit.housenumber?.trim() ?? '';
-	if (street && number) return `${number} ${street}`;
-	if (street) return street;
-	const line = hit.addressLine1?.trim() ?? '';
-	if (line) return line;
-	return firstSegment(hit.formattedAddress);
-}
-
-function firstSegment(address: string): string {
-	const segment = address.split(',')[0] ?? address;
-	return segment.trim();
-}
-
-function leadingHouseNumber(raw: string): string {
-	const match = /^\s*(\d+[a-z]?)\b/i.exec(raw);
-	return match?.[1]?.toLowerCase() ?? '';
-}
-
-function significantStreetTokens(raw: string): string[] {
-	const cleaned = raw
-		.toLowerCase()
-		.replace(/[#.'’]/g, ' ')
-		.replace(/[^a-z0-9]+/g, ' ')
-		.trim();
-	const words = cleaned.split(/\s+/).filter((word) => word.length > 0);
-	let start = 0;
-	if (words[0] && /^\d+[a-z]?$/.test(words[0])) start = 1;
-	const body = words.slice(start).map((word) => DIRECTIONALS[word] ?? word);
-	const last = body[body.length - 1];
-	if (last && STREET_SUFFIXES.has(last)) body.pop();
-	return body;
 }

@@ -1,5 +1,6 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
 import { PRIVACY_NOTICE } from './constants';
+import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
 import type RVLocatorPlugin from './main';
 
@@ -47,7 +48,11 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 	onClose(): void {
 		this.closed = true;
 		super.onClose();
-		if (!this.chose) this.onDismiss();
+		schedulePickerDismiss(
+			() => this.chose,
+			() => this.onDismiss(),
+			(run) => { window.setTimeout(run, 0); },
+		);
 	}
 
 	getSuggestions(query: string): GeocodeHit[] {
@@ -157,7 +162,7 @@ export class BulkGeocodeModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Notes with an address and no location are looked up. A folder includes its subfolders. Address is never written. A result is saved without this picker only when it is the only match in a home-base county and the street words agree with the typed address. Every other note opens this picker; closing it skips that note. Distance is not written. City is written from the result. If Successful Visits is missing and Visits is a number, that number is copied. Notes that already have Address and Location get City filled from the address when City is missing. Last Attempted is left alone.',
+			text: 'Notes with an address and no location are looked up. A folder includes its subfolders. Address is never written. A result is saved without this picker only when Geoapify rank.confidence is 1.00 and that hit is the only one in a home-base county. Otherwise this picker opens. Choosing a row saves Location as two quoted strings, plus City and Map Link. Closing the picker skips that note. Distance is not written. If Successful Visits is missing and Visits is a number, that number is copied. Notes that already have Address and Location get City filled from the address when City is missing. Last Attempted is left alone.',
 		});
 
 		new Setting(contentEl)

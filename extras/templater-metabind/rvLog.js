@@ -1,5 +1,5 @@
 /**
- * RV Locator visit-log parity for Templater (plugin 1.1.0).
+ * RV Locator visit-log parity for Templater (plugin 1.1.1).
  * Never writes Address.
  *
  * Call: await tp.user.rvLog(tp, "home")  or  await tp.user.rvLog(tp, "miss")
@@ -12,13 +12,32 @@ function isoLocal(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
 }
 
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * Glancable visit stamp. Mirrors src/dates.ts formatGlancableVisitStamp:
+ * nearest hour, then `Wed, 2pm — Sep 9, 2026`.
+ */
 function displayWhen(d) {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const h24 = d.getHours();
-  const ampm = h24 >= 12 ? "pm" : "am";
-  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}, ${h12}:${pad2(d.getMinutes())}${ampm}`;
+  let year = d.getFullYear();
+  let month = d.getMonth();
+  let day = d.getDate();
+  let hour = d.getHours();
+  if (d.getMinutes() >= 30) hour += 1;
+  if (hour >= 24) {
+    const next = new Date(year, month, day + 1);
+    year = next.getFullYear();
+    month = next.getMonth();
+    day = next.getDate();
+    hour = 0;
+  }
+  const shown = new Date(year, month, day);
+  const dow = WEEKDAYS[shown.getDay()];
+  const rest = `${MONTHS[month]} ${day}, ${year}`;
+  const suffix = hour >= 12 ? "pm" : "am";
+  const onClock = hour % 12 === 0 ? 12 : hour % 12;
+  return `${dow}, ${onClock}${suffix} — ${rest}`;
 }
 
 function asNumber(v) {

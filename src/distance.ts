@@ -28,6 +28,18 @@ export function roundCoord(value: number): number {
 	return Math.round(value * 1e7) / 1e7;
 }
 
+/**
+ * Latitude or longitude as text for a YAML list of strings.
+ * Up to 7 decimal places, no scientific notation, no trailing zeros.
+ */
+export function coordString(value: number): string {
+	const rounded = roundCoord(value);
+	if (!Number.isFinite(rounded)) return '0';
+	const fixed = Math.abs(rounded).toFixed(7).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+	if (fixed === '0' || fixed === '') return '0';
+	return rounded < 0 ? `-${fixed}` : fixed;
+}
+
 export function validLatLon(lat: number, lon: number): LatLon | null {
 	if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 	if (Math.abs(lat) > 90 || Math.abs(lon) > 180) return null;

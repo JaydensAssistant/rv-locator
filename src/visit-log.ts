@@ -1,9 +1,8 @@
+import { formatGlancableVisitStamp } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 const ATTEMPT_LOG = /^## Attempt Log\s*$/;
 const ADDRESS_KEY = 'Address';
 
@@ -13,15 +12,9 @@ export function formatFrontmatterDateTime(date: Date): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-/** Weekday, calendar date, and clock time with minutes. */
+/** Glancable drive date: weekday, hour rounded to the nearest hour, then the calendar date. */
 export function formatVisitStamp(date: Date): string {
-	const dow = WEEKDAYS[date.getDay()] ?? '';
-	const month = MONTHS[date.getMonth()] ?? '';
-	const hour24 = date.getHours();
-	const suffix = hour24 >= 12 ? 'pm' : 'am';
-	const hour = hour24 % 12 === 0 ? 12 : hour24 % 12;
-	const minute = String(date.getMinutes()).padStart(2, '0');
-	return `${dow}, ${month} ${date.getDate()}, ${date.getFullYear()}, ${hour}:${minute}${suffix}`;
+	return formatGlancableVisitStamp(date);
 }
 
 /**

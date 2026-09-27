@@ -56,7 +56,7 @@ You generally **cannot** verify SHA-256 easily on iOS; prefer copying files you 
 - Keep the phone awake / Obsidian foregrounded while sorting by Distance so GPS updates.
 - Desktop “distance testing” mode is for layout on a computer — leave it **off** in the field.
 - If Sync conflicts on `data.json`, re-check the API key and home counties after resolve.
-- First field session: counties empty → confirm modals → then add your home counties once auto-picks look right. Reminder: `123 Main St` will not auto-accept `123 S Main St`.
+- First field session: counties empty → confirm modals → then add your home counties. As of 1.1.1, auto-pick requires Geoapify `rank.confidence` of 1.00 and a single in-home hit. Street-token matching was removed. `Location` is two quoted strings.
 
 ## Quick checklist
 
