@@ -5,6 +5,7 @@ import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, 
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_REF, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, planExtrasWrite, sha256Hex } from '../src/extras-sync';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
+import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
 import { getCached, rememberResults, trimCache } from '../src/cache';
@@ -984,6 +985,21 @@ function activeRow(id: string, priority: number, lastSpoke: string, name: string
 		},
 	};
 }
+
+describe('new RV launch', () => {
+	it('uses Templater’s templates folder, then Templates/New RV.md', () => {
+		assert.deepEqual(newRvTemplateCandidates('Templates'), [DEFAULT_NEW_RV_TEMPLATE]);
+		assert.deepEqual(newRvTemplateCandidates('Ministry/Templates'), [
+			'Ministry/Templates/New RV.md',
+			DEFAULT_NEW_RV_TEMPLATE,
+		]);
+		assert.deepEqual(newRvTemplateCandidates('../secret'), [DEFAULT_NEW_RV_TEMPLATE]);
+		assert.deepEqual(newRvTemplateCandidates(''), [DEFAULT_NEW_RV_TEMPLATE]);
+		assert.equal(newRvLaunchError(false, false, [DEFAULT_NEW_RV_TEMPLATE])?.includes('Templater is not enabled'), true);
+		assert.equal(newRvLaunchError(true, false, [DEFAULT_NEW_RV_TEMPLATE])?.includes(DEFAULT_NEW_RV_TEMPLATE), true);
+		assert.equal(newRvLaunchError(true, true, [DEFAULT_NEW_RV_TEMPLATE]), null);
+	});
+});
 
 describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {

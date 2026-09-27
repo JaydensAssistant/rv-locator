@@ -289,6 +289,27 @@
 	font-weight: 700;
 }
 
+.rv-locator-new-rv {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	margin: 0 0 0 auto;
+	padding: 0;
+	border: 0;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	cursor: pointer;
+}
+
+.rv-locator-new-rv svg {
+	width: 16px;
+	height: 16px;
+}
+
 .rv-locator-glancable .rv-locator-banner {
 	display: block;
 	margin: 0 14px;

@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type IconName } from 'obsidian';
+import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
@@ -16,6 +16,7 @@ import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisi
 import { decideGeocodePick } from './home-base';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
+import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -58,6 +59,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private viewRefreshers = new Set<() => void>();
 	private persistQueued: Promise<void> = Promise.resolve();
+	private creatingNewRv = false;
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -105,6 +107,35 @@ export default class RVLocatorPlugin extends Plugin {
 		}));
 		if (registered.some((ok) => !ok)) {
 			new Notice('Enable the Bases core plugin to use RV Locator nearby views.');
+		}
+	}
+
+	/**
+	 * Same path as Templater’s create-from-template after New RV is chosen.
+	 * The template prompts for the householder and Address, then schedules geocode.
+	 * This plugin does not write the note or Address itself.
+	 */
+	async createNewRv(): Promise<void> {
+		if (this.creatingNewRv) return;
+		this.creatingNewRv = true;
+		try {
+			const templater = readTemplaterPlugin(this.app);
+			const create = templater?.templater?.create_new_note_from_template;
+			const pluginPresent = typeof create === 'function';
+			const looked = newRvTemplateCandidates(templater?.settings?.templates_folder);
+			const template = pluginPresent ? findTemplateFile(this.app, looked) : null;
+			const message = newRvLaunchError(pluginPresent, template != null, looked);
+			if (message || !template || !create || !templater?.templater) {
+				new Notice(message ?? 'Templater could not start New RV.');
+				return;
+			}
+			const created = await create.call(templater.templater, template);
+			if (!created) new Notice('Templater did not create the New RV note.');
+		} catch (error) {
+			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
+			new Notice(reason);
+		} finally {
+			this.creatingNewRv = false;
 		}
 	}
 
@@ -570,4 +601,31 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		return this.persistQueued;
 	}
+}
+
+interface TemplaterPluginHandle {
+	settings?: { templates_folder?: unknown };
+	templater?: {
+		create_new_note_from_template?: (template: TFile) => Promise<TFile | undefined>;
+	};
+}
+
+function readTemplaterPlugin(app: App): TemplaterPluginHandle | null {
+	const host = app as App & {
+		plugins?: {
+			plugins?: Record<string, TemplaterPluginHandle | undefined>;
+			getPlugin?: (id: string) => TemplaterPluginHandle | null;
+		};
+	};
+	const plugins = host.plugins;
+	if (!plugins) return null;
+	return plugins.plugins?.[TEMPLATER_PLUGIN_ID] ?? plugins.getPlugin?.(TEMPLATER_PLUGIN_ID) ?? null;
+}
+
+function findTemplateFile(app: App, paths: readonly string[]): TFile | null {
+	for (const path of paths) {
+		const file = app.vault.getFileByPath(path);
+		if (file?.extension === 'md') return file;
+	}
+	return null;
 }

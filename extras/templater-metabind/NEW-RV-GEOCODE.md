@@ -9,7 +9,7 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 ## Setup
 
 1. Copy `newRv.js` into the Templater **User Scripts** folder.
-2. Copy `New RV.md` into the Templates folder. Point Templater’s “New RV” (or folder template) at that file.
+2. Copy `New RV.md` into the Templates folder. Point Templater’s “New RV” (or folder template) at that file. The Nearby and Glancable toolbars have a `+` button that calls Templater’s create-from-template on that file. It does not write the note itself. If Templater is off, or the file is missing, the button shows a notice.
 3. Copy `rvLog.js` into the Templater user scripts folder, and copy `RV Log Home.md` and `RV Log Miss.md` into the vault `Templates/` folder. The New RV note’s buttons call `Templates/RV Log Home.md` and `Templates/RV Log Miss.md`. If your Templates folder has another path, change those two `templateFile` lines in `New RV.md`.
 4. Reload Templater so `tp.user.newRv` and `tp.user.rvLog` exist.
 5. Enable **RV Locator** and set the Geoapify key. The command id is `rv-locator:geocode-current-note`.

@@ -2,15 +2,16 @@
 
 ## 1.1.5
 
-`main.js` SHA-256: `1bd41366d41a9ba0245832806886ecbb004c2ae1d56d49a99a45ebdc8e2a4dad`
+`main.js` SHA-256: `e22722a439a316e9bfbabdb6319c2b95cb77c6d2352a9d11255b3e7775229652`
 
-`styles.css` SHA-256: `943f87078ea70f316a81d5cad82ca0623401efbb9792b0825cd987cc6e33a5bc`
+`styles.css` SHA-256: `f8fa6cc778342acdd47a90e8a26e12381495fd7b3961b394e7bfcc0849192ede`
 
 `manifest.json` SHA-256: `148bdc553725130f600a1e5c262c23979d3375635a686f43882c20180590b6ed`
 
 - Map Link still searches Google Maps by address, not lat/lon. When Address has no city, the query appends the note’s City (`123 S Main St` + `Orlando` → `123%20S%20Main%20St%2C%20Orlando`). Address is never rewritten. An address that already names a city stays as stored.
 - New RV spacing matches the edited note: no blank line between `---` and the `[!rv]` dashboard, and the `###` stamp sits on the line after Taken. One blank line remains before Attempt Log.
 - Nearby sort chips invert when tapped again. Defaults: Nearest, Priority · high, Spoke · oldest, Attempted · oldest. The flipped labels are Furthest, Priority · low, Spoke · newest, and Attempted · newest. The choice is still saved.
+- The Nearby and Glancable toolbars have a `+` button (label **New RV**) beside the sort chips. It calls Templater’s create-from-template on `New RV.md` (the Templater templates folder, or `Templates/New RV.md`). The template still prompts and schedules geocode. A missing Templater plugin or template shows a notice and does not create a note.
 - Glancable cards are six lines: name, street + city + distance, Last Spoke, Last Attempted, Met, then Met With with `# successful/visits`. Each date is its own line.
 - Settings → **Update Templater / Meta Bind extras from GitHub** confirms before any write. Downloads are pinned to release tag `v1.1.5` on `raw.githubusercontent.com/JaydensAssistant/rv-locator` (not `main` or `unstable`). The dialog lists each path as create, overwrite, or skip, plus the SHA-256 of the downloaded file. Existing files are skipped unless overwrite is checked. Redirects off that host and ref are refused. It does not touch notes, Address, plugin `data.json`, or the Geoapify key.
 
