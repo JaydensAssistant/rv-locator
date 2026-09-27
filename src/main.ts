@@ -12,7 +12,7 @@ import {
 	VANILLA_VIEW_TYPE,
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
-import { applyGeocodeHit, fillCity, fillSuccessfulVisits, planGeocodeWork, readAddress, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
+import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { decideGeocodePick } from './home-base';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
@@ -277,7 +277,9 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		if (!this.settingsReady()) return;
 
-		const address = readAddress((await this.snapshotAsync(file)).frontmatter, this.settings.addressProperty);
+		// Read the file, not the metadata cache. Templater may have just written
+		// Address, and the cache can still show the previous frontmatter.
+		const address = readAddress(await this.freshFrontmatter(file), this.settings.addressProperty);
 		if (!address) {
 			new Notice(`This note has no “${this.settings.addressProperty}” text to geocode.`);
 			return;
@@ -301,7 +303,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): Promise<void> {
-		const decision = decideGeocodePick(address, hits, this.settings.homeCounties);
+		const decision = decideGeocodePick(hits, this.settings.homeCounties);
 		if (decision.hit) {
 			await this.writeHit(file, address, decision.hit, hits);
 			return;
@@ -372,7 +374,7 @@ export default class RVLocatorPlugin extends Plugin {
 		try {
 			const results = cached ?? await this.lookupAddress(item.address, true, () => this.bulkAborted);
 			if (results.length === 0) return 'none';
-			const decision = decideGeocodePick(item.address, results, this.settings.homeCounties);
+			const decision = decideGeocodePick(results, this.settings.homeCounties);
 			let hit = decision.hit;
 			if (!hit) {
 				if (this.bulkAborted) return 'cancelled';
@@ -427,9 +429,18 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeHit(file: TFile, queriedAddress: string, hit: GeocodeHit, results: GeocodeHit[], notify = true): Promise<void> {
+		const pair = locationPair(hit);
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			applyGeocodeHit(frontmatter as Record<string, unknown>, hit, this.settings);
 		});
+		if (!isLockedAddressName(this.settings.locationProperty, this.settings.addressProperty)) {
+			await this.app.vault.process(file, (data) => ensureQuotedLocationList(
+				data,
+				this.settings.locationProperty,
+				pair,
+				this.settings.addressProperty,
+			));
+		}
 		this.remember([queriedAddress], results);
 		await this.persist();
 		if (notify) new Notice(`Saved coordinates on “${file.basename}”. Address was not changed.`);
@@ -478,6 +489,15 @@ export default class RVLocatorPlugin extends Plugin {
 	private folderExists(folderPath: string): boolean {
 		if (folderPath === '' || folderPath === '/') return true;
 		return this.app.vault.getFolderByPath(folderPath) != null;
+	}
+
+	private async freshFrontmatter(file: TFile): Promise<Record<string, unknown> | null> {
+		try {
+			const text = await this.app.vault.read(file);
+			return frontmatterFromMarkdown(text);
+		} catch {
+			return (await this.snapshotAsync(file)).frontmatter;
+		}
 	}
 
 	private snapshot(file: TFile): NoteSnapshot {

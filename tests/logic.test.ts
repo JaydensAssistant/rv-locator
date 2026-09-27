@@ -5,10 +5,11 @@ import { buildGeocodeUrl, formatSpecificAddress, googleMapsLink, normalizeAddres
 import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
 import { getCached, rememberResults, trimCache } from '../src/cache';
-import { formatDistance, haversineMeters, latLonFromUnknown, roundCoord } from '../src/distance';
+import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
 import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
-import { applyGeocodeHit, fillCity, fillSuccessfulVisits, planGeocodeWork, readAddress } from '../src/frontmatter';
-import { decideGeocodePick, streetTokensMatch } from '../src/home-base';
+import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
+import { decideGeocodePick, isFullConfidence } from '../src/home-base';
+import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
 import { RequestPacer } from '../src/pacer';
@@ -80,6 +81,18 @@ describe('geocode request', () => {
 		assert.equal(hits[0]?.city, 'Tacoma');
 		assert.equal(hits[0]?.confidence, 1);
 		assert.equal(JSON.stringify(hits).includes('secret'), false);
+		const textual = parseGeocodeBody({
+			results: [{ ...tacoma, lat: 47.25, lon: -122.44, formatted: tacoma.formatted, rank: { confidence: '1.00', confidence_street_level: 0 } }],
+		});
+		assert.equal(textual[0]?.confidence, 1);
+		const streetOnly = parseGeocodeBody({
+			results: [{ ...tacoma, lat: 47.25, lon: -122.44, formatted: tacoma.formatted, rank: { confidence_street_level: 1 } }],
+		});
+		assert.equal(streetOnly[0]?.confidence, undefined);
+		assert.equal(isFullConfidence(undefined), false);
+		assert.equal(isFullConfidence(1), true);
+		assert.equal(isFullConfidence(1.0), true);
+		assert.equal(isFullConfidence(0.99), false);
 	});
 
 	it('builds a Google Maps link and does not call a geocoder', () => {
@@ -126,13 +139,14 @@ describe('privacy', () => {
 		assert.equal(frontmatter.Notes, 'Talked on the porch for twenty minutes.');
 		assert.equal(frontmatter.Address, '1313 broadway');
 		const location = frontmatter.Location;
+		const pair = locationPair(hit);
 		assert.ok(Array.isArray(location));
 		assert.equal(location.length, 2);
-		assert.equal(typeof location[0], 'number');
-		assert.equal(typeof location[1], 'number');
-		assert.deepEqual(location, [roundCoord(hit.lat), roundCoord(hit.lon)]);
-		assert.deepEqual(latLonFromUnknown(location), { lat: location[0], lon: location[1] });
-		assert.equal(frontmatter['Map Link'], `https://www.google.com/maps?q=${roundCoord(hit.lat)},${roundCoord(hit.lon)}`);
+		assert.equal(typeof location[0], 'string');
+		assert.equal(typeof location[1], 'string');
+		assert.deepEqual(location, pair);
+		assert.deepEqual(latLonFromUnknown(location), { lat: Number(pair[0]), lon: Number(pair[1]) });
+		assert.equal(frontmatter['Map Link'], `https://www.google.com/maps?q=${pair[0]},${pair[1]}`);
 		assert.equal(frontmatter.City, 'Tacoma');
 		assert.equal('County' in frontmatter, false);
 		assert.equal('Distance' in frontmatter, false);
@@ -154,37 +168,65 @@ describe('privacy', () => {
 		assert.equal(readAddress({ Address: '10 Main' }, 'address'), '10 Main');
 	});
 
-	it('writes Location as two numbers and reads block or flow lists', () => {
+	it('writes Location as two quoted-string coordinates and reads them back', () => {
+		assert.equal(coordString(29.0313846), '29.0313846');
+		assert.equal(coordString(-82.5209372), '-82.5209372');
+		assert.equal(coordString(28.985237), '28.985237');
+		assert.equal(coordString(-82.4867061), '-82.4867061');
 		const frontmatter: Record<string, unknown> = {
 			Address: '10 Main St',
 			Location: '47.2, -122.4',
 		};
 		const settings: RVLocatorSettings = { ...DEFAULT_SETTINGS };
-		applyGeocodeHit(frontmatter, {
-			lat: 47.250944967,
-			lon: -122.439413029,
-			formattedAddress: '10 Main St, Tacoma',
-		}, settings);
+		const hit: GeocodeHit = {
+			lat: 29.0313846,
+			lon: -82.5209372,
+			formattedAddress: '10 Main St, Ocala',
+			city: 'Ocala',
+		};
+		applyGeocodeHit(frontmatter, hit, settings);
 		const location = frontmatter.Location;
 		assert.ok(Array.isArray(location));
-		assert.equal(location.length, 2);
-		assert.equal(typeof location[0], 'number');
-		assert.equal(typeof location[1], 'number');
+		assert.deepEqual(location, ['29.0313846', '-82.5209372']);
+		assert.equal(typeof location[0], 'string');
+		assert.equal(typeof location[1], 'string');
 		assert.equal(frontmatter.Address, '10 Main St');
-		assert.equal(frontmatter.City, 'Tacoma');
+		assert.equal(frontmatter.City, 'Ocala');
 		assert.equal('Last Attempted' in frontmatter, false);
-		assert.equal(typeof frontmatter.Location, 'object');
-		const block = latLonFromUnknown([location[0], location[1]]);
-		const flow = latLonFromUnknown([location[0], location[1]]);
+		assert.deepEqual(latLonFromUnknown(location), { lat: 29.0313846, lon: -82.5209372 });
 		const flowText = latLonFromUnknown(`[${location[0]}, ${location[1]}]`);
-		assert.deepEqual(block, flow);
-		assert.deepEqual(flowText, { lat: location[0], lon: location[1] });
-		assert.equal(latLonFromUnknown([String(location[0]), String(location[1])])?.lat, location[0]);
+		assert.deepEqual(flowText, { lat: 29.0313846, lon: -82.5209372 });
 		const skipped = planGeocodeWork([
 			{ path: 'listed.md', frontmatter: { Address: '10 Main St', Location: location } },
+			{ path: 'old.md', frontmatter: { Address: '11 Main St', Location: [28.985237, -82.4867061] } },
 		], settings, false);
 		assert.equal(skipped.length, 0);
 		assert.equal('Distance' in frontmatter, false);
+		const blocked = { ...DEFAULT_SETTINGS, locationProperty: 'Address' };
+		const locked: Record<string, unknown> = { Address: 'keep me' };
+		applyGeocodeHit(locked, hit, blocked);
+		assert.equal(locked.Address, 'keep me');
+		assert.equal('Location' in locked, false);
+
+		const numeric = `---\nAddress: 10 Main St\nLocation:\n  - 28.985237\n  - -82.4867061\nCity: Ocala\n---\n\nNotes stay.\n`;
+		const quoted = ensureQuotedLocationList(numeric, 'Location', ['28.985237', '-82.4867061']);
+		assert.match(quoted, /Location:\n {2}- "28.985237"\n {2}- "-82.4867061"/);
+		assert.match(quoted, /Address: 10 Main St/);
+		assert.match(quoted, /City: Ocala/);
+		assert.match(quoted, /Notes stay\./);
+		assert.equal(quoted.includes('\n  - 28.985237\n'), false);
+		assert.equal(quoted.includes('\n  - -82.4867061\n'), false);
+		const again = ensureQuotedLocationList(quoted, 'Location', ['28.985237', '-82.4867061']);
+		assert.equal(again, quoted);
+		const flow = `---\nAddress: keep\nLocation: [28.985237, -82.4867061]\n---\n`;
+		const fromFlow = ensureQuotedLocationList(flow, 'Location', ['28.985237', '-82.4867061']);
+		assert.match(fromFlow, /Address: keep/);
+		assert.match(fromFlow, /Location:\n {2}- "28.985237"\n {2}- "-82.4867061"\n---/);
+		assert.equal(ensureQuotedLocationList(numeric, 'Address', ['1', '2']), numeric);
+		assert.equal(ensureQuotedLocationList(numeric, 'Location', ['1', '2'], 'Location'), numeric);
+		const crlf = '---\r\nAddress: 10 Main St\r\nLocation:\r\n  - 1\r\n  - -2\r\n---\r\n\r\nBody\r\n';
+		const crlfOut = ensureQuotedLocationList(crlf, 'Location', ['29.0313846', '-82.5209372']);
+		assert.match(crlfOut, /Address: 10 Main St\r\nLocation:\r\n {2}- "29.0313846"\r\n {2}- "-82.5209372"\r\n---\r\n\r\nBody/);
 	});
 });
 
@@ -595,6 +637,7 @@ describe('home base pick', () => {
 		street: 'Maple Street',
 		county: 'Orange County',
 		city: 'Orlando',
+		confidence: 1,
 	};
 	const hammock: GeocodeHit = {
 		lat: 1,
@@ -603,36 +646,62 @@ describe('home base pick', () => {
 		housenumber: '10',
 		street: 'Oak Hammock Lane',
 		county: 'Orange County',
-	};
-	const redOak: GeocodeHit = {
-		lat: 1,
-		lon: 2,
-		formattedAddress: '8 Red Oak Lane, Orlando, FL',
-		housenumber: '8',
-		street: 'Red Oak Lane',
-		county: 'Orange County',
+		confidence: 1,
 	};
 
-	it('auto-picks the only in-county street match', () => {
-		assert.equal(streetTokensMatch('142 Maple Street, Orlando', maple), true);
-		assert.equal(streetTokensMatch('Oak Lane', hammock), false);
-		assert.equal(streetTokensMatch('Oak Lane', redOak), false);
-		assert.equal(streetTokensMatch('144 Maple Street', maple), false);
-		const picked = decideGeocodePick('142 Maple Street, Orlando', [maple, hammock], ['Orange']);
-		assert.equal(picked.hit, null);
-		const only = decideGeocodePick('142 Maple Street, Orlando', [maple, { ...hammock, county: 'Lake County' }], ['orange county']);
+	it('auto-picks the only in-home hit when confidence is 1.00', () => {
+		const both = decideGeocodePick([maple, hammock], ['Orange']);
+		assert.equal(both.hit, null);
+		const only = decideGeocodePick([maple, { ...hammock, county: 'Lake County' }], ['orange county']);
 		assert.equal(only.hit?.street, 'Maple Street');
+		const decimal = decideGeocodePick([{ ...maple, confidence: 1.0 }], ['Orange']);
+		assert.equal(decimal.hit?.street, 'Maple Street');
+		const low = decideGeocodePick(
+			[{ ...maple, county: 'Seminole County' }, { ...hammock, confidence: 0.2 }],
+			['Orange'],
+		);
+		assert.equal(low.hit, null);
 	});
 
-	it('shows the picker when the home list is empty or the street is ambiguous', () => {
-		assert.equal(decideGeocodePick('142 Maple Street', [maple], []).hit, null);
-		assert.equal(decideGeocodePick('Oak Lane', [hammock], ['Orange']).hit, null);
-		assert.equal(decideGeocodePick('142 Maple Street', [{ ...maple, county: 'Seminole County' }], ['Orange']).hit, null);
+	it('shows the picker when confidence is missing, not 1, home is empty, or several hits are in-home', () => {
+		assert.equal(decideGeocodePick([maple], []).hit, null);
+		assert.equal(decideGeocodePick([{ ...hammock, confidence: undefined }], ['Orange']).hit, null);
+		assert.equal(decideGeocodePick([{ ...hammock, confidence: 0.99 }], ['Orange']).hit, null);
+		assert.equal(decideGeocodePick([{ ...maple, county: 'Seminole County' }], ['Orange']).hit, null);
+		assert.equal(decideGeocodePick([maple, hammock], ['Orange County']).hit, null);
 		const blocked = { ...DEFAULT_SETTINGS, countyProperty: 'Address' };
 		const frontmatter: Record<string, unknown> = { Address: 'keep me' };
 		applyGeocodeHit(frontmatter, maple, blocked);
 		assert.equal(frontmatter.Address, 'keep me');
-		assert.equal(frontmatter.Location != null, true);
+		assert.deepEqual(frontmatter.Location, ['1', '2']);
+	});
+});
+
+describe('picker confirm', () => {
+	function settle(order: ReadonlyArray<'close' | 'pick'>): 'updated' | 'passed' | null {
+		let chose = false;
+		let settled: 'updated' | 'passed' | null = null;
+		const later: Array<() => void> = [];
+		const finish = (kind: 'updated' | 'passed') => {
+			if (settled) return;
+			settled = kind;
+		};
+		for (const event of order) {
+			if (event === 'close') {
+				schedulePickerDismiss(() => chose, () => finish('passed'), (run) => later.push(run));
+				continue;
+			}
+			chose = true;
+			finish('updated');
+		}
+		for (const run of later) run();
+		return settled;
+	}
+
+	it('counts a confirmed pick after the modal closes, and a bare close as a skip', () => {
+		assert.equal(settle(['close', 'pick']), 'updated');
+		assert.equal(settle(['pick', 'close']), 'updated');
+		assert.equal(settle(['close']), 'passed');
 	});
 });
 

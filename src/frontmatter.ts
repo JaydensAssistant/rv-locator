@@ -1,6 +1,6 @@
 import { formatSpecificAddress, googleMapsLink } from './address';
 import { parseDisplayAddress } from './address-display';
-import { latLonFromUnknown, roundCoord } from './distance';
+import { coordString, latLonFromUnknown, roundCoord } from './distance';
 import type { GeocodeHit, RVLocatorSettings } from './types';
 
 export function readProperty(frontmatter: Record<string, unknown> | null | undefined, name: string): unknown {
@@ -126,9 +126,22 @@ export function planGeocodeWork(
 	return items;
 }
 
+/** True when `property` is the note address, which geocode must not write. */
+export function isLockedAddressName(property: string, addressProperty: string): boolean {
+	const name = property.trim().toLowerCase();
+	if (!name) return false;
+	return name === 'address' || name === addressProperty.trim().toLowerCase();
+}
+
+/** Two coordinate strings, latitude then longitude, for a list/text Location property. */
+export function locationPair(hit: Pick<GeocodeHit, 'lat' | 'lon'>): [string, string] {
+	return [coordString(roundCoord(hit.lat)), coordString(roundCoord(hit.lon))];
+}
+
 /**
  * Write geocode output onto a frontmatter object.
  * Location, Map Link, City, and optional place fields can change.
+ * Location is a two-item list of strings so YAML can quote them (`"lat"`, `"lon"`).
  * The Address property is never written or cleared.
  * Returns the address already stored on the note, for the lookup cache.
  */
@@ -138,14 +151,14 @@ export function applyGeocodeHit(
 	settings: RVLocatorSettings,
 ): string {
 	const formatted = hit.formattedAddress.trim() || formatSpecificAddress(hit);
-	const lat = roundCoord(hit.lat);
-	const lon = roundCoord(hit.lon);
-	// Two numeric list items. Obsidian stores this as a YAML sequence, either a
-	// block list or a flow list [lat, lon]. Both parse back to a length-2 array.
-	// Bases map `coordinates: note.Location` reads that list. Never one string.
-	const location: [number, number] = [lat, lon];
+	const pair = locationPair(hit);
+	const lat = Number(pair[0]);
+	const lon = Number(pair[1]);
+	// List of strings, not numbers. A list/text property (and Bases) rejects bare
+	// YAML numbers, and a bare negative longitude (`- -82.5`) can fail the YAML
+	// round-trip so the whole frontmatter write is discarded.
 	if (!isAddressName(settings.locationProperty, settings)) {
-		assignProperty(frontmatter, settings.locationProperty, location);
+		assignProperty(frontmatter, settings.locationProperty, pair);
 	}
 	if (settings.mapLinkProperty.trim() && !isAddressName(settings.mapLinkProperty, settings)) {
 		assignProperty(frontmatter, settings.mapLinkProperty, googleMapsLink(lat, lon));
@@ -164,9 +177,111 @@ export function applyGeocodeHit(
 }
 
 function isAddressName(property: string, settings: RVLocatorSettings): boolean {
-	const name = property.trim().toLowerCase();
-	if (!name) return false;
-	return name === 'address' || name === settings.addressProperty.trim().toLowerCase();
+	return isLockedAddressName(property, settings.addressProperty);
+}
+
+function yamlDoubleQuote(value: string): string {
+	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function locationBlock(key: string, values: readonly [string, string]): string {
+	return `${key}:\n  - ${yamlDoubleQuote(values[0])}\n  - ${yamlDoubleQuote(values[1])}`;
+}
+
+/**
+ * Force `property` inside frontmatter to a block list of double-quoted strings.
+ * Does not change any other key. Refuses to rewrite Address.
+ * Notes with no frontmatter get a frontmatter block added at the top.
+ */
+export function ensureQuotedLocationList(
+	markdown: string,
+	property: string,
+	values: readonly [string, string],
+	addressProperty = 'Address',
+): string {
+	if (isLockedAddressName(property, addressProperty)) return markdown;
+	const keyName = property.trim();
+	if (!keyName) return markdown;
+	const split = splitFrontmatter(markdown);
+	if (!split) {
+		const newline = markdown.includes('\r\n') ? '\r\n' : '\n';
+		const block = locationBlock(keyName, values).replace(/\n/g, newline);
+		const body = markdown.length === 0 ? '' : markdown.startsWith(newline) ? markdown : `${newline}${markdown}`;
+		return `---${newline}${block}${newline}---${body}`;
+	}
+	const nextFrontmatter = upsertLocationBlock(split.frontmatter, split.newline, keyName, values);
+	const next = `---${split.newline}${nextFrontmatter}${split.newline}---${split.rest}`;
+	return next === markdown ? markdown : next;
+}
+
+interface FrontmatterSplit {
+	frontmatter: string;
+	newline: string;
+	rest: string;
+}
+
+function splitFrontmatter(markdown: string): FrontmatterSplit | null {
+	const newline = markdown.startsWith('---\r\n') ? '\r\n' : markdown.startsWith('---\n') ? '\n' : null;
+	if (!newline) return null;
+	const start = 3 + newline.length;
+	const close = `${newline}---`;
+	let from = start;
+	while (from < markdown.length) {
+		const end = markdown.indexOf(close, from);
+		if (end < 0) return null;
+		const after = end + close.length;
+		const nextChar = markdown[after];
+		if (nextChar === undefined || nextChar === '\n' || nextChar === '\r') {
+			return {
+				frontmatter: markdown.slice(start, end),
+				newline,
+				rest: markdown.slice(after),
+			};
+		}
+		from = after;
+	}
+	return null;
+}
+
+function upsertLocationBlock(
+	frontmatter: string,
+	newline: string,
+	property: string,
+	values: readonly [string, string],
+): string {
+	const lines = frontmatter.split(/\r?\n/);
+	const wanted = property.trim().toLowerCase();
+	const index = lines.findIndex((line) => topLevelKey(line)?.toLowerCase() === wanted);
+	const block = locationBlock(index >= 0 ? (topLevelKey(lines[index] ?? '') ?? property) : property, values)
+		.replace(/\n/g, newline);
+	if (index < 0) {
+		const trimmed = frontmatter.replace(/(?:\r?\n)+$/, '');
+		if (!trimmed.trim()) return block;
+		return `${trimmed}${newline}${block}`;
+	}
+	let end = index + 1;
+	while (end < lines.length) {
+		const line = lines[end] ?? '';
+		if (line.trim() === '') {
+			const next = lines[end + 1] ?? '';
+			if (next.trim() === '' || !/^\s/.test(next)) break;
+			end += 1;
+			continue;
+		}
+		if (/^\s/.test(line)) {
+			end += 1;
+			continue;
+		}
+		break;
+	}
+	return [...lines.slice(0, index), ...block.split(/\r?\n/), ...lines.slice(end)].join(newline);
+}
+
+function topLevelKey(line: string): string | null {
+	if (/^\s/.test(line)) return null;
+	const match = /^([^:#][^:]*?)\s*:/.exec(line);
+	const key = match?.[1]?.trim() ?? '';
+	return key ? key : null;
 }
 
 function writeExtra(
