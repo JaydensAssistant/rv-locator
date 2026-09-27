@@ -87,7 +87,7 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 
 ### New RV template (1.1.2)
 
-Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. It asks for the householder and Address, renames to `Name on Street`, and geocodes. Hubs, Address, and Map Link stay visible. Map Link is `` `VIEW[{["Map Link"]}][link]` `` (bracket form, because the property name has a space). The rest of the dashboard is a collapsed callout, Successful Visits starts at 0, and Home / Not home are on the note. Attempt Log is an empty `> [!note]- Attempt Log` (no seed success). The Glancable `##` stamp still marks the seeded Met time. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. cssclass `rv-dashboard` blocks sideways scroll. No multi-column CSS in this pass.
+Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. It asks for the householder and Address, renames to `Name on Street`, and geocodes. Hubs, Address, and Map Link stay visible. Map Link is `` `VIEW[{["Map Link"]}][link]` `` (bracket form, because the property name has a space). The rest of the dashboard is a collapsed callout. Creating the note is the first success (Visits and Successful Visits start at 1) with one `##` stamp and one Attempt Log success bullet. Home / Not home are on the note. Templater Home does not add a second copy of a `##` stamp that is already on the note. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. cssclass `rv-dashboard` blocks sideways scroll. No multi-column CSS in this pass.
 
 ## E. When to turn on home-base counties
 

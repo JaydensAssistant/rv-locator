@@ -4,6 +4,9 @@
  *
  * Attempt Log is a collapsed callout. An old `## Attempt Log` heading is
  * migrated to that callout on the next Home / Not home write.
+ * Home inserts a Glancable `##` stamp above the log only when that exact
+ * stamp is not already in the note. Counters and the Attempt Log bullet
+ * still update.
  *
  * Call: await tp.user.rvLog(tp, "home")  or  await tp.user.rvLog(tp, "miss")
  */
@@ -107,12 +110,15 @@ function ensureAttemptLog(body) {
 
 function insertHomeHeading(body, whenLabel) {
   const lines = body.split("\n");
+  const heading = `## ${whenLabel}`;
+  // New RV already wrote this stamp. A second Home in the same rounded hour must not repeat it.
+  if (lines.some((line) => line.trim() === heading)) return body;
   const found = findAttemptLog(lines);
   if (!found || found.kind !== "callout") return body;
   const before = lines.slice(0, found.index);
   while (before.length > 0 && before[before.length - 1] === "") before.pop();
   const after = lines.slice(found.index);
-  const mid = before.length > 0 ? ["", `## ${whenLabel}`, "", ...after] : [`## ${whenLabel}`, "", ...after];
+  const mid = before.length > 0 ? ["", heading, "", ...after] : [heading, "", ...after];
   return [...before, ...mid].join("\n");
 }
 

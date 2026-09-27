@@ -9,8 +9,8 @@ Last Spoke: "<% rv.created %>"
 Last Attempted: "<% rv.created %>"
 Met With:
 Taken:
-Visits: 0
-Successful Visits: 0
+Visits: 1
+Successful Visits: 1
 icon: door-open
 color: purple
 Hub:
@@ -76,3 +76,4 @@ actions:
 ## <% rv.stamp %>
 
 > [!note]- Attempt Log
+> - <% rv.stamp %> — success

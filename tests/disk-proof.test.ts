@@ -493,8 +493,8 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Met: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes(`Last Spoke: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
-		assert.equal(createdText.includes('Visits: 0'), true);
-		assert.equal(createdText.includes('Successful Visits: 0'), true);
+		assert.equal(createdText.includes('Visits: 1'), true);
+		assert.equal(createdText.includes('Successful Visits: 1'), true);
 		assert.equal(createdText.includes('Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`'), true);
 		assert.equal(createdText.includes('Address: `INPUT[text:Address]`'), true);
 		assert.equal(createdText.includes('Map Link: `VIEW[{["Map Link"]}][link]`'), true);
@@ -524,11 +524,11 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
 		assert.equal(createdText.includes(`## ${stamp}`), true);
+		assert.equal(createdText.split('\n').filter((line) => line === `## ${stamp}`).length, 1);
 		assert.equal(createdText.includes('## Attempt Log'), false);
 		assert.equal(createdText.includes('> [!note]- Attempt Log'), true);
-		assert.equal(createdText.includes('— success'), false);
-		assert.equal(createdText.split('\n').some((line) => /^>\s*- /.test(line)), false);
-		assert.match(createdText, /> \[!note\]- Attempt Log\s*$/);
+		assert.equal(createdText.includes(`> - ${stamp} — success`), true);
+		assert.equal(createdText.split('\n').filter((line) => line === `> - ${stamp} — success`).length, 1);
 		assert.equal(createdText.includes('Location:'), false);
 
 		const hook = hooks[0];
@@ -544,12 +544,14 @@ describe('disk proof', () => {
 		assert.equal(file.endsWith('Alex on Maple.md'), true);
 		assertLanded(disk, address);
 		assert.equal(disk.includes(`## ${stamp}`), true);
+		assert.equal(disk.split('\n').filter((line) => line === `## ${stamp}`).length, 1);
 		assert.equal(disk.includes('## Attempt Log'), false);
 		assert.equal(disk.includes('> [!note]- Attempt Log'), true);
-		assert.equal(disk.includes('— success'), false);
-		assert.match(disk, /> \[!note\]- Attempt Log\s*$/);
+		assert.equal(disk.includes(`> - ${stamp} — success`), true);
+		assert.equal(disk.split('\n').filter((line) => line === `> - ${stamp} — success`).length, 1);
 		assert.equal(disk.includes(`Met: ${yamlQuote(created)}`), true);
-		assert.equal(disk.includes('Visits: 0'), true);
+		assert.equal(disk.includes('Visits: 1'), true);
+		assert.equal(disk.includes('Successful Visits: 1'), true);
 		assert.equal(disk.includes('rv-dashboard'), true);
 		assert.equal(bodyOf(disk).includes(`## ${stamp}`), true);
 		const loggedBody = bodyOf(disk);
@@ -703,6 +705,42 @@ describe('disk proof', () => {
 		const againLog = againLines.findIndex((line) => line === '> [!note]- Attempt Log');
 		assert.match(againLines[againLog + 1] ?? '', /^> - .+ — success$/);
 		assert.match(againLines[againLog + 2] ?? '', /^> - .+ — not home$/);
+
+		const firstHeadings = homeDisk.split('\n').filter((line) => /^## /.test(line));
+		assert.equal(firstHeadings.length, 1);
+		await rvLog({ config: { target_file: { path: homeFile } } }, 'home');
+		const secondHome = readFileSync(homeFile, 'utf8');
+		console.log(`\n----- RVLOG HOME AGAIN ${homeFile} -----\n${secondHome}`);
+		assert.equal(addressLine(secondHome), `Address: ${yamlQuote(address)}`);
+		assert.equal(secondHome.includes('Visits: 4'), true);
+		assert.equal(secondHome.includes('Successful Visits: 3'), true);
+		assert.deepEqual(secondHome.split('\n').filter((line) => /^## /.test(line)), firstHeadings);
+		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
+
+		const laterFile = join(dir, 'later.md');
+		writeFileSync(laterFile, [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 1',
+			'Successful Visits: 1',
+			'---',
+			'',
+			'## Mon, 9am — Sep 1, 2026',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n'));
+		await rvLog({ config: { target_file: { path: laterFile } } }, 'home');
+		const laterDisk = readFileSync(laterFile, 'utf8');
+		console.log(`\n----- RVLOG LATER STAMP ${laterFile} -----\n${laterDisk}`);
+		assert.equal(addressLine(laterDisk), `Address: ${yamlQuote(address)}`);
+		assert.equal(laterDisk.includes('Visits: 2'), true);
+		assert.equal(laterDisk.includes('Successful Visits: 2'), true);
+		const laterHeadings = laterDisk.split('\n').filter((line) => /^## /.test(line));
+		assert.equal(laterHeadings[0], '## Mon, 9am — Sep 1, 2026');
+		assert.equal(laterHeadings.length, 2);
+		assert.notEqual(laterHeadings[1], laterHeadings[0]);
 	});
 });
 

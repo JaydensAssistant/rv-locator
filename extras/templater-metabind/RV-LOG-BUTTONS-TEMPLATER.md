@@ -4,8 +4,8 @@ Requirements: **Templater** (user scripts enabled) + **Meta Bind**.
 
 Does **not** change `Address`. Matches the plugin priority-tap logger:
 
-- **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), Glancable `## Wed, 2pm — Sep 9, 2026` (weekday, nearest hour, calendar date) and a blank notes line **above** the Attempt Log, then a callout bullet `> - … — success`
-- **Not home:** Visits++, Last Attempted only, callout bullet `> - … — not home`
+- **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), then a callout bullet `> - … — success`. A Glancable `## Wed, 2pm — Sep 9, 2026` heading (weekday, nearest hour, calendar date) and a blank notes line are inserted **above** the Attempt Log only when that exact heading is not already in the note. New RV already wrote the first stamp, so Home in the same rounded hour does not add a second copy.
+- **Not home:** Visits++, Last Attempted only, callout bullet `> - … — not home`. No `##` stamp.
 
 Attempt Log is a collapsed callout, not a `##` heading:
 
@@ -70,4 +70,4 @@ await tp.user.rvLog(tp, "miss")
 
 ## vs plugin
 
-Use the plugin priority tap from Nearby Glancable/Vanilla. Use these buttons when you are already inside the note. Body + frontmatter layout matches 1.1.2: collapsed Attempt Log callout, Home stamp above it, Address never written.
+Use the plugin priority tap from Nearby Glancable/Vanilla. Use these buttons when you are already inside the note. Frontmatter and Attempt Log bullets match the plugin. Templater Home skips a `##` stamp that is already on the note. The plugin priority tap still inserts one. Address is never written. No JS Engine.

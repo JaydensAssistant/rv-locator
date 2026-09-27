@@ -20,17 +20,18 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 1. Prompts **Householder name**, then **Address** (`tp.system.prompt`). Cancel leaves that field empty. The template still calls `tp.user.newRv(tp)` for the prompts, the rename, and the geocode schedule.
 2. Renames the note to `{Name} on {Street}` when both are present. Examples: `Alex on Maple`, `Riley on Cypress`. The street is the first address line with the house number, a leading directional (`N`, `SW`), a trailing suffix (`St`, `Lane`), and an apartment tail removed. `10 Oak Hammock Lane` becomes `Oak Hammock`.
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
-4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. That is the first-met moment. Seeds **Visits** and **Successful Visits** at `0`. Creating the note does not write a success bullet. Later Home taps increment both counts and append a real success line.
-5. Writes a Glancable drive date for that first-met moment: `## Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A date-only value omits the hour. A later Home tap adds its own `##` stamp above the log for that visit.
-6. Adds an empty collapsed Attempt Log. Header only, no seed bullet:
+4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
+5. Writes one Glancable drive date for that visit: `## Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A date-only value omits the hour.
+6. Adds a collapsed Attempt Log with one success bullet for that same stamp:
 
 ```markdown
 > [!note]- Attempt Log
+> - Wed, 2pm — Sep 9, 2026 — success
 ```
 
 7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills Map Link, which the always-visible Map Link view then shows as a link.
 
-`Visits` and `Successful Visits` stay `0` on create.
+`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) still increments both and appends another success bullet. It adds a new `##` stamp only when that exact Glancable heading is not already in the note, so Home right after create does not repeat the create stamp. A later hour still gets its own heading. The plugin priority-tap logger is unchanged and can still insert a heading.
 
 ## Always visible
 
