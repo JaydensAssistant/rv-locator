@@ -85,6 +85,10 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 7. Adjust `templateFile:` paths if your Templates folder isn’t `Templates/`.
 8. Test Home / Not home on a throwaway note first.
 
+### New RV template (1.1.5)
+
+Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. Or use Settings → **Update Templater / Meta Bind extras from GitHub**, which confirms and then copies those files plus `geocodeNewRv.js`, `snippets/rv-dashboard.css` under the vault config folder (usually `.obsidian`), and the two docs from the public `unstable` branch. It does not write notes, Address, or the Geoapify key. The `###` stamp sits directly under Taken. There is no blank line between `---` and the dashboard. Map Link searches the address, and appends City when that address has no city.
+
 ### New RV template (1.1.4)
 
 Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. It asks for the householder and Address, renames to `Name on Street`, and geocodes. The top of the note is a bold quote strip: Hubs, then Address with a 🗺️ link that searches Google Maps for that address. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `[!rv]` dashboard is under the divider. The `Map Link` property is the same search URL (not lat/lon). Creating the note is the first success (Visits and Successful Visits start at 1) with one `###` stamp, a blank notes line, and one Attempt Log success bullet. There is no Log visit label. Home does not add a second copy of a `##` or `###` stamp that is already on the note. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. cssclass `rv-dashboard` blocks sideways scroll, blends the dashboard, and sizes the two buttons the same. Enable `extras/templater-metabind/rv-dashboard.css` as a snippet only if the plugin is off. No multi-column CSS, and no hide-props CSS, in this pass.

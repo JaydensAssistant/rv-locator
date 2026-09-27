@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.5
+
+`main.js` SHA-256: `ad1b371576d46552bf6090289ba6a90552a232be17845933c37e611c151d4267`
+
+`styles.css` SHA-256: `943f87078ea70f316a81d5cad82ca0623401efbb9792b0825cd987cc6e33a5bc`
+
+`manifest.json` SHA-256: `148bdc553725130f600a1e5c262c23979d3375635a686f43882c20180590b6ed`
+
+- Map Link still searches Google Maps by address, not lat/lon. When Address has no city, the query appends the note’s City (`123 S Main St` + `Orlando` → `123%20S%20Main%20St%2C%20Orlando`). Address is never rewritten. An address that already names a city stays as stored.
+- New RV spacing matches the edited note: no blank line between `---` and the `[!rv]` dashboard, and the `###` stamp sits on the line after Taken. One blank line remains before Attempt Log.
+- Nearby sort chips invert when tapped again. Defaults: Nearest, Priority · high, Spoke · oldest, Attempted · oldest. The flipped labels are Furthest, Priority · low, Spoke · newest, and Attempted · newest. The choice is still saved.
+- Glancable cards are six lines: name, street + city + distance, Last Spoke, Last Attempted, Met, then Met With with `# successful/visits`. Each date is its own line.
+- Settings → **Update Templater / Meta Bind extras from GitHub** confirms, then downloads the public `unstable` branch of `JaydensAssistant/rv-locator` into allowlisted vault paths only. It does not touch notes, Address, or the Geoapify key.
+
 ## 1.1.4
 
 `main.js` SHA-256: `23b723c93026c8d2d46dae3ccd042379bf1e24f28bfe46d7a04bfa2b4d90b40c` (unchanged)

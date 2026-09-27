@@ -89,8 +89,18 @@ function yamlQuoted(value) {
 }
 
 /** Same formula as src/address.ts googleMapsAddressLink. */
-function mapsSearchUrl(address) {
-  const query = address.replace(/\r?\n/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+/**
+ * Google Maps search of the typed address.
+ * Create-time has no City yet, so the icon is address-only. Geocode later writes
+ * the Map Link property and, when Address has no comma-separated city, appends City.
+ * This helper does the same append when a city string is passed. It does not rewrite Address.
+ */
+function mapsSearchUrl(address, city) {
+  let query = String(address ?? "").replace(/\r?\n/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+  const extra = String(city ?? "").replace(/\r?\n/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+  if (query && extra && !query.includes(",") && !query.toLowerCase().includes(extra.toLowerCase())) {
+    query = `${query}, ${extra}`;
+  }
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 

@@ -3,6 +3,7 @@ import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
+import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -42,6 +43,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 
 		const name = card.createDiv('rv-locator-card-name');
+		name.setAttr('data-line', glancableLineId(0));
 		const link = name.createEl('a', {
 			cls: 'rv-locator-file-link',
 			text: row.name,
@@ -51,6 +53,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.bindFileLink(link, row.path);
 
 		const place = card.createDiv('rv-locator-place');
+		place.setAttr('data-line', glancableLineId(1));
 		if (row.addressStreet) {
 			place.createSpan({
 				cls: 'rv-locator-card-street',
@@ -76,18 +79,23 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.rememberDistance(key, distEl, row);
 
 		const when = card.createDiv('rv-locator-when');
-		this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke');
-		this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted');
+		this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2));
+		this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3));
+		this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4));
 
 		const foot = card.createDiv('rv-locator-card-foot');
-		this.iconSlot(foot, row, 'Met', 'home', 'Met');
+		foot.setAttr('data-line', glancableLineId(5));
 		const metWith = this.cellNamed(row, 'Met With');
 		const metText = metWith && metWith.kind !== 'empty' && metWith.text && metWith.text !== '—'
 			? metWith.text
 			: '';
 		this.plainSlot(foot, 'user', metText || '—', metText ? `Met with ${metText}` : 'Met with', !metText);
 		const ratio = visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'));
-		this.plainSlot(foot, 'hash', ratio.text, ratio.title, false, 'rv-locator-visits');
+		const ratioEl = foot.createSpan({
+			cls: 'rv-locator-slot rv-locator-visits',
+			attr: { title: ratio.title },
+		});
+		ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		this.paintActions(card, rank, row);
 	}
 
@@ -117,16 +125,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (showMap && map) this.renderMapChip(actions, map);
 	}
 
-	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string): void {
+	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string): void {
 		const cell = this.cellNamed(row, name);
 		const text = cell && cell.kind !== 'empty' && cell.text && cell.text !== '—' ? cell.text : null;
 		if (!cell || text == null) {
-			this.plainSlot(parent, icon, '—', label, true);
+			this.plainSlot(parent, icon, '—', label, true, '', lineId);
 			return;
 		}
 		const slot = parent.createSpan({
 			cls: 'rv-locator-slot',
-			attr: { title: cell.title || label },
+			attr: { title: cell.title || label, 'data-line': lineId },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
@@ -137,10 +145,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		slot.createSpan({ cls: 'rv-locator-slot-text', text });
 	}
 
-	private plainSlot(parent: HTMLElement, icon: string, text: string, title: string, empty: boolean, extra = ''): void {
+	private plainSlot(parent: HTMLElement, icon: string, text: string, title: string, empty: boolean, extra = '', lineId = ''): void {
 		const slot = parent.createSpan({
 			cls: `rv-locator-slot${empty ? ' is-empty' : ''}${extra ? ` ${extra}` : ''}`,
-			attr: { title },
+			attr: { title, ...(lineId ? { 'data-line': lineId } : {}) },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);

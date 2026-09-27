@@ -31,7 +31,7 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 > - Wed, 2pm — Sep 9, 2026 — success
 ```
 
-7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills `Location` and sets `Map Link` to a Google Maps search of the stored Address: `https://www.google.com/maps/search/?api=1&query=<urlencoded Address>`. It does not rewrite the 🗺️ link already in the body. On a new note that link was built from the same address, so it matches.
+7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills `Location` and sets `Map Link` to a Google Maps search of the stored Address: `https://www.google.com/maps/search/?api=1&query=<urlencoded Address>`. If that Address has no city (no comma-separated locality, and the City text is not already in the line), the link query appends `, ` plus the note’s `City`. Address itself is not rewritten. A full address such as `142 Maple Street, Orlando, FL` is searched as stored. It does not rewrite the 🗺️ link already in the body. On a new note that icon was built from the typed address before City exists, so it stays address-only until you edit the note.
 
 `Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) still increments both and appends another success bullet. It adds a new `###` stamp only when that exact Glancable stamp is not already a `##` or `###` heading, so Home right after create does not repeat the create stamp. A later hour still gets its own `###` heading. The plugin priority tap uses the same rule.
 
@@ -46,7 +46,7 @@ The first two body lines are markdown quotes, with no blank line between them. T
 
 Both lines are also `font-weight: var(--font-semibold)` in `rv-dashboard.css`, so the map icon matches the bold labels.
 
-The Hub property is still `Hub`. The icon URL is `https://www.google.com/maps/search/?api=1&query=` plus `encodeURIComponent` of the address (newlines and repeated spaces collapsed). The `Map Link` property uses that same formula when geocode runs.
+The Hub property is still `Hub`. The icon URL is `https://www.google.com/maps/search/?api=1&query=` plus `encodeURIComponent` of the address (newlines and repeated spaces collapsed). The `Map Link` property uses that formula when geocode runs, and appends the note’s City when the stored Address has no city. Example: Address `123 S Main St` and City `Orlando` become `https://www.google.com/maps/search/?api=1&query=123%20S%20Main%20St%2C%20Orlando`. Empty City leaves the address as the whole query.
 
 ## Collapsed dashboard
 
@@ -74,7 +74,7 @@ Those files in the repo live at `extras/templater-metabind/RV Log Home.md` and `
 
 ## Layout
 
-Reading order is the bold quote strip, then the two buttons, then the divider, then the collapsed dashboard, then the `###` stamp, a blank notes line, and Attempt Log. The phone shows Hubs and Address first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. Home and Not home are the same size. Home uses `--text-accent`, the same accent as the Glancable visits chip.
+Reading order is the bold quote strip, then the two buttons, then the divider, then the collapsed dashboard with no blank line under `---`, then the `###` stamp on the next line after Taken, one blank notes line, and Attempt Log. The phone shows Hubs and Address first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. Home and Not home are the same size. Home uses `--text-accent`, the same accent as the Glancable visits chip.
 
 ## Address-only helper
 

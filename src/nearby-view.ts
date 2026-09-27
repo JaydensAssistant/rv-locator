@@ -1,5 +1,5 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
-import { SORT_PRESETS, type NearbyScope } from './active-layout';
+import { SORT_PRESETS, nextPresetSort, sortPresetChipLabel, type NearbyScope } from './active-layout';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, OSM_ATTRIBUTION } from './constants';
 import { formatDistance, haversineMeters, validLatLon } from './distance';
 import { LivePosition, type GeoState } from './live-position';
@@ -382,18 +382,17 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.sortEl.empty();
 		const current = this.localSort;
 		for (const preset of SORT_PRESETS) {
-			const active = current.property.toLowerCase() === preset.property.toLowerCase()
-				&& current.direction === preset.direction;
+			const active = current.property.toLowerCase() === preset.property.toLowerCase();
 			const button = this.sortEl.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
-				text: preset.label,
+				text: sortPresetChipLabel(preset, active ? current.direction : null),
 				attr: {
 					type: 'button',
 					'aria-pressed': active ? 'true' : 'false',
 				},
 			});
 			button.addEventListener('click', () => {
-				this.plugin.setNearbySort({ property: preset.property, direction: preset.direction });
+				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
 		}
 	}

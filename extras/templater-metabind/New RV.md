@@ -25,7 +25,6 @@ cssclasses:
 `BUTTON[rv-log-home, rv-log-miss]`
 
 ---
-
 > [!rv]- 👤 RV Dashboard
 >
 > **Priority**
@@ -51,7 +50,6 @@ cssclasses:
 >
 > **Taken**
 > `INPUT[inlineList:Taken]`
-
 ### <% rv.stamp %>
 
 > [!note]- Attempt Log

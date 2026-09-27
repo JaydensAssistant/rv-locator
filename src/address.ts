@@ -1,3 +1,4 @@
+import { parseDisplayAddress } from './address-display';
 import { GEOCODE_ENDPOINT } from './constants';
 import type { GeocodeHit } from './types';
 
@@ -91,13 +92,41 @@ function formattedIncludesStreet(formatted: string, parts: AddressParts): boolea
 }
 
 /**
+ * Google Maps search text.
+ * A bare street (no comma-separated locality, and the City token is not already
+ * in the string) gets `, City` appended. Address itself is never rewritten.
+ * An empty City leaves the address unchanged. A line that already parses to a
+ * city is left alone, even when City disagrees with that locality.
+ */
+export function mapsSearchQuery(address: string, city?: string | null): string {
+	const query = collapseAddress(address);
+	const extra = collapseAddress(city ?? '');
+	if (!query || !extra) return query;
+	if (addressAlreadyNamesCity(query, extra)) return query;
+	return `${query}, ${extra}`;
+}
+
+/**
  * Google Maps search for the note’s Address text.
  * Location stays a coordinate pair for distance. Map Link does not use lat/lon,
  * because a coordinate pin is a poor way to find the house in the field.
+ * Pass the note’s City so a street-only Address still searches in that city.
  */
-export function googleMapsAddressLink(address: string): string {
-	const query = address.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+export function googleMapsAddressLink(address: string, city?: string | null): string {
+	const query = mapsSearchQuery(address, city);
 	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+function collapseAddress(value: string): string {
+	return value.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+function addressAlreadyNamesCity(address: string, city: string): boolean {
+	if (parseDisplayAddress(address)?.city) return true;
+	const token = city.toLowerCase();
+	if (!token) return true;
+	const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	return new RegExp(`(?:^|[,\\s])${escaped}(?:$|[,\\s])`, 'i').test(address);
 }
 
 export function parseGeocodeBody(body: unknown): GeocodeHit[] {

@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, visiblePropertyText } from '../src/active-layout';
-import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, normalizeAddress, parseGeocodeBody } from '../src/address';
+import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
+import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
+import { EXTRAS_SYNC_BRANCH, downloadExtras, extrasDestinations, extrasFileUrl, isAllowlistedExtrasPath } from '../src/extras-sync';
+import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
 import { getCached, rememberResults, trimCache } from '../src/cache';
@@ -108,6 +110,22 @@ describe('geocode request', () => {
 		assert.equal(googleMapsAddressLink('  1313 broadway  '), googleMapsAddressLink('1313 broadway'));
 		assert.equal(googleMapsAddressLink('1313 broadway').includes('47.25'), false);
 		assert.equal(googleMapsAddressLink('1313 broadway').includes('maps?q='), false);
+		assert.equal(
+			googleMapsAddressLink('123 S Main St', 'Orlando'),
+			'https://www.google.com/maps/search/?api=1&query=123%20S%20Main%20St%2C%20Orlando',
+		);
+		assert.equal(mapsSearchQuery('123 S Main St', 'Orlando'), '123 S Main St, Orlando');
+		assert.equal(googleMapsAddressLink('123 S Main St', ''), googleMapsAddressLink('123 S Main St'));
+		assert.equal(googleMapsAddressLink('123 S Main St', '   '), googleMapsAddressLink('123 S Main St'));
+		assert.equal(
+			googleMapsAddressLink('142 Maple Street, Orlando, FL', 'Tampa'),
+			googleMapsAddressLink('142 Maple Street, Orlando, FL'),
+		);
+		assert.equal(
+			googleMapsAddressLink('123 S Main St Orlando', 'Orlando'),
+			googleMapsAddressLink('123 S Main St Orlando'),
+		);
+		assert.equal(googleMapsAddressLink('123 S Main St', 'Orlando').includes('28.'), false);
 	});
 });
 
@@ -157,7 +175,8 @@ describe('privacy', () => {
 		assert.equal(typeof location[1], 'string');
 		assert.deepEqual(location, pair);
 		assert.deepEqual(latLonFromUnknown(location), { lat: Number(pair[0]), lon: Number(pair[1]) });
-		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('1313 broadway'));
+		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('1313 broadway', 'Tacoma'));
+		assert.equal(String(frontmatter['Map Link']).includes('Tacoma'), true);
 		assert.equal(String(frontmatter['Map Link']).includes(String(pair[0])), false);
 		assert.equal(String(frontmatter['Map Link']).includes(String(pair[1])), false);
 		assert.equal(frontmatter.City, 'Tacoma');
@@ -204,8 +223,8 @@ describe('privacy', () => {
 		assert.equal(typeof location[0], 'string');
 		assert.equal(typeof location[1], 'string');
 		assert.equal(frontmatter.Address, '10 Main St');
-		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('10 Main St'));
-		assert.equal(String(frontmatter['Map Link']).includes('Ocala'), false);
+		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('10 Main St', 'Ocala'));
+		assert.equal(String(frontmatter['Map Link']).includes('Ocala'), true);
 		assert.equal(frontmatter.City, 'Ocala');
 		assert.equal('Last Attempted' in frontmatter, false);
 		assert.deepEqual(latLonFromUnknown(location), { lat: 29.0313846, lon: -82.5209372 });
@@ -368,7 +387,14 @@ describe('distance and dates', () => {
 		assert.equal(scrambled[scrambled.indexOf('note.Last Spoke') + 1], 'note.Last Attempted');
 		assert.equal(scrambled[scrambled.indexOf('note.Last Attempted') + 1], 'note.Met');
 		assert.equal(scrambled[scrambled.length - 1], 'note.Taken');
-		assert.deepEqual(SORT_PRESETS.map((preset) => preset.label), ['Nearest', 'Priority', 'Last Spoke', 'Last Attempted']);
+		assert.deepEqual(
+			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, null)),
+			['Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest'],
+		);
+		assert.deepEqual(
+			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
+			['Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest'],
+		);
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
 		assert.ok(cased.includes('note.address'));
@@ -378,8 +404,38 @@ describe('distance and dates', () => {
 		assert.equal(shouldUseActiveSort([{ property: 'file.name', direction: 'ASC' }]), true);
 		assert.equal(shouldUseActiveSort([{ property: 'note.Priority', direction: 'DESC' }]), false);
 		assert.equal(preferredSortDirection('note.Priority'), 'DESC');
+		assert.equal(preferredSortDirection('note.Last Spoke'), 'ASC');
+		assert.equal(preferredSortDirection('note.Last Attempted'), 'ASC');
 		assert.equal(preferredSortDirection('note.Met'), 'DESC');
 		assert.equal(preferredSortDirection(DISTANCE_COLUMN_ID), 'ASC');
+		const nearest = SORT_PRESETS[0];
+		const spoke = SORT_PRESETS[2];
+		const attempted = SORT_PRESETS[3];
+		assert.ok(nearest && spoke && attempted);
+		assert.deepEqual(nextPresetSort(null, nearest), { property: nearest.property, direction: 'ASC' });
+		assert.deepEqual(
+			nextPresetSort({ property: nearest.property, direction: 'ASC' }, nearest),
+			{ property: nearest.property, direction: 'DESC' },
+		);
+		assert.deepEqual(nextPresetSort({ property: nearest.property, direction: 'DESC' }, spoke), {
+			property: spoke.property,
+			direction: 'ASC',
+		});
+		assert.deepEqual(
+			nextPresetSort({ property: spoke.property, direction: 'ASC' }, spoke),
+			{ property: spoke.property, direction: 'DESC' },
+		);
+		assert.deepEqual(nextPresetSort(null, attempted), { property: attempted.property, direction: 'ASC' });
+		assert.deepEqual(GLANCABLE_CARD_LINES.map((line) => line.id), [
+			'name',
+			'place',
+			'last-spoke',
+			'last-attempted',
+			'met',
+			'foot',
+		]);
+		assert.equal(glancableLineId(2), 'last-spoke');
+		assert.equal(glancableLineId(4), 'met');
 		assert.deepEqual(ACTIVE_SORT.map((item) => item.property), [
 			'note.Priority',
 			'note.Last Spoke',
@@ -563,8 +619,9 @@ describe('successful visits', () => {
 		}, DEFAULT_SETTINGS);
 		assert.equal(fromResult.Address, 'old');
 		assert.equal(fromResult.City, 'Crystal River');
-		assert.equal(fromResult['Map Link'], googleMapsAddressLink('old'));
-		assert.equal(String(fromResult['Map Link']).includes('Crystal'), false);
+		assert.equal(fromResult['Map Link'], googleMapsAddressLink('old', 'Crystal River'));
+		assert.equal(String(fromResult['Map Link']).includes('Crystal%20River'), true);
+		assert.equal(String(fromResult['Map Link']).includes('28.99'), false);
 
 		const fromAddress: Record<string, unknown> = {};
 		applyGeocodeHit(fromAddress, {
@@ -926,3 +983,40 @@ function activeRow(id: string, priority: number, lastSpoke: string, name: string
 		},
 	};
 }
+
+describe('extras sync', () => {
+	it('downloads only allowlisted paths from the unstable branch', async () => {
+		assert.equal(EXTRAS_SYNC_BRANCH, 'unstable');
+		const configDir = '.obsidian';
+		assert.equal(isAllowlistedExtrasPath('Templates/New RV.md', configDir), true);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/snippets/rv-dashboard.css`, configDir), true);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/data.json`, configDir), false);
+		assert.equal(isAllowlistedExtrasPath('Templates/../data.json', configDir), false);
+		assert.equal(isAllowlistedExtrasPath('/etc/passwd', configDir), false);
+		assert.equal(isAllowlistedExtrasPath('Scripts/newRv.js', configDir), true);
+		assert.equal(extrasDestinations(configDir).some((file) => file.vault === `${configDir}/snippets/rv-dashboard.css`), true);
+		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
+		assert.equal(
+			url,
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/extras/templater-metabind/New%20RV.md',
+		);
+		assert.throws(() => extrasFileUrl('../secrets.env'));
+		const calls: string[] = [];
+		const plan = await downloadExtras(async (fetched) => {
+			calls.push(fetched);
+			if (fetched.endsWith('/newRv.js')) {
+				return { ok: false, status: 404, text: '' };
+			}
+			return { ok: true, status: 200, text: `body:${fetched}` };
+		}, configDir);
+		assert.equal(calls.length, extrasDestinations(configDir).length);
+		assert.equal(calls.every((item) => item.includes('/unstable/')), true);
+		assert.equal(plan.failed.length, 1);
+		assert.equal(plan.failed[0]?.vaultPath, 'Scripts/newRv.js');
+		assert.equal(plan.updated.some((file) => file.vaultPath === 'Scripts/newRv.js'), false);
+		assert.equal(plan.updated.some((file) => file.vaultPath === '.obsidian/plugins/rv-locator/data.json'), false);
+		assert.equal(plan.updated.some((file) => file.vaultPath === 'Templates/New RV.md'), true);
+		const note = plan.updated.find((file) => file.vaultPath === 'Templates/New RV.md');
+		assert.equal(note?.contents.includes('Address'), false);
+	});
+});

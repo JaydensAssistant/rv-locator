@@ -159,11 +159,14 @@ export function applyGeocodeHit(
 	if (!isAddressName(settings.locationProperty, settings)) {
 		assignProperty(frontmatter, settings.locationProperty, pair);
 	}
+	const storedCityRaw = readProperty(frontmatter, CITY_PROPERTY);
+	const storedCity = typeof storedCityRaw === 'string' ? storedCityRaw.trim() : '';
+	const city = cityFromGeocode(formatted || hit.formattedAddress, hit.city);
+	const cityForMap = storedCity || city;
 	const mapAddress = storedAddress || formatted;
 	if (mapAddress && settings.mapLinkProperty.trim() && !isAddressName(settings.mapLinkProperty, settings)) {
-		assignProperty(frontmatter, settings.mapLinkProperty, googleMapsAddressLink(mapAddress));
+		assignProperty(frontmatter, settings.mapLinkProperty, googleMapsAddressLink(mapAddress, cityForMap));
 	}
-	const city = cityFromGeocode(formatted || hit.formattedAddress, hit.city);
 	if (city && !isAddressName(CITY_PROPERTY, settings)) assignProperty(frontmatter, CITY_PROPERTY, city);
 	const extraCity = settings.cityProperty.trim();
 	if (extraCity && extraCity.toLowerCase() !== CITY_PROPERTY.toLowerCase()) {

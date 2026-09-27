@@ -1,4 +1,4 @@
-# RV Locator 1.1.4
+# RV Locator 1.1.5
 
 Obsidian plugin: Geoapify geocode for return-visit notes + live Nearby Bases views (Vanilla / Glancable). **Never overwrites `Address`.**
 
@@ -24,15 +24,15 @@ Prefer desktop install + vault sync. Details: `docs/SETUP-iOS-1.1.0.md`.
 
 ## New RV note (Templater)
 
-Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, and starts Visits and Successful Visits at 1, then runs `rv-locator:geocode-current-note`. The top of the note is a bold two-line quote strip: Hubs, then Address with a 🗺️ link to `https://www.google.com/maps/search/?api=1&query=<urlencoded address>`. Geocode writes that same URL into the `Map Link` property from the stored Address (coordinates stay on `Location` only). Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `> [!rv]-` dashboard is under the divider. One Glancable `### Wed, 2pm — Sep 9, 2026` heading sits above a blank notes line and a collapsed Attempt Log that already has that success bullet. Home does not repeat a `##` or `###` stamp that is already there. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
+Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, and starts Visits and Successful Visits at 1, then runs `rv-locator:geocode-current-note`. The top of the note is a bold two-line quote strip: Hubs, then Address with a 🗺️ link to `https://www.google.com/maps/search/?api=1&query=<urlencoded address>`. Geocode writes `Map Link` from the stored Address (coordinates stay on `Location` only). A street with no city gets the note’s City added to that search query only. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `> [!rv]-` dashboard starts on the next line. The `###` stamp follows Taken immediately, then one blank line and the Attempt Log. Home does not repeat a `##` or `###` stamp that is already there. Settings can refresh these extras from the public `unstable` branch. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
 
 ## Verify
 
 ```bash
 shasum -a 256 main.js styles.css manifest.json
-# main.js     23b723c93026c8d2d46dae3ccd042379bf1e24f28bfe46d7a04bfa2b4d90b40c
-# styles.css  3fa9eb1486db7534a13879e8feaa632f1707a5f934039925003a5b8a5cc3b5d1
-# manifest.json a4464257ed02c0e2908387c26fa19147ee59301a0f57d55fc4678e5233d885d9
+# main.js       ad1b371576d46552bf6090289ba6a90552a232be17845933c37e611c151d4267
+# styles.css    943f87078ea70f316a81d5cad82ca0623401efbb9792b0825cd987cc6e33a5bc
+# manifest.json 148bdc553725130f600a1e5c262c23979d3375635a686f43882c20180590b6ed
 ```
 
 ## Attribution

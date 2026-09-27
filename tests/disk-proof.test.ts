@@ -516,7 +516,7 @@ describe('disk proof', () => {
 		const addressInputAt = createdText.indexOf('> **Address:** `INPUT[text:Address]`');
 		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
 		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss]`');
-		const dividerAt = createdText.indexOf('\n---\n\n> [!rv]- 👤 RV Dashboard');
+		const dividerAt = createdText.indexOf('\n---\n> [!rv]- 👤 RV Dashboard');
 		const dashAt = createdText.indexOf('> [!rv]- 👤 RV Dashboard');
 		const stampAt = createdText.indexOf(`### ${stamp}`);
 		const logAt = createdText.indexOf('> [!note]- Attempt Log');
@@ -531,12 +531,13 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Spoke**') < callout.indexOf('**Last Attempted**'));
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
-		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss\]`\n\n---\n/);
+		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss\]`\n\n---\n> \[!rv\]-/);
 		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
 		assert.equal(createdText.includes(`### ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `### ${stamp}`).length, 1);
 		const stampLine = createdText.split('\n').findIndex((line) => line === `### ${stamp}`);
 		const createdLines = createdText.split('\n');
+		assert.equal(createdLines[stampLine - 1], '> `INPUT[inlineList:Taken]`');
 		assert.equal(createdLines[stampLine + 1], '');
 		assert.equal(createdLines[stampLine + 2], '> [!note]- Attempt Log');
 		assert.equal(createdText.includes('## Attempt Log'), false);

@@ -469,7 +469,21 @@
 	white-space: nowrap;
 }
 
-.rv-locator-glancable .rv-locator-when,
+.rv-locator-glancable .rv-locator-when {
+	display: flex;
+	flex-direction: column;
+	flex-wrap: nowrap;
+	align-items: flex-start;
+	gap: 2px;
+	max-width: 100%;
+	margin: 0;
+	min-width: 0;
+}
+
+.rv-locator-glancable .rv-locator-when > .rv-locator-slot {
+	width: 100%;
+}
+
 .rv-locator-glancable .rv-locator-card-foot {
 	display: flex;
 	flex-wrap: wrap;
