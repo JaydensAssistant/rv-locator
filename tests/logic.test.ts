@@ -742,8 +742,19 @@ describe('visit log', () => {
 		assert.equal(frontmatter['Last Spoke'], '2026-09-26T23:12:04');
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('Talked on the porch.\n', 'home', now);
-		assert.match(body, /## Sat, 11pm — Sep 26, 2026\n\n## Attempt Log\n- Sat, 11pm — Sep 26, 2026 — success\n$/);
-		assert.match(body, /^Talked on the porch\./);
+		assert.equal(body, [
+			'Talked on the porch.',
+			'',
+			'## Sat, 11pm — Sep 26, 2026',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Sat, 11pm — Sep 26, 2026 — success',
+			'',
+		].join('\n'));
+		assert.equal(body.includes('## Attempt Log'), false);
+		const stampAt = body.indexOf('## Sat, 11pm — Sep 26, 2026');
+		const logAt = body.indexOf('> [!note]- Attempt Log');
+		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
 
 	it('logs a miss on Visits and Last Attempted only', () => {
@@ -761,9 +772,104 @@ describe('visit log', () => {
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('', 'miss', now);
 		assert.equal(body.includes('## Sat, 11pm — Sep 26, 2026'), false);
-		assert.match(body, /^## Attempt Log\n- Sat, 11pm — Sep 26, 2026 — not home\n$/);
+		assert.equal(body, [
+			'> [!note]- Attempt Log',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
 		const again = applyVisitBody(body, 'miss', now);
-		assert.equal(again.split('- Sat, 11pm — Sep 26, 2026 — not home').length, 3);
+		assert.equal(again, [
+			'> [!note]- Attempt Log',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+	});
+
+	it('appends inside an existing collapsed or expanded Attempt Log callout', () => {
+		const collapsed = '> [!note]- Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n';
+		const next = applyVisitBody(collapsed, 'miss', now);
+		assert.equal(next, [
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+
+		const expanded = [
+			'> [!note]+ Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — not home',
+			'',
+			'Footer.',
+			'',
+		].join('\n');
+		const more = applyVisitBody(expanded, 'home', now);
+		assert.equal(more, [
+			'## Sat, 11pm — Sep 26, 2026',
+			'',
+			'> [!note]+ Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — not home',
+			'> - Sat, 11pm — Sep 26, 2026 — success',
+			'',
+			'Footer.',
+			'',
+		].join('\n'));
+		assert.ok(more.indexOf('## Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
+	});
+
+	it('migrates a legacy ## Attempt Log heading into a collapsed callout', () => {
+		const legacy = [
+			'Notes.',
+			'',
+			'## Attempt Log',
+			'- Mon, 9am — Sep 1, 2026 — success',
+			'',
+			'## Later',
+			'keep',
+			'',
+		].join('\n');
+		const next = applyVisitBody(legacy, 'miss', now);
+		assert.equal(next.includes('## Attempt Log'), false);
+		assert.equal(next, [
+			'Notes.',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+			'## Later',
+			'keep',
+			'',
+		].join('\n'));
+	});
+
+	it('accepts unmarked and tight Attempt Log callout variants', () => {
+		const plain = '> [!note] Attempt Log\n> - old — success\n';
+		const next = applyVisitBody(plain, 'miss', now);
+		assert.equal(next, [
+			'> [!note] Attempt Log',
+			'> - old — success',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+
+		const tight = '>[!note]- Attempt Log\n>- old — not home\n';
+		const more = applyVisitBody(tight, 'miss', now);
+		assert.equal(more, [
+			'>[!note]- Attempt Log',
+			'>- old — not home',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+
+		const spaced = '> [!NOTE] - Attempt Log\n> - old — success\n';
+		const spacedNext = applyVisitBody(spaced, 'miss', now);
+		assert.equal(spacedNext, [
+			'> [!NOTE] - Attempt Log',
+			'> - old — success',
+			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
 	});
 });
 

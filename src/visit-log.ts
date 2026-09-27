@@ -3,8 +3,11 @@ import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
 
-const ATTEMPT_LOG = /^## Attempt Log\s*$/;
+/** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
+const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
+const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const ADDRESS_KEY = 'Address';
+const CALLOUT_HEADER = '> [!note]- Attempt Log';
 
 /** Local date-time stored on Last Spoke / Last Attempted. No UTC shift. */
 export function formatFrontmatterDateTime(date: Date): string {
@@ -48,14 +51,16 @@ export function applyVisitFrontmatter(
 /**
  * Body text below the frontmatter.
  * A home visit inserts `## <stamp>` and a blank line just above Attempt Log.
- * Both outcomes append a bullet under `## Attempt Log`, creating that heading at the end when it is missing.
+ * Both outcomes append `> - <stamp> — success|not home` inside a collapsed
+ * `> [!note]- Attempt Log` callout. An old `## Attempt Log` heading is migrated
+ * to that callout on write. Address is not part of the body edit.
  */
 export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): string {
 	const stamp = formatVisitStamp(now);
 	const phrase = outcome === 'home' ? 'success' : 'not home';
 	let next = ensureAttemptLog(body);
 	if (outcome === 'home') next = insertHomeHeading(next, stamp);
-	return appendLogLine(next, `- ${stamp} — ${phrase}`);
+	return appendLogLine(next, `> - ${stamp} — ${phrase}`);
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {
@@ -72,21 +77,62 @@ function finiteCount(value: unknown): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
+type AttemptLogHit = { index: number; kind: 'callout' | 'heading' };
+
+function findAttemptLog(lines: string[]): AttemptLogHit | null {
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? '';
+		if (ATTEMPT_LOG_CALLOUT.test(line)) return { index, kind: 'callout' };
+		if (ATTEMPT_LOG_HEADING.test(line)) return { index, kind: 'heading' };
+	}
+	return null;
+}
+
+function sectionEnd(lines: string[], start: number, kind: AttemptLogHit['kind']): number {
+	if (kind === 'callout') {
+		let end = start + 1;
+		while (end < lines.length && /^>/.test(lines[end] ?? '')) end += 1;
+		return end;
+	}
+	for (let index = start + 1; index < lines.length; index += 1) {
+		if (/^#{1,2}\s+/.test(lines[index] ?? '')) return index;
+	}
+	return lines.length;
+}
+
+function toCalloutBodyLine(line: string): string {
+	if (line.startsWith('>')) return line;
+	if (line.trim() === '') return '>';
+	return `> ${line}`;
+}
+
+function migrateHeadingToCallout(lines: string[], start: number): string[] {
+	const end = sectionEnd(lines, start, 'heading');
+	const section = lines.slice(start + 1, end);
+	while (section.length > 0 && section[section.length - 1]?.trim() === '') section.pop();
+	const callout = [CALLOUT_HEADER, ...section.map(toCalloutBodyLine)];
+	return [...lines.slice(0, start), ...callout, ...lines.slice(end)];
+}
+
 function ensureAttemptLog(body: string): string {
-	const lines = body.split('\n');
-	if (lines.some((line) => ATTEMPT_LOG.test(line))) return body.replace(/\s*$/, '');
-	const trimmed = body.replace(/\s*$/, '');
-	const gap = trimmed.length > 0 ? '\n\n' : '';
-	return `${trimmed}${gap}## Attempt Log`;
+	const normalized = body.replace(/\s*$/, '');
+	const lines = normalized.split('\n');
+	const found = findAttemptLog(lines);
+	if (!found) {
+		const gap = normalized.length > 0 ? '\n\n' : '';
+		return `${normalized}${gap}${CALLOUT_HEADER}`;
+	}
+	if (found.kind === 'heading') return migrateHeadingToCallout(lines, found.index).join('\n');
+	return normalized;
 }
 
 function insertHomeHeading(body: string, stamp: string): string {
 	const lines = body.split('\n');
-	const index = lines.findIndex((line) => ATTEMPT_LOG.test(line));
-	if (index < 0) return body;
-	const before = lines.slice(0, index);
+	const found = findAttemptLog(lines);
+	if (!found || found.kind !== 'callout') return body;
+	const before = lines.slice(0, found.index);
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
-	const after = lines.slice(index);
+	const after = lines.slice(found.index);
 	const block = before.length > 0
 		? ['', `## ${stamp}`, '', ...after]
 		: [`## ${stamp}`, '', ...after];
@@ -94,20 +140,20 @@ function insertHomeHeading(body: string, stamp: string): string {
 }
 
 function appendLogLine(body: string, line: string): string {
-	const lines = body.split('\n');
-	const start = lines.findIndex((entry) => ATTEMPT_LOG.test(entry));
-	if (start < 0) return body;
-	let end = lines.length;
-	for (let index = start + 1; index < lines.length; index += 1) {
-		if (/^#{1,2}\s+/.test(lines[index] ?? '')) {
-			end = index;
-			break;
-		}
+	let lines = body.split('\n');
+	let found = findAttemptLog(lines);
+	if (!found) return body;
+	if (found.kind === 'heading') {
+		lines = migrateHeadingToCallout(lines, found.index);
+		found = findAttemptLog(lines);
+		if (!found || found.kind !== 'callout') return body;
 	}
-	const section = lines.slice(start, end);
+	const end = sectionEnd(lines, found.index, 'callout');
+	const section = lines.slice(found.index, end);
+	while (section.length > 1 && /^>\s*$/.test(section[section.length - 1] ?? '')) section.pop();
 	while (section.length > 0 && section[section.length - 1] === '') section.pop();
-	section.push(line);
+	section.push(line.startsWith('>') ? line : `> ${line}`);
 	const rest = lines.slice(end);
 	const gap = rest.length > 0 && rest[0] !== '' ? [''] : [];
-	return [...lines.slice(0, start), ...section, ...gap, ...rest].join('\n').replace(/\s*$/, '') + '\n';
+	return [...lines.slice(0, found.index), ...section, ...gap, ...rest].join('\n').replace(/\s*$/, '') + '\n';
 }

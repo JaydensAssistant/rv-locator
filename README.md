@@ -1,4 +1,4 @@
-# RV Locator 1.1.1
+# RV Locator 1.1.2
 
 Obsidian plugin: Geoapify geocode for return-visit notes + live Nearby Bases views (Vanilla / Glancable). **Never overwrites `Address`.**
 
@@ -24,13 +24,13 @@ Prefer desktop install + vault sync. Details: `docs/SETUP-iOS-1.1.0.md`.
 
 ## New RV note (Templater)
 
-Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, writes a Glancable `## Wed, 2pm — Sep 9, 2026` heading plus the first Attempt Log success bullet, then runs `rv-locator:geocode-current-note`. The dashboard is a vertical Meta Bind stack (`cssclass: rv-dashboard`) so a phone does not scroll sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
+Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted and Successful Visits at 0, then runs `rv-locator:geocode-current-note`. Hubs, Address, and Map Link stay outside a collapsed RV Dashboard. The Glancable `## Wed, 2pm — Sep 9, 2026` heading sits above a collapsed Attempt Log callout. Home / Not home buttons are on the note. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
 
 ## Verify
 
 ```bash
 shasum -a 256 main.js
-# bf8c26e60f39c11291f2238879ab19e3257bc906db9fde963aaae5f033b828ed
+# 703d2901abc09161116cdb3be2b9f5179d294342bb0a5d4e7ede64c346158b76
 ```
 
 ## Attribution

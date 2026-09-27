@@ -1,6 +1,9 @@
 /**
- * RV Locator visit-log parity for Templater (plugin 1.1.1).
+ * RV Locator visit-log parity for Templater (plugin 1.1.2).
  * Never writes Address.
+ *
+ * Attempt Log is a collapsed callout. An old `## Attempt Log` heading is
+ * migrated to that callout on the next Home / Not home write.
  *
  * Call: await tp.user.rvLog(tp, "home")  or  await tp.user.rvLog(tp, "miss")
  */
@@ -49,45 +52,88 @@ function asNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-const ATTEMPT_LOG = /^## Attempt Log\s*$/;
+/** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
+const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
+const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
+const CALLOUT_HEADER = "> [!note]- Attempt Log";
 const ADDRESS_KEY = "Address";
 
+function findAttemptLog(lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (ATTEMPT_LOG_CALLOUT.test(line)) return { index, kind: "callout" };
+    if (ATTEMPT_LOG_HEADING.test(line)) return { index, kind: "heading" };
+  }
+  return null;
+}
+
+function sectionEnd(lines, start, kind) {
+  if (kind === "callout") {
+    let end = start + 1;
+    while (end < lines.length && /^>/.test(lines[end] ?? "")) end += 1;
+    return end;
+  }
+  for (let index = start + 1; index < lines.length; index += 1) {
+    if (/^#{1,2}\s+/.test(lines[index] ?? "")) return index;
+  }
+  return lines.length;
+}
+
+function toCalloutBodyLine(line) {
+  if (line.startsWith(">")) return line;
+  if (line.trim() === "") return ">";
+  return `> ${line}`;
+}
+
+function migrateHeadingToCallout(lines, start) {
+  const end = sectionEnd(lines, start, "heading");
+  const section = lines.slice(start + 1, end);
+  while (section.length > 0 && (section[section.length - 1] ?? "").trim() === "") section.pop();
+  const callout = [CALLOUT_HEADER, ...section.map(toCalloutBodyLine)];
+  return [...lines.slice(0, start), ...callout, ...lines.slice(end)];
+}
+
 function ensureAttemptLog(body) {
-  const lines = body.split("\n");
-  if (lines.some((l) => ATTEMPT_LOG.test(l))) return body.replace(/\s*$/, "");
-  const trimmed = body.replace(/\s*$/, "");
-  const gap = trimmed.length > 0 ? "\n\n" : "";
-  return `${trimmed}${gap}## Attempt Log`;
+  const normalized = body.replace(/\s*$/, "");
+  const lines = normalized.split("\n");
+  const found = findAttemptLog(lines);
+  if (!found) {
+    const gap = normalized.length > 0 ? "\n\n" : "";
+    return `${normalized}${gap}${CALLOUT_HEADER}`;
+  }
+  if (found.kind === "heading") return migrateHeadingToCallout(lines, found.index).join("\n");
+  return normalized;
 }
 
 function insertHomeHeading(body, whenLabel) {
   const lines = body.split("\n");
-  const idx = lines.findIndex((l) => ATTEMPT_LOG.test(l));
-  if (idx < 0) return body;
-  const before = lines.slice(0, idx);
+  const found = findAttemptLog(lines);
+  if (!found || found.kind !== "callout") return body;
+  const before = lines.slice(0, found.index);
   while (before.length > 0 && before[before.length - 1] === "") before.pop();
-  const after = lines.slice(idx);
+  const after = lines.slice(found.index);
   const mid = before.length > 0 ? ["", `## ${whenLabel}`, "", ...after] : [`## ${whenLabel}`, "", ...after];
   return [...before, ...mid].join("\n");
 }
 
 function appendLogBullet(body, bullet) {
-  const lines = body.split("\n");
-  const idx = lines.findIndex((l) => ATTEMPT_LOG.test(l));
-  if (idx < 0) return body;
-  let end = lines.length;
-  for (let i = idx + 1; i < lines.length; i += 1) {
-    if (/^#{1,2}\s+/.test(lines[i] ?? "")) {
-      end = i;
-      break;
-    }
+  let lines = body.split("\n");
+  let found = findAttemptLog(lines);
+  if (!found) return body;
+  if (found.kind === "heading") {
+    lines = migrateHeadingToCallout(lines, found.index);
+    found = findAttemptLog(lines);
+    if (!found || found.kind !== "callout") return body;
   }
-  const block = lines.slice(idx, end);
+  const end = sectionEnd(lines, found.index, "callout");
+  const block = lines.slice(found.index, end);
+  while (block.length > 1 && /^>\s*$/.test(block[block.length - 1] ?? "")) block.pop();
   while (block.length > 0 && block[block.length - 1] === "") block.pop();
-  block.push(bullet);
+  const line = bullet.startsWith(">") ? bullet : `> ${bullet}`;
+  block.push(line);
   const rest = lines.slice(end);
   const gap = rest.length > 0 && rest[0] !== "" ? [""] : [];
-  return [...lines.slice(0, idx), ...block, ...gap, ...rest].join("\n").replace(/\s*$/, "") + "\n";
+  return [...lines.slice(0, found.index), ...block, ...gap, ...rest].join("\n").replace(/\s*$/, "") + "\n";
 }
 
 function resolveFile(tp) {
@@ -135,7 +181,7 @@ async function rvLog(tp, kind) {
 
   content = ensureAttemptLog(content);
   if (mode === "home") content = insertHomeHeading(content, whenLabel);
-  content = appendLogBullet(content, `- ${whenLabel} — ${outcome}`);
+  content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
 
   await app.vault.modify(file, fmBlock + content);
   new Notice(`Logged ${outcome}`);

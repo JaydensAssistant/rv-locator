@@ -22,6 +22,7 @@ import { decideGeocodePick } from '../src/home-base';
 import { rvNoteTitle } from '../src/note-name';
 import { schedulePickerDismiss } from '../src/picker-gate';
 import { DEFAULT_SETTINGS, type GeocodeHit, type RVLocatorSettings } from '../src/types';
+import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from '../src/visit-log';
 
 const ROOT = '/tmp/rv-locator-disk-proof';
 const MESSY = '142 maple st apt b, o-town fl';
@@ -493,9 +494,38 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Spoke: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 0'), true);
+		assert.equal(createdText.includes('Successful Visits: 0'), true);
+		assert.equal(createdText.includes('Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`'), true);
+		assert.equal(createdText.includes('Address: `INPUT[text:Address]`'), true);
+		assert.equal(createdText.includes('Map Link: `VIEW[{Map Link}][link]`'), true);
+		assert.equal(createdText.includes('> [!info]- 👤 RV Dashboard'), true);
+		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
+		assert.equal(createdText.includes('templateFile: Templates/RV Log Home.md'), true);
+		assert.equal(createdText.includes('templateFile: Templates/RV Log Miss.md'), true);
+		assert.equal(createdText.includes('INPUT[number:["Successful Visits"]]'), true);
+		assert.equal(createdText.includes('INPUT[dateTime:["Last Attempted"]]'), true);
+		assert.equal(createdText.includes('City'), false);
+		const hubsAt = createdText.indexOf('Hubs:');
+		const addressInputAt = createdText.indexOf('Address: `INPUT[text:Address]`');
+		const mapAt = createdText.indexOf('Map Link: `VIEW[{Map Link}][link]`');
+		const dashAt = createdText.indexOf('> [!info]- 👤 RV Dashboard');
+		const stampAt = createdText.indexOf(`## ${stamp}`);
+		const logAt = createdText.indexOf('> [!note]- Attempt Log');
+		assert.ok(hubsAt >= 0 && hubsAt < addressInputAt && addressInputAt < mapAt && mapAt < dashAt);
+		assert.ok(dashAt < stampAt && stampAt < logAt);
+		const callout = createdText.slice(dashAt, stampAt);
+		assert.equal(callout.includes('inlineListSuggester'), false);
+		assert.ok(callout.indexOf('**Priority**') < callout.indexOf('**Visits**'));
+		assert.ok(callout.indexOf('**Visits**') < callout.indexOf('**Successful Visits**'));
+		assert.ok(callout.indexOf('**Successful Visits**') < callout.indexOf('**Met**'));
+		assert.ok(callout.indexOf('**Met**') < callout.indexOf('**Last Spoke**'));
+		assert.ok(callout.indexOf('**Last Spoke**') < callout.indexOf('**Last Attempted**'));
+		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
+		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
 		assert.equal(createdText.includes(`## ${stamp}`), true);
-		assert.equal(createdText.includes('## Attempt Log'), true);
-		assert.equal(createdText.includes(`- ${stamp} — success`), true);
+		assert.equal(createdText.includes('## Attempt Log'), false);
+		assert.equal(createdText.includes('> [!note]- Attempt Log'), true);
+		assert.equal(createdText.includes(`> - ${stamp} — success`), true);
 		assert.equal(createdText.includes('Location:'), false);
 
 		const hook = hooks[0];
@@ -511,14 +541,241 @@ describe('disk proof', () => {
 		assert.equal(file.endsWith('Alex on Maple.md'), true);
 		assertLanded(disk, address);
 		assert.equal(disk.includes(`## ${stamp}`), true);
-		assert.equal(disk.includes('## Attempt Log'), true);
-		assert.equal(disk.includes(`- ${stamp} — success`), true);
+		assert.equal(disk.includes('## Attempt Log'), false);
+		assert.equal(disk.includes('> [!note]- Attempt Log'), true);
+		assert.equal(disk.includes(`> - ${stamp} — success`), true);
 		assert.equal(disk.includes(`Met: ${yamlQuote(created)}`), true);
 		assert.equal(disk.includes('Visits: 0'), true);
 		assert.equal(disk.includes('rv-dashboard'), true);
 		assert.equal(bodyOf(disk).includes(`## ${stamp}`), true);
+		const loggedBody = bodyOf(disk);
+		assert.ok(loggedBody.indexOf(`## ${stamp}`) < loggedBody.indexOf('> [!note]- Attempt Log'));
+	});
+
+	it('writes a home visit to disk without touching Address, and a miss appends inside the callout', () => {
+		const dir = join(ROOT, 'visit-log');
+		resetDir(dir);
+		const now = new Date(2026, 8, 26, 23, 12, 4);
+		const address = '142 Maple Street, Orlando';
+		const before = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 2',
+			'Successful Visits: 1',
+			'Last Spoke: "2026-09-01T10:00:00"',
+			'---',
+			'',
+			'Talked on the porch.',
+			'',
+		].join('\n');
+		const file = join(dir, 'home.md');
+		writeFileSync(file, before);
+		const home = commitVisit(before, 'home', now);
+		writeFileSync(file, home);
+		const disk = readFileSync(file, 'utf8');
+		console.log(`\n----- VISIT HOME ${file} -----\n${disk}`);
+		assert.equal(addressLine(disk), addressLine(before));
+		assert.equal(disk.includes('Visits: 3'), true);
+		assert.equal(disk.includes('Successful Visits: 2'), true);
+		assert.equal(disk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
+		assert.equal(disk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
+		assert.equal(disk.includes('## Attempt Log'), false);
+		assert.match(disk, /## Sat, 11pm — Sep 26, 2026\n\n> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
+		assert.ok(disk.indexOf('## Sat, 11pm — Sep 26, 2026') < disk.indexOf('> [!note]- Attempt Log'));
+		assert.equal(bodyOf(disk).includes('Talked on the porch.'), true);
+
+		const missFile = join(dir, 'miss.md');
+		writeFileSync(missFile, disk);
+		const miss = commitVisit(disk, 'miss', now);
+		writeFileSync(missFile, miss);
+		const missDisk = readFileSync(missFile, 'utf8');
+		console.log(`\n----- VISIT MISS ${missFile} -----\n${missDisk}`);
+		assert.equal(addressLine(missDisk), addressLine(before));
+		assert.equal(missDisk.includes('Visits: 4'), true);
+		assert.equal(missDisk.includes('Successful Visits: 2'), true);
+		assert.equal(missDisk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
+		assert.match(missDisk, /> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — not home\n$/);
+		assert.equal(missDisk.split('\n## Sat, 11pm — Sep 26, 2026\n').length, 2);
+	});
+
+	it('migrates a legacy Attempt Log heading on disk and does not invent Address', () => {
+		const dir = join(ROOT, 'visit-migrate');
+		resetDir(dir);
+		const now = new Date(2026, 8, 26, 23, 12, 4);
+		const before = [
+			'---',
+			'Visits: 0',
+			'---',
+			'',
+			'## Attempt Log',
+			'- Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const file = join(dir, 'legacy.md');
+		writeFileSync(file, before);
+		const next = commitVisit(before, 'miss', now);
+		writeFileSync(file, next);
+		const disk = readFileSync(file, 'utf8');
+		console.log(`\n----- VISIT MIGRATE ${file} -----\n${disk}`);
+		assert.equal(disk.includes('\nAddress:'), false);
+		assert.equal(disk.includes('## Attempt Log'), false);
+		assert.equal(disk.includes('Visits: 1'), true);
+		assert.equal(disk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
+		assert.equal(disk.includes('Successful Visits:'), false);
+		assert.match(disk, /> \[!note\]- Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — not home\n$/);
+		assert.equal(disk.includes('## Sat, 11pm — Sep 26, 2026'), false);
+	});
+
+	it('Templater rvLog creates a collapsed Attempt Log, appends, and leaves Address bytes', async () => {
+		const dir = join(ROOT, 'rv-log-js');
+		resetDir(dir);
+		const address = '142 Maple Street, Orlando';
+		const homeFile = join(dir, 'home.md');
+		const before = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 2',
+			'Successful Visits: 1',
+			'Last Spoke: "2026-09-01T10:00:00"',
+			'---',
+			'',
+			'Porch notes.',
+			'',
+		].join('\n');
+		writeFileSync(homeFile, before);
+		const notices: string[] = [];
+		const rvLog = loadRvLog(notices);
+		await rvLog({ config: { target_file: { path: homeFile } } }, 'home');
+		const homeDisk = readFileSync(homeFile, 'utf8');
+		console.log(`\n----- RVLOG HOME ${homeFile} -----\n${homeDisk}`);
+		assert.equal(addressLine(homeDisk), `Address: ${yamlQuote(address)}`);
+		assert.equal(homeDisk.includes('Visits: 3'), true);
+		assert.equal(homeDisk.includes('Successful Visits: 2'), true);
+		assert.match(homeDisk, /Last Attempted: "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"/);
+		assert.match(homeDisk, /Last Spoke: "\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}"/);
+		assert.equal(homeDisk.includes('## Attempt Log'), false);
+		const homeLines = homeDisk.split('\n');
+		const homeLog = homeLines.findIndex((line) => line === '> [!note]- Attempt Log');
+		assert.ok(homeLog > 1);
+		assert.equal(homeLines[homeLog - 1], '');
+		assert.match(homeLines[homeLog - 2] ?? '', /^## /);
+		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
+		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
+		assert.equal(notices.at(-1), 'Logged success');
+
+		const missFile = join(dir, 'miss.md');
+		const legacy = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 2',
+			'Successful Visits: 1',
+			'---',
+			'',
+			'## Attempt Log',
+			'- Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		writeFileSync(missFile, legacy);
+		await rvLog({ config: { target_file: { path: missFile } } }, 'miss');
+		const missDisk = readFileSync(missFile, 'utf8');
+		console.log(`\n----- RVLOG MISS ${missFile} -----\n${missDisk}`);
+		assert.equal(addressLine(missDisk), `Address: ${yamlQuote(address)}`);
+		assert.equal(missDisk.includes('Visits: 3'), true);
+		assert.equal(missDisk.includes('Successful Visits: 1'), true);
+		assert.equal(missDisk.includes('## Attempt Log'), false);
+		assert.match(missDisk, /> \[!note\]- Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n> - .+ — not home\n$/);
+		assert.equal(missDisk.includes('\n## '), false);
+		assert.equal(notices.at(-1), 'Logged not home');
+
+		const againFile = join(dir, 'again.md');
+		writeFileSync(againFile, homeDisk);
+		await rvLog({ config: { target_file: { path: againFile } } }, 'miss');
+		const againDisk = readFileSync(againFile, 'utf8');
+		console.log(`\n----- RVLOG APPEND ${againFile} -----\n${againDisk}`);
+		assert.equal(addressLine(againDisk), `Address: ${yamlQuote(address)}`);
+		assert.equal(againDisk.includes('Visits: 4'), true);
+		assert.equal(againDisk.includes('Successful Visits: 2'), true);
+		const againLines = againDisk.split('\n');
+		const againLog = againLines.findIndex((line) => line === '> [!note]- Attempt Log');
+		assert.match(againLines[againLog + 1] ?? '', /^> - .+ — success$/);
+		assert.match(againLines[againLog + 2] ?? '', /^> - .+ — not home$/);
 	});
 });
+
+function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string {
+	const frontmatter = parseFrontmatter(markdown);
+	const before = { ...frontmatter };
+	const addressBefore = frontmatter.Address;
+	applyVisitFrontmatter(frontmatter, outcome, now);
+	assert.equal(frontmatter.Address, addressBefore);
+	let next = markdown;
+	const keys = new Set([...Object.keys(before), ...Object.keys(frontmatter)]);
+	for (const key of keys) {
+		if (key.toLowerCase() === 'address') continue;
+		if (before[key] === frontmatter[key]) continue;
+		const value = frontmatter[key];
+		const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
+		next = replaceTopLevel(next, key, [`${key}: ${rendered}`]);
+	}
+	if (markdown.includes('\nAddress:')) assert.equal(addressLine(next), addressLine(markdown));
+	else assert.equal(next.includes('\nAddress:'), false);
+	const nl = next.startsWith('---\r\n') ? '\r\n' : '\n';
+	const start = 3 + nl.length;
+	const close = `${nl}---`;
+	const end = next.indexOf(close, start);
+	if (end < 0) throw new Error('frontmatter did not close');
+	const head = next.slice(0, end + close.length);
+	return head + applyVisitBody(bodyOf(next), outcome, now);
+}
+
+function loadRvLog(notices: string[]): (tp: unknown, kind: string) => Promise<void> {
+	const source = readFileSync('extras/templater-metabind/rvLog.js', 'utf8');
+	const load = new Function('module', 'exports', 'app', 'Notice', `${source}\nreturn module.exports;`) as (
+		module: { exports: unknown },
+		exports: unknown,
+		app: unknown,
+		Notice: new (message: string) => unknown,
+	) => (tp: unknown, kind: string) => Promise<void>;
+	const module = { exports: {} as unknown };
+	const app = {
+		vault: {
+			read: async (note: { path: string }) => readFileSync(note.path, 'utf8'),
+			modify: async (note: { path: string }, text: string) => { writeFileSync(note.path, text); },
+			getAbstractFileByPath: () => null,
+		},
+		workspace: { getActiveFile: () => null },
+		fileManager: {
+			processFrontMatter: async (file: { path: string }, updater: (fm: Record<string, unknown>) => void) => {
+				const text = readFileSync(file.path, 'utf8');
+				const fm = parseFrontmatter(text);
+				for (const key of Object.keys(fm)) {
+					const value = fm[key];
+					if (typeof value === 'string' && /^-?\d+(?:\.\d+)?$/.test(value)) fm[key] = Number(value);
+				}
+				const addressBefore = fm.Address;
+				const snapshot: Record<string, unknown> = { ...fm };
+				updater(fm);
+				if (fm.Address !== addressBefore) {
+					throw new Error(`rvLog changed Address from ${String(addressBefore)} to ${String(fm.Address)}`);
+				}
+				let next = text;
+				const keys = new Set([...Object.keys(snapshot), ...Object.keys(fm)]);
+				for (const key of keys) {
+					if (key.toLowerCase() === 'address') continue;
+					if (snapshot[key] === fm[key]) continue;
+					const value = fm[key];
+					const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
+					next = replaceTopLevel(next, key, [`${key}: ${rendered}`]);
+				}
+				if (text.includes('\nAddress:')) assert.equal(addressLine(next), addressLine(text));
+				writeFileSync(file.path, next);
+			},
+		},
+	};
+	return load(module, module.exports, app, class Notice {
+		constructor(message: string) { notices.push(message); }
+	});
+}
 
 function note(address: string): string {
 	return ['---', `Address: ${yamlQuote(address)}`, '---', '', 'Body.', ''].join('\n');

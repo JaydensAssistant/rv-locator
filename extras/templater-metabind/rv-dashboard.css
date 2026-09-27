@@ -26,3 +26,19 @@
 	min-width: 0;
 	box-sizing: border-box;
 }
+
+/* Hubs, Address, and Map Link sit outside the collapsed dashboard. Same width cap. */
+.rv-dashboard :is(input, select, textarea, button, a) {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.rv-dashboard a {
+	overflow-wrap: anywhere;
+}
+
+.rv-dashboard .callout {
+	max-width: 100%;
+	overflow-x: hidden;
+}
