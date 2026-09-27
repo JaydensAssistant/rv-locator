@@ -506,6 +506,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('> [!info]-'), false);
 		assert.equal(createdText.includes('Log visit'), false);
 		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
+		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 2);
 		assert.equal(createdText.includes('templateFile: Templates/RV Log Home.md'), true);
 		assert.equal(createdText.includes('templateFile: Templates/RV Log Miss.md'), true);
 		assert.equal(createdText.includes('INPUT[number:["Successful Visits"]]'), true);

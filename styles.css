@@ -762,37 +762,52 @@
 	margin: 0.7em 0 0.45em;
 }
 
-/* Home and Not home share one width and height. Home uses the Glancable accent. */
-.rv-dashboard p:has(.mb-button) {
-	display: flex;
-	flex-wrap: wrap;
+/*
+  Meta Bind 1.x renders BUTTON[a, b] as:
+    .mb-button-group.mb-button-group-inline
+      > span.mb-button.mb-button-inline
+        > button.mb-button-inner
+  The class from the button block lands on the span, not the <button>.
+  button.mb-button never matches, so these rules do not use it.
+  They also do not require cssclass rv-dashboard, because the buttons sit
+  outside the dashboard callout.
+*/
+.mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
+	display: inline-flex;
 	align-items: stretch;
 	gap: 0.45rem;
+	flex-wrap: wrap;
+	vertical-align: middle;
 }
 
-.rv-dashboard button.mb-button {
-	box-sizing: border-box;
+span.mb-button.rv-visit-btn {
 	display: inline-flex;
-	align-items: center;
-	justify-content: center;
 	flex: 0 0 8.25rem;
 	width: 8.25rem;
 	min-width: 8.25rem;
 	max-width: 8.25rem;
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 1 1 auto;
+	width: 100%;
+	min-width: 8.25rem;
+	max-width: none;
 	height: 2rem;
 	min-height: 2rem;
 	margin: 0;
 	padding: 0 0.6rem;
-	border: 1px solid var(--background-modifier-border);
 	border-radius: var(--radius-s, 6px);
 	line-height: 1;
-	vertical-align: middle;
 	white-space: nowrap;
 	text-align: center;
 }
 
-.rv-dashboard button.mb-button.primary,
-.rv-dashboard button.mb-button.mod-cta {
+span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
 	background-color: var(--text-accent);
 	color: var(--text-on-accent);
 	border-color: var(--text-accent);

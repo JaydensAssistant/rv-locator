@@ -38,6 +38,7 @@ Adjust `templateFile` if your Templates path differs. `New RV.md` uses these sam
 ~~~meta-bind-button
 label: Home
 style: primary
+class: rv-visit-btn
 id: rv-log-home
 hidden: true
 actions:
@@ -48,6 +49,7 @@ actions:
 ~~~meta-bind-button
 label: Not home
 style: default
+class: rv-visit-btn
 id: rv-log-miss
 hidden: true
 actions:

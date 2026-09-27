@@ -65,7 +65,7 @@ Frontmatter still has Hub, Address, Priority, Met, Last Spoke, Last Attempted, M
 
 ## Home / Not home
 
-The buttons sit directly under the quote strip and above the `---` divider. There is no caption above them. `` `BUTTON[rv-log-home, rv-log-miss]` `` renders both, and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md` stay at the bottom of the note so they do not add a gap. `rv-dashboard.css` sets both buttons to `8.25rem` wide and `2rem` tall. Paths:
+The buttons sit directly under the quote strip and above the `---` divider. There is no caption above them. `` `BUTTON[rv-log-home, rv-log-miss]` `` renders both, and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md` stay at the bottom of the note so they do not add a gap. Both button blocks set `class: rv-visit-btn`. Meta Bind puts that class on `span.mb-button` and draws the control as `button.mb-button-inner`. The snippet sizes that inner button to `8.25rem` by `2rem`. Paths:
 
 - `Templates/RV Log Home.md`
 - `Templates/RV Log Miss.md`
