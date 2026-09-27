@@ -90,8 +90,14 @@ function formattedIncludesStreet(formatted: string, parts: AddressParts): boolea
 	return street.length > 0 && formatted.toLowerCase().includes(street);
 }
 
-export function googleMapsLink(lat: number, lon: number): string {
-	return `https://www.google.com/maps?q=${lat},${lon}`;
+/**
+ * Google Maps search for the note’s Address text.
+ * Location stays a coordinate pair for distance. Map Link does not use lat/lon,
+ * because a coordinate pin is a poor way to find the house in the field.
+ */
+export function googleMapsAddressLink(address: string): string {
+	const query = address.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 export function parseGeocodeBody(body: unknown): GeocodeHit[] {

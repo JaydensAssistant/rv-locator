@@ -694,7 +694,7 @@
 	box-sizing: border-box;
 }
 
-/* Hubs, Address, and Map Link sit outside the collapsed dashboard. Same width cap. */
+/* Hubs and Address sit in a quote strip above the collapsed dashboard. Same width cap. */
 .rv-dashboard :is(input, select, textarea, button, a) {
 	max-width: 100%;
 	min-width: 0;
@@ -708,4 +708,63 @@
 .rv-dashboard .callout {
 	max-width: 100%;
 	overflow-x: hidden;
+	border-radius: var(--radius-m, 8px);
+}
+
+/*
+  RV Dashboard callout ([!rv]) blends into the note.
+  Surfaces come from the theme so light and dark stay quiet.
+  --background-primary matches the page; --background-secondary lifts the quote strip.
+*/
+.rv-dashboard .callout[data-callout="rv"] {
+	background-color: var(--background-primary);
+	background-image: none;
+	border-color: var(--background-modifier-border);
+	box-shadow: none;
+	color: var(--text-normal);
+	mix-blend-mode: normal;
+}
+
+.rv-dashboard .callout[data-callout="rv"] .callout-title,
+.rv-dashboard .callout[data-callout="rv"] .callout-title-inner,
+.rv-dashboard .callout[data-callout="rv"] .callout-icon {
+	background-color: transparent;
+	color: var(--text-muted);
+}
+
+.rv-dashboard blockquote {
+	margin: 0.35em 0 0.6em;
+	padding: 0.2em 0.7em;
+	border-left: 2px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background-color: var(--background-secondary);
+}
+
+.rv-dashboard blockquote p,
+.rv-dashboard .callout[data-callout="rv"] .callout-content p {
+	margin-block: 0.2em;
+}
+
+.rv-dashboard blockquote :is(input, select, textarea),
+.rv-dashboard .callout[data-callout="rv"] :is(input, select, textarea) {
+	padding: 2px 6px;
+	min-height: 1.6em;
+}
+
+.rv-dashboard blockquote a {
+	text-decoration: none;
+}
+
+.rv-dashboard hr {
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
+	margin: 0.7em 0 0.45em;
+}
+
+/* Home uses Meta Bind style: primary. Same accent as the Glancable visits chip. */
+.rv-dashboard .mb-button.primary,
+.rv-dashboard button.mb-button.mod-cta {
+	background-color: var(--text-accent);
+	color: var(--text-on-accent);
+	border-radius: var(--radius-s, 6px);
 }

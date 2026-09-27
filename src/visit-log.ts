@@ -8,6 +8,7 @@ const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const ADDRESS_KEY = 'Address';
 const CALLOUT_HEADER = '> [!note]- Attempt Log';
+const STAMP_LEVEL = '###';
 
 /** Local date-time stored on Last Spoke / Last Attempted. No UTC shift. */
 export function formatFrontmatterDateTime(date: Date): string {
@@ -50,7 +51,8 @@ export function applyVisitFrontmatter(
 
 /**
  * Body text below the frontmatter.
- * A home visit inserts `## <stamp>` and a blank line just above Attempt Log.
+ * A home visit inserts `### <stamp>` and a blank line just above Attempt Log,
+ * unless that Glancable stamp is already a `##` or `###` heading.
  * Both outcomes append `> - <stamp> — success|not home` inside a collapsed
  * `> [!note]- Attempt Log` callout. An old `## Attempt Log` heading is migrated
  * to that callout on write. Address is not part of the body edit.
@@ -126,16 +128,23 @@ function ensureAttemptLog(body: string): string {
 	return normalized;
 }
 
+function stampHeadings(stamp: string): string[] {
+	return [`## ${stamp}`, `${STAMP_LEVEL} ${stamp}`];
+}
+
 function insertHomeHeading(body: string, stamp: string): string {
 	const lines = body.split('\n');
+	const known = stampHeadings(stamp);
+	if (lines.some((line) => known.includes(line.trim()))) return body;
 	const found = findAttemptLog(lines);
 	if (!found || found.kind !== 'callout') return body;
 	const before = lines.slice(0, found.index);
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
 	const after = lines.slice(found.index);
+	const heading = `${STAMP_LEVEL} ${stamp}`;
 	const block = before.length > 0
-		? ['', `## ${stamp}`, '', ...after]
-		: [`## ${stamp}`, '', ...after];
+		? ['', heading, '', ...after]
+		: [heading, '', ...after];
 	return [...before, ...block].join('\n');
 }
 

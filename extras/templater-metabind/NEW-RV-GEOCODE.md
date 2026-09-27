@@ -13,7 +13,7 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 3. Copy `rvLog.js` into the Templater user scripts folder, and copy `RV Log Home.md` and `RV Log Miss.md` into the vault `Templates/` folder. The New RV note’s buttons call `Templates/RV Log Home.md` and `Templates/RV Log Miss.md`. If your Templates folder has another path, change those two `templateFile` lines in `New RV.md`.
 4. Reload Templater so `tp.user.newRv` and `tp.user.rvLog` exist.
 5. Enable **RV Locator** and set the Geoapify key. The command id is `rv-locator:geocode-current-note`.
-6. Optional phone CSS: the template sets cssclass `rv-dashboard`. Those rules are in the plugin `styles.css`. If the plugin is disabled, enable `extras/templater-metabind/rv-dashboard.css` as a vault snippet. This pass does not add a multi-column layout.
+6. Phone CSS: the template sets cssclass `rv-dashboard`. Those rules ship in the plugin `styles.css`. If the plugin is disabled, copy `extras/templater-metabind/rv-dashboard.css` to `<vault>/.obsidian/snippets/rv-dashboard.css` and turn the snippet on under Settings → Appearance → CSS snippets. The snippet tightens the quote-strip and dashboard inputs, rounds callouts, blends the `[!rv]` dashboard with the theme, and paints Home with the accent color. It does not include hide-props rules. This pass does not add a multi-column layout.
 
 ## What the note does
 
@@ -21,32 +21,34 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 2. Renames the note to `{Name} on {Street}` when both are present. Examples: `Alex on Maple`, `Riley on Cypress`. The street is the first address line with the house number, a leading directional (`N`, `SW`), a trailing suffix (`St`, `Lane`), and an apartment tail removed. `10 Oak Hammock Lane` becomes `Oak Hammock`.
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
 4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
-5. Writes one Glancable drive date for that visit: `## Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A date-only value omits the hour.
+5. Writes one Glancable drive date for that visit as a `###` heading: `### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A blank line under that heading is the place to type visit notes. A date-only value omits the hour.
 6. Adds a collapsed Attempt Log with one success bullet for that same stamp:
 
 ```markdown
+### Wed, 2pm — Sep 9, 2026
+
 > [!note]- Attempt Log
 > - Wed, 2pm — Sep 9, 2026 — success
 ```
 
-7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills Map Link, which the always-visible Map Link view then shows as a link.
+7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills `Location` and sets `Map Link` to a Google Maps search of the stored Address: `https://www.google.com/maps/search/?api=1&query=<urlencoded Address>`. It does not rewrite the 🗺️ link already in the body. On a new note that link was built from the same address, so it matches.
 
-`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) still increments both and appends another success bullet. It adds a new `##` stamp only when that exact Glancable heading is not already in the note, so Home right after create does not repeat the create stamp. A later hour still gets its own heading. The plugin priority-tap logger is unchanged and can still insert a heading.
+`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) still increments both and appends another success bullet. It adds a new `###` stamp only when that exact Glancable stamp is not already a `##` or `###` heading, so Home right after create does not repeat the create stamp. A later hour still gets its own `###` heading. The plugin priority tap uses the same rule.
 
-## Always visible
+## Quote strip
 
-These three sit outside every callout, with no blank line between them. Hubs is its own line. Address and Map Link share the next line:
+The first two body lines are markdown quotes, with no blank line between them. There is no `Map Link:` label and no Meta Bind view of the URL (a link view shows the raw URL text). The map icon is a normal markdown link. Templater fills it at create from the address just typed:
 
 ```markdown
-Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-Address: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`
+> Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> Address: `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
 ```
 
-The Hub property is still `Hub`. Map Link is read-only. The property name has a space, so the bind target uses Meta Bind’s bracket form inside the view braces (the same rule as `INPUT[number:["Successful Visits"]]`). `{Map Link}` is parsed as a file path and then Meta Bind expects `#`. A URL becomes a clickable link. Before geocode the property is empty, so the view is blank. The Home / Not home button block sits directly against the Glancable `##` stamp (no blank line after the Not home button fence).
+The Hub property is still `Hub`. The icon URL is `https://www.google.com/maps/search/?api=1&query=` plus `encodeURIComponent` of the address (newlines and repeated spaces collapsed). The `Map Link` property uses that same formula when geocode runs.
 
 ## Collapsed dashboard
 
-`> [!info]- 👤 RV Dashboard` (the `-` means collapsed until opened). Inside, top to bottom:
+`> [!rv]- 👤 RV Dashboard` (the `-` means collapsed until opened). The `[!rv]` type is styled in `rv-dashboard.css` with theme variables (`--background-primary`, `--background-secondary`, `--background-modifier-border`) so it stays grey against the page in light and dark, instead of the blue info callout. Inside, top to bottom:
 
 - Priority (slider + `VIEW[{Priority}]`)
 - Visits
@@ -61,7 +63,7 @@ Frontmatter still has Hub, Address, Priority, Met, Last Spoke, Last Attempted, M
 
 ## Home / Not home
 
-The note includes `` `BUTTON[rv-log-home, rv-log-miss]` `` and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md`. Paths:
+A `---` divider and a short **Log visit** caption sit between the dashboard and the buttons so they are not flush against the stamp. The note includes `` `BUTTON[rv-log-home, rv-log-miss]` `` and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md`. Paths:
 
 - `Templates/RV Log Home.md`
 - `Templates/RV Log Miss.md`
@@ -70,7 +72,7 @@ Those files in the repo live at `extras/templater-metabind/RV Log Home.md` and `
 
 ## Layout
 
-Fields outside the callout are a vertical stack. The dashboard callout is collapsed, so the phone shows Hubs, Address, and Map Link first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs, including the ones outside the callout, cannot force horizontal scroll. Collapsed callouts are width-capped the same way.
+The quote strip is a vertical stack. The dashboard callout is collapsed, so the phone shows Hubs and Address (with the map icon) first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. The Home button uses `--text-accent`, the same accent as the Glancable visits chip.
 
 ## Address-only helper
 

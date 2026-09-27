@@ -1,6 +1,8 @@
 # RV Locator 1.1.0 — install (fake vault / throwaway key only until Sentinel clears)
 
-> **1.1.2:** New RV shows Hubs, Address, and Map Link outside a collapsed dashboard, starts Visits and Successful Visits at 1 with one Attempt Log success, and puts Home / Not home on the note. Templater Home does not repeat an existing `##` stamp. Attempt Log is a collapsed `> [!note]- Attempt Log` callout (priority tap and `rvLog.js` migrate an old `## Attempt Log` on the next write). See `CHANGELOG.md`.
+> **1.1.3:** Map Link searches the note’s Address (`https://www.google.com/maps/search/?api=1&query=…`), not lat/lon. New RV puts Hubs and Address in a quote strip with a 🗺️ icon link, a theme-blended collapsed `[!rv]` dashboard, a **Log visit** divider, a `###` stamp, and a blank line for notes. See `CHANGELOG.md`.
+>
+> **1.1.2:** New RV starts Visits and Successful Visits at 1 with one Attempt Log success, and puts Home / Not home on the note. Attempt Log is a collapsed `> [!note]- Attempt Log` callout (priority tap and `rvLog.js` migrate an old `## Attempt Log` on the next write). See `CHANGELOG.md`.
 >
 > **1.1.1:** Street-token auto-pick was removed. A hit is saved without the picker only when Geoapify `rank.confidence` is 1.00 and it is the only result in a configured home-base county. `Location` is a YAML list of quoted strings. New RV template: `extras/templater-metabind/NEW-RV-GEOCODE.md`. See `CHANGELOG.md`.
 

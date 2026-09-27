@@ -85,9 +85,9 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 7. Adjust `templateFile:` paths if your Templates folder isn’t `Templates/`.
 8. Test Home / Not home on a throwaway note first.
 
-### New RV template (1.1.2)
+### New RV template (1.1.3)
 
-Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. It asks for the householder and Address, renames to `Name on Street`, and geocodes. Hubs, Address, and Map Link stay visible. Map Link is `` `VIEW[{["Map Link"]}][link]` `` (bracket form, because the property name has a space). The rest of the dashboard is a collapsed callout. Creating the note is the first success (Visits and Successful Visits start at 1) with one `##` stamp and one Attempt Log success bullet. Home / Not home are on the note. Templater Home does not add a second copy of a `##` stamp that is already on the note. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. cssclass `rv-dashboard` blocks sideways scroll. No multi-column CSS in this pass.
+Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. It asks for the householder and Address, renames to `Name on Street`, and geocodes. The top of the note is a quote strip: Hubs, then Address with a 🗺️ link that searches Google Maps for that address. The `Map Link` property is the same search URL (not lat/lon). The dashboard is a collapsed `[!rv]` callout. Creating the note is the first success (Visits and Successful Visits start at 1) with one `###` stamp, a blank notes line, and one Attempt Log success bullet. Home / Not home sit under a **Log visit** divider. Home does not add a second copy of a `##` or `###` stamp that is already on the note. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. cssclass `rv-dashboard` blocks sideways scroll and blends the dashboard. Enable `extras/templater-metabind/rv-dashboard.css` as a snippet only if the plugin is off. No multi-column CSS, and no hide-props CSS, in this pass.
 
 ## E. When to turn on home-base counties
 

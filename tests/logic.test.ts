@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, visiblePropertyText } from '../src/active-layout';
-import { buildGeocodeUrl, formatSpecificAddress, googleMapsLink, normalizeAddress, parseGeocodeBody } from '../src/address';
+import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, normalizeAddress, parseGeocodeBody } from '../src/address';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
 import { getCached, rememberResults, trimCache } from '../src/cache';
@@ -96,8 +96,18 @@ describe('geocode request', () => {
 		assert.equal(isFullConfidence(0.99), false);
 	});
 
-	it('builds a Google Maps link and does not call a geocoder', () => {
-		assert.equal(googleMapsLink(38.7, -121.28), 'https://www.google.com/maps?q=38.7,-121.28');
+	it('builds a Google Maps search link from the address text', () => {
+		assert.equal(
+			googleMapsAddressLink('142 Maple Street, Orlando, FL'),
+			'https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL',
+		);
+		assert.equal(
+			googleMapsAddressLink('142 Maple\nStreet,  Orlando'),
+			'https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando',
+		);
+		assert.equal(googleMapsAddressLink('  1313 broadway  '), googleMapsAddressLink('1313 broadway'));
+		assert.equal(googleMapsAddressLink('1313 broadway').includes('47.25'), false);
+		assert.equal(googleMapsAddressLink('1313 broadway').includes('maps?q='), false);
 	});
 });
 
@@ -147,7 +157,9 @@ describe('privacy', () => {
 		assert.equal(typeof location[1], 'string');
 		assert.deepEqual(location, pair);
 		assert.deepEqual(latLonFromUnknown(location), { lat: Number(pair[0]), lon: Number(pair[1]) });
-		assert.equal(frontmatter['Map Link'], `https://www.google.com/maps?q=${pair[0]},${pair[1]}`);
+		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('1313 broadway'));
+		assert.equal(String(frontmatter['Map Link']).includes(String(pair[0])), false);
+		assert.equal(String(frontmatter['Map Link']).includes(String(pair[1])), false);
 		assert.equal(frontmatter.City, 'Tacoma');
 		assert.equal('County' in frontmatter, false);
 		assert.equal('Distance' in frontmatter, false);
@@ -192,6 +204,8 @@ describe('privacy', () => {
 		assert.equal(typeof location[0], 'string');
 		assert.equal(typeof location[1], 'string');
 		assert.equal(frontmatter.Address, '10 Main St');
+		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('10 Main St'));
+		assert.equal(String(frontmatter['Map Link']).includes('Ocala'), false);
 		assert.equal(frontmatter.City, 'Ocala');
 		assert.equal('Last Attempted' in frontmatter, false);
 		assert.deepEqual(latLonFromUnknown(location), { lat: 29.0313846, lon: -82.5209372 });
@@ -549,6 +563,8 @@ describe('successful visits', () => {
 		}, DEFAULT_SETTINGS);
 		assert.equal(fromResult.Address, 'old');
 		assert.equal(fromResult.City, 'Crystal River');
+		assert.equal(fromResult['Map Link'], googleMapsAddressLink('old'));
+		assert.equal(String(fromResult['Map Link']).includes('Crystal'), false);
 
 		const fromAddress: Record<string, unknown> = {};
 		applyGeocodeHit(fromAddress, {
@@ -558,6 +574,7 @@ describe('successful visits', () => {
 		}, DEFAULT_SETTINGS);
 		assert.equal('Address' in fromAddress, false);
 		assert.equal(fromAddress.City, 'Dunnellon');
+		assert.equal(fromAddress['Map Link'], googleMapsAddressLink('456 SW Dunnellon Rd, Dunnellon, FL'));
 		assert.equal('Visits' in fromAddress, false);
 		assert.equal('Successful Visits' in fromAddress, false);
 		assert.equal('Last Attempted' in fromAddress, false);
@@ -745,14 +762,14 @@ describe('visit log', () => {
 		assert.equal(body, [
 			'Talked on the porch.',
 			'',
-			'## Sat, 11pm — Sep 26, 2026',
+			'### Sat, 11pm — Sep 26, 2026',
 			'',
 			'> [!note]- Attempt Log',
 			'> - Sat, 11pm — Sep 26, 2026 — success',
 			'',
 		].join('\n'));
 		assert.equal(body.includes('## Attempt Log'), false);
-		const stampAt = body.indexOf('## Sat, 11pm — Sep 26, 2026');
+		const stampAt = body.indexOf('### Sat, 11pm — Sep 26, 2026');
 		const logAt = body.indexOf('> [!note]- Attempt Log');
 		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
@@ -805,7 +822,7 @@ describe('visit log', () => {
 		].join('\n');
 		const more = applyVisitBody(expanded, 'home', now);
 		assert.equal(more, [
-			'## Sat, 11pm — Sep 26, 2026',
+			'### Sat, 11pm — Sep 26, 2026',
 			'',
 			'> [!note]+ Attempt Log',
 			'> - Mon, 9am — Sep 1, 2026 — not home',
@@ -814,7 +831,26 @@ describe('visit log', () => {
 			'Footer.',
 			'',
 		].join('\n'));
-		assert.ok(more.indexOf('## Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
+		assert.ok(more.indexOf('### Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
+	});
+
+	it('skips a home stamp that already exists as ## or ###', () => {
+		const existing = [
+			'### Sat, 11pm — Sep 26, 2026',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Sat, 11pm — Sep 26, 2026 — success',
+			'',
+		].join('\n');
+		const next = applyVisitBody(existing, 'home', now);
+		assert.equal(next.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(next.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
+
+		const legacy = existing.replace('### Sat', '## Sat');
+		const kept = applyVisitBody(legacy, 'home', now);
+		assert.equal(kept.includes('## Sat, 11pm — Sep 26, 2026'), true);
+		assert.equal(kept.includes('### Sat, 11pm — Sep 26, 2026'), false);
+		assert.equal(kept.split('\n').filter((line) => line.trim() === '## Sat, 11pm — Sep 26, 2026').length, 1);
 	});
 
 	it('migrates a legacy ## Attempt Log heading into a collapsed callout', () => {

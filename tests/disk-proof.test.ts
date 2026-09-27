@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
-import { googleMapsLink } from '../src/address';
+import { googleMapsAddressLink } from '../src/address';
 import { formatGlancableVisitStamp } from '../src/dates';
 import {
 	applyGeocodeHit,
@@ -180,7 +180,8 @@ function assertLanded(markdown: string, address: string): void {
 	assert.equal(markdown.includes(`\n${BARE_NEGATIVE}`), false, markdown);
 	assert.equal(markdown.includes('\n  - 29.0313846\n'), false, markdown);
 	assert.equal(markdown.includes('City: "Orlando"'), true, markdown);
-	assert.equal(markdown.includes(`Map Link: ${yamlQuote(googleMapsLink(LAT, LON))}`), true, markdown);
+	assert.equal(markdown.includes(`Map Link: ${yamlQuote(googleMapsAddressLink(address))}`), true, markdown);
+	assert.equal(markdown.includes(`maps?q=${LAT}`), false, markdown);
 	assert.equal(markdown.includes('\nDistance:'), false);
 }
 
@@ -458,7 +459,7 @@ describe('disk proof', () => {
 			exports: unknown,
 			app: unknown,
 			Notice: new (message: string) => unknown,
-		) => (tp: unknown) => Promise<{ addressYaml: string; created: string; stamp: string; title: string }>;
+		) => (tp: unknown) => Promise<{ addressYaml: string; created: string; stamp: string; title: string; mapUrl: string }>;
 		const module = { exports: {} as unknown };
 		const newRv = load(module, module.exports, app, class Notice { constructor(_message: string) {} });
 		let renamed = '';
@@ -477,6 +478,7 @@ describe('disk proof', () => {
 		assert.equal(rv.title, 'Alex on Maple');
 		assert.equal(rv.stamp, stamp);
 		assert.equal(rv.created, created);
+		assert.equal(rv.mapUrl, googleMapsAddressLink(address));
 		assert.equal(hooks.length, 1);
 
 		const template = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
@@ -484,7 +486,8 @@ describe('disk proof', () => {
 			.replace(/^<%\*[\s\S]*?-%>\n/, '')
 			.replaceAll('<% rv.addressYaml %>', rv.addressYaml)
 			.replaceAll('<% rv.created %>', rv.created)
-			.replaceAll('<% rv.stamp %>', rv.stamp);
+			.replaceAll('<% rv.stamp %>', rv.stamp)
+			.replaceAll('<% rv.mapUrl %>', rv.mapUrl);
 		assert.equal(rendered.includes('<%'), false);
 		writeFileSync(file, rendered);
 		const createdText = readFileSync(file, 'utf8');
@@ -495,23 +498,28 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 1'), true);
 		assert.equal(createdText.includes('Successful Visits: 1'), true);
-		assert.equal(createdText.includes('Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`\nAddress: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`\n'), true);
-		assert.equal(createdText.includes('`VIEW[{Map Link}][link]`'), false);
-		assert.equal(createdText.includes('> [!info]- 👤 RV Dashboard'), true);
+		assert.equal(createdText.includes('> Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n> Address: `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		assert.equal(createdText.includes('VIEW[{["Map Link"]}]'), false);
+		assert.equal(createdText.includes('VIEW[{Map Link}]'), false);
+		assert.equal(createdText.includes('Map Link:'), false);
+		assert.equal(createdText.includes('> [!rv]- 👤 RV Dashboard'), true);
+		assert.equal(createdText.includes('> [!info]-'), false);
+		assert.equal(createdText.includes('**Log visit**'), true);
 		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
 		assert.equal(createdText.includes('templateFile: Templates/RV Log Home.md'), true);
 		assert.equal(createdText.includes('templateFile: Templates/RV Log Miss.md'), true);
 		assert.equal(createdText.includes('INPUT[number:["Successful Visits"]]'), true);
 		assert.equal(createdText.includes('INPUT[dateTime:["Last Attempted"]]'), true);
 		assert.equal(createdText.includes('City'), false);
-		const hubsAt = createdText.indexOf('Hubs:');
-		const addressInputAt = createdText.indexOf('Address: `INPUT[text:Address]`');
-		const mapAt = createdText.indexOf('Map Link: `VIEW[{["Map Link"]}][link]`');
-		const dashAt = createdText.indexOf('> [!info]- 👤 RV Dashboard');
-		const stampAt = createdText.indexOf(`## ${stamp}`);
+		const hubsAt = createdText.indexOf('> Hubs:');
+		const addressInputAt = createdText.indexOf('> Address: `INPUT[text:Address]`');
+		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
+		const dashAt = createdText.indexOf('> [!rv]- 👤 RV Dashboard');
+		const logVisitAt = createdText.indexOf('**Log visit**');
+		const stampAt = createdText.indexOf(`### ${stamp}`);
 		const logAt = createdText.indexOf('> [!note]- Attempt Log');
-		assert.ok(hubsAt >= 0 && hubsAt < addressInputAt && addressInputAt < mapAt && mapAt < dashAt);
-		assert.ok(dashAt < stampAt && stampAt < logAt);
+		assert.ok(hubsAt >= 0 && hubsAt < addressInputAt && addressInputAt < iconAt && iconAt < dashAt);
+		assert.ok(dashAt < logVisitAt && logVisitAt < stampAt && stampAt < logAt);
 		const callout = createdText.slice(dashAt, stampAt);
 		assert.equal(callout.includes('inlineListSuggester'), false);
 		assert.ok(callout.indexOf('**Priority**') < callout.indexOf('**Visits**'));
@@ -521,9 +529,13 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Spoke**') < callout.indexOf('**Last Attempted**'));
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
-		assert.match(createdText, /templateFile: Templates\/RV Log Miss\.md\n```\n## /);
-		assert.equal(createdText.includes(`## ${stamp}`), true);
-		assert.equal(createdText.split('\n').filter((line) => line === `## ${stamp}`).length, 1);
+		assert.match(createdText, /templateFile: Templates\/RV Log Miss\.md\n```\n\n### /);
+		assert.equal(createdText.includes(`### ${stamp}`), true);
+		assert.equal(createdText.split('\n').filter((line) => line === `### ${stamp}`).length, 1);
+		const stampLine = createdText.split('\n').findIndex((line) => line === `### ${stamp}`);
+		const createdLines = createdText.split('\n');
+		assert.equal(createdLines[stampLine + 1], '');
+		assert.equal(createdLines[stampLine + 2], '> [!note]- Attempt Log');
 		assert.equal(createdText.includes('## Attempt Log'), false);
 		assert.equal(createdText.includes('> [!note]- Attempt Log'), true);
 		assert.equal(createdText.includes(`> - ${stamp} — success`), true);
@@ -542,8 +554,9 @@ describe('disk proof', () => {
 		console.log(`\n----- NEW RV AFTER GEOCODE ${file} -----\n${disk}`);
 		assert.equal(file.endsWith('Alex on Maple.md'), true);
 		assertLanded(disk, address);
-		assert.equal(disk.includes(`## ${stamp}`), true);
-		assert.equal(disk.split('\n').filter((line) => line === `## ${stamp}`).length, 1);
+		assert.equal(disk.includes(`### ${stamp}`), true);
+		assert.equal(disk.split('\n').filter((line) => line === `### ${stamp}`).length, 1);
+		assert.equal(disk.includes(`[🗺️](${rv.mapUrl})`), true);
 		assert.equal(disk.includes('## Attempt Log'), false);
 		assert.equal(disk.includes('> [!note]- Attempt Log'), true);
 		assert.equal(disk.includes(`> - ${stamp} — success`), true);
@@ -552,9 +565,9 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('Visits: 1'), true);
 		assert.equal(disk.includes('Successful Visits: 1'), true);
 		assert.equal(disk.includes('rv-dashboard'), true);
-		assert.equal(bodyOf(disk).includes(`## ${stamp}`), true);
+		assert.equal(bodyOf(disk).includes(`### ${stamp}`), true);
 		const loggedBody = bodyOf(disk);
-		assert.ok(loggedBody.indexOf(`## ${stamp}`) < loggedBody.indexOf('> [!note]- Attempt Log'));
+		assert.ok(loggedBody.indexOf(`### ${stamp}`) < loggedBody.indexOf('> [!note]- Attempt Log'));
 	});
 
 	it('writes a home visit to disk without touching Address, and a miss appends inside the callout', () => {
@@ -585,8 +598,8 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('## Attempt Log'), false);
-		assert.match(disk, /## Sat, 11pm — Sep 26, 2026\n\n> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
-		assert.ok(disk.indexOf('## Sat, 11pm — Sep 26, 2026') < disk.indexOf('> [!note]- Attempt Log'));
+		assert.match(disk, /### Sat, 11pm — Sep 26, 2026\n\n> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
+		assert.ok(disk.indexOf('\n### Sat, 11pm — Sep 26, 2026') < disk.indexOf('> [!note]- Attempt Log'));
 		assert.equal(bodyOf(disk).includes('Talked on the porch.'), true);
 
 		const missFile = join(dir, 'miss.md');
@@ -600,7 +613,7 @@ describe('disk proof', () => {
 		assert.equal(missDisk.includes('Successful Visits: 2'), true);
 		assert.equal(missDisk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
 		assert.match(missDisk, /> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — not home\n$/);
-		assert.equal(missDisk.split('\n## Sat, 11pm — Sep 26, 2026\n').length, 2);
+		assert.equal(missDisk.split('\n### Sat, 11pm — Sep 26, 2026\n').length, 2);
 	});
 
 	it('migrates a legacy Attempt Log heading on disk and does not invent Address', () => {
@@ -663,7 +676,7 @@ describe('disk proof', () => {
 		const homeLog = homeLines.findIndex((line) => line === '> [!note]- Attempt Log');
 		assert.ok(homeLog > 1);
 		assert.equal(homeLines[homeLog - 1], '');
-		assert.match(homeLines[homeLog - 2] ?? '', /^## /);
+		assert.match(homeLines[homeLog - 2] ?? '', /^### /);
 		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
 		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
 		assert.equal(notices.at(-1), 'Logged success');
@@ -705,7 +718,7 @@ describe('disk proof', () => {
 		assert.match(againLines[againLog + 1] ?? '', /^> - .+ — success$/);
 		assert.match(againLines[againLog + 2] ?? '', /^> - .+ — not home$/);
 
-		const firstHeadings = homeDisk.split('\n').filter((line) => /^## /.test(line));
+		const firstHeadings = homeDisk.split('\n').filter((line) => /^#{2,3} /.test(line));
 		assert.equal(firstHeadings.length, 1);
 		await rvLog({ config: { target_file: { path: homeFile } } }, 'home');
 		const secondHome = readFileSync(homeFile, 'utf8');
@@ -713,7 +726,7 @@ describe('disk proof', () => {
 		assert.equal(addressLine(secondHome), `Address: ${yamlQuote(address)}`);
 		assert.equal(secondHome.includes('Visits: 4'), true);
 		assert.equal(secondHome.includes('Successful Visits: 3'), true);
-		assert.deepEqual(secondHome.split('\n').filter((line) => /^## /.test(line)), firstHeadings);
+		assert.deepEqual(secondHome.split('\n').filter((line) => /^#{2,3} /.test(line)), firstHeadings);
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
 
 		const laterFile = join(dir, 'later.md');
@@ -736,9 +749,10 @@ describe('disk proof', () => {
 		assert.equal(addressLine(laterDisk), `Address: ${yamlQuote(address)}`);
 		assert.equal(laterDisk.includes('Visits: 2'), true);
 		assert.equal(laterDisk.includes('Successful Visits: 2'), true);
-		const laterHeadings = laterDisk.split('\n').filter((line) => /^## /.test(line));
+		const laterHeadings = laterDisk.split('\n').filter((line) => /^#{2,3} /.test(line));
 		assert.equal(laterHeadings[0], '## Mon, 9am — Sep 1, 2026');
 		assert.equal(laterHeadings.length, 2);
+		assert.equal(laterHeadings[1]?.startsWith('### '), true);
 		assert.notEqual(laterHeadings[1], laterHeadings[0]);
 	});
 });

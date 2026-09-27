@@ -1,4 +1,4 @@
-import { formatSpecificAddress, googleMapsLink } from './address';
+import { formatSpecificAddress, googleMapsAddressLink } from './address';
 import { parseDisplayAddress } from './address-display';
 import { coordString, latLonFromUnknown, roundCoord } from './distance';
 import type { GeocodeHit, RVLocatorSettings } from './types';
@@ -152,16 +152,16 @@ export function applyGeocodeHit(
 ): string {
 	const formatted = hit.formattedAddress.trim() || formatSpecificAddress(hit);
 	const pair = locationPair(hit);
-	const lat = Number(pair[0]);
-	const lon = Number(pair[1]);
+	const storedAddress = readAddress(frontmatter, settings.addressProperty) ?? '';
 	// List of strings, not numbers. A list/text property (and Bases) rejects bare
 	// YAML numbers, and a bare negative longitude (`- -82.5`) can fail the YAML
 	// round-trip so the whole frontmatter write is discarded.
 	if (!isAddressName(settings.locationProperty, settings)) {
 		assignProperty(frontmatter, settings.locationProperty, pair);
 	}
-	if (settings.mapLinkProperty.trim() && !isAddressName(settings.mapLinkProperty, settings)) {
-		assignProperty(frontmatter, settings.mapLinkProperty, googleMapsLink(lat, lon));
+	const mapAddress = storedAddress || formatted;
+	if (mapAddress && settings.mapLinkProperty.trim() && !isAddressName(settings.mapLinkProperty, settings)) {
+		assignProperty(frontmatter, settings.mapLinkProperty, googleMapsAddressLink(mapAddress));
 	}
 	const city = cityFromGeocode(formatted || hit.formattedAddress, hit.city);
 	if (city && !isAddressName(CITY_PROPERTY, settings)) assignProperty(frontmatter, CITY_PROPERTY, city);

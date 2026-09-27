@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.3
+
+`main.js` SHA-256: `23b723c93026c8d2d46dae3ccd042379bf1e24f28bfe46d7a04bfa2b4d90b40c`
+
+- Map Link is a Google Maps **address search**, not a lat/lon pin. Single-note and bulk geocode set `Map Link` to `https://www.google.com/maps/search/?api=1&query=<urlencoded Address>`. The stored Address is the query (the geocoder’s formatted line is used only when Address is empty). `Location` is still two quoted coordinate strings. Address is never overwritten. The plugin does not rewrite a map icon already in the note body.
+- New RV body: a two-line quote strip (Hubs, then Address plus a 🗺️ link built from the typed address). No `Map Link:` label and no Meta Bind `VIEW` of the URL. The dashboard is a collapsed `> [!rv]- 👤 RV Dashboard` that blends with the theme (`--background-primary` / `--background-secondary`). Field order is unchanged. A short **Log visit** divider sits above the Home / Not home buttons. The Glancable stamp is `###`, with a blank line under it for visit notes, then the collapsed Attempt Log with one success bullet. Visits and Successful Visits still start at 1.
+- Home (Templater `rvLog.js` and the plugin priority tap) inserts a `###` stamp only when that stamp is not already a `##` or `###` heading. A later hour still gets its own `###` heading. An older `##` stamp is left in place.
+- `extras/templater-metabind/rv-dashboard.css` (also in the plugin `styles.css`) tightens Meta Bind inputs in the strip and dashboard, rounds callouts, and paints the Home button with `--text-accent` (the same accent as the Glancable visits chip). Copy the file to `.obsidian/snippets/` and enable **rv-dashboard** only if the plugin is off.
+
 ## 1.1.2
 
 `main.js` SHA-256: `703d2901abc09161116cdb3be2b9f5179d294342bb0a5d4e7ede64c346158b76`

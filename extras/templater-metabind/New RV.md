@@ -19,10 +19,10 @@ cssclasses:
   - "hide-props"
   - "rv-dashboard"
 ---
-Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-Address: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`
+> Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> Address: `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
 
-> [!info]- 👤 RV Dashboard
+> [!rv]- 👤 RV Dashboard
 >
 > **Priority**
 > `INPUT[slider(minValue(0), maxValue(5)):Priority]` `VIEW[{Priority}]`
@@ -48,6 +48,10 @@ Address: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`
 > **Taken**
 > `INPUT[inlineList:Taken]`
 
+---
+
+**Log visit**
+
 `BUTTON[rv-log-home, rv-log-miss]`
 
 ```meta-bind-button
@@ -69,7 +73,8 @@ actions:
   - type: runTemplaterFile
     templateFile: Templates/RV Log Miss.md
 ```
-## <% rv.stamp %>
+
+### <% rv.stamp %>
 
 > [!note]- Attempt Log
 > - <% rv.stamp %> — success

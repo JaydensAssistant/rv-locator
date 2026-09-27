@@ -162,7 +162,7 @@ export class BulkGeocodeModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Notes with an address and no location are looked up. A folder includes its subfolders. Address is never written. A result is saved without this picker only when Geoapify rank.confidence is 1.00 and that hit is the only one in a home-base county. Otherwise this picker opens. Choosing a row saves Location as two quoted strings, plus City and Map Link. Closing the picker skips that note. Distance is not written. If Successful Visits is missing and Visits is a number, that number is copied. Notes that already have Address and Location get City filled from the address when City is missing. Last Attempted is left alone.',
+			text: 'Notes with an address and no location are looked up. A folder includes its subfolders. Address is never written. A result is saved without this picker only when Geoapify rank.confidence is 1.00 and that hit is the only one in a home-base county. Otherwise this picker opens. Choosing a row saves Location as two quoted strings, plus City and a Map Link that searches the note’s Address. Closing the picker skips that note. Distance is not written. If Successful Visits is missing and Visits is a number, that number is copied. Notes that already have Address and Location get City filled from the address when City is missing. Last Attempted is left alone.',
 		});
 
 		new Setting(contentEl)

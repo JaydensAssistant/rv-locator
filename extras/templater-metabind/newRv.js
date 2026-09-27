@@ -88,6 +88,12 @@ function yamlQuoted(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ").trim();
 }
 
+/** Same formula as src/address.ts googleMapsAddressLink. */
+function mapsSearchUrl(address) {
+  const query = address.replace(/\r?\n/g, " ").replace(/[ \t]{2,}/g, " ").trim();
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
 function hourLabel(hour) {
   const suffix = hour >= 12 ? "pm" : "am";
   const onClock = hour % 12 === 0 ? 12 : hour % 12;
@@ -266,6 +272,7 @@ async function newRv(tp) {
 
   return {
     addressYaml: yamlQuoted(address),
+    mapUrl: mapsSearchUrl(address),
     created,
     stamp,
     title,
