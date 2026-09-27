@@ -35,11 +35,14 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 
 ## Always visible
 
-These three sit outside every callout, in this order:
+These three sit outside every callout, with no blank line between them. Hubs is its own line. Address and Map Link share the next line:
 
-1. `Hubs: ` + `INPUT[inlineListSuggester(optionQuery("")):Hub]` (the property is still `Hub`)
-2. Address text input bound to `Address`
-3. Map Link, read-only: `` `VIEW[{["Map Link"]}][link]` ``. The property name has a space, so the bind target uses Meta Bind’s bracket form inside the view braces (the same rule as `INPUT[number:["Successful Visits"]]`). `{Map Link}` is parsed as a file path and then Meta Bind expects `#`. A URL becomes a clickable link. Before geocode the property is empty, so the view is blank.
+```markdown
+Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+Address: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`
+```
+
+The Hub property is still `Hub`. Map Link is read-only. The property name has a space, so the bind target uses Meta Bind’s bracket form inside the view braces (the same rule as `INPUT[number:["Successful Visits"]]`). `{Map Link}` is parsed as a file path and then Meta Bind expects `#`. A URL becomes a clickable link. Before geocode the property is empty, so the view is blank. The Home / Not home button block sits directly against the Glancable `##` stamp (no blank line after the Not home button fence).
 
 ## Collapsed dashboard
 

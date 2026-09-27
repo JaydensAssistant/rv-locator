@@ -20,10 +20,7 @@ cssclasses:
   - "rv-dashboard"
 ---
 Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-
-Address: `INPUT[text:Address]`
-
-Map Link: `VIEW[{["Map Link"]}][link]`
+Address: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`
 
 > [!info]- 👤 RV Dashboard
 >
@@ -72,7 +69,6 @@ actions:
   - type: runTemplaterFile
     templateFile: Templates/RV Log Miss.md
 ```
-
 ## <% rv.stamp %>
 
 > [!note]- Attempt Log

@@ -495,9 +495,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 1'), true);
 		assert.equal(createdText.includes('Successful Visits: 1'), true);
-		assert.equal(createdText.includes('Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`'), true);
-		assert.equal(createdText.includes('Address: `INPUT[text:Address]`'), true);
-		assert.equal(createdText.includes('Map Link: `VIEW[{["Map Link"]}][link]`'), true);
+		assert.equal(createdText.includes('Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`\nAddress: `INPUT[text:Address]` Map Link: `VIEW[{["Map Link"]}][link]`\n'), true);
 		assert.equal(createdText.includes('`VIEW[{Map Link}][link]`'), false);
 		assert.equal(createdText.includes('> [!info]- 👤 RV Dashboard'), true);
 		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
@@ -523,6 +521,7 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Spoke**') < callout.indexOf('**Last Attempted**'));
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
+		assert.match(createdText, /templateFile: Templates\/RV Log Miss\.md\n```\n## /);
 		assert.equal(createdText.includes(`## ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `## ${stamp}`).length, 1);
 		assert.equal(createdText.includes('## Attempt Log'), false);
