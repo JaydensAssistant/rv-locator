@@ -2,7 +2,7 @@
 
 ## 1.1.5
 
-`main.js` SHA-256: `ad1b371576d46552bf6090289ba6a90552a232be17845933c37e611c151d4267`
+`main.js` SHA-256: `1bd41366d41a9ba0245832806886ecbb004c2ae1d56d49a99a45ebdc8e2a4dad`
 
 `styles.css` SHA-256: `943f87078ea70f316a81d5cad82ca0623401efbb9792b0825cd987cc6e33a5bc`
 
@@ -12,7 +12,7 @@
 - New RV spacing matches the edited note: no blank line between `---` and the `[!rv]` dashboard, and the `###` stamp sits on the line after Taken. One blank line remains before Attempt Log.
 - Nearby sort chips invert when tapped again. Defaults: Nearest, Priority · high, Spoke · oldest, Attempted · oldest. The flipped labels are Furthest, Priority · low, Spoke · newest, and Attempted · newest. The choice is still saved.
 - Glancable cards are six lines: name, street + city + distance, Last Spoke, Last Attempted, Met, then Met With with `# successful/visits`. Each date is its own line.
-- Settings → **Update Templater / Meta Bind extras from GitHub** confirms, then downloads the public `unstable` branch of `JaydensAssistant/rv-locator` into allowlisted vault paths only. It does not touch notes, Address, or the Geoapify key.
+- Settings → **Update Templater / Meta Bind extras from GitHub** confirms before any write. Downloads are pinned to release tag `v1.1.5` on `raw.githubusercontent.com/JaydensAssistant/rv-locator` (not `main` or `unstable`). The dialog lists each path as create, overwrite, or skip, plus the SHA-256 of the downloaded file. Existing files are skipped unless overwrite is checked. Redirects off that host and ref are refused. It does not touch notes, Address, plugin `data.json`, or the Geoapify key.
 
 ## 1.1.4
 

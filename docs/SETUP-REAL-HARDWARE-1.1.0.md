@@ -87,7 +87,7 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 
 ### New RV template (1.1.5)
 
-Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. Or use Settings → **Update Templater / Meta Bind extras from GitHub**, which confirms and then copies those files plus `geocodeNewRv.js`, `snippets/rv-dashboard.css` under the vault config folder (usually `.obsidian`), and the two docs from the public `unstable` branch. It does not write notes, Address, or the Geoapify key. The `###` stamp sits directly under Taken. There is no blank line between `---` and the dashboard. Map Link searches the address, and appends City when that address has no city.
+Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. Or use Settings → **Update Templater / Meta Bind extras from GitHub**. It downloads tag `v1.1.5` only, shows each destination as create or skip, and does not overwrite an existing file unless that checkbox is on. It also copies `geocodeNewRv.js`, `snippets/rv-dashboard.css` under the vault config folder (usually `.obsidian`), and the two docs. It does not write notes, Address, plugin data, or the Geoapify key. The `###` stamp sits directly under Taken. There is no blank line between `---` and the dashboard. Map Link searches the address, and appends City when that address has no city.
 
 ### New RV template (1.1.4)
 

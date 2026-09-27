@@ -1,6 +1,6 @@
 # RV Locator 1.1.0 — install (fake vault / throwaway key only until Sentinel clears)
 
-> **1.1.5:** Map Link appends City when Address has no city. Sort chips invert on a second tap (Spoke and Attempted start at oldest). Glancable is six lines. Settings can update Templater / Meta Bind extras from the public `unstable` branch. See `CHANGELOG.md`.
+> **1.1.5:** Map Link appends City when Address has no city. Sort chips invert on a second tap (Spoke and Attempted start at oldest). Glancable is six lines. Settings can update Templater / Meta Bind extras from pinned tag `v1.1.5`. Existing files are skipped unless overwrite is checked. See `CHANGELOG.md`.
 >
 > **1.1.4:** New RV puts bold Hubs and Address lines first, then equal-size Home / Not home buttons, then a divider, then the collapsed dashboard. There is no Log visit label. `main.js` is unchanged from 1.1.3. See `CHANGELOG.md`.
 >

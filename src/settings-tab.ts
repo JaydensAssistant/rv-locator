@@ -1,13 +1,18 @@
-import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, requestUrl, type App } from 'obsidian';
+import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, type App } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
 import { parseDatePropertyNames } from './dates';
 import {
-	EXTRAS_SYNC_BRANCH,
+	EXTRAS_SYNC_REF,
 	EXTRAS_SYNC_REPO,
+	assertExtrasDownloadUrl,
 	downloadExtras,
 	extrasDestinations,
+	extrasRedirectUrl,
 	isAllowlistedExtrasPath,
-	type ExtrasSyncPlan,
+	planExtrasWrite,
+	type ExtrasFetchResult,
+	type ExtrasSyncFailure,
+	type ExtrasSyncFile,
 } from './extras-sync';
 import type RVLocatorPlugin from './main';
 
@@ -171,14 +176,11 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		const extrasPaths = extrasDestinations(this.app.vault.configDir).map((file) => file.vault).join(', ');
 		new Setting(containerEl)
 			.setName('Update Templater / Meta Bind extras from GitHub')
-			.setDesc(`Downloads the public ${EXTRAS_SYNC_BRANCH} branch of ${EXTRAS_SYNC_REPO} and overwrites only these vault paths: ${extrasPaths}. Asks before writing. Does not change notes, Address, or the Geoapify key.`)
+			.setDesc(`Downloads tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO} from raw.githubusercontent.com. Not the moving main or unstable branch. Asks before any write and lists each path as create or overwrite. Existing files are skipped unless overwrite is checked. Does not change notes, Address, or the Geoapify key. Paths: ${extrasPaths}.`)
 			.addButton((button) => {
 				button.setButtonText('Update from GitHub');
 				button.onClick(() => {
-					const modal = new ExtrasSyncConfirmModal(this.app, () => {
-						void this.installExtras();
-					});
-					modal.open();
+					void this.previewExtras();
 				});
 			});
 
@@ -223,40 +225,62 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		this.propertySetting(name, 'Empty skips this output.', placeholder, read, write);
 	}
 
-	private async installExtras(): Promise<void> {
-		let plan: ExtrasSyncPlan;
+	private async previewExtras(): Promise<void> {
+		const pending = new Notice(`Downloading extras at ${EXTRAS_SYNC_REF}…`, 0);
 		try {
-			plan = await downloadExtras(async (url) => {
-				const response = await requestUrl({ url, throw: false });
-				return {
-					ok: response.status >= 200 && response.status < 300,
-					status: response.status,
-					text: response.text,
-				};
-			}, this.app.vault.configDir);
+			const plan = await downloadExtras((url) => fetchPinnedExtras(url), this.app.vault.configDir);
+			pending.hide();
+			if (plan.files.length === 0) {
+				const failText = plan.failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ');
+				new Notice(`Extras download failed. Nothing was written. ${failText}`, 12_000);
+				return;
+			}
+			const rows: ExtrasPreviewRow[] = [];
+			for (const file of plan.files) {
+				rows.push({
+					...file,
+					exists: await extrasDestinationExists(this.app, file.vaultPath, this.app.vault.configDir),
+				});
+			}
+			const modal = new ExtrasSyncConfirmModal(this.app, rows, plan.failed, (overwriteExisting) => {
+				void this.applyExtras(rows, overwriteExisting);
+			});
+			modal.open();
 		} catch (error) {
+			pending.hide();
 			const reason = error instanceof Error && error.message ? error.message : 'download failed';
-			new Notice(`Extras update failed. Nothing was written. ${reason}`, 10_000);
-			return;
+			new Notice(`Extras download failed. Nothing was written. ${reason}`, 10_000);
 		}
-		const written: string[] = [];
-		const failed = [...plan.failed];
-		for (const file of plan.updated) {
+	}
+
+	private async applyExtras(rows: readonly ExtrasPreviewRow[], overwriteExisting: boolean): Promise<void> {
+		const created: ExtrasPreviewRow[] = [];
+		const overwritten: ExtrasPreviewRow[] = [];
+		const skipped: ExtrasPreviewRow[] = [];
+		const failed: ExtrasSyncFailure[] = [];
+		for (const row of rows) {
+			const action = planExtrasWrite(row.exists, overwriteExisting);
+			if (action === 'skip') {
+				skipped.push(row);
+				continue;
+			}
 			try {
-				await writeAllowlistedExtrasFile(this.app, file.vaultPath, file.contents, this.app.vault.configDir);
-				written.push(file.vaultPath);
+				await writeAllowlistedExtrasFile(this.app, row.vaultPath, row.contents, this.app.vault.configDir, action);
+				if (action === 'create') created.push(row);
+				else overwritten.push(row);
 			} catch (error) {
 				const reason = error instanceof Error && error.message ? error.message : 'write failed';
-				failed.push({ vaultPath: file.vaultPath, reason });
+				failed.push({ vaultPath: row.vaultPath, reason });
 			}
 		}
-		const failText = failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ');
-		if (written.length === 0) {
-			new Notice(`Extras update failed. Nothing was written. ${failText}`, 12_000);
-			return;
-		}
-		const updated = `Updated ${written.length} file${written.length === 1 ? '' : 's'} from ${EXTRAS_SYNC_BRANCH}: ${written.join(', ')}.`;
-		new Notice(failText ? `${updated} Failed: ${failText}` : updated, 12_000);
+		const parts = [
+			formatExtrasResult('Created', created),
+			formatExtrasResult('Overwrote', overwritten),
+			formatExtrasResult('Skipped', skipped),
+			failed.length ? `Failed: ${failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ')}` : '',
+		].filter(Boolean);
+		const summary = parts.join(' ') || 'Nothing was written.';
+		new Notice(`Extras ${EXTRAS_SYNC_REF}. ${summary}`, 14_000);
 	}
 
 	private coordSetting(
@@ -285,22 +309,56 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 	}
 }
 
+interface ExtrasPreviewRow extends ExtrasSyncFile {
+	exists: boolean;
+}
+
 class ExtrasSyncConfirmModal extends Modal {
-	constructor(app: App, private onYes: () => void) {
+	private overwriteExisting = false;
+
+	constructor(
+		app: App,
+		private rows: readonly ExtrasPreviewRow[],
+		private failed: readonly ExtrasSyncFailure[],
+		private onApply: (overwriteExisting: boolean) => void,
+	) {
 		super(app);
 	}
 
 	onOpen(): void {
 		this.setTitle('Update Templater / Meta Bind extras');
 		this.contentEl.createEl('p', {
-			text: `Download the latest Templater scripts, New RV template, Meta Bind button helpers, the rv-dashboard snippet, and the matching docs from the public ${EXTRAS_SYNC_BRANCH} branch of ${EXTRAS_SYNC_REPO}, then overwrite the allowlisted vault files?`,
+			text: `Pinned ref ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked. Templater system commands stay off. The Meta Bind JS Engine is not required. Notes, Address, and the Geoapify key are not touched.`,
 		});
 		const list = this.contentEl.createEl('ul');
-		for (const file of extrasDestinations(this.app.vault.configDir)) {
-			list.createEl('li', { text: file.vault });
+		const actions: HTMLElement[] = [];
+		for (const row of this.rows) {
+			const item = list.createEl('li');
+			const action = item.createSpan();
+			actions.push(action);
+			item.createDiv({ text: row.vaultPath });
+			item.createEl('code', { text: row.sha256 });
 		}
-		this.contentEl.createEl('p', {
-			text: 'Notes, Address values, and the Geoapify key in plugin data are not touched.',
+		const paint = () => {
+			this.rows.forEach((row, index) => {
+				const action = planExtrasWrite(row.exists, this.overwriteExisting);
+				const label = action === 'create' ? 'Create' : action === 'overwrite' ? 'Overwrite' : 'Skip (already exists)';
+				actions[index]?.setText(label);
+			});
+		};
+		paint();
+		if (this.failed.length) {
+			this.contentEl.createEl('p', {
+				text: `Not downloaded: ${this.failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ')}`,
+			});
+		}
+		const label = this.contentEl.createEl('label');
+		const box = label.createEl('input');
+		box.setAttr('type', 'checkbox');
+		label.appendText(' Overwrite files that already exist');
+		box.addEventListener('change', () => {
+			this.overwriteExisting = box instanceof HTMLInputElement && box.checked;
+			paint();
 		});
 		new Setting(this.contentEl)
 			.addButton((button) => {
@@ -308,44 +366,97 @@ class ExtrasSyncConfirmModal extends Modal {
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
-				button.setButtonText('Download and overwrite').setCta();
+				button.setButtonText('Apply').setCta();
 				button.onClick(() => {
+					const overwrite = this.overwriteExisting;
 					this.close();
-					this.onYes();
+					this.onApply(overwrite);
 				});
 			});
 	}
 }
 
-async function writeAllowlistedExtrasFile(app: App, vaultPath: string, contents: string, configDir: string): Promise<void> {
+async function fetchPinnedExtras(url: string): Promise<ExtrasFetchResult> {
+	assertExtrasDownloadUrl(url);
+	const response = await fetch(url, { redirect: 'manual' });
+	if (response.type === 'opaqueredirect' || (response.status >= 300 && response.status < 400)) {
+		const location = response.headers.get('location') ?? '';
+		const next = extrasRedirectUrl(url, location);
+		const followed = await fetch(next, { redirect: 'manual' });
+		if (followed.type === 'opaqueredirect' || (followed.status >= 300 && followed.status < 400)) {
+			throw new Error('Refusing a second redirect');
+		}
+		return {
+			ok: followed.ok,
+			status: followed.status,
+			text: await followed.text(),
+			finalUrl: followed.url || next,
+		};
+	}
+	return {
+		ok: response.ok,
+		status: response.status,
+		text: await response.text(),
+		finalUrl: response.url || url,
+	};
+}
+
+async function extrasDestinationExists(app: App, vaultPath: string, configDir: string): Promise<boolean> {
 	const path = normalizePath(vaultPath);
-	if (!isAllowlistedExtrasPath(path, configDir) || !isAllowlistedExtrasPath(vaultPath, configDir)) {
+	if (!isAllowlistedExtrasPath(path, configDir)) return false;
+	const configPrefix = `${configDir.replace(/\\/g, '/').replace(/\/+$/, '')}/`;
+	if (path.startsWith(configPrefix)) return app.vault.adapter.exists(path);
+	return app.vault.getAbstractFileByPath(path) instanceof TFile;
+}
+
+async function writeAllowlistedExtrasFile(
+	app: App,
+	vaultPath: string,
+	contents: string,
+	configDir: string,
+	mode: 'create' | 'overwrite',
+): Promise<void> {
+	const path = normalizePath(vaultPath);
+	if (path !== vaultPath || !isAllowlistedExtrasPath(path, configDir) || !isAllowlistedExtrasPath(vaultPath, configDir)) {
 		throw new Error(`Refusing to write ${vaultPath}`);
 	}
 	const configPrefix = `${configDir.replace(/\\/g, '/').replace(/\/+$/, '')}/`;
+	const exists = await extrasDestinationExists(app, path, configDir);
+	if (exists && mode !== 'overwrite') throw new Error('Refusing to overwrite');
 	if (path.startsWith(configPrefix)) {
-		await writeHiddenVaultFile(app, path, contents);
+		if (path.includes('/plugins/')) throw new Error(`Refusing to write ${path}`);
+		await writeHiddenVaultFile(app, path, contents, exists);
 		return;
 	}
 	await ensureVaultFolder(app, path);
 	const existing = app.vault.getAbstractFileByPath(path);
 	if (existing instanceof TFile) {
+		if (existing.path !== path || mode !== 'overwrite') throw new Error('Refusing to overwrite');
 		await app.vault.modify(existing, contents);
 		return;
 	}
 	if (existing) throw new Error(`${path} exists and is not a file`);
+	if (mode === 'overwrite') throw new Error(`${path} is missing`);
 	await app.vault.create(path, contents);
 }
 
-async function writeHiddenVaultFile(app: App, path: string, contents: string): Promise<void> {
+function formatExtrasResult(label: string, rows: readonly ExtrasPreviewRow[]): string {
+	if (rows.length === 0) return '';
+	const detail = rows.map((row) => `${row.vaultPath} ${row.sha256}`).join('; ');
+	return `${label} ${rows.length}: ${detail}.`;
+}
+
+async function writeHiddenVaultFile(app: App, path: string, contents: string, exists: boolean): Promise<void> {
 	const adapter = app.vault.adapter;
-	const folder = path.split('/').slice(0, -1).join('/');
-	if (folder && !(await adapter.exists(folder))) {
-		const parent = folder.split('/').slice(0, -1).join('/');
-		if (parent && !(await adapter.exists(parent))) {
-			await adapter.mkdir(parent);
+	const now = await adapter.exists(path);
+	if (now !== exists) throw new Error(exists ? 'Refusing to overwrite a missing file' : 'Refusing to overwrite');
+	if (!exists) {
+		const folder = path.split('/').slice(0, -1).join('/');
+		if (folder && !(await adapter.exists(folder))) {
+			const parent = folder.split('/').slice(0, -1).join('/');
+			if (parent && !(await adapter.exists(parent))) await adapter.mkdir(parent);
+			await adapter.mkdir(folder);
 		}
-		await adapter.mkdir(folder);
 	}
 	await adapter.write(path, contents);
 }

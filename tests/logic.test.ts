@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
-import { EXTRAS_SYNC_BRANCH, downloadExtras, extrasDestinations, extrasFileUrl, isAllowlistedExtrasPath } from '../src/extras-sync';
+import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_REF, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, planExtrasWrite, sha256Hex } from '../src/extras-sync';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
@@ -985,38 +986,64 @@ function activeRow(id: string, priority: number, lastSpoke: string, name: string
 }
 
 describe('extras sync', () => {
-	it('downloads only allowlisted paths from the unstable branch', async () => {
-		assert.equal(EXTRAS_SYNC_BRANCH, 'unstable');
+	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
+		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
+		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
+		assert.equal(EXTRAS_SYNC_REF, 'v1.1.5');
+		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'unstable'));
+		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'main'));
+		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/Scripts/newRv.js'));
+		assert.throws(() => extrasRedirectUrl(
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js',
+			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js',
+		));
 		const configDir = '.obsidian';
 		assert.equal(isAllowlistedExtrasPath('Templates/New RV.md', configDir), true);
 		assert.equal(isAllowlistedExtrasPath(`${configDir}/snippets/rv-dashboard.css`, configDir), true);
 		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/data.json`, configDir), false);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/main.js`, configDir), false);
 		assert.equal(isAllowlistedExtrasPath('Templates/../data.json', configDir), false);
 		assert.equal(isAllowlistedExtrasPath('/etc/passwd', configDir), false);
 		assert.equal(isAllowlistedExtrasPath('Scripts/newRv.js', configDir), true);
-		assert.equal(extrasDestinations(configDir).some((file) => file.vault === `${configDir}/snippets/rv-dashboard.css`), true);
+		assert.equal(isAllowlistedExtrasPath('Scripts/secret.js', configDir), false);
+		assert.equal(extrasDestinations(configDir).every((file) => /\.(md|js|css)$/.test(file.vault)), true);
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
+		assert.equal(planExtrasWrite(false, false), 'create');
+		assert.equal(planExtrasWrite(true, false), 'skip');
+		assert.equal(planExtrasWrite(true, true), 'overwrite');
+		assert.equal(await sha256Hex('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
 		const calls: string[] = [];
 		const plan = await downloadExtras(async (fetched) => {
 			calls.push(fetched);
 			if (fetched.endsWith('/newRv.js')) {
-				return { ok: false, status: 404, text: '' };
+				return { ok: false, status: 404, text: '', finalUrl: fetched };
 			}
-			return { ok: true, status: 200, text: `body:${fetched}` };
+			if (fetched.endsWith('/rvLog.js')) {
+				return { ok: true, status: 200, text: 'redirected', finalUrl: 'https://evil.example/rvLog.js' };
+			}
+			if (fetched.endsWith('/geocodeNewRv.js')) {
+				return { ok: true, status: 200, text: 'x'.repeat(EXTRAS_MAX_FILE_BYTES + 1), finalUrl: fetched };
+			}
+			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
+		assert.equal(plan.ref, 'v1.1.5');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/unstable/')), true);
-		assert.equal(plan.failed.length, 1);
-		assert.equal(plan.failed[0]?.vaultPath, 'Scripts/newRv.js');
-		assert.equal(plan.updated.some((file) => file.vaultPath === 'Scripts/newRv.js'), false);
-		assert.equal(plan.updated.some((file) => file.vaultPath === '.obsidian/plugins/rv-locator/data.json'), false);
-		assert.equal(plan.updated.some((file) => file.vaultPath === 'Templates/New RV.md'), true);
-		const note = plan.updated.find((file) => file.vaultPath === 'Templates/New RV.md');
-		assert.equal(note?.contents.includes('Address'), false);
+		assert.equal(calls.every((item) => item.includes('/v1.1.5/')), true);
+		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/rvLog.js'), true);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/geocodeNewRv.js' && item.reason === 'file exceeds size cap'), true);
+		assert.equal(plan.files.some((file) => file.vaultPath === 'Scripts/newRv.js'), false);
+		assert.equal(plan.files.some((file) => file.vaultPath === '.obsidian/plugins/rv-locator/data.json'), false);
+		const note = plan.files.find((file) => file.vaultPath === 'Templates/New RV.md');
+		assert.equal(note?.contents.startsWith('body:https://raw.githubusercontent.com/'), true);
+		assert.equal(note?.sha256, await sha256Hex(note?.contents ?? ''));
 	});
 });

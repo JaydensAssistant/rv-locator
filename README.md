@@ -24,13 +24,13 @@ Prefer desktop install + vault sync. Details: `docs/SETUP-iOS-1.1.0.md`.
 
 ## New RV note (Templater)
 
-Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, and starts Visits and Successful Visits at 1, then runs `rv-locator:geocode-current-note`. The top of the note is a bold two-line quote strip: Hubs, then Address with a 🗺️ link to `https://www.google.com/maps/search/?api=1&query=<urlencoded address>`. Geocode writes `Map Link` from the stored Address (coordinates stay on `Location` only). A street with no city gets the note’s City added to that search query only. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `> [!rv]-` dashboard starts on the next line. The `###` stamp follows Taken immediately, then one blank line and the Attempt Log. Home does not repeat a `##` or `###` stamp that is already there. Settings can refresh these extras from the public `unstable` branch. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
+Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, and starts Visits and Successful Visits at 1, then runs `rv-locator:geocode-current-note`. The top of the note is a bold two-line quote strip: Hubs, then Address with a 🗺️ link to `https://www.google.com/maps/search/?api=1&query=<urlencoded address>`. Geocode writes `Map Link` from the stored Address (coordinates stay on `Location` only). A street with no city gets the note’s City added to that search query only. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `> [!rv]-` dashboard starts on the next line. The `###` stamp follows Taken immediately, then one blank line and the Attempt Log. Home does not repeat a `##` or `###` stamp that is already there. Settings can refresh these extras from the pinned tag `v1.1.5` (not a moving branch). Existing files are skipped unless overwrite is checked. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
 
 ## Verify
 
 ```bash
 shasum -a 256 main.js styles.css manifest.json
-# main.js       ad1b371576d46552bf6090289ba6a90552a232be17845933c37e611c151d4267
+# main.js       1bd41366d41a9ba0245832806886ecbb004c2ae1d56d49a99a45ebdc8e2a4dad
 # styles.css    943f87078ea70f316a81d5cad82ca0623401efbb9792b0825cd987cc6e33a5bc
 # manifest.json 148bdc553725130f600a1e5c262c23979d3375635a686f43882c20180590b6ed
 ```
