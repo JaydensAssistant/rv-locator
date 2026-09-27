@@ -76,6 +76,7 @@
 	border-left: 2px solid var(--background-modifier-border);
 	border-radius: var(--radius-s, 4px);
 	background-color: var(--background-secondary);
+	font-weight: var(--font-semibold);
 }
 
 .rv-dashboard blockquote p,
@@ -99,10 +100,38 @@
 	margin: 0.7em 0 0.45em;
 }
 
-/* Home uses Meta Bind style: primary. Same accent as the Glancable visits chip. */
-.rv-dashboard .mb-button.primary,
+/* Home and Not home share one width and height. Home uses the Glancable accent. */
+.rv-dashboard p:has(.mb-button) {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: stretch;
+	gap: 0.45rem;
+}
+
+.rv-dashboard button.mb-button {
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 8.25rem;
+	width: 8.25rem;
+	min-width: 8.25rem;
+	max-width: 8.25rem;
+	height: 2rem;
+	min-height: 2rem;
+	margin: 0;
+	padding: 0 0.6rem;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	line-height: 1;
+	vertical-align: middle;
+	white-space: nowrap;
+	text-align: center;
+}
+
+.rv-dashboard button.mb-button.primary,
 .rv-dashboard button.mb-button.mod-cta {
 	background-color: var(--text-accent);
 	color: var(--text-on-accent);
-	border-radius: var(--radius-s, 6px);
+	border-color: var(--text-accent);
 }

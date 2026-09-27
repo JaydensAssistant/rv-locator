@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.4
+
+`main.js` SHA-256: `23b723c93026c8d2d46dae3ccd042379bf1e24f28bfe46d7a04bfa2b4d90b40c` (unchanged)
+
+`styles.css` SHA-256: `80d3bb2ca936eb03a2ef2b975d1fbc2f63a3ffccc8303c11889bb33e7a934bb9`
+
+`manifest.json` SHA-256: `a4464257ed02c0e2908387c26fa19147ee59301a0f57d55fc4678e5233d885d9`
+
+- New RV body order: bold quote strip (Hubs, then Address plus the 🗺️ link), then equal-size Home / Not home buttons, then `---`, then the collapsed `[!rv]` dashboard, then the `###` stamp, a blank notes line, and the Attempt Log. The **Log visit** label is gone. Attempt Log stays its own callout. Visits and Successful Visits still start at 1.
+- `styles.css` / `rv-dashboard.css` give both Meta Bind buttons the same width and height (`8.25rem` by `2rem`). Home stays `--text-accent`. The quote strip uses `--font-semibold`.
+
 ## 1.1.3
 
 `main.js` SHA-256: `23b723c93026c8d2d46dae3ccd042379bf1e24f28bfe46d7a04bfa2b4d90b40c`

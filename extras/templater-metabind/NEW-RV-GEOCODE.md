@@ -40,9 +40,11 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 The first two body lines are markdown quotes, with no blank line between them. There is no `Map Link:` label and no Meta Bind view of the URL (a link view shows the raw URL text). The map icon is a normal markdown link. Templater fills it at create from the address just typed:
 
 ```markdown
-> Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-> Address: `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
+> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> **Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
 ```
+
+Both lines are also `font-weight: var(--font-semibold)` in `rv-dashboard.css`, so the map icon matches the bold labels.
 
 The Hub property is still `Hub`. The icon URL is `https://www.google.com/maps/search/?api=1&query=` plus `encodeURIComponent` of the address (newlines and repeated spaces collapsed). The `Map Link` property uses that same formula when geocode runs.
 
@@ -63,7 +65,7 @@ Frontmatter still has Hub, Address, Priority, Met, Last Spoke, Last Attempted, M
 
 ## Home / Not home
 
-A `---` divider and a short **Log visit** caption sit between the dashboard and the buttons so they are not flush against the stamp. The note includes `` `BUTTON[rv-log-home, rv-log-miss]` `` and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md`. Paths:
+The buttons sit directly under the quote strip and above the `---` divider. There is no caption above them. `` `BUTTON[rv-log-home, rv-log-miss]` `` renders both, and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md` stay at the bottom of the note so they do not add a gap. `rv-dashboard.css` sets both buttons to `8.25rem` wide and `2rem` tall. Paths:
 
 - `Templates/RV Log Home.md`
 - `Templates/RV Log Miss.md`
@@ -72,7 +74,7 @@ Those files in the repo live at `extras/templater-metabind/RV Log Home.md` and `
 
 ## Layout
 
-The quote strip is a vertical stack. The dashboard callout is collapsed, so the phone shows Hubs and Address (with the map icon) first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. The Home button uses `--text-accent`, the same accent as the Glancable visits chip.
+Reading order is the bold quote strip, then the two buttons, then the divider, then the collapsed dashboard, then the `###` stamp, a blank notes line, and Attempt Log. The phone shows Hubs and Address first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. Home and Not home are the same size. Home uses `--text-accent`, the same accent as the Glancable visits chip.
 
 ## Address-only helper
 

@@ -19,8 +19,12 @@ cssclasses:
   - "hide-props"
   - "rv-dashboard"
 ---
-> Hubs: `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-> Address: `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
+> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> **Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
+
+`BUTTON[rv-log-home, rv-log-miss]`
+
+---
 
 > [!rv]- 👤 RV Dashboard
 >
@@ -48,11 +52,10 @@ cssclasses:
 > **Taken**
 > `INPUT[inlineList:Taken]`
 
----
+### <% rv.stamp %>
 
-**Log visit**
-
-`BUTTON[rv-log-home, rv-log-miss]`
+> [!note]- Attempt Log
+> - <% rv.stamp %> — success
 
 ```meta-bind-button
 label: Home
@@ -73,8 +76,3 @@ actions:
   - type: runTemplaterFile
     templateFile: Templates/RV Log Miss.md
 ```
-
-### <% rv.stamp %>
-
-> [!note]- Attempt Log
-> - <% rv.stamp %> — success
