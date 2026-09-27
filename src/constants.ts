@@ -1,0 +1,30 @@
+export const PLUGIN_ID = 'rv-locator';
+
+/** Existing ids stay the Active layouts so a saved Base keeps filtering Priority > 0. */
+export const VANILLA_VIEW_TYPE = 'rv-locator-nearby-vanilla';
+export const VANILLA_ALL_VIEW_TYPE = 'rv-locator-nearby-vanilla-all';
+export const VANILLA_INACTIVE_VIEW_TYPE = 'rv-locator-nearby-vanilla-inactive';
+export const GLANCABLE_VIEW_TYPE = 'rv-locator-nearby-glancable';
+export const GLANCABLE_ALL_VIEW_TYPE = 'rv-locator-nearby-glancable-all';
+export const GLANCABLE_INACTIVE_VIEW_TYPE = 'rv-locator-nearby-glancable-inactive';
+
+/** Virtual column id. This is never written to note frontmatter. */
+export const DISTANCE_COLUMN_ID = 'rv-locator.distance';
+
+/**
+ * Geoapify documents `api-eu.geoapify.com` as the EU-focused service endpoint
+ * (EU infrastructure via BunnyCDN). The default `api.geoapify.com` host is not used.
+ */
+export const GEOCODE_ENDPOINT = 'https://api-eu.geoapify.com/v1/geocode/search';
+
+/** About 1.3 requests/second, under Geoapify's free-tier burst of ~5/second. */
+export const REQUEST_GAP_MS = 750;
+
+export const GEO_WATCH_INTERVAL_MS = 20_000;
+export const CACHE_LIMIT = 2000;
+
+export const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
+export const GEOAPIFY_ATTRIBUTION = 'Powered by Geoapify';
+export const PRIVACY_NOTICE = 'Addresses are sent to Geoapify to look up coordinates.';
+
+export const HOVER_SOURCE = 'rv-locator';
