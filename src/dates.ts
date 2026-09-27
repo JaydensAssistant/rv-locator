@@ -217,6 +217,24 @@ export function formatDriveDate(raw: string): DriveDateDisplay {
 	};
 }
 
+/**
+ * Note heading and Attempt Log stamp.
+ * Uses the same rounding as `formatDriveDate`: `Wed, 2pm — Sep 9, 2026`.
+ * A date-only value omits the hour: `Wed — Sep 9, 2026`.
+ */
+export function formatGlancableStampFromRaw(raw: string): string {
+	const display = formatDriveDate(raw);
+	if (display.empty || !display.rest) return display.text;
+	return `${display.text} — ${display.rest}`;
+}
+
+/** Local clock on `date`, rendered with `formatGlancableStampFromRaw`. */
+export function formatGlancableVisitStamp(date: Date): string {
+	const pad = (value: number) => String(value).padStart(2, '0');
+	const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+	return formatGlancableStampFromRaw(iso);
+}
+
 function parseClock(text: string): { hour: number; minute: number } | null {
 	const match = /(?:T|\s)(\d{1,2}):(\d{2})(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/i.exec(text.trim());
 	if (!match) return null;

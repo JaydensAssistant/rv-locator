@@ -77,6 +77,7 @@ export interface GeocodeHit {
 	postcode?: string;
 	country?: string;
 	resultType?: string;
+	/** Geoapify `rank.confidence`, from 0 to 1. `1` and `1.00` are the same JSON number. Omitted when the response has no confidence. */
 	confidence?: number;
 }
 

@@ -20,7 +20,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 1. **Backup** the vault (Obsidian Sync / Git / zip copy). First run should be reversible.
 2. **API key:** Settings store the Geoapify key in local `data.json` only. Prefer a **new restricted Geoapify key** (or the throwaway you planned to revoke) for the first hardware pass. Do not paste keys into chat. `chmod 600` on `data.json` if the OS makes that easy.
 3. **Address is never overwritten** by the plugin. Location / Map Link / City (and optional place fields you enable) may update. Still spot-check Address after the first few geocodes.
-4. Start with **Home base counties empty** so every geocode shows the confirm modal. Turn on counties only after you trust auto-picks on your streets.
+4. Start with **Home base counties empty** so every geocode shows the confirm modal. Turn on counties only after a few confirms look right. As of **1.1.1**, auto-pick is confidence 1.00 plus a single in-home hit. Street-token matching was removed. `Location` is written as two quoted strings.
 
 ## A. Install RV Locator
 
@@ -50,7 +50,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 3. With counties empty you **must** get a confirm modal — pick the correct hit.
 4. Check the note:
    - `Address` text unchanged
-   - `Location` / `Map Link` / `City` look right
+   - `Location` is a list of two quoted strings (latitude, then longitude), and `Map Link` / `City` look right
 5. Open your **Return Visits** / Active base → switch to an RV Locator Nearby view (Vanilla or Glancable).
 6. On phone: allow location when prompted; Distance is live in-memory only (not written to the note).
 7. On desktop without GPS: use **Desktop distance testing** in settings only if you want fake coords for layout checks — turn it off for real field use.
@@ -59,7 +59,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 
 1. In Glancable or Vanilla Nearby, tap the **priority** control on a card.
 2. Answer **Were they home?**
-   - Home → Visits++, Successful Visits++, Last Spoke + Last Attempted, mid-note `## Weekday…` blank notes line, Attempt Log `— success`
+   - Home → Visits++, Successful Visits++, Last Spoke + Last Attempted, mid-note `## Wed, 2pm — Sep 9, 2026` (nearest hour) and a blank notes line, Attempt Log `— success`
    - Not home → Visits++, Last Attempted, Attempt Log `— not home`
 3. Confirm Address still unchanged.
 
@@ -84,13 +84,21 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 7. Adjust `templateFile:` paths if your Templates folder isn’t `Templates/`.
 8. Test Home / Not home on a throwaway note first.
 
+### New RV template (1.1.1)
+
+Copy `extras/templater-metabind/newRv.js` to the Templater user-scripts folder and `New RV.md` to Templates. It asks for the householder and Address, renames to `Name on Street`, and geocodes. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. The dashboard is stacked (no wide table) and uses cssclass `rv-dashboard`.
+
 ## E. When to turn on home-base counties
 
 After a few manual confirms look right:
 
-1. Settings → **Home base counties** — one county per line (e.g. `Orange` or `Orange County`).
-2. Auto-pick only when **exactly one** Geoapify hit is in a listed county **and** street tokens match (house number + street words; trailing St/Ave/etc. ignored; directions normalized).
-3. Reminder: `123 Main St` will **not** auto-accept a hit on `123 S Main St` — you’ll get a modal. That is intentional.
+1. Settings → **Home base counties** — one county per line (e.g. `Orange` or `Orange County`; those are the same county).
+2. Auto-pick (1.1.1) only when **all** of these are true:
+   - Geoapify `rank.confidence` is **1.00** (a missing confidence never auto-picks)
+   - the hit’s county is in the home list
+   - it is the **only** result in that home-region set
+3. Zero in-home hits, two or more in-home hits, or an empty home list always opens the confirm modal. Choosing a row saves the note. Closing the picker skips it.
+4. Street-word matching is not used. A typed address that does not match Geoapify’s formatting can still auto-pick when the three rules above pass.
 
 ## F. First-session checklist
 

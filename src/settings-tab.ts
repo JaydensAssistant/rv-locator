@@ -60,7 +60,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		);
 		this.propertySetting(
 			'Location property',
-			'Stored as a list of two numbers, latitude then longitude.',
+			'Stored as a YAML list of two quoted strings, latitude then longitude.',
 			'Location',
 			() => this.plugin.settings.locationProperty,
 			(value) => { this.plugin.settings.locationProperty = value; },
@@ -85,7 +85,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Home base counties')
-			.setDesc('One county per line, such as Orange or Orange County. Leave this empty to always confirm the match. A result is saved without the picker only when it is the only result in one of these counties and its street words match the typed address. Oak Lane does not auto-match Oak Hammock Lane or Red Oak Lane. Bulk geocode uses the same rule. Address is never written.')
+			.setDesc('One county per line, such as Orange or Orange County. Leave this empty to always confirm the match. A result is saved without the picker only when Geoapify rank.confidence is 1.00 and it is the only result in one of these counties. A missing confidence, or two in-county results, opens the picker. Bulk geocode uses the same rule. Address is never written.')
 			.addTextArea((text) => {
 				text.inputEl.rows = 4;
 				text.setPlaceholder('Orange\nLake');
