@@ -20,7 +20,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				text: 'Geoapify MyProjects',
 				href: 'https://myprojects.geoapify.com/',
 			});
-			fragment.appendText('. The key stays in this vault\u2019s plugin data and is never printed in logs. ');
+			fragment.appendText('. The key stays in this vault’s plugin data and is never printed in logs. ');
 			fragment.appendText(PRIVACY_NOTICE);
 		});
 
@@ -172,7 +172,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		osmLink.setAttr('rel', 'noopener');
 		about.createEl('p', {
-			text: 'Lookups use Geoapify\u2019s EU endpoint (api-eu.geoapify.com). Google Maps is used only to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
+			text: 'Lookups use Geoapify’s EU endpoint (api-eu.geoapify.com). Google Maps is used only to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
 		});
 	}
 
