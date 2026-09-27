@@ -59,7 +59,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 
 1. In Glancable or Vanilla Nearby, tap the **priority** control on a card.
 2. Answer **Were they home?**
-   - Home → Visits++, Successful Visits++, Last Spoke + Last Attempted, mid-note `## Weekday…` blank notes line, Attempt Log `— success`
+   - Home → Visits++, Successful Visits++, Last Spoke + Last Attempted, mid-note `## Wed, 2pm — Sep 9, 2026` (nearest hour) and a blank notes line, Attempt Log `— success`
    - Not home → Visits++, Last Attempted, Attempt Log `— not home`
 3. Confirm Address still unchanged.
 
@@ -83,6 +83,10 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 6. Keep one `## Attempt Log` heading near the bottom of the note.
 7. Adjust `templateFile:` paths if your Templates folder isn’t `Templates/`.
 8. Test Home / Not home on a throwaway note first.
+
+### New RV template (1.1.1)
+
+Copy `extras/templater-metabind/newRv.js` to the Templater user-scripts folder and `New RV.md` to Templates. It asks for the householder and Address, renames to `Name on Street`, and geocodes. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. The dashboard is stacked (no wide table) and uses cssclass `rv-dashboard`.
 
 ## E. When to turn on home-base counties
 

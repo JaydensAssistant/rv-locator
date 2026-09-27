@@ -670,3 +670,26 @@
 		padding: 8px 10px;
 	}
 }
+
+/* New RV dashboard. cssclasses: rv-dashboard. Keeps the callout inside the phone width. */
+.rv-dashboard.markdown-preview-view,
+.rv-dashboard.markdown-reading-view,
+.rv-dashboard.markdown-source-view,
+.markdown-preview-view.rv-dashboard,
+.markdown-reading-view.rv-dashboard,
+.markdown-source-view.rv-dashboard {
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
+.rv-dashboard .callout-content {
+	max-width: 100%;
+	overflow-x: hidden;
+	overflow-wrap: anywhere;
+}
+
+.rv-dashboard .callout-content :is(p, div, span, input, select, textarea, button) {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}

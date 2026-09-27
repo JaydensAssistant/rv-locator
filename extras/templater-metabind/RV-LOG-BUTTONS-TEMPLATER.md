@@ -3,7 +3,7 @@
 Requirements: **Templater** (user scripts enabled) + **Meta Bind**.
 
 Does **not** change `Address`. Matches the plugin priority-tap logger:
-- **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), `## Weekday, Mon D, YYYY, h:mmpm` with a blank notes line above `## Attempt Log`, bullet `- … — success`
+- **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), `## Wed, 2pm — Sep 9, 2026` (Glancable: weekday, nearest hour, calendar date) with a blank notes line above `## Attempt Log`, bullet `- … — success`
 - **Not home:** Visits++, Last Attempted only, bullet `- … — not home`
 
 ## Setup

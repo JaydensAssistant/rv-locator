@@ -6,7 +6,7 @@ import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
 import { getCached, rememberResults, trimCache } from '../src/cache';
 import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
-import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
+import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatGlancableStampFromRaw, formatGlancableVisitStamp, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
 import { decideGeocodePick, isFullConfidence } from '../src/home-base';
 import { schedulePickerDismiss } from '../src/picker-gate';
@@ -15,6 +15,7 @@ import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
 import { RequestPacer } from '../src/pacer';
 import { redactSecrets } from '../src/redact';
 import { compareNullableNumber, cycleSort, sortRows, sortRowsBy } from '../src/sort';
+import { rvNoteTitle, streetShortName } from '../src/note-name';
 import { DEFAULT_SETTINGS, mergeSettings, sanitizeNearbySort, type GeocodeHit, type RVLocatorSettings } from '../src/types';
 
 const tacoma = {
@@ -472,6 +473,10 @@ describe('distance and dates', () => {
 		assert.equal(formatDriveDate('2026-09-09T23:45').rest, 'Sep 10, 2026');
 		assert.equal(formatDriveDate('').empty, true);
 		assert.equal(formatDriveDate('true').empty, true);
+		assert.equal(formatGlancableStampFromRaw('2026-09-09T13:38:03'), 'Wed, 2pm — Sep 9, 2026');
+		assert.equal(formatGlancableStampFromRaw('2026-09-09'), 'Wed — Sep 9, 2026');
+		assert.equal(formatGlancableVisitStamp(new Date(2026, 8, 9, 13, 38, 3)), 'Wed, 2pm — Sep 9, 2026');
+		assert.equal(formatGlancableVisitStamp(new Date(2026, 8, 9, 23, 45, 0)), 'Thu, 12am — Sep 10, 2026');
 		const today = new Date(2026, 8, 26);
 		assert.equal(calendarDaysSince('2026-09-09T13:38:03', today), 17);
 		assert.equal(calendarDaysSince('2026-09-09T23:45', today), 17);
@@ -705,11 +710,29 @@ describe('picker confirm', () => {
 	});
 });
 
+describe('new RV note title', () => {
+	it('uses the householder and a short street name', () => {
+		assert.equal(streetShortName('142 Maple Street, Orlando, FL'), 'Maple');
+		assert.equal(streetShortName('88 Cypress Ave'), 'Cypress');
+		assert.equal(streetShortName('10 Oak Hammock Lane, Orlando'), 'Oak Hammock');
+		assert.equal(streetShortName('7790 N Voyager Dr, Citrus Heights'), 'Voyager');
+		assert.equal(streetShortName('1313 Broadway, Tacoma, WA'), 'Broadway');
+		assert.equal(streetShortName('142 maple street'), 'Maple');
+		assert.equal(rvNoteTitle('Alex', '142 Maple Street, Orlando'), 'Alex on Maple');
+		assert.equal(rvNoteTitle('Riley', '88 Cypress Ave'), 'Riley on Cypress');
+		assert.equal(rvNoteTitle('Sam', '10 Oak Hammock Ln'), 'Sam on Oak Hammock');
+		assert.equal(rvNoteTitle('A/B', '1 Main St'), 'A B on Main');
+		assert.equal(rvNoteTitle('', '142 Maple Street'), 'Maple');
+		assert.equal(rvNoteTitle('Alex', ''), 'Alex');
+	});
+});
+
 describe('visit log', () => {
 	const now = new Date(2026, 8, 26, 23, 12, 4);
 
 	it('logs a home visit without touching Address', () => {
-		assert.equal(formatVisitStamp(now), 'Sat, Sep 26, 2026, 11:12pm');
+		assert.equal(formatVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
+		assert.equal(formatVisitStamp(now), formatGlancableVisitStamp(now));
 		assert.equal(formatFrontmatterDateTime(now), '2026-09-26T23:12:04');
 		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', Visits: 2, 'Successful Visits': 1 };
 		applyVisitFrontmatter(frontmatter, 'home', now);
@@ -719,7 +742,7 @@ describe('visit log', () => {
 		assert.equal(frontmatter['Last Spoke'], '2026-09-26T23:12:04');
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('Talked on the porch.\n', 'home', now);
-		assert.match(body, /## Sat, Sep 26, 2026, 11:12pm\n\n## Attempt Log\n- Sat, Sep 26, 2026, 11:12pm — success\n$/);
+		assert.match(body, /## Sat, 11pm — Sep 26, 2026\n\n## Attempt Log\n- Sat, 11pm — Sep 26, 2026 — success\n$/);
 		assert.match(body, /^Talked on the porch\./);
 	});
 
@@ -737,10 +760,10 @@ describe('visit log', () => {
 		assert.equal(frontmatter['Last Spoke'], '2026-09-01T10:00:00');
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('', 'miss', now);
-		assert.equal(body.includes('## Sat, Sep 26, 2026, 11:12pm'), false);
-		assert.match(body, /^## Attempt Log\n- Sat, Sep 26, 2026, 11:12pm — not home\n$/);
+		assert.equal(body.includes('## Sat, 11pm — Sep 26, 2026'), false);
+		assert.match(body, /^## Attempt Log\n- Sat, 11pm — Sep 26, 2026 — not home\n$/);
 		const again = applyVisitBody(body, 'miss', now);
-		assert.equal(again.split('- Sat, Sep 26, 2026, 11:12pm — not home').length, 3);
+		assert.equal(again.split('- Sat, 11pm — Sep 26, 2026 — not home').length, 3);
 	});
 });
 

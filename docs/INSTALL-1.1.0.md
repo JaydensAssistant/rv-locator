@@ -1,6 +1,6 @@
 # RV Locator 1.1.0 — install (fake vault / throwaway key only until Sentinel clears)
 
-> **1.1.1:** Street-token auto-pick was removed. A hit is saved without the picker only when Geoapify `rank.confidence` is 1.00 and it is the only result in a configured home-base county. `Location` is a YAML list of quoted strings. See `CHANGELOG.md`.
+> **1.1.1:** Street-token auto-pick was removed. A hit is saved without the picker only when Geoapify `rank.confidence` is 1.00 and it is the only result in a configured home-base county. `Location` is a YAML list of quoted strings. New RV template: `extras/templater-metabind/NEW-RV-GEOCODE.md`. See `CHANGELOG.md`.
 
 ## SHA-256
 - `manifest.json`: `f5bc8c683ae053f634f01d02da9f55722818180aa3292b088f8c6e04dba2af53`

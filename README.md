@@ -24,13 +24,13 @@ Prefer desktop install + vault sync. Details: `docs/SETUP-iOS-1.1.0.md`.
 
 ## New RV note (Templater)
 
-`extras/templater-metabind/geocodeNewRv.js` prompts for Address when it is missing, then runs command `rv-locator:geocode-current-note`. Meta Bind is not required. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
+Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, writes a Glancable `## Wed, 2pm — Sep 9, 2026` heading plus the first Attempt Log success bullet, then runs `rv-locator:geocode-current-note`. The dashboard is a vertical Meta Bind stack (`cssclass: rv-dashboard`) so a phone does not scroll sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
 
 ## Verify
 
 ```bash
 shasum -a 256 main.js
-# bcb03e33eda9517050eb08568b8d7d164c287530942abc16a8a6d7a87c4fafb8
+# bf8c26e60f39c11291f2238879ab19e3257bc906db9fde963aaae5f033b828ed
 ```
 
 ## Attribution

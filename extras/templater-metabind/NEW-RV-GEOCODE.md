@@ -1,37 +1,33 @@
-# New RV note — prompt for Address, then geocode
+# New RV template — name, address, geocode
 
-Templater only. **Meta Bind and the JS Engine are not required.**
+Drop-in replacement for Jayden’s New RV template. **Templater** is required. **Meta Bind** is required only for the dashboard inputs (Hub, Address, Priority, Met, Met With, Last Spoke, Taken, Visits). The JS Engine is not required.
 
-The script may write `Address` when that property is still empty. After that, **RV Locator never writes Address**. It fills `Location` (two quoted strings), `City`, and `Map Link`.
+RV Locator never writes `Address`. The template writes Address from the prompt. Geocode then fills `Location` (two quoted strings), `City`, and `Map Link`.
 
 ## Setup
 
-1. Copy `geocodeNewRv.js` into your Templater **User Scripts** folder (Templater settings → User Script Functions).
-2. Reload Templater (or restart Obsidian) so `tp.user.geocodeNewRv` appears.
-3. Enable **RV Locator** and set the Geoapify key. The command id is `rv-locator:geocode-current-note` (**Geocode current note**).
-4. Put this in the New RV template (after any frontmatter you want on every new note):
+1. Copy `newRv.js` into the Templater **User Scripts** folder.
+2. Copy `New RV.md` into the Templates folder. Point Templater’s “New RV” (or folder template) at that file.
+3. Reload Templater so `tp.user.newRv` exists.
+4. Enable **RV Locator** and set the Geoapify key. The command id is `rv-locator:geocode-current-note`.
+5. Optional phone CSS: the template sets cssclass `rv-dashboard`. Those rules are in the plugin `styles.css`. If the plugin is disabled, enable `extras/templater-metabind/rv-dashboard.css` as a vault snippet.
 
-```markdown
-<%* await tp.user.geocodeNewRv(tp) %>
-```
+## What the note does
 
-If RV Locator’s Address property is not named `Address`, pass the same name:
+1. Prompts **Householder name**, then **Address** (`tp.system.prompt`). Cancel leaves that field empty.
+2. Renames the note to `{Name} on {Street}` when both are present. Examples: `Alex on Maple`, `Riley on Cypress`. The street is the first address line with the house number, a leading directional (`N`, `SW`), a trailing suffix (`St`, `Lane`), and an apartment tail removed. `10 Oak Hammock Lane` becomes `Oak Hammock`.
+3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
+4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`.
+5. Replaces the old `## YYYY-MM-DD` line with a Glancable drive date: `## Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A date-only value omits the hour.
+6. Adds `## Attempt Log` and the first bullet `- {stamp} — success`, the same stamp the priority-tap Home logger uses.
+7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible.
 
-```markdown
-<%* await tp.user.geocodeNewRv(tp, "Street Address") %>
-```
+`Visits` stays `0`, matching the previous template. The success bullet records the Met moment; it does not increment Visits.
 
-## What it does
+## Dashboard
 
-1. Reads Address on the note being created.
-2. If Address is missing, asks with `tp.system.prompt("Address")`. Cancel leaves Address alone.
-3. Waits until Templater has finished writing the note (`tp.hooks.on_all_templates_executed`), then writes Address **only if it is still empty**.
-4. Focuses that note and runs `rv-locator:geocode-current-note`.
+Fields are stacked inside the info callout. There is no 4-column pipe table, which is what forced horizontal scroll on a phone. `rv-dashboard` clips the callout to the note width so Meta Bind inputs cannot widen the page. At about 390px the dashboard is a vertical list: Hub, Address, Priority, Met, Met With, Last Spoke, Taken, Visits.
 
-Geocode current note reads the file from disk, so an Address Templater just saved is visible even when Obsidian’s metadata cache has not caught up.
+## Address-only helper
 
-Leave Address out of the template frontmatter if you want the prompt to be the source of the address. If the template already has a non-empty Address, the script does not ask and does not replace it.
-
-## Without the script
-
-Set Address yourself (template or by hand), open the note, and run **RV Locator: Geocode current note**. That command does not prompt and does not write Address.
+`geocodeNewRv.js` still only prompts for Address (if empty) and runs the same command. Use `New RV.md` for a new return visit. Use **Geocode current note** on a note that already has an Address.

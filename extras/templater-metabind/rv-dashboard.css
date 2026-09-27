@@ -1,0 +1,28 @@
+/*
+  Phone-safe RV Dashboard. Same rules as the plugin styles.css.
+  The New RV template adds cssclass `rv-dashboard`.
+  Optional: copy this file to `.obsidian/snippets/` and enable it if the plugin is off.
+  With RV Locator enabled, the plugin stylesheet already includes these rules.
+*/
+
+.rv-dashboard.markdown-preview-view,
+.rv-dashboard.markdown-reading-view,
+.rv-dashboard.markdown-source-view,
+.markdown-preview-view.rv-dashboard,
+.markdown-reading-view.rv-dashboard,
+.markdown-source-view.rv-dashboard {
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
+.rv-dashboard .callout-content {
+	max-width: 100%;
+	overflow-x: hidden;
+	overflow-wrap: anywhere;
+}
+
+.rv-dashboard .callout-content :is(p, div, span, input, select, textarea, button) {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
