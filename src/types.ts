@@ -29,7 +29,7 @@ export interface RVLocatorSettings {
 	testLongitude: number;
 	/** County names. Empty means geocode always opens the confirm picker. */
 	homeCounties: string[];
-	/** When true, a companion whose basename matches a note is stored as a wikilink. */
+	/** When true, a companion appended to Taken is stored as a wikilink when a note basename matches. */
 	linkCompanionsToNotes: boolean;
 	/** Priority written on a new RV note. Integer 0–5. */
 	defaultNewRvPriority: number;
@@ -41,6 +41,8 @@ export interface RVLocatorSettings {
 	missLogTemplateFile: string;
 	/** The first-run setup wizard has been closed. Settings can open it again. */
 	setupWizardCompleted: boolean;
+	/** User chose Don't remind me on the unfinished-setup notice. Does not mark setup complete. */
+	setupIncompleteNudgeDismissed: boolean;
 }
 
 export const DEFAULT_NEW_RV_PRIORITY = 3;
@@ -68,6 +70,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	homeLogTemplateFile: DEFAULT_HOME_LOG_TEMPLATE_FILE,
 	missLogTemplateFile: DEFAULT_MISS_LOG_TEMPLATE_FILE,
 	setupWizardCompleted: false,
+	setupIncompleteNudgeDismissed: false,
 };
 
 export interface NearbySortPreference {
@@ -153,6 +156,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		homeLogTemplateFile: safeTemplateFileName(input.homeLogTemplateFile, DEFAULT_HOME_LOG_TEMPLATE_FILE),
 		missLogTemplateFile: safeTemplateFileName(input.missLogTemplateFile, DEFAULT_MISS_LOG_TEMPLATE_FILE),
 		setupWizardCompleted: input.setupWizardCompleted === true,
+		setupIncompleteNudgeDismissed: input.setupIncompleteNudgeDismissed === true,
 	};
 }
 

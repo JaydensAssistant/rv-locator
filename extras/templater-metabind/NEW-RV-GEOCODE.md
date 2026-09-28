@@ -33,14 +33,14 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 
 7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills `Location` and sets `Map Link` to a Google Maps search of the stored Address: `https://www.google.com/maps/search/?api=1&query=<urlencoded Address>`. If that Address has no city (no comma-separated locality, and the City text is not already in the line), the link query appends `, ` plus the note’s `City`. Address itself is not rewritten. A full address such as `142 Maple Street, Orlando, FL` is searched as stored. It does not rewrite the 🗺️ link already in the body. On a new note that icon was built from the typed address before City exists, so it stays address-only until you edit the note.
 
-`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) still increments both and appends another success bullet. It adds a new `###` stamp only when that exact Glancable stamp is not already a `##` or `###` heading, so Home right after create does not repeat the create stamp. A later hour still gets its own `###` heading. The plugin priority tap uses the same rule.
+`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) increments both, appends another success bullet, and inserts another `###` stamp above Attempt Log, including a second Home in the same rounded hour. Not home increments Visits and Last Attempted and appends a not-home bullet, including a second Not home immediately after the first. The plugin priority tap uses the same rule.
 
 ## Quote strip
 
 The first two body lines are markdown quotes, with no blank line between them. There is no `Map Link:` label and no Meta Bind view of the URL (a link view shows the raw URL text). The map icon is a normal markdown link. Templater fills it at create from the address just typed:
 
 ```markdown
-> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 > **Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
 ```
 

@@ -4,10 +4,12 @@ import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
-import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
+import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
-import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
+import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
+import { requiredSetupGaps, setupChecklist, shouldShowSetupNudge, type SetupSnapshot } from '../src/setup-check';
+import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
@@ -16,7 +18,7 @@ import { getCached, rememberResults, trimCache } from '../src/cache';
 import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
 import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatGlancableStampFromRaw, formatGlancableVisitStamp, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
-import { decideGeocodePick, isFullConfidence } from '../src/home-base';
+import { decideGeocodePick, isFullConfidence, parseHomeCountyLines } from '../src/home-base';
 import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
@@ -675,6 +677,8 @@ describe('settings', () => {
 		assert.deepEqual(merged.homeCounties, []);
 		const homes = mergeSettings({ homeCounties: ['Orange', 'orange county', 'Lake'] });
 		assert.deepEqual(homes.homeCounties, ['Orange', 'Lake']);
+		assert.deepEqual(parseHomeCountyLines('Orange\n\n Lake \n'), ['Orange', 'Lake']);
+		assert.deepEqual(mergeSettings({ homeCounties: parseHomeCountyLines('Orange County\norange\nLake') }).homeCounties, ['Orange County', 'Lake']);
 		assert.equal(merged.locationProperty, 'Location');
 		assert.equal(merged.mapLinkProperty, 'Map Link');
 		assert.equal(merged.cityProperty, '');
@@ -684,6 +688,7 @@ describe('settings', () => {
 		assert.equal(merged.homeLogTemplateFile, '99 RV Log Home.md');
 		assert.equal(merged.missLogTemplateFile, '99 RV Log Miss.md');
 		assert.equal(merged.setupWizardCompleted, false);
+		assert.equal(merged.setupIncompleteNudgeDismissed, false);
 		const tuned = mergeSettings({
 			linkCompanionsToNotes: true,
 			defaultNewRvPriority: 0,
@@ -691,6 +696,7 @@ describe('settings', () => {
 			homeLogTemplateFile: 'Home.md',
 			missLogTemplateFile: 'Miss.md',
 			setupWizardCompleted: true,
+			setupIncompleteNudgeDismissed: true,
 		});
 		assert.equal(tuned.linkCompanionsToNotes, true);
 		assert.equal(tuned.defaultNewRvPriority, 0);
@@ -698,6 +704,10 @@ describe('settings', () => {
 		assert.equal(tuned.homeLogTemplateFile, 'Home.md');
 		assert.equal(tuned.missLogTemplateFile, 'Miss.md');
 		assert.equal(tuned.setupWizardCompleted, true);
+		assert.equal(tuned.setupIncompleteNudgeDismissed, true);
+		const ignored = mergeSettings({ setupIncompleteNudgeDismissed: true, setupWizardCompleted: false });
+		assert.equal(ignored.setupIncompleteNudgeDismissed, true);
+		assert.equal(ignored.setupWizardCompleted, false);
 		const rejected = mergeSettings({
 			linkCompanionsToNotes: false,
 			defaultNewRvPriority: 9,
@@ -860,10 +870,15 @@ describe('visit log', () => {
 		assert.equal(formatVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
 		assert.equal(formatVisitStamp(now), formatGlancableVisitStamp(now));
 		assert.equal(formatFrontmatterDateTime(now), '2026-09-26T23:12:04');
-		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', Visits: 2, 'Successful Visits': 1 };
+		const frontmatter: Record<string, unknown> = {
+			Address: '142 Maple Street',
+			Visits: 2,
+			'Successful Visits': 1,
+			'Met With': 'Door',
+		};
 		applyVisitFrontmatter(frontmatter, 'home', now, 'Sam');
 		assert.equal(frontmatter.Address, '142 Maple Street');
-		assert.equal(frontmatter['Met With'], 'Sam');
+		assert.equal(frontmatter['Met With'], 'Door');
 		assert.deepEqual(frontmatter.Taken, ['Sam']);
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 2);
@@ -949,7 +964,7 @@ describe('visit log', () => {
 		assert.ok(more.indexOf('### Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
 	});
 
-	it('skips a home stamp that already exists as ## or ###', () => {
+	it('writes another home stamp in the same rounded hour, and a miss still logs', () => {
 		const existing = [
 			'### Sat, 11pm — Sep 26, 2026',
 			'',
@@ -958,14 +973,20 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const next = applyVisitBody(existing, 'home', now);
-		assert.equal(next.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(next.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
 		assert.equal(next.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
 
 		const legacy = existing.replace('### Sat', '## Sat');
 		const kept = applyVisitBody(legacy, 'home', now);
 		assert.equal(kept.includes('## Sat, 11pm — Sep 26, 2026'), true);
-		assert.equal(kept.includes('### Sat, 11pm — Sep 26, 2026'), false);
-		assert.equal(kept.split('\n').filter((line) => line.trim() === '## Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(kept.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(kept.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
+
+		const missed = applyVisitBody(next, 'miss', now);
+		assert.equal(missed.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
+		assert.equal(missed.includes('> - Sat, 11pm — Sep 26, 2026 — not home'), true);
+		const missedAgain = applyVisitBody(missed, 'miss', now);
+		assert.equal(missedAgain.split('\n').filter((line) => line.endsWith('— not home')).length, 2);
 	});
 
 	it('migrates a legacy ## Attempt Log heading into a collapsed callout', () => {
@@ -1077,18 +1098,18 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.1');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.2');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'unstable'));
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'main'));
-		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js'));
-		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js'));
 		assert.throws(() => assertExtrasDownloadUrl('https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/Scripts/newRv.js'));
 		assert.throws(() => extrasRedirectUrl(
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js',
-			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js',
+			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js',
 		));
 		const configDir = '.obsidian';
 		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir), true);
@@ -1120,7 +1141,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1141,9 +1162,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.1');
+		assert.equal(plan.ref, 'v1.2.2');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.1/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.2/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1221,6 +1242,228 @@ describe('extras sync', () => {
 	});
 });
 
+describe('template file rename', () => {
+	const home = [
+		'    id: rv-log-home',
+		'    templateFile: Templates/99 RV Log Home.md',
+		'    id: rv-log-miss',
+		'    templateFile: Templates/99 RV Log Miss.md',
+		'See Templates/99 RV Log Home.md in the docs.',
+		'    templateFile: Templates/99 RV Log Home.md.bak',
+		'    templateFile: "Templates/99 RV Log Home.md"',
+	].join('\n');
+
+	it('renames a template inside the Templater folder and rewrites Home templateFile paths', async () => {
+		const store = memoryTemplates({
+			'Templates/99 RV Log Home.md': 'home button',
+			'Templates/99 New RV.md': home,
+			'RVs/Ada.md': `${home.replace(/\n/g, '\r\n')}\r\nAddress: 1 Main\r\n`,
+			'Notes/99 RV Log Home.md': 'not the template',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 RV Log Home.md',
+			typed: '03 RV Log Home.md',
+			fallbackName: '99 RV Log Home.md',
+			rewriteReferences: true,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '03 RV Log Home.md');
+		assert.equal(result.notice?.includes('Renamed Templates/99 RV Log Home.md to Templates/03 RV Log Home.md.'), true);
+		assert.equal(result.notice?.includes('Updated 2 notes'), true);
+		assert.equal(store.notes['Templates/99 RV Log Home.md'], undefined);
+		assert.equal(store.notes['Templates/03 RV Log Home.md'], 'home button');
+		assert.equal(store.notes['Notes/99 RV Log Home.md'], 'not the template');
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/03 RV Log Home.md'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/99 RV Log Miss.md'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('See Templates/99 RV Log Home.md in the docs.'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/99 RV Log Home.md.bak'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: "Templates/03 RV Log Home.md"'), true);
+		assert.equal(store.notes['RVs/Ada.md']?.includes('templateFile: Templates/03 RV Log Home.md\r\n'), true);
+		assert.equal(store.renames.length, 1);
+	});
+
+	it('refuses to clobber an existing destination and keeps the old name', async () => {
+		const store = memoryTemplates({
+			'Templates/99 RV Log Miss.md': 'miss',
+			'Templates/03 RV Log Miss.md': 'already here',
+			'RVs/Ada.md': 'templateFile: Templates/99 RV Log Miss.md\n',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 RV Log Miss.md',
+			typed: '03 RV Log Miss.md',
+			fallbackName: '99 RV Log Miss.md',
+			rewriteReferences: true,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '99 RV Log Miss.md');
+		assert.equal(result.revertField, true);
+		assert.equal(result.notice, 'Did not rename. Templates/03 RV Log Miss.md already exists.');
+		assert.equal(store.notes['Templates/99 RV Log Miss.md'], 'miss');
+		assert.equal(store.notes['Templates/03 RV Log Miss.md'], 'already here');
+		assert.equal(store.notes['RVs/Ada.md'], 'templateFile: Templates/99 RV Log Miss.md\n');
+		assert.equal(store.renames.length, 0);
+	});
+
+	it('keeps the setting when the files are already aligned or both missing', async () => {
+		const aligned = memoryTemplates({ 'Ministry/Templates/03 New RV.md': 'body' });
+		const kept = await applyTemplateSettingChange(aligned.vault, {
+			templatesFolder: 'Ministry/Templates',
+			previous: '99 New RV.md',
+			typed: '03 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(kept.name, '03 New RV.md');
+		assert.equal(kept.notice, null);
+		assert.equal(aligned.renames.length, 0);
+		assert.equal(aligned.notes['Ministry/Templates/03 New RV.md'], 'body');
+		const absent = memoryTemplates({});
+		const saved = await applyTemplateSettingChange(absent.vault, {
+			templatesFolder: '',
+			previous: '99 New RV.md',
+			typed: '03 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(saved.name, '03 New RV.md');
+		assert.equal(saved.notice, null);
+		assert.equal(absent.renames.length, 0);
+		assert.equal(planTemplateRename({
+			templatesFolder: 'Templates',
+			oldName: '99 New RV.md',
+			newName: '03 New RV.md',
+			oldState: 'missing',
+			newState: 'missing',
+		}).action, 'save-only');
+	});
+
+	it('does not rename while the name is unchanged, unfinished, or unsafe', async () => {
+		const store = memoryTemplates({ 'Templates/99 New RV.md': 'body' });
+		const same = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '99 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(same.name, '99 New RV.md');
+		assert.equal(same.notice, null);
+		assert.equal(store.lookups.length, 0);
+		const partial = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '03 New',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(partial.name, '99 New RV.md');
+		assert.equal(partial.revertField, false);
+		assert.equal(store.lookups.length, 0);
+		const blurred = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '../secret.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(blurred.name, '99 New RV.md');
+		assert.equal(blurred.revertField, true);
+		assert.equal(store.notes['Templates/99 New RV.md'], 'body');
+		assert.equal(store.renames.length, 0);
+		const outside = planTemplateRename({
+			templatesFolder: '../nope',
+			oldName: '99 New RV.md',
+			newName: '03 New RV.md',
+			oldState: 'file',
+			newState: 'missing',
+		});
+		assert.equal(outside.action, 'rename');
+		if (outside.action === 'rename') assert.equal(outside.from, 'Templates/99 New RV.md');
+	});
+
+	it('renames the New RV template without rewriting Home or Not home buttons', async () => {
+		const store = memoryTemplates({
+			'+/Templates/99 New RV.md': home,
+			'RVs/Ada.md': 'templateFile: +/Templates/99 New RV.md\n',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: '+/Templates',
+			previous: '99 New RV.md',
+			typed: '  03 New RV.md  ',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '03 New RV.md');
+		assert.equal(store.notes['+/Templates/03 New RV.md']?.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(store.notes['RVs/Ada.md'], 'templateFile: +/Templates/99 New RV.md\n');
+		assert.equal(store.notes['+/Templates/99 New RV.md'], undefined);
+	});
+
+	it('leaves a folder at the new path untouched', () => {
+		const blocked = planTemplateRename({
+			templatesFolder: 'Templates',
+			oldName: '99 RV Log Home.md',
+			newName: 'Taken.md',
+			oldState: 'file',
+			newState: 'other',
+		});
+		assert.equal(blocked.action, 'refuse');
+		if (blocked.action === 'refuse') assert.equal(blocked.reason, 'destination-exists');
+		const quoted = rewriteTemplateFilePaths(
+			"templateFile: 'Templates/99 RV Log Miss.md'\n",
+			'Templates/99 RV Log Miss.md',
+			'Templates/Miss.md',
+		);
+		assert.equal(quoted, "templateFile: 'Templates/Miss.md'\n");
+	});
+});
+
+function memoryTemplates(files: Record<string, string>): {
+	vault: TemplateRenameVault;
+	notes: Record<string, string>;
+	renames: [string, string][];
+	lookups: string[];
+} {
+	const notes = { ...files };
+	const renames: [string, string][] = [];
+	const lookups: string[] = [];
+	const vault: TemplateRenameVault = {
+		fileState(path) {
+			lookups.push(path);
+			return path in notes ? 'file' : 'missing';
+		},
+		async renameFile(from, to) {
+			if (to in notes) throw new Error('destination-exists');
+			const body = notes[from];
+			if (body === undefined) throw new Error('missing');
+			notes[to] = body;
+			delete notes[from];
+			renames.push([from, to]);
+		},
+		markdownFiles() {
+			return Object.keys(notes).filter((path) => path.endsWith('.md')).map((path) => ({ path }));
+		},
+		async read(path) {
+			const body = notes[path];
+			if (body === undefined) throw new Error('missing');
+			return body;
+		},
+		async modify(path, contents) {
+			if (!(path in notes)) throw new Error('missing');
+			notes[path] = contents;
+		},
+	};
+	return { vault, notes, renames, lookups };
+}
+
 describe('companions', () => {
 	it('orders recent names from the newest note, Met With before Taken', () => {
 		const names = recentCompanionNames([
@@ -1246,8 +1489,61 @@ describe('companions', () => {
 		assert.equal(formatStoredCompanion('Pat', true, notes), '[[Pat]]');
 		assert.equal(formatStoredCompanion('Sam', true, notes), '[[People/Sam]]');
 		assert.equal(formatStoredCompanion('Ada', true, notes), 'Ada');
+		assert.equal(formatStoredCompanion('[[Pat]]', false, notes), 'Pat');
+		assert.equal(formatStoredCompanion('[[Nobody]]', true, notes), 'Nobody');
+		const aliased = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith', aliases: ['Patty'] }];
+		assert.equal(formatStoredCompanion('Patty', true, aliased), '[[Pat Smith]]');
+		assert.equal(formatStoredCompanion('Patty', false, aliased), 'Patty');
+		const named = [
+			{ path: 'People/Patty.md', basename: 'Patty' },
+			{ path: 'People/Pat Smith.md', basename: 'Pat Smith', aliases: ['Patty'] },
+		];
+		assert.equal(formatStoredCompanion('Patty', true, named), '[[Patty]]');
+		assert.equal(formatStoredCompanion('Pat', true, notes, () => '[[People/Pat|Pat]]'), '[[People/Pat|Pat]]');
+		assert.deepEqual(appendCompanionTaken([['Ada']], 'Pat'), ['[[Ada]]', 'Pat']);
 		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
-		assert.equal(companionFrontmatterBlock('Pat'), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock('Pat'), 'Met With:\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock('[[Pat]]'), 'Met With:\nTaken:\n  - "[[Pat]]"');
+	});
+
+	it('quotes Taken and Met With wikilinks that Obsidian flattened', () => {
+		const source = [
+			'---',
+			'Address: "142 Maple Street"',
+			'Met With: [[Door Person]]',
+			'Taken:',
+			'  - "Ada"',
+			'  - [[Pat Smith]]',
+			'  - - Sam',
+			'Hub:',
+			'  - [[Return Visits Hub]]',
+			'---',
+			'',
+			'Body stays.',
+			'',
+		].join('\n');
+		const quoted = stabilizeCompanionFrontmatter(source);
+		assert.equal(quoted.includes('Met With: "[[Door Person]]"'), true);
+		assert.equal(quoted.includes('  - "Ada"'), true);
+		assert.equal(quoted.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(quoted.includes('  - "[[Sam]]"'), true);
+		assert.equal(quoted.includes('  - [[Pat Smith]]'), false);
+		assert.equal(quoted.includes('  - - Sam'), false);
+		assert.equal(quoted.includes('  - [[Return Visits Hub]]'), true);
+		assert.equal(quoted.includes('Address: "142 Maple Street"'), true);
+		assert.equal(quoted.includes('Body stays.'), true);
+		assert.equal(stabilizeCompanionFrontmatter(quoted), quoted);
+		const nested = [
+			'---',
+			'Taken:',
+			'  -',
+			'    - Pat Smith',
+			'---',
+			'',
+		].join('\n');
+		const lifted = stabilizeCompanionFrontmatter(nested);
+		assert.equal(lifted.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(lifted.includes('    - Pat Smith'), false);
 	});
 
 	it('caps the suggester and keeps a skipped companion off the note', () => {
@@ -1265,11 +1561,11 @@ describe('companions', () => {
 		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada']);
 		applyVisitFrontmatter(frontmatter, 'home', now, '[[Pat]]');
-		assert.equal(frontmatter['Met With'], '[[Pat]]');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
 		applyVisitFrontmatter(frontmatter, 'home', now, 'Pat');
 		assert.equal(frontmatter.Address, '142 Maple Street');
-		assert.equal(frontmatter['Met With'], 'Pat');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
 	});
 
@@ -1360,7 +1656,7 @@ describe('companion prompt', () => {
 		assert.deepEqual(escaped, [null]);
 	});
 
-	it('writes Met With and Taken for a chosen companion and leaves them on skip or a miss', async () => {
+	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {
 		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith' }];
 		const now = new Date(2026, 8, 27, 12, 4, 0);
 		const stored = await storedFromPrompt(['close', { choose: 'TestCompanion' }], false, notes);
@@ -1368,17 +1664,18 @@ describe('companion prompt', () => {
 			Address: '200 S Orange Ave, Orlando, FL',
 			Visits: 1,
 			'Successful Visits': 1,
+			'Met With': 'Ada',
 			Taken: ['Ada'],
 		};
 		applyVisitFrontmatter(frontmatter, 'home', now, stored);
 		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Visits, 2);
 		assert.equal(frontmatter['Successful Visits'], 2);
 
 		applyVisitFrontmatter(frontmatter, 'home', now, stored);
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Visits, 3);
 
@@ -1389,14 +1686,14 @@ describe('companion prompt', () => {
 		const skipped = await storedFromPrompt(['close'], false, notes);
 		assert.equal(skipped, '');
 		applyVisitFrontmatter(frontmatter, 'home', now, skipped);
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
 		assert.equal(frontmatter.Visits, 4);
 		assert.equal(frontmatter['Successful Visits'], 4);
 
 		applyVisitFrontmatter(frontmatter, 'miss', now, 'Pat Smith');
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
 		assert.equal(frontmatter.Visits, 5);
@@ -1404,7 +1701,13 @@ describe('companion prompt', () => {
 	});
 });
 
-type Clickable = { children: Clickable[]; text: string; click: () => void };
+type Clickable = {
+	children: Clickable[];
+	text: string;
+	tag?: string;
+	click: () => void;
+	emit: (type: string, value?: string) => void;
+};
 
 function clickLabeled(root: Clickable, text: string): void {
 	const stack = [root];
@@ -1456,7 +1759,12 @@ describe('setup wizard', () => {
 		assert.equal(missing.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
 		assert.equal(missing.find((check) => check.id === 'extras')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'suggested')?.ok, true);
-		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('linkCompanionsToNotes is off'), true);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('Link companions to notes is off'), true);
+		assert.equal(missing.find((check) => check.id === 'home-counties')?.ok, true);
+		assert.equal(missing.find((check) => check.id === 'home-counties')?.detail.includes('asks you to confirm'), true);
+		const named = setupChecklist(sampleSetup({ homeCounties: ['Orange', 'Lake'] }));
+		assert.equal(named.find((check) => check.id === 'home-counties')?.title, 'Home counties: Orange, Lake');
+		assert.equal(named.find((check) => check.id === 'home-counties')?.ok, true);
 		const ready = setupChecklist(sampleSetup({
 			templaterEnabled: true,
 			metaBindEnabled: true,
@@ -1469,7 +1777,143 @@ describe('setup wizard', () => {
 		}));
 		assert.equal(ready.every((check) => check.ok), true);
 	});
+
+	it('asks for home counties, saves the settings list, and skip leaves it unchanged', async () => {
+		assert.equal(shouldAutoOpenSetupWizard(false, false), true);
+		assert.equal(shouldAutoOpenSetupWizard(true, false), false);
+		assert.equal(shouldAutoOpenSetupWizard(false, true), false);
+
+		let counties = ['Orange'];
+		const saved: string[][] = [];
+		const opened = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: counties }), wizardActions({
+			onSaveHomeCounties: async (next) => {
+				saved.push(next);
+				counties = mergeSettings({ homeCounties: next }).homeCounties;
+			},
+		}));
+		opened.open();
+		await waitTurn();
+		const firstCopy = collectText(opened.contentEl as unknown as Clickable);
+		assert.equal(firstCopy.includes('where you normally work return visits'), true);
+		assert.equal(firstCopy.includes('wrong-city pick'), true);
+		assert.equal(firstCopy.includes('asks you to confirm'), true);
+		const area = findTagged(opened.contentEl as unknown as Clickable, 'textarea');
+		assert.equal(area.text, 'Orange');
+		area.emit('change', 'Orange County\norange\nLake');
+		clickLabeled(opened.contentEl as unknown as Clickable, 'Save and continue');
+		await waitTurn();
+		assert.deepEqual(saved, [['Orange County', 'orange', 'Lake']]);
+		assert.deepEqual(counties, ['Orange County', 'Lake']);
+		const afterSave = collectText(opened.contentEl as unknown as Clickable);
+		assert.equal(afterSave.includes('Home counties: Orange County, Lake'), true);
+		assert.equal(afterSave.includes('Step 2 of 2'), true);
+
+		let skippedSaved = 0;
+		const skipped = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: [] }), wizardActions({
+			onSaveHomeCounties: async () => { skippedSaved += 1; },
+		}));
+		skipped.open();
+		await waitTurn();
+		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		assert.equal(skippedSaved, 0);
+		const afterSkip = collectText(skipped.contentEl as unknown as Clickable);
+		assert.equal(afterSkip.includes('Home counties: none'), true);
+		assert.equal(afterSkip.includes('asks you to confirm'), true);
+	});
+
+	it('nags when the wizard was never finished or a required step is missing', () => {
+		const ready = sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Templates',
+			scriptsFolder: 'Scripts',
+			files: [{ path: 'Templates/99 New RV.md', exists: true }],
+			homeCounties: [],
+		});
+		assert.deepEqual(requiredSetupGaps(ready, 'key'), []);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: ready,
+		}), false);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: ready,
+		}), true);
+		assert.deepEqual(requiredSetupGaps(ready, '  '), ['geoapify']);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: '',
+			snapshot: ready,
+		}), true);
+
+		const missing = sampleSetup({
+			files: [{ path: 'Templates/99 New RV.md', exists: false }],
+			homeCounties: [],
+		});
+		const gaps = requiredSetupGaps(missing, '');
+		assert.equal(gaps.includes('home-counties'), false);
+		assert.equal(gaps.includes('suggested'), false);
+		assert.equal(gaps.includes('geoapify'), true);
+		assert.equal(gaps.includes('templater'), true);
+		assert.equal(gaps.includes('meta-bind'), true);
+		assert.equal(gaps.includes('templates-folder'), true);
+		assert.equal(gaps.includes('scripts-folder'), true);
+		assert.equal(gaps.includes('extras'), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: missing,
+		}), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: true,
+			geoapifyApiKey: '',
+			snapshot: missing,
+		}), false);
+	});
 });
+
+function wizardActions(partial: Partial<ConstructorParameters<typeof SetupWizardModal>[2]>): ConstructorParameters<typeof SetupWizardModal>[2] {
+	return {
+		onDismiss: () => {},
+		onPlaceExtras: () => {},
+		openCommunityPlugins: () => {},
+		openTemplaterSettings: () => {},
+		openMetaBindSettings: () => {},
+		onSaveHomeCounties: async () => {},
+		...partial,
+	};
+}
+
+function collectText(root: Clickable): string {
+	const parts: string[] = [];
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.text) parts.push(current.text);
+		stack.push(...current.children);
+	}
+	return parts.join('\n');
+}
+
+function findTagged(root: Clickable, tag: string): Clickable {
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.tag === tag) return current;
+		stack.push(...current.children);
+	}
+	throw new Error(`No ${tag}`);
+}
 
 function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
 	return {
@@ -1481,6 +1925,7 @@ function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
 		resolvedScriptsFolder: 'Scripts',
 		files: [],
 		defaultNewRvPriority: 3,
+		homeCounties: [],
 		linkCompanionsToNotes: false,
 		newRvTemplateFile: '99 New RV.md',
 		homeLogTemplateFile: '99 RV Log Home.md',

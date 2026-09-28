@@ -20,7 +20,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 1. **Backup** the vault (Obsidian Sync / Git / zip copy). First run should be reversible.
 2. **API key:** Settings store the Geoapify key in local `data.json` only. Prefer a **new restricted Geoapify key** (or the throwaway you planned to revoke) for the first hardware pass. Do not paste keys into chat. `chmod 600` on `data.json` if the OS makes that easy.
 3. **Address is never overwritten** by the plugin. Location / Map Link / City (and optional place fields you enable) may update. Still spot-check Address after the first few geocodes.
-4. Start with **Home base counties empty** so every geocode shows the confirm modal. Turn on counties only after a few confirms look right. As of **1.1.1**, auto-pick is confidence 1.00 plus a single in-home hit. Street-token matching was removed. `Location` is written as two quoted strings.
+4. Start with **Home counties empty** so every geocode shows the confirm modal. Turn on counties only after a few confirms look right. As of **1.1.1**, auto-pick is confidence 1.00 plus a single in-home hit. Street-token matching was removed. `Location` is written as two quoted strings.
 
 ## A. Install RV Locator
 
@@ -39,7 +39,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 6. Settings → RV Locator:
    - Paste Geoapify API key (local only).
    - Confirm property names match your notes (`Address`, `Location`, `City`, `Visits`, `Successful Visits`, `Last Spoke`, `Last Attempted`, etc.). Leave defaults if your sample base already matched.
-   - **Home base counties:** leave blank for first test.
+   - **Home counties:** leave blank for first test.
    - Distance unit as you prefer.
    - Attribution / privacy: addresses are sent to Geoapify (OSM + Powered by Geoapify).
 
@@ -97,7 +97,7 @@ Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-s
 
 After a few manual confirms look right:
 
-1. Settings → **Home base counties** — one county per line (e.g. `Orange` or `Orange County`; those are the same county).
+1. Settings → **Home counties** — one county per line (e.g. `Orange` or `Orange County`; those are the same county).
 2. Auto-pick (1.1.1) only when **all** of these are true:
    - Geoapify `rank.confidence` is **1.00** (a missing confidence never auto-picks)
    - the hit’s county is in the home list

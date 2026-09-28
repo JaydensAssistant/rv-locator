@@ -10,7 +10,7 @@
  *   const rv = await tp.user.newRv(tp)
  *
  * After the householder and Address, it asks who they brought. One person.
- * That name is written to Met With and appended to Taken. Cancel leaves both blank.
+ * That name is appended to Taken. Met With stays blank. Cancel leaves both blank.
  * Priority comes from RV Locator `defaultNewRvPriority` (0–5, default 3).
  *
  * Street short names and the visit stamp mirror src/note-name.ts and
@@ -370,13 +370,33 @@ function recentNamesFromVault() {
   return recentCompanionNames(notes);
 }
 
+function aliasNames(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter((item) => item.length > 0);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
 function companionNoteRefs() {
   return markdownFiles()
-    .map((file) => ({
-      path: typeof file.path === "string" ? file.path : "",
-      basename: typeof file.basename === "string" ? file.basename : "",
-    }))
+    .map((file) => {
+      const fm = fileFrontmatter(file);
+      return {
+        path: typeof file.path === "string" ? file.path : "",
+        basename: typeof file.basename === "string" ? file.basename : "",
+        aliases: aliasNames(fm && fm.aliases),
+      };
+    })
     .filter((file) => file.basename);
+}
+
+function matchingCompanionNotes(name, notes) {
+  const wanted = String(name || "").trim().toLowerCase();
+  if (!wanted) return [];
+  const byName = notes.filter((note) => note.basename.trim().toLowerCase() === wanted);
+  if (byName.length) return byName;
+  return notes.filter((note) => (note.aliases || []).some((alias) => String(alias).trim().toLowerCase() === wanted));
 }
 
 function formatStoredCompanion(name) {
@@ -385,13 +405,13 @@ function formatStoredCompanion(name) {
   const plugin = rvPlugin();
   const settings = plugin && plugin.settings;
   if (!settings || settings.linkCompanionsToNotes !== true) return plain;
-  const wanted = plain.toLowerCase();
-  const matches = companionNoteRefs().filter((note) => note.basename.trim().toLowerCase() === wanted);
-  if (matches.length === 0) return plain;
-  const exact = matches.filter((note) => note.basename === plain);
-  const pool = exact.length ? exact : matches;
-  if (pool.length === 1) return `[[${pool[0].basename}]]`;
-  const path = String(pool[0].path || "").replace(/\\/g, "/").replace(/\.md$/i, "");
+  const pool = matchingCompanionNotes(plain, companionNoteRefs());
+  if (!pool.length) return plain;
+  const exact = pool.filter((note) => note.basename === plain);
+  const chosen = (exact.length ? exact : pool)[0];
+  if (!chosen) return plain;
+  if (pool.length === 1) return `[[${chosen.basename}]]`;
+  const path = String(chosen.path || "").replace(/\\/g, "/").replace(/\.md$/i, "");
   return path ? `[[${path}]]` : plain;
 }
 
@@ -399,7 +419,7 @@ function companionFrontmatterBlock(stored) {
   const name = String(stored || "").trim();
   if (!name) return "Met With:\nTaken:";
   const quoted = `"${yamlQuoted(name)}"`;
-  return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;
+  return `Met With:\nTaken:\n  - ${quoted}`;
 }
 
 function newRvPriority() {

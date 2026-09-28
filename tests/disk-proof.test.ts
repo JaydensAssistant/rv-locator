@@ -118,12 +118,19 @@ function yamlQuote(value: string): string {
 	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function frontmatterBlock(key: string, value: unknown): string[] {
+function frontmatterBlock(key: string, value: unknown, flattenWikilinks = false): string[] {
 	if (Array.isArray(value)) {
-		return [key + ':', ...value.map((item) => `  - ${yamlQuote(String(item ?? ''))}`)];
+		return [key + ':', ...value.map((item) => renderFrontmatterItem(item, flattenWikilinks))];
 	}
 	const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
 	return [`${key}: ${rendered}`];
+}
+
+function renderFrontmatterItem(item: unknown, flattenWikilinks: boolean): string {
+	const text = String(item ?? '');
+	const link = /^\[\[([^\]]+)\]\]$/.exec(text);
+	if (flattenWikilinks && link) return `  - - ${link[1]}`;
+	return `  - ${yamlQuote(text)}`;
 }
 
 function replaceTopLevel(markdown: string, key: string, blockLines: string[]): string {
@@ -510,7 +517,9 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 1'), true);
 		assert.equal(createdText.includes('Successful Visits: 1'), true);
-		assert.equal(createdText.includes('> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n> **Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		assert.equal(createdText.includes('> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n> **Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		const hubsLine = createdText.split('\n').find((line) => line.startsWith('> **Hubs:**'));
+		assert.equal(hubsLine?.match(/\*\*Hubs:\*\*( *)`INPUT/)?.[1].length, 6);
 		assert.equal(createdText.includes('VIEW[{["Map Link"]}]'), false);
 		assert.equal(createdText.includes('VIEW[{Map Link}]'), false);
 		assert.equal(createdText.includes('Map Link:'), false);
@@ -635,6 +644,74 @@ describe('disk proof', () => {
 		assert.equal(missDisk.split('\n### Sat, 11pm — Sep 26, 2026\n').length, 2);
 	});
 
+	it('appends a home companion to Taken on disk and leaves Met With', () => {
+		const dir = join(ROOT, 'visit-companion');
+		resetDir(dir);
+		const now = new Date(2026, 8, 26, 23, 12, 4);
+		const address = '142 Maple Street, Orlando';
+		const before = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 1',
+			'Successful Visits: 1',
+			'Met With: "Door"',
+			'Taken:',
+			'  - "Ada"',
+			'---',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const file = join(dir, 'home.md');
+		writeFileSync(file, before);
+		const home = commitVisit(before, 'home', now, 'TestCompanion');
+		writeFileSync(file, home);
+		const disk = readFileSync(file, 'utf8');
+		console.log(`\n----- VISIT COMPANION ${file} -----\n${disk}`);
+		assert.equal(addressLine(disk), addressLine(before));
+		assert.equal(disk.includes('---###'), false);
+		assert.equal(disk.includes('\n### Sat, 11pm — Sep 26, 2026\n'), true);
+		assert.equal(disk.includes('Met With: "Door"'), true);
+		assert.equal(disk.includes('Met With: "TestCompanion"'), false);
+		assert.equal(disk.includes('  - "Ada"'), true);
+		assert.equal(disk.includes('  - "TestCompanion"'), true);
+		assert.equal(disk.split('  - "TestCompanion"').length, 2);
+		assert.equal(disk.includes('Visits: 2'), true);
+		assert.equal(disk.includes('Successful Visits: 2'), true);
+
+		const again = commitVisit(disk, 'home', now, 'TestCompanion');
+		writeFileSync(file, again);
+		const againDisk = readFileSync(file, 'utf8');
+		assert.equal(againDisk.includes('Met With: "Door"'), true);
+		assert.equal(againDisk.split('  - "TestCompanion"').length, 2);
+		assert.equal(againDisk.includes('Visits: 3'), true);
+		assert.equal(againDisk.includes('Successful Visits: 3'), true);
+		assert.equal(againDisk.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
+		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 3);
+
+		const skipped = commitVisit(againDisk, 'home', now, '  ');
+		writeFileSync(file, skipped);
+		const skipDisk = readFileSync(file, 'utf8');
+		assert.equal(skipDisk.includes('Met With: "Door"'), true);
+		assert.equal(skipDisk.split('  - "TestCompanion"').length, 2);
+		assert.equal(skipDisk.includes('Visits: 4'), true);
+
+		const missed = commitVisit(skipDisk, 'miss', now, 'Pat');
+		writeFileSync(file, missed);
+		const missDisk = readFileSync(file, 'utf8');
+		assert.equal(addressLine(missDisk), addressLine(before));
+		assert.equal(missDisk.includes('Met With: "Door"'), true);
+		assert.equal(missDisk.includes('Met With: "Pat"'), false);
+		assert.equal(missDisk.split('  - "TestCompanion"').length, 2);
+		assert.equal(missDisk.includes('  - "Pat"'), false);
+		assert.equal(missDisk.includes('— not home'), true);
+		assert.equal(missDisk.includes('Visits: 5'), true);
+		assert.equal(missDisk.includes('Successful Visits: 4'), true);
+		assert.equal(missDisk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
+		assert.equal(missDisk.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 3);
+	});
+
 	it('migrates a legacy Attempt Log heading on disk and does not invent Address', () => {
 		const dir = join(ROOT, 'visit-migrate');
 		resetDir(dir);
@@ -746,8 +823,19 @@ describe('disk proof', () => {
 		assert.equal(addressLine(secondHome), `Address: ${yamlQuote(address)}`);
 		assert.equal(secondHome.includes('Visits: 4'), true);
 		assert.equal(secondHome.includes('Successful Visits: 3'), true);
-		assert.deepEqual(secondHome.split('\n').filter((line) => /^#{2,3} /.test(line)), firstHeadings);
+		const secondHeadings = secondHome.split('\n').filter((line) => /^#{2,3} /.test(line));
+		assert.deepEqual(secondHeadings, [firstHeadings[0], firstHeadings[0]]);
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
+		assert.equal(notices.at(-1), 'Logged success');
+
+		await rvLog({ config: { target_file: { path: missFile } } }, 'miss');
+		const secondMiss = readFileSync(missFile, 'utf8');
+		assert.equal(addressLine(secondMiss), `Address: ${yamlQuote(address)}`);
+		assert.equal(secondMiss.includes('Visits: 4'), true);
+		assert.equal(secondMiss.includes('Successful Visits: 1'), true);
+		assert.equal(secondMiss.split('\n').filter((line) => line.includes('— not home')).length, 2);
+		assert.equal(secondMiss.includes('\n### '), false);
+		assert.equal(notices.at(-1), 'Logged not home');
 
 		const laterFile = join(dir, 'later.md');
 		writeFileSync(laterFile, [
@@ -786,6 +874,7 @@ describe('disk proof', () => {
 			`Address: ${yamlQuote(address)}`,
 			'Visits: 1',
 			'Successful Visits: 1',
+			'Met With: "Door"',
 			'Taken:',
 			'  - "Ada"',
 			'---',
@@ -823,9 +912,11 @@ describe('disk proof', () => {
 		const disk = readFileSync(homeFile, 'utf8');
 		console.log(`\n----- RVLOG COMPANION ${homeFile} -----\n${disk}`);
 		assert.equal(addressLine(disk), `Address: ${yamlQuote(address)}`);
-		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), true);
+		assert.equal(disk.includes('Met With: "Door"'), true);
+		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), false);
 		assert.equal(disk.includes('  - "Ada"'), true);
 		assert.equal(disk.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(disk.split('  - "[[Pat Smith]]"').length, 2);
 		assert.equal(disk.includes('Visits: 2'), true);
 
 		const missFile = join(dir, 'miss.md');
@@ -841,7 +932,9 @@ describe('disk proof', () => {
 		assert.equal(missAsked, 0);
 		const missDisk = readFileSync(missFile, 'utf8');
 		assert.equal(addressLine(missDisk), `Address: ${yamlQuote(address)}`);
-		assert.equal(missDisk.includes('Met With: "[[Pat Smith]]"'), true);
+		assert.equal(missDisk.includes('Met With: "Door"'), true);
+		assert.equal(missDisk.includes('Met With: "[[Pat Smith]]"'), false);
+		assert.equal(missDisk.includes('  - "Jane"'), false);
 		assert.equal(missDisk.includes('— not home'), true);
 		assert.equal(notices.at(-1), 'Logged not home');
 	});
@@ -866,7 +959,7 @@ describe('disk proof', () => {
 		});
 		assert.equal(prompts.length, 0);
 		assert.equal(rv.priority, 4);
-		assert.equal(rv.companionYaml, 'Met With: "[[Sam]]"\nTaken:\n  - "[[Sam]]"');
+		assert.equal(rv.companionYaml, 'Met With:\nTaken:\n  - "[[Sam]]"');
 		assert.equal(rv.title, 'Ada on Oak');
 
 		const skipped = await loadNewRv({
@@ -881,7 +974,7 @@ describe('disk proof', () => {
 		assert.equal(skipped.companionYaml, 'Met With:\nTaken:');
 	});
 
-	it('plugin promptCompanion writes Met With and Taken, skip leaves them, and a miss does not ask', async () => {
+	it('plugin promptCompanion appends Taken, leaves Met With, skip leaves both, and a miss does not ask', async () => {
 		const dir = join(ROOT, 'companion-plugin');
 		resetDir(dir);
 		const address = '200 S Orange Ave, Orlando, FL';
@@ -928,7 +1021,8 @@ describe('disk proof', () => {
 		const disk = readFileSync(homeFile, 'utf8');
 		console.log(`\n----- PLUGIN COMPANION ${homeFile} -----\n${disk}`);
 		assert.equal(addressLine(disk), addressLine(before));
-		assert.equal(disk.includes('Met With: "TestCompanion"'), true);
+		assert.equal(disk.includes('Met With: "Ada"'), true);
+		assert.equal(disk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(disk.includes('  - "Ada"'), true);
 		assert.equal(disk.includes('  - "TestCompanion"'), true);
 		assert.equal(disk.includes('Visits: 2'), true);
@@ -953,7 +1047,8 @@ describe('disk proof', () => {
 		await skipLog({ config: { target_file: { path: skipFile } } }, 'home');
 		const skipDisk = readFileSync(skipFile, 'utf8');
 		assert.equal(addressLine(skipDisk), addressLine(before));
-		assert.equal(skipDisk.includes('Met With: "TestCompanion"'), true);
+		assert.equal(skipDisk.includes('Met With: "Ada"'), true);
+		assert.equal(skipDisk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(skipDisk.includes('  - "TestCompanion"'), true);
 		assert.equal(skipDisk.split('  - "TestCompanion"').length, 2);
 		assert.equal(skipDisk.includes('Visits: 3'), true);
@@ -966,7 +1061,8 @@ describe('disk proof', () => {
 		assert.equal(prompts, beforeMiss);
 		const missDisk = readFileSync(missFile, 'utf8');
 		assert.equal(addressLine(missDisk), addressLine(before));
-		assert.equal(missDisk.includes('Met With: "TestCompanion"'), true);
+		assert.equal(missDisk.includes('Met With: "Ada"'), true);
+		assert.equal(missDisk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(missDisk.includes('— not home'), true);
 		assert.equal(notices.at(-1), 'Logged not home');
 
@@ -985,9 +1081,90 @@ describe('disk proof', () => {
 		await linkLog({ config: { target_file: { path: linkFile } } }, 'home');
 		const linkDisk = readFileSync(linkFile, 'utf8');
 		assert.equal(addressLine(linkDisk), addressLine(before));
-		assert.equal(linkDisk.includes('Met With: "[[Pat Smith]]"'), true);
+		assert.equal(linkDisk.includes('Met With: "Ada"'), true);
+		assert.equal(linkDisk.includes('Met With: "[[Pat Smith]]"'), false);
 		assert.equal(linkDisk.includes('  - "Ada"'), true);
 		assert.equal(linkDisk.includes('  - "[[Pat Smith]]"'), true);
+	});
+
+	it('keeps a Taken wikilink when frontmatter flattens [[Name]] into a nested list', async () => {
+		const dir = join(ROOT, 'companion-link');
+		resetDir(dir);
+		const address = '200 S Orange Ave, Orlando, FL';
+		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith', stat: { mtime: 1 } }];
+		const homeFile = join(dir, 'home.md');
+		const before = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Met With: "Ada"',
+			'Taken:',
+			'  - "Ada"',
+			'Hub:',
+			'  - [[Return Visits Hub]]',
+			'---',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		writeFileSync(homeFile, before);
+		const notices: string[] = [];
+		const linked = loadRvLog(notices, {
+			flattenWikilinks: true,
+			getMarkdownFiles: () => notes,
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true } } } },
+		});
+		await linked({
+			config: { target_file: { path: homeFile } },
+			system: {
+				suggester: async () => null,
+				prompt: async () => 'Pat Smith',
+			},
+		}, 'home');
+		const disk = readFileSync(homeFile, 'utf8');
+		assert.equal(addressLine(disk), addressLine(before));
+		assert.equal(disk.includes('Met With: "Ada"'), true);
+		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), false);
+		assert.equal(disk.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(disk.includes('  - - Pat Smith'), false);
+		assert.equal(disk.includes('  - [[Return Visits Hub]]'), true);
+
+		const plainFile = join(dir, 'plain.md');
+		writeFileSync(plainFile, before);
+		const plain = loadRvLog(notices, {
+			flattenWikilinks: true,
+			getMarkdownFiles: () => notes,
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: false } } } },
+		});
+		await plain({
+			config: { target_file: { path: plainFile } },
+			system: {
+				suggester: async () => null,
+				prompt: async () => 'Pat Smith',
+			},
+		}, 'home');
+		const plainDisk = readFileSync(plainFile, 'utf8');
+		assert.equal(plainDisk.includes('  - "Pat Smith"'), true);
+		assert.equal(plainDisk.includes('[[Pat Smith]]'), false);
+		assert.equal(plainDisk.includes('Met With: "Ada"'), true);
+
+		const missingFile = join(dir, 'missing.md');
+		writeFileSync(missingFile, before);
+		const missing = loadRvLog(notices, {
+			getMarkdownFiles: () => [],
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true } } } },
+		});
+		await missing({
+			config: { target_file: { path: missingFile } },
+			system: {
+				suggester: async () => null,
+				prompt: async () => 'No Such Person',
+			},
+		}, 'home');
+		const missingDisk = readFileSync(missingFile, 'utf8');
+		assert.equal(missingDisk.includes('  - "No Such Person"'), true);
+		assert.equal(missingDisk.includes('[[No Such Person]]'), false);
+		assert.equal(missingDisk.includes('Met With: "Ada"'), true);
 	});
 
 	it('newRv companion seed uses plugin.promptCompanion', async () => {
@@ -1026,7 +1203,7 @@ describe('disk proof', () => {
 		});
 		assert.equal(textPrompts, 2);
 		assert.equal(prompts.length, 0);
-		assert.equal(linked.companionYaml, 'Met With: "[[Sam]]"\nTaken:\n  - "[[Sam]]"');
+		assert.equal(linked.companionYaml, 'Met With:\nTaken:\n  - "[[Sam]]"');
 		assert.equal(linked.title, 'Ada on Oak');
 
 		const plainPrompts = ['Ada', '10 Oak Street'];
@@ -1044,7 +1221,7 @@ describe('disk proof', () => {
 			system: { prompt: async () => plainPrompts.shift() ?? '' },
 			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
 		});
-		assert.equal(plain.companionYaml, 'Met With: "TestCompanion"\nTaken:\n  - "TestCompanion"');
+		assert.equal(plain.companionYaml, 'Met With:\nTaken:\n  - "TestCompanion"');
 
 		const skipped = await loadNewRv({
 			...baseApp,
@@ -1064,11 +1241,11 @@ describe('disk proof', () => {
 	});
 });
 
-function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string {
+function commitVisit(markdown: string, outcome: VisitOutcome, now: Date, companion?: string | null): string {
 	const frontmatter = parseFrontmatter(markdown);
 	const before = { ...frontmatter };
 	const addressBefore = frontmatter.Address;
-	applyVisitFrontmatter(frontmatter, outcome, now);
+	applyVisitFrontmatter(frontmatter, outcome, now, companion);
 	assert.equal(frontmatter.Address, addressBefore);
 	let next = markdown;
 	const keys = new Set([...Object.keys(before), ...Object.keys(frontmatter)]);
@@ -1084,8 +1261,11 @@ function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string
 	const close = `${nl}---`;
 	const end = next.indexOf(close, start);
 	if (end < 0) throw new Error('frontmatter did not close');
-	const head = next.slice(0, end + close.length);
-	return head + applyVisitBody(bodyOf(next), outcome, now);
+	const fenceEnd = end + close.length;
+	const afterFence = next.slice(fenceEnd);
+	// Obsidian's contentStart includes the newline after the closing fence.
+	const separator = afterFence.startsWith(nl) ? nl : '';
+	return next.slice(0, fenceEnd) + separator + applyVisitBody(afterFence.slice(separator.length), outcome, now);
 }
 
 function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; companionYaml: string; title: string }> {
@@ -1104,6 +1284,7 @@ function loadRvLog(notices: string[], extra?: {
 	getMarkdownFiles?: () => unknown[];
 	getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
 	plugins?: unknown;
+	flattenWikilinks?: boolean;
 }): (tp: unknown, kind: string) => Promise<void> {
 	const source = readFileSync('extras/templater-metabind/rvLog.js', 'utf8');
 	const load = new Function('module', 'exports', 'app', 'Notice', `${source}\nreturn module.exports;`) as (
@@ -1142,7 +1323,7 @@ function loadRvLog(notices: string[], extra?: {
 				for (const key of keys) {
 					if (key.toLowerCase() === 'address') continue;
 					if (snapshot[key] === fm[key]) continue;
-					next = replaceTopLevel(next, key, frontmatterBlock(key, fm[key]));
+					next = replaceTopLevel(next, key, frontmatterBlock(key, fm[key], extra?.flattenWikilinks === true));
 				}
 				if (text.includes('\nAddress:')) assert.equal(addressLine(next), addressLine(text));
 				writeFileSync(file.path, next);

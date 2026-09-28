@@ -13,6 +13,8 @@ export interface CompanionMention {
 export interface CompanionNoteRef {
 	path: string;
 	basename: string;
+	/** Frontmatter aliases. A companion name may match one of these. */
+	aliases?: readonly string[];
 }
 
 export interface CompanionSuggestion {
@@ -57,12 +59,31 @@ export function companionKey(value: string): string {
 	return companionDisplayName(value).trim().toLowerCase();
 }
 
-export function takenItems(value: unknown): string[] {
+export function aliasNames(value: unknown): string[] {
 	if (Array.isArray(value)) {
 		return value
 			.map((item) => (typeof item === 'string' ? item.trim() : ''))
 			.filter((item) => item.length > 0);
 	}
+	if (typeof value === 'string' && value.trim()) return [value.trim()];
+	return [];
+}
+
+/**
+ * List items for Taken. A wikilink Obsidian parsed as a nested array
+ * (`[[Name]]` → `[["Name"]]`) is restored to the `[[Name]]` string.
+ */
+export function takenItems(value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return value.flatMap((item) => {
+			const link = wikilinkFromParsed(item);
+			if (link) return [link];
+			if (typeof item === 'string' && item.trim()) return [item.trim()];
+			return [];
+		});
+	}
+	const link = wikilinkFromParsed(value);
+	if (link) return [link];
 	if (typeof value === 'string' && value.trim()) return [value.trim()];
 	return [];
 }
@@ -122,40 +143,185 @@ export function appendCompanionTaken(existing: unknown, companion: string): stri
 }
 
 /**
- * When linking is on and exactly one note basename matches, store `[[Note Name]]`.
+ * When linking is on and one note name or alias matches, store `[[Note Name]]`.
  * Several matches use the path form Obsidian accepts. Otherwise the plain name.
+ * `linkFor` may replace that with the vault’s own link for the same note.
  */
 export function formatStoredCompanion(
 	name: string,
 	linkToNotes: boolean,
 	notes: readonly CompanionNoteRef[],
+	linkFor?: (note: CompanionNoteRef) => string,
 ): string {
 	const plain = companionDisplayName(name) || name.trim();
 	if (!plain) return '';
 	if (!linkToNotes) return plain;
+	const chosen = pickCompanionNote(plain, notes);
+	if (!chosen) return plain;
+	const custom = linkFor?.(chosen)?.trim() ?? '';
+	if (custom) return custom;
 	return companionWikilink(plain, notes) ?? plain;
 }
 
 export function companionWikilink(name: string, notes: readonly CompanionNoteRef[]): string | null {
-	const wanted = name.trim().toLowerCase();
-	if (!wanted) return null;
-	const matches = notes.filter((note) => note.basename.trim().toLowerCase() === wanted);
-	if (matches.length === 0) return null;
-	const exact = matches.filter((note) => note.basename === name.trim());
-	const pool = exact.length > 0 ? exact : matches;
-	const chosen = pool[0];
+	const chosen = pickCompanionNote(name, notes);
 	if (!chosen) return null;
+	const pool = matchingCompanionNotes(name, notes);
 	if (pool.length === 1) return `[[${chosen.basename}]]`;
 	const path = chosen.path.replace(/\\/g, '/').replace(/\.md$/i, '');
 	return path ? `[[${path}]]` : null;
 }
 
-/** Frontmatter lines for a new note. Blank Met With and Taken when they skipped. */
+/**
+ * Quoted `"[[Note]]"` is the form Obsidian Properties keeps as a link.
+ * An unquoted `[[Note]]`, or the nested list Obsidian’s parser makes from it,
+ * is rewritten under Taken and Met With only. Other keys, including Hub, stay.
+ */
+export function stabilizeCompanionFrontmatter(markdown: string): string {
+	const fence = frontmatterSpan(markdown);
+	if (!fence) return markdown;
+	const lines = markdown.slice(fence.start, fence.end).split(/\r?\n/);
+	const rewritten = rewriteCompanionLinkLines(lines);
+	if (rewritten.length === lines.length && rewritten.every((line, index) => line === lines[index])) return markdown;
+	return markdown.slice(0, fence.start) + rewritten.join(fence.nl) + markdown.slice(fence.end);
+}
+
+function pickCompanionNote(name: string, notes: readonly CompanionNoteRef[]): CompanionNoteRef | null {
+	const pool = matchingCompanionNotes(name, notes);
+	if (pool.length === 0) return null;
+	const wanted = name.trim();
+	const exact = pool.filter((note) => note.basename === wanted);
+	return (exact.length > 0 ? exact : pool)[0] ?? null;
+}
+
+function matchingCompanionNotes(name: string, notes: readonly CompanionNoteRef[]): CompanionNoteRef[] {
+	const wanted = name.trim().toLowerCase();
+	if (!wanted) return [];
+	const byName = notes.filter((note) => note.basename.trim().toLowerCase() === wanted);
+	if (byName.length > 0) return byName;
+	return notes.filter((note) => (note.aliases ?? []).some((alias) => alias.trim().toLowerCase() === wanted));
+}
+
+function wikilinkFromParsed(value: unknown): string | null {
+	if (typeof value === 'string') {
+		const text = value.trim();
+		return /^\[\[[^\]]+\]\]$/.test(text) ? text : null;
+	}
+	if (!Array.isArray(value) || value.length !== 1) return null;
+	const inner = value[0];
+	if (Array.isArray(inner) && inner.length === 1 && typeof inner[0] === 'string') {
+		return wikilinkTarget(inner[0]);
+	}
+	if (typeof inner === 'string') return wikilinkTarget(inner);
+	return null;
+}
+
+function wikilinkTarget(value: string): string | null {
+	const text = value.trim();
+	if (!text) return null;
+	if (/^\[\[[^\]]+\]\]$/.test(text)) return text;
+	if (!looksLikeCompanionTarget(text)) return null;
+	return `[[${text}]]`;
+}
+
+function looksLikeCompanionTarget(value: string): boolean {
+	if (!value || value.length > 120) return false;
+	if (/[\[\]#:]/.test(value)) return false;
+	return /[A-Za-z]/.test(value);
+}
+
+function yamlQuote(value: string): string {
+	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function frontmatterSpan(markdown: string): { start: number; end: number; nl: string } | null {
+	const nl = markdown.startsWith('---\r\n') ? '\r\n' : markdown.startsWith('---\n') ? '\n' : '';
+	if (!nl) return null;
+	const start = 3 + nl.length;
+	const close = `${nl}---`;
+	const end = markdown.indexOf(close, start);
+	if (end < 0) return null;
+	return { start, end, nl };
+}
+
+const COMPANION_FRONTMATTER_KEYS = new Set(['taken', 'met with']);
+
+function rewriteCompanionLinkLines(lines: string[]): string[] {
+	const out: string[] = [];
+	let key = '';
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? '';
+		if (!/^\s/.test(line)) {
+			const top = /^([^:#][^:]*?)\s*:(.*)$/.exec(line);
+			key = top ? (top[1] ?? '').trim().toLowerCase() : '';
+			if (top && COMPANION_FRONTMATTER_KEYS.has(key)) {
+				const quoted = quoteLooseWikilink((top[2] ?? '').trim());
+				if (quoted) {
+					out.push(`${top[1]}: ${quoted}`);
+					continue;
+				}
+			}
+			out.push(line);
+			continue;
+		}
+		if (!COMPANION_FRONTMATTER_KEYS.has(key)) {
+			out.push(line);
+			continue;
+		}
+		const unquoted = /^(\s*)-\s+\[\[([^\]]+)\]\]\s*$/.exec(line);
+		if (unquoted) {
+			out.push(`${unquoted[1]}- ${yamlQuote(`[[${unquoted[2]}]]`)}`);
+			continue;
+		}
+		const nested = /^(\s*)-\s+-\s+(.+?)\s*$/.exec(line);
+		if (nested) {
+			const wrapped = wikilinkTarget(stripYamlQuote(nested[2] ?? ''));
+			if (wrapped) {
+				out.push(`${nested[1]}- ${yamlQuote(wrapped)}`);
+				continue;
+			}
+		}
+		const empty = /^(\s*)-\s*$/.exec(line);
+		const child = /^(\s*)-\s+(.+?)\s*$/.exec(lines[index + 1] ?? '');
+		if (empty && child && (child[1]?.length ?? 0) > (empty[1]?.length ?? 0)) {
+			const wrapped = wikilinkTarget(stripYamlQuote(child[2] ?? ''));
+			if (wrapped) {
+				out.push(`${empty[1]}- ${yamlQuote(wrapped)}`);
+				index += 1;
+				continue;
+			}
+		}
+		out.push(line);
+	}
+	return out;
+}
+
+function quoteLooseWikilink(value: string): string | null {
+	if (!value || value.startsWith('"') || value.startsWith("'")) return null;
+	const match = /^\[\[([^\]]+)\]\]$/.exec(value);
+	if (!match) return null;
+	return yamlQuote(`[[${match[1]}]]`);
+}
+
+function stripYamlQuote(value: string): string {
+	const text = value.trim();
+	if (text.length >= 2) {
+		const open = text[0];
+		const close = text[text.length - 1];
+		if ((open === '"' && close === '"') || (open === "'" && close === "'")) return text.slice(1, -1);
+	}
+	return text;
+}
+
+/**
+ * Frontmatter lines for a new note.
+ * Met With stays blank. Taken lists the companion, or stays blank when they skipped.
+ */
 export function companionFrontmatterBlock(stored: string): string {
 	const name = stored.trim();
 	if (!name) return 'Met With:\nTaken:';
 	const quoted = `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-	return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;
+	return `Met With:\nTaken:\n  - ${quoted}`;
 }
 
 function parseCompanionStamp(value: unknown): number | null {

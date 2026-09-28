@@ -89,7 +89,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const metText = metWith && metWith.kind !== 'empty' && metWith.text && metWith.text !== '—'
 			? metWith.text
 			: '';
-		this.plainSlot(foot, 'user', metText || '—', metText ? `Met with ${metText}` : 'Met with', !metText);
+		this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
 		const ratio = visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'));
 		const ratioEl = foot.createSpan({
 			cls: 'rv-locator-slot rv-locator-visits',
@@ -113,7 +113,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				attr: {
 					type: 'button',
 					title: `Priority ${rank}. Log a visit.`,
-					'aria-label': `Priority ${rank}. Were they home?`,
+					'aria-label': `Priority ${rank}. Home or Not home?`,
 				},
 			});
 			pill.addEventListener('click', (event) => {
@@ -205,8 +205,8 @@ function priorityRank(cell: CellModel | undefined): string | null {
 function visitRatio(successful: CellModel | undefined, visits: CellModel | undefined): { text: string; title: string } {
 	const home = countText(successful);
 	const total = countText(visits);
-	const homeLabel = home === '—' ? 'no successful count' : `${home} successful`;
-	const totalLabel = total === '—' ? 'no visit count' : `${total} visits`;
+	const homeLabel = home === '—' ? 'Successful Visits missing' : `${home} Successful Visits`;
+	const totalLabel = total === '—' ? 'Visits missing' : `${total} Visits`;
 	return { text: `${home}/${total}`, title: `${homeLabel} of ${totalLabel}` };
 }
 

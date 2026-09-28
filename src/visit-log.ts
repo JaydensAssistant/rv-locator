@@ -28,7 +28,7 @@ export function formatVisitStamp(date: Date): string {
  * Frontmatter for one logged visit. Address is never assigned.
  * Home bumps Visits and Successful Visits and sets Last Spoke and Last Attempted.
  * A miss bumps Visits and sets Last Attempted only.
- * A non-empty home companion overwrites Met With and is appended to Taken.
+ * A non-empty home companion is appended to Taken. Met With is left unchanged.
  * A blank companion, and every miss, leaves Met With and Taken alone.
  */
 export function applyVisitFrontmatter(
@@ -47,7 +47,6 @@ export function applyVisitFrontmatter(
 		assignProperty(frontmatter, 'Last Spoke', stamp);
 		const stored = typeof companion === 'string' ? companion.trim() : '';
 		if (stored) {
-			assignProperty(frontmatter, 'Met With', stored);
 			assignProperty(frontmatter, 'Taken', appendCompanionTaken(readProperty(frontmatter, 'Taken'), stored));
 		}
 	}
@@ -63,8 +62,8 @@ export function applyVisitFrontmatter(
 /**
  * Body text below the frontmatter.
  * A home visit inserts `### <stamp>` and two blank lines just above Attempt Log
- * (one extra line of padding for notes), unless that Glancable stamp is already
- * a `##` or `###` heading.
+ * (one extra line of padding for notes). A second Home in the same rounded
+ * hour still inserts another stamp.
  * Both outcomes append `> - <stamp> — success|not home` inside a collapsed
  * `> [!note]- Attempt Log` callout. An old `## Attempt Log` heading is migrated
  * to that callout on write. Address is not part of the body edit.
@@ -140,14 +139,8 @@ function ensureAttemptLog(body: string): string {
 	return normalized;
 }
 
-function stampHeadings(stamp: string): string[] {
-	return [`## ${stamp}`, `${STAMP_LEVEL} ${stamp}`];
-}
-
 function insertHomeHeading(body: string, stamp: string): string {
 	const lines = body.split('\n');
-	const known = stampHeadings(stamp);
-	if (lines.some((line) => known.includes(line.trim()))) return body;
 	const found = findAttemptLog(lines);
 	if (!found || found.kind !== 'callout') return body;
 	const before = lines.slice(0, found.index);
