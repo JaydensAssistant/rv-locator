@@ -118,12 +118,19 @@ function yamlQuote(value: string): string {
 	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
-function frontmatterBlock(key: string, value: unknown): string[] {
+function frontmatterBlock(key: string, value: unknown, flattenWikilinks = false): string[] {
 	if (Array.isArray(value)) {
-		return [key + ':', ...value.map((item) => `  - ${yamlQuote(String(item ?? ''))}`)];
+		return [key + ':', ...value.map((item) => renderFrontmatterItem(item, flattenWikilinks))];
 	}
 	const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
 	return [`${key}: ${rendered}`];
+}
+
+function renderFrontmatterItem(item: unknown, flattenWikilinks: boolean): string {
+	const text = String(item ?? '');
+	const link = /^\[\[([^\]]+)\]\]$/.exec(text);
+	if (flattenWikilinks && link) return `  - - ${link[1]}`;
+	return `  - ${yamlQuote(text)}`;
 }
 
 function replaceTopLevel(markdown: string, key: string, blockLines: string[]): string {
@@ -1078,6 +1085,86 @@ describe('disk proof', () => {
 		assert.equal(linkDisk.includes('  - "[[Pat Smith]]"'), true);
 	});
 
+	it('keeps a Taken wikilink when frontmatter flattens [[Name]] into a nested list', async () => {
+		const dir = join(ROOT, 'companion-link');
+		resetDir(dir);
+		const address = '200 S Orange Ave, Orlando, FL';
+		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith', stat: { mtime: 1 } }];
+		const homeFile = join(dir, 'home.md');
+		const before = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Met With: "Ada"',
+			'Taken:',
+			'  - "Ada"',
+			'Hub:',
+			'  - [[Return Visits Hub]]',
+			'---',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		writeFileSync(homeFile, before);
+		const notices: string[] = [];
+		const linked = loadRvLog(notices, {
+			flattenWikilinks: true,
+			getMarkdownFiles: () => notes,
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true } } } },
+		});
+		await linked({
+			config: { target_file: { path: homeFile } },
+			system: {
+				suggester: async () => null,
+				prompt: async () => 'Pat Smith',
+			},
+		}, 'home');
+		const disk = readFileSync(homeFile, 'utf8');
+		assert.equal(addressLine(disk), addressLine(before));
+		assert.equal(disk.includes('Met With: "Ada"'), true);
+		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), false);
+		assert.equal(disk.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(disk.includes('  - - Pat Smith'), false);
+		assert.equal(disk.includes('  - [[Return Visits Hub]]'), true);
+
+		const plainFile = join(dir, 'plain.md');
+		writeFileSync(plainFile, before);
+		const plain = loadRvLog(notices, {
+			flattenWikilinks: true,
+			getMarkdownFiles: () => notes,
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: false } } } },
+		});
+		await plain({
+			config: { target_file: { path: plainFile } },
+			system: {
+				suggester: async () => null,
+				prompt: async () => 'Pat Smith',
+			},
+		}, 'home');
+		const plainDisk = readFileSync(plainFile, 'utf8');
+		assert.equal(plainDisk.includes('  - "Pat Smith"'), true);
+		assert.equal(plainDisk.includes('[[Pat Smith]]'), false);
+		assert.equal(plainDisk.includes('Met With: "Ada"'), true);
+
+		const missingFile = join(dir, 'missing.md');
+		writeFileSync(missingFile, before);
+		const missing = loadRvLog(notices, {
+			getMarkdownFiles: () => [],
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true } } } },
+		});
+		await missing({
+			config: { target_file: { path: missingFile } },
+			system: {
+				suggester: async () => null,
+				prompt: async () => 'No Such Person',
+			},
+		}, 'home');
+		const missingDisk = readFileSync(missingFile, 'utf8');
+		assert.equal(missingDisk.includes('  - "No Such Person"'), true);
+		assert.equal(missingDisk.includes('[[No Such Person]]'), false);
+		assert.equal(missingDisk.includes('Met With: "Ada"'), true);
+	});
+
 	it('newRv companion seed uses plugin.promptCompanion', async () => {
 		const notes = [{ path: 'People/Sam.md', basename: 'Sam' }];
 		const baseApp = {
@@ -1195,6 +1282,7 @@ function loadRvLog(notices: string[], extra?: {
 	getMarkdownFiles?: () => unknown[];
 	getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
 	plugins?: unknown;
+	flattenWikilinks?: boolean;
 }): (tp: unknown, kind: string) => Promise<void> {
 	const source = readFileSync('extras/templater-metabind/rvLog.js', 'utf8');
 	const load = new Function('module', 'exports', 'app', 'Notice', `${source}\nreturn module.exports;`) as (
@@ -1233,7 +1321,7 @@ function loadRvLog(notices: string[], extra?: {
 				for (const key of keys) {
 					if (key.toLowerCase() === 'address') continue;
 					if (snapshot[key] === fm[key]) continue;
-					next = replaceTopLevel(next, key, frontmatterBlock(key, fm[key]));
+					next = replaceTopLevel(next, key, frontmatterBlock(key, fm[key], extra?.flattenWikilinks === true));
 				}
 				if (text.includes('\nAddress:')) assert.equal(addressLine(next), addressLine(text));
 				writeFileSync(file.path, next);

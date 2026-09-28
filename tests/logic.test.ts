@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
-import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
+import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
@@ -1483,8 +1483,61 @@ describe('companions', () => {
 		assert.equal(formatStoredCompanion('Pat', true, notes), '[[Pat]]');
 		assert.equal(formatStoredCompanion('Sam', true, notes), '[[People/Sam]]');
 		assert.equal(formatStoredCompanion('Ada', true, notes), 'Ada');
+		assert.equal(formatStoredCompanion('[[Pat]]', false, notes), 'Pat');
+		assert.equal(formatStoredCompanion('[[Nobody]]', true, notes), 'Nobody');
+		const aliased = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith', aliases: ['Patty'] }];
+		assert.equal(formatStoredCompanion('Patty', true, aliased), '[[Pat Smith]]');
+		assert.equal(formatStoredCompanion('Patty', false, aliased), 'Patty');
+		const named = [
+			{ path: 'People/Patty.md', basename: 'Patty' },
+			{ path: 'People/Pat Smith.md', basename: 'Pat Smith', aliases: ['Patty'] },
+		];
+		assert.equal(formatStoredCompanion('Patty', true, named), '[[Patty]]');
+		assert.equal(formatStoredCompanion('Pat', true, notes, () => '[[People/Pat|Pat]]'), '[[People/Pat|Pat]]');
+		assert.deepEqual(appendCompanionTaken([['Ada']], 'Pat'), ['[[Ada]]', 'Pat']);
 		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
 		assert.equal(companionFrontmatterBlock('Pat'), 'Met With:\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock('[[Pat]]'), 'Met With:\nTaken:\n  - "[[Pat]]"');
+	});
+
+	it('quotes Taken and Met With wikilinks that Obsidian flattened', () => {
+		const source = [
+			'---',
+			'Address: "142 Maple Street"',
+			'Met With: [[Door Person]]',
+			'Taken:',
+			'  - "Ada"',
+			'  - [[Pat Smith]]',
+			'  - - Sam',
+			'Hub:',
+			'  - [[Return Visits Hub]]',
+			'---',
+			'',
+			'Body stays.',
+			'',
+		].join('\n');
+		const quoted = stabilizeCompanionFrontmatter(source);
+		assert.equal(quoted.includes('Met With: "[[Door Person]]"'), true);
+		assert.equal(quoted.includes('  - "Ada"'), true);
+		assert.equal(quoted.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(quoted.includes('  - "[[Sam]]"'), true);
+		assert.equal(quoted.includes('  - [[Pat Smith]]'), false);
+		assert.equal(quoted.includes('  - - Sam'), false);
+		assert.equal(quoted.includes('  - [[Return Visits Hub]]'), true);
+		assert.equal(quoted.includes('Address: "142 Maple Street"'), true);
+		assert.equal(quoted.includes('Body stays.'), true);
+		assert.equal(stabilizeCompanionFrontmatter(quoted), quoted);
+		const nested = [
+			'---',
+			'Taken:',
+			'  -',
+			'    - Pat Smith',
+			'---',
+			'',
+		].join('\n');
+		const lifted = stabilizeCompanionFrontmatter(nested);
+		assert.equal(lifted.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(lifted.includes('    - Pat Smith'), false);
 	});
 
 	it('caps the suggester and keeps a skipped companion off the note', () => {

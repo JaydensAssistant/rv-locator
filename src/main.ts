@@ -14,7 +14,7 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { decideGeocodePick } from './home-base';
-import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, type CompanionNoteRef } from './companions';
+import { aliasNames, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter, type CompanionNoteRef } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
@@ -214,7 +214,17 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		const name = picked?.trim() ?? '';
 		if (!name) return '';
-		return formatStoredCompanion(name, this.settings.linkCompanionsToNotes, this.companionNoteRefs());
+		return formatStoredCompanion(
+			name,
+			this.settings.linkCompanionsToNotes,
+			this.companionNoteRefs(),
+			(note) => this.markdownLinkFor(note.path),
+		);
+	}
+
+	/** Quoted Taken / Met With wikilinks, after processFrontMatter may have flattened them. */
+	stabilizeCompanionFrontmatter(markdown: string): string {
+		return quoteCompanionFrontmatter(markdown);
 	}
 
 	private recentCompanionNames(): string[] {
@@ -238,7 +248,18 @@ export default class RVLocatorPlugin extends Plugin {
 		return this.app.vault.getMarkdownFiles().map((file) => ({
 			path: file.path,
 			basename: file.basename,
+			aliases: aliasNames(this.app.metadataCache.getFileCache(file)?.frontmatter?.aliases),
 		}));
+	}
+
+	private markdownLinkFor(path: string): string {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return '';
+		try {
+			return this.app.fileManager.generateMarkdownLink(file, '').trim();
+		} catch {
+			return '';
+		}
 	}
 
 	private loadSetupSnapshot() {
@@ -489,6 +510,9 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			applyVisitFrontmatter(frontmatter as Record<string, unknown>, outcome, now, companion);
 		});
+		const current = await this.app.vault.read(file);
+		const linked = this.stabilizeCompanionFrontmatter(current);
+		if (linked !== current) await this.app.vault.modify(file, linked);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
 		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
 	}

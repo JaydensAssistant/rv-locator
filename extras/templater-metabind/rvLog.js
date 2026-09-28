@@ -178,10 +178,43 @@ function companionDisplayName(value) {
   return base.trim();
 }
 
+function looksLikeCompanionTarget(value) {
+  if (!value || value.length > 120) return false;
+  if (/[\[\]#:]/.test(value)) return false;
+  return /[A-Za-z]/.test(value);
+}
+
+function wikilinkTarget(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  if (/^\[\[[^\]]+\]\]$/.test(text)) return text;
+  if (!looksLikeCompanionTarget(text)) return "";
+  return `[[${text}]]`;
+}
+
+function wikilinkFromParsed(value) {
+  if (typeof value === "string") {
+    const text = value.trim();
+    return /^\[\[[^\]]+\]\]$/.test(text) ? text : "";
+  }
+  if (!Array.isArray(value) || value.length !== 1) return "";
+  const inner = value[0];
+  if (Array.isArray(inner) && inner.length === 1 && typeof inner[0] === "string") return wikilinkTarget(inner[0]);
+  if (typeof inner === "string") return wikilinkTarget(inner);
+  return "";
+}
+
 function takenItems(value) {
   if (Array.isArray(value)) {
-    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter((item) => item.length > 0);
+    return value.flatMap((item) => {
+      const link = wikilinkFromParsed(item);
+      if (link) return [link];
+      if (typeof item === "string" && item.trim()) return [item.trim()];
+      return [];
+    });
   }
+  const link = wikilinkFromParsed(value);
+  if (link) return [link];
   if (typeof value === "string" && value.trim()) return [value.trim()];
   return [];
 }
@@ -267,13 +300,33 @@ function recentNamesFromVault() {
   return recentCompanionNames(notes);
 }
 
+function aliasNames(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter((item) => item.length > 0);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
 function companionNoteRefs() {
   return markdownFiles()
-    .map((file) => ({
-      path: typeof file.path === "string" ? file.path : "",
-      basename: typeof file.basename === "string" ? file.basename : "",
-    }))
+    .map((file) => {
+      const fm = fileFrontmatter(file);
+      return {
+        path: typeof file.path === "string" ? file.path : "",
+        basename: typeof file.basename === "string" ? file.basename : "",
+        aliases: aliasNames(fm && fm.aliases),
+      };
+    })
     .filter((file) => file.basename);
+}
+
+function matchingCompanionNotes(name, notes) {
+  const wanted = String(name || "").trim().toLowerCase();
+  if (!wanted) return [];
+  const byName = notes.filter((note) => note.basename.trim().toLowerCase() === wanted);
+  if (byName.length) return byName;
+  return notes.filter((note) => (note.aliases || []).some((alias) => String(alias).trim().toLowerCase() === wanted));
 }
 
 function formatStoredCompanion(name) {
@@ -282,13 +335,13 @@ function formatStoredCompanion(name) {
   const plugin = rvPlugin();
   const settings = plugin && plugin.settings;
   if (!settings || settings.linkCompanionsToNotes !== true) return plain;
-  const wanted = plain.toLowerCase();
-  const matches = companionNoteRefs().filter((note) => note.basename.trim().toLowerCase() === wanted);
-  if (matches.length === 0) return plain;
-  const exact = matches.filter((note) => note.basename === plain);
-  const pool = exact.length ? exact : matches;
-  if (pool.length === 1) return `[[${pool[0].basename}]]`;
-  const path = String(pool[0].path || "").replace(/\\/g, "/").replace(/\.md$/i, "");
+  const pool = matchingCompanionNotes(plain, companionNoteRefs());
+  if (!pool.length) return plain;
+  const exact = pool.filter((note) => note.basename === plain);
+  const chosen = (exact.length ? exact : pool)[0];
+  if (!chosen) return plain;
+  if (pool.length === 1) return `[[${chosen.basename}]]`;
+  const path = String(chosen.path || "").replace(/\\/g, "/").replace(/\.md$/i, "");
   return path ? `[[${path}]]` : plain;
 }
 
@@ -346,6 +399,107 @@ async function askCompanion(tp) {
   return formatStoredCompanion(picked);
 }
 
+function yamlQuote(value) {
+  return `"${String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function quoteLooseWikilink(value) {
+  const text = String(value || "").trim();
+  if (!text || text.startsWith('"') || text.startsWith("'")) return "";
+  const match = /^\[\[([^\]]+)\]\]$/.exec(text);
+  if (!match) return "";
+  return yamlQuote(`[[${match[1]}]]`);
+}
+
+function stripYamlQuote(value) {
+  const text = String(value || "").trim();
+  if (text.length >= 2) {
+    const open = text[0];
+    const close = text[text.length - 1];
+    if ((open === '"' && close === '"') || (open === "'" && close === "'")) return text.slice(1, -1);
+  }
+  return text;
+}
+
+function rewriteCompanionLinkLines(lines) {
+  const keys = { taken: true, "met with": true };
+  const out = [];
+  let key = "";
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] || "";
+    if (!/^\s/.test(line)) {
+      const top = /^([^:#][^:]*?)\s*:(.*)$/.exec(line);
+      key = top ? String(top[1] || "").trim().toLowerCase() : "";
+      if (top && keys[key]) {
+        const quoted = quoteLooseWikilink(String(top[2] || "").trim());
+        if (quoted) {
+          out.push(`${top[1]}: ${quoted}`);
+          continue;
+        }
+      }
+      out.push(line);
+      continue;
+    }
+    if (!keys[key]) {
+      out.push(line);
+      continue;
+    }
+    const unquoted = /^(\s*)-\s+\[\[([^\]]+)\]\]\s*$/.exec(line);
+    if (unquoted) {
+      out.push(`${unquoted[1]}- ${yamlQuote(`[[${unquoted[2]}]]`)}`);
+      continue;
+    }
+    const nested = /^(\s*)-\s+-\s+(.+?)\s*$/.exec(line);
+    if (nested) {
+      const wrapped = wikilinkTarget(stripYamlQuote(nested[2] || ""));
+      if (wrapped) {
+        out.push(`${nested[1]}- ${yamlQuote(wrapped)}`);
+        continue;
+      }
+    }
+    const empty = /^(\s*)-\s*$/.exec(line);
+    const child = /^(\s*)-\s+(.+?)\s*$/.exec(lines[index + 1] || "");
+    if (empty && child && String(child[1] || "").length > String(empty[1] || "").length) {
+      const wrapped = wikilinkTarget(stripYamlQuote(child[2] || ""));
+      if (wrapped) {
+        out.push(`${empty[1]}- ${yamlQuote(wrapped)}`);
+        index += 1;
+        continue;
+      }
+    }
+    out.push(line);
+  }
+  return out;
+}
+
+function stabilizeCompanionFrontmatterLocal(markdown) {
+  const text = String(markdown || "");
+  const nl = text.startsWith("---\r\n") ? "\r\n" : text.startsWith("---\n") ? "\n" : "";
+  if (!nl) return text;
+  const start = 3 + nl.length;
+  const close = `${nl}---`;
+  const end = text.indexOf(close, start);
+  if (end < 0) return text;
+  const lines = text.slice(start, end).split(/\r?\n/);
+  const rewritten = rewriteCompanionLinkLines(lines);
+  if (rewritten.length === lines.length && rewritten.every((line, index) => line === lines[index])) return text;
+  return text.slice(0, start) + rewritten.join(nl) + text.slice(end);
+}
+
+function stabilizeCompanionFrontmatter(markdown) {
+  const plugin = rvPlugin();
+  const remote = plugin && plugin.stabilizeCompanionFrontmatter;
+  if (typeof remote === "function") {
+    try {
+      const next = remote.call(plugin, markdown);
+      if (typeof next === "string") return next;
+    } catch {
+      /* The local rewriter still quotes Taken and Met With. */
+    }
+  }
+  return stabilizeCompanionFrontmatterLocal(markdown);
+}
+
 async function rvLog(tp, kind) {
   const mode = kind === "home" || kind === "success" || kind === "yes" ? "home" : "miss";
   const file = resolveFile(tp);
@@ -378,7 +532,12 @@ async function rvLog(tp, kind) {
     else if (ADDRESS_KEY in fm) delete fm[ADDRESS_KEY];
   });
 
-  const full = await app.vault.read(file);
+  let full = await app.vault.read(file);
+  const stabilized = stabilizeCompanionFrontmatter(full);
+  if (stabilized !== full) {
+    await app.vault.modify(file, stabilized);
+    full = stabilized;
+  }
   const fmMatch = full.match(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/);
   const fmBlock = fmMatch ? fmMatch[0] : "";
   let content = fmMatch ? full.slice(fmBlock.length) : full;
