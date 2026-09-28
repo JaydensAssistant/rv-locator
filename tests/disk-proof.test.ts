@@ -913,10 +913,10 @@ describe('disk proof', () => {
 		console.log(`\n----- RVLOG COMPANION ${homeFile} -----\n${disk}`);
 		assert.equal(addressLine(disk), `Address: ${yamlQuote(address)}`);
 		assert.equal(disk.includes('Met With: "Door"'), true);
-		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), false);
+		assert.equal(disk.includes('[[Pat Smith]]'), false);
 		assert.equal(disk.includes('  - "Ada"'), true);
-		assert.equal(disk.includes('  - "[[Pat Smith]]"'), true);
-		assert.equal(disk.split('  - "[[Pat Smith]]"').length, 2);
+		assert.equal(disk.includes('  - "Pat Smith"'), true);
+		assert.equal(disk.split('  - "Pat Smith"').length, 2);
 		assert.equal(disk.includes('Visits: 2'), true);
 
 		const missFile = join(dir, 'miss.md');
@@ -933,7 +933,7 @@ describe('disk proof', () => {
 		const missDisk = readFileSync(missFile, 'utf8');
 		assert.equal(addressLine(missDisk), `Address: ${yamlQuote(address)}`);
 		assert.equal(missDisk.includes('Met With: "Door"'), true);
-		assert.equal(missDisk.includes('Met With: "[[Pat Smith]]"'), false);
+		assert.equal(missDisk.includes('[[Pat Smith]]'), false);
 		assert.equal(missDisk.includes('  - "Jane"'), false);
 		assert.equal(missDisk.includes('— not home'), true);
 		assert.equal(notices.at(-1), 'Logged not home');
@@ -948,7 +948,7 @@ describe('disk proof', () => {
 				read: async () => '',
 			},
 			metadataCache: { getFileCache: () => null },
-			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true, defaultNewRvPriority: 4 } } } },
+			plugins: { plugins: { 'rv-locator': { settings: { defaultNewRvPriority: 4 } } } },
 			workspace: { getActiveFile: () => null },
 			commands: { commands: {}, executeCommandById: () => {} },
 			fileManager: { processFrontMatter: async () => {} },
@@ -959,7 +959,8 @@ describe('disk proof', () => {
 		});
 		assert.equal(prompts.length, 0);
 		assert.equal(rv.priority, 4);
-		assert.equal(rv.companionYaml, 'Met With:\nTaken:\n  - "[[Sam]]"');
+		assert.equal(rv.companionYaml, 'Met With:\nTaken:\n  - "Sam"');
+		assert.equal(rv.companionYaml.includes('[['), false);
 		assert.equal(rv.title, 'Ada on Oak');
 
 		const skipped = await loadNewRv({
@@ -978,7 +979,6 @@ describe('disk proof', () => {
 		const dir = join(ROOT, 'companion-plugin');
 		resetDir(dir);
 		const address = '200 S Orange Ave, Orlando, FL';
-		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith' }];
 		const homeFile = join(dir, 'home.md');
 		const before = [
 			'---',
@@ -1001,10 +1001,10 @@ describe('disk proof', () => {
 			plugins: {
 				plugins: {
 					'rv-locator': {
-						settings: { linkCompanionsToNotes: false },
+						settings: {},
 						promptCompanion: async () => {
 							prompts += 1;
-							return askedCompanion(false, notes, 'TestCompanion');
+							return askedCompanion('TestCompanion');
 						},
 					},
 				},
@@ -1035,10 +1035,10 @@ describe('disk proof', () => {
 			plugins: {
 				plugins: {
 					'rv-locator': {
-						settings: { linkCompanionsToNotes: false },
+						settings: {},
 						promptCompanion: async () => {
 							prompts += 1;
-							return askedCompanion(false, notes, null);
+							return askedCompanion(null);
 						},
 					},
 				},
@@ -1065,29 +1065,9 @@ describe('disk proof', () => {
 		assert.equal(missDisk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(missDisk.includes('— not home'), true);
 		assert.equal(notices.at(-1), 'Logged not home');
-
-		const linkFile = join(dir, 'link.md');
-		writeFileSync(linkFile, before);
-		const linkLog = loadRvLog(notices, {
-			plugins: {
-				plugins: {
-					'rv-locator': {
-						settings: { linkCompanionsToNotes: true },
-						promptCompanion: async () => askedCompanion(true, notes, 'Pat Smith'),
-					},
-				},
-			},
-		});
-		await linkLog({ config: { target_file: { path: linkFile } } }, 'home');
-		const linkDisk = readFileSync(linkFile, 'utf8');
-		assert.equal(addressLine(linkDisk), addressLine(before));
-		assert.equal(linkDisk.includes('Met With: "Ada"'), true);
-		assert.equal(linkDisk.includes('Met With: "[[Pat Smith]]"'), false);
-		assert.equal(linkDisk.includes('  - "Ada"'), true);
-		assert.equal(linkDisk.includes('  - "[[Pat Smith]]"'), true);
 	});
 
-	it('keeps a Taken wikilink when frontmatter flattens [[Name]] into a nested list', async () => {
+	it('stores a plain companion even when a note matches, and still quotes a flattened Taken wikilink', async () => {
 		const dir = join(ROOT, 'companion-link');
 		resetDir(dir);
 		const address = '200 S Orange Ave, Orlando, FL';
@@ -1098,7 +1078,7 @@ describe('disk proof', () => {
 			`Address: ${yamlQuote(address)}`,
 			'Met With: "Ada"',
 			'Taken:',
-			'  - "Ada"',
+			'  - [[Existing Person]]',
 			'Hub:',
 			'  - [[Return Visits Hub]]',
 			'---',
@@ -1124,47 +1104,11 @@ describe('disk proof', () => {
 		const disk = readFileSync(homeFile, 'utf8');
 		assert.equal(addressLine(disk), addressLine(before));
 		assert.equal(disk.includes('Met With: "Ada"'), true);
-		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), false);
-		assert.equal(disk.includes('  - "[[Pat Smith]]"'), true);
-		assert.equal(disk.includes('  - - Pat Smith'), false);
+		assert.equal(disk.includes('[[Pat Smith]]'), false);
+		assert.equal(disk.includes('  - "Pat Smith"'), true);
+		assert.equal(disk.includes('  - "[[Existing Person]]"'), true);
+		assert.equal(disk.includes('  - - Existing Person'), false);
 		assert.equal(disk.includes('  - [[Return Visits Hub]]'), true);
-
-		const plainFile = join(dir, 'plain.md');
-		writeFileSync(plainFile, before);
-		const plain = loadRvLog(notices, {
-			flattenWikilinks: true,
-			getMarkdownFiles: () => notes,
-			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: false } } } },
-		});
-		await plain({
-			config: { target_file: { path: plainFile } },
-			system: {
-				suggester: async () => null,
-				prompt: async () => 'Pat Smith',
-			},
-		}, 'home');
-		const plainDisk = readFileSync(plainFile, 'utf8');
-		assert.equal(plainDisk.includes('  - "Pat Smith"'), true);
-		assert.equal(plainDisk.includes('[[Pat Smith]]'), false);
-		assert.equal(plainDisk.includes('Met With: "Ada"'), true);
-
-		const missingFile = join(dir, 'missing.md');
-		writeFileSync(missingFile, before);
-		const missing = loadRvLog(notices, {
-			getMarkdownFiles: () => [],
-			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true } } } },
-		});
-		await missing({
-			config: { target_file: { path: missingFile } },
-			system: {
-				suggester: async () => null,
-				prompt: async () => 'No Such Person',
-			},
-		}, 'home');
-		const missingDisk = readFileSync(missingFile, 'utf8');
-		assert.equal(missingDisk.includes('  - "No Such Person"'), true);
-		assert.equal(missingDisk.includes('[[No Such Person]]'), false);
-		assert.equal(missingDisk.includes('Met With: "Ada"'), true);
 	});
 
 	it('newRv companion seed uses plugin.promptCompanion', async () => {
@@ -1187,8 +1131,8 @@ describe('disk proof', () => {
 			plugins: {
 				plugins: {
 					'rv-locator': {
-						settings: { linkCompanionsToNotes: true, defaultNewRvPriority: 3 },
-						promptCompanion: async () => askedCompanion(true, notes, 'Sam'),
+						settings: { defaultNewRvPriority: 3 },
+						promptCompanion: async () => askedCompanion('Sam'),
 					},
 				},
 			},
@@ -1203,7 +1147,7 @@ describe('disk proof', () => {
 		});
 		assert.equal(textPrompts, 2);
 		assert.equal(prompts.length, 0);
-		assert.equal(linked.companionYaml, 'Met With:\nTaken:\n  - "[[Sam]]"');
+		assert.equal(linked.companionYaml, 'Met With:\nTaken:\n  - "Sam"');
 		assert.equal(linked.title, 'Ada on Oak');
 
 		const plainPrompts = ['Ada', '10 Oak Street'];
@@ -1212,8 +1156,8 @@ describe('disk proof', () => {
 			plugins: {
 				plugins: {
 					'rv-locator': {
-						settings: { linkCompanionsToNotes: false },
-						promptCompanion: async () => askedCompanion(false, notes, 'TestCompanion'),
+						settings: {},
+						promptCompanion: async () => askedCompanion('TestCompanion'),
 					},
 				},
 			},
@@ -1228,8 +1172,8 @@ describe('disk proof', () => {
 			plugins: {
 				plugins: {
 					'rv-locator': {
-						settings: { linkCompanionsToNotes: true },
-						promptCompanion: async () => askedCompanion(true, notes, null),
+						settings: {},
+						promptCompanion: async () => askedCompanion(null),
 					},
 				},
 			},
@@ -1335,11 +1279,7 @@ function loadRvLog(notices: string[], extra?: {
 	});
 }
 
-async function askedCompanion(
-	link: boolean,
-	notes: { path: string; basename: string }[],
-	choice: string | null,
-): Promise<string> {
+async function askedCompanion(choice: string | null): Promise<string> {
 	const picked = await new Promise<string | null>((resolve) => {
 		const gate = createCompanionPromptGate(resolve);
 		gate.closed((run) => { setTimeout(run, 0); });
@@ -1347,7 +1287,7 @@ async function askedCompanion(
 	});
 	const name = picked?.trim() ?? '';
 	if (!name) return '';
-	return formatStoredCompanion(name, link, notes);
+	return formatStoredCompanion(name);
 }
 
 function note(address: string): string {

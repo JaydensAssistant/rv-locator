@@ -135,7 +135,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
-			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest. The first tap uses nearest, high, or longest-ago, and tapping the selected chip flips direction; the last choice is remembered.',
+			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest, Met newest or oldest. The first tap uses nearest, high, longest-ago, or newest for Met, and tapping the selected chip flips direction; the last choice is remembered.',
 		});
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
@@ -215,16 +215,6 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				dropdown.setValue(String(this.plugin.settings.defaultNewRvPriority));
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.defaultNewRvPriority = Number(value);
-					await this.plugin.saveSettings();
-				});
-			});
-		new Setting(containerEl)
-			.setName('Link companions to notes')
-			.setDesc('On, Taken stores [[Note Name]] when a note name or alias matches; otherwise plain text. Off is always plain text, and Met With is not changed.')
-			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.linkCompanionsToNotes);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.linkCompanionsToNotes = value;
 					await this.plugin.saveSettings();
 				});
 			});

@@ -29,8 +29,6 @@ export interface RVLocatorSettings {
 	testLongitude: number;
 	/** County names. Empty means geocode always opens the confirm picker. */
 	homeCounties: string[];
-	/** When true, a companion appended to Taken is stored as a wikilink when a note basename matches. */
-	linkCompanionsToNotes: boolean;
 	/** Priority written on a new RV note. Integer 0–5. */
 	defaultNewRvPriority: number;
 	/** File name inside Templater's template folder for the New RV template. */
@@ -64,7 +62,6 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	testLatitude: 28.54,
 	testLongitude: -81.38,
 	homeCounties: [],
-	linkCompanionsToNotes: false,
 	defaultNewRvPriority: DEFAULT_NEW_RV_PRIORITY,
 	newRvTemplateFile: DEFAULT_NEW_RV_TEMPLATE_FILE,
 	homeLogTemplateFile: DEFAULT_HOME_LOG_TEMPLATE_FILE,
@@ -150,7 +147,6 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		testLatitude: finiteCoord(input.testLatitude, 90, DEFAULT_SETTINGS.testLatitude),
 		testLongitude: finiteCoord(input.testLongitude, 180, DEFAULT_SETTINGS.testLongitude),
 		homeCounties: normalizeCountyList(input.homeCounties),
-		linkCompanionsToNotes: input.linkCompanionsToNotes === true,
 		defaultNewRvPriority: sanitizeNewRvPriority(input.defaultNewRvPriority),
 		newRvTemplateFile: safeTemplateFileName(input.newRvTemplateFile, DEFAULT_NEW_RV_TEMPLATE_FILE),
 		homeLogTemplateFile: safeTemplateFileName(input.homeLogTemplateFile, DEFAULT_HOME_LOG_TEMPLATE_FILE),

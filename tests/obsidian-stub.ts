@@ -8,6 +8,8 @@ class FakeEl {
 
 	addClass(_cls?: string): void {}
 
+	setAttribute(_name: string, _value: string): void {}
+
 	createDiv(spec?: string | { cls?: string; text?: string }): FakeEl {
 		const el = new FakeEl();
 		if (spec && typeof spec === 'object' && spec.text) el.text = spec.text;
