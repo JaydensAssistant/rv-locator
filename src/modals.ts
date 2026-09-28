@@ -1,4 +1,6 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
+import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
+import { companionChoices, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
 import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
@@ -440,21 +442,17 @@ export class VisitConfirmModal extends Modal {
 	}
 }
 
-interface CompanionChoice {
-	value: string;
-	label: string;
-}
-
 /** One companion. A typed name is offered beside recent Met With / Taken values. Skip stores nothing. */
-export class CompanionSuggestModal extends SuggestModal<CompanionChoice> {
-	private done = false;
+export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
+	private readonly gate: CompanionPromptGate;
 
 	constructor(
 		app: App,
 		private recent: readonly string[],
-		private onDone: (name: string | null) => void,
+		onDone: (name: string | null) => void,
 	) {
 		super(app);
+		this.gate = createCompanionPromptGate(onDone);
 		this.emptyStateText = 'Type a name, or choose Skip. Met With and Taken stay unchanged if you skip.';
 		this.limit = 30;
 	}
@@ -474,41 +472,31 @@ export class CompanionSuggestModal extends SuggestModal<CompanionChoice> {
 		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
 		const skip = bar.createEl('button', { text: 'Skip' });
 		skip.addEventListener('click', () => {
-			this.finish(null);
+			this.gate.skip();
+			this.close();
 		});
 	}
 
+	/**
+	 * SuggestModal closes before it reports the chosen row. Resolving a skip
+	 * here would drop that name. The dismiss waits so a choice in this turn wins.
+	 * Esc still skips, after the wait.
+	 */
 	onClose(): void {
 		super.onClose();
-		if (!this.done) {
-			this.done = true;
-			this.onDone(null);
-		}
+		this.gate.closed((run) => { window.setTimeout(run, 0); });
 	}
 
-	getSuggestions(query: string): CompanionChoice[] {
-		const typed = query.trim();
-		const needle = typed.toLowerCase();
-		const recent = this.recent.filter((name) => !needle || name.toLowerCase().includes(needle));
-		const choices = recent.map((name) => ({ value: name, label: name }));
-		if (typed && !recent.some((name) => name.toLowerCase() === needle)) {
-			choices.unshift({ value: typed, label: `Use “${typed}”` });
-		}
-		return choices;
+	getSuggestions(query: string): CompanionSuggestion[] {
+		return companionChoices(this.recent, query);
 	}
 
-	renderSuggestion(choice: CompanionChoice, el: HTMLElement): void {
+	renderSuggestion(choice: CompanionSuggestion, el: HTMLElement): void {
 		el.setText(choice.label);
 	}
 
-	onChooseSuggestion(choice: CompanionChoice): void {
-		this.finish(choice.value);
-	}
-
-	private finish(name: string | null): void {
-		if (this.done) return;
-		this.done = true;
-		this.onDone(name);
+	onChooseSuggestion(choice: CompanionSuggestion): void {
+		this.gate.choose(choice.value);
 		this.close();
 	}
 }

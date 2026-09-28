@@ -9,6 +9,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { googleMapsAddressLink } from '../src/address';
+import { createCompanionPromptGate } from '../src/companion-prompt';
+import { formatStoredCompanion } from '../src/companions';
 import { formatGlancableVisitStamp } from '../src/dates';
 import {
 	applyGeocodeHit,
@@ -878,6 +880,188 @@ describe('disk proof', () => {
 		assert.equal(skipped.priority, 3);
 		assert.equal(skipped.companionYaml, 'Met With:\nTaken:');
 	});
+
+	it('plugin promptCompanion writes Met With and Taken, skip leaves them, and a miss does not ask', async () => {
+		const dir = join(ROOT, 'companion-plugin');
+		resetDir(dir);
+		const address = '200 S Orange Ave, Orlando, FL';
+		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith' }];
+		const homeFile = join(dir, 'home.md');
+		const before = [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 1',
+			'Successful Visits: 1',
+			'Met With: "Ada"',
+			'Taken:',
+			'  - "Ada"',
+			'---',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		writeFileSync(homeFile, before);
+		let prompts = 0;
+		const notices: string[] = [];
+		const rvLog = loadRvLog(notices, {
+			plugins: {
+				plugins: {
+					'rv-locator': {
+						settings: { linkCompanionsToNotes: false },
+						promptCompanion: async () => {
+							prompts += 1;
+							return askedCompanion(false, notes, 'TestCompanion');
+						},
+					},
+				},
+			},
+		});
+		await rvLog({
+			config: { target_file: { path: homeFile } },
+			system: {
+				suggester: async () => { throw new Error('plugin promptCompanion should answer'); },
+				prompt: async () => { throw new Error('free text should not run'); },
+			},
+		}, 'home');
+		assert.equal(prompts, 1);
+		const disk = readFileSync(homeFile, 'utf8');
+		console.log(`\n----- PLUGIN COMPANION ${homeFile} -----\n${disk}`);
+		assert.equal(addressLine(disk), addressLine(before));
+		assert.equal(disk.includes('Met With: "TestCompanion"'), true);
+		assert.equal(disk.includes('  - "Ada"'), true);
+		assert.equal(disk.includes('  - "TestCompanion"'), true);
+		assert.equal(disk.includes('Visits: 2'), true);
+		assert.equal(disk.includes('Successful Visits: 2'), true);
+		assert.equal(notices.at(-1), 'Logged success');
+
+		const skipFile = join(dir, 'skip.md');
+		writeFileSync(skipFile, disk);
+		const skipLog = loadRvLog(notices, {
+			plugins: {
+				plugins: {
+					'rv-locator': {
+						settings: { linkCompanionsToNotes: false },
+						promptCompanion: async () => {
+							prompts += 1;
+							return askedCompanion(false, notes, null);
+						},
+					},
+				},
+			},
+		});
+		await skipLog({ config: { target_file: { path: skipFile } } }, 'home');
+		const skipDisk = readFileSync(skipFile, 'utf8');
+		assert.equal(addressLine(skipDisk), addressLine(before));
+		assert.equal(skipDisk.includes('Met With: "TestCompanion"'), true);
+		assert.equal(skipDisk.includes('  - "TestCompanion"'), true);
+		assert.equal(skipDisk.split('  - "TestCompanion"').length, 2);
+		assert.equal(skipDisk.includes('Visits: 3'), true);
+		assert.equal(prompts, 2);
+
+		const missFile = join(dir, 'miss.md');
+		writeFileSync(missFile, skipDisk);
+		const beforeMiss = prompts;
+		await skipLog({ config: { target_file: { path: missFile } } }, 'miss');
+		assert.equal(prompts, beforeMiss);
+		const missDisk = readFileSync(missFile, 'utf8');
+		assert.equal(addressLine(missDisk), addressLine(before));
+		assert.equal(missDisk.includes('Met With: "TestCompanion"'), true);
+		assert.equal(missDisk.includes('— not home'), true);
+		assert.equal(notices.at(-1), 'Logged not home');
+
+		const linkFile = join(dir, 'link.md');
+		writeFileSync(linkFile, before);
+		const linkLog = loadRvLog(notices, {
+			plugins: {
+				plugins: {
+					'rv-locator': {
+						settings: { linkCompanionsToNotes: true },
+						promptCompanion: async () => askedCompanion(true, notes, 'Pat Smith'),
+					},
+				},
+			},
+		});
+		await linkLog({ config: { target_file: { path: linkFile } } }, 'home');
+		const linkDisk = readFileSync(linkFile, 'utf8');
+		assert.equal(addressLine(linkDisk), addressLine(before));
+		assert.equal(linkDisk.includes('Met With: "[[Pat Smith]]"'), true);
+		assert.equal(linkDisk.includes('  - "Ada"'), true);
+		assert.equal(linkDisk.includes('  - "[[Pat Smith]]"'), true);
+	});
+
+	it('newRv companion seed uses plugin.promptCompanion', async () => {
+		const notes = [{ path: 'People/Sam.md', basename: 'Sam' }];
+		const baseApp = {
+			vault: {
+				getMarkdownFiles: () => notes,
+				getAbstractFileByPath: () => null,
+				read: async () => '',
+			},
+			metadataCache: { getFileCache: () => null },
+			workspace: { getActiveFile: () => null },
+			commands: { commands: {}, executeCommandById: () => {} },
+			fileManager: { processFrontMatter: async () => {} },
+		};
+		let textPrompts = 0;
+		const prompts = ['Ada', '10 Oak Street'];
+		const linked = await loadNewRv({
+			...baseApp,
+			plugins: {
+				plugins: {
+					'rv-locator': {
+						settings: { linkCompanionsToNotes: true, defaultNewRvPriority: 3 },
+						promptCompanion: async () => askedCompanion(true, notes, 'Sam'),
+					},
+				},
+			},
+		})({
+			system: {
+				prompt: async () => {
+					textPrompts += 1;
+					return prompts.shift() ?? '';
+				},
+			},
+			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
+		});
+		assert.equal(textPrompts, 2);
+		assert.equal(prompts.length, 0);
+		assert.equal(linked.companionYaml, 'Met With: "[[Sam]]"\nTaken:\n  - "[[Sam]]"');
+		assert.equal(linked.title, 'Ada on Oak');
+
+		const plainPrompts = ['Ada', '10 Oak Street'];
+		const plain = await loadNewRv({
+			...baseApp,
+			plugins: {
+				plugins: {
+					'rv-locator': {
+						settings: { linkCompanionsToNotes: false },
+						promptCompanion: async () => askedCompanion(false, notes, 'TestCompanion'),
+					},
+				},
+			},
+		})({
+			system: { prompt: async () => plainPrompts.shift() ?? '' },
+			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
+		});
+		assert.equal(plain.companionYaml, 'Met With: "TestCompanion"\nTaken:\n  - "TestCompanion"');
+
+		const skipped = await loadNewRv({
+			...baseApp,
+			plugins: {
+				plugins: {
+					'rv-locator': {
+						settings: { linkCompanionsToNotes: true },
+						promptCompanion: async () => askedCompanion(true, notes, null),
+					},
+				},
+			},
+		})({
+			system: { prompt: async () => '' },
+			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
+		});
+		assert.equal(skipped.companionYaml, 'Met With:\nTaken:');
+	});
 });
 
 function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string {
@@ -968,6 +1152,21 @@ function loadRvLog(notices: string[], extra?: {
 	return load(module, module.exports, app, class Notice {
 		constructor(message: string) { notices.push(message); }
 	});
+}
+
+async function askedCompanion(
+	link: boolean,
+	notes: { path: string; basename: string }[],
+	choice: string | null,
+): Promise<string> {
+	const picked = await new Promise<string | null>((resolve) => {
+		const gate = createCompanionPromptGate(resolve);
+		gate.closed((run) => { setTimeout(run, 0); });
+		if (choice != null) gate.choose(choice);
+	});
+	const name = picked?.trim() ?? '';
+	if (!name) return '';
+	return formatStoredCompanion(name, link, notes);
 }
 
 function note(address: string): string {

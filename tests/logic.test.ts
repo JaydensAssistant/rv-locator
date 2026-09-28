@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
-import { appendCompanionTaken, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
+import { createCompanionPromptGate } from '../src/companion-prompt';
+import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
+import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
@@ -1075,18 +1077,18 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.0');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.1');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'unstable'));
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'main'));
-		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js'));
-		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js'));
 		assert.throws(() => assertExtrasDownloadUrl('https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/Scripts/newRv.js'));
 		assert.throws(() => extrasRedirectUrl(
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js',
-			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js',
+			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js',
 		));
 		const configDir = '.obsidian';
 		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir), true);
@@ -1118,7 +1120,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1139,9 +1141,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.0');
+		assert.equal(plan.ref, 'v1.2.1');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.0/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.1/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1270,7 +1272,174 @@ describe('companions', () => {
 		assert.equal(frontmatter['Met With'], 'Pat');
 		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
 	});
+
+	it('offers a typed Use row as the name itself', () => {
+		assert.equal(companionChoices(['Jordan Lee'], 'TestCompanion')[0]?.value, 'TestCompanion');
+		assert.equal(companionChoices(['Jordan Lee'], 'TestCompanion')[0]?.label, 'Use “TestCompanion”');
+		assert.deepEqual(companionChoices(['Jordan Lee'], 'Jordan Lee').map((choice) => choice.value), ['Jordan Lee']);
+		assert.deepEqual(companionChoices(['Jordan Lee', 'Sam Ortiz'], '').map((choice) => choice.value), ['Jordan Lee', 'Sam Ortiz']);
+	});
 });
+
+describe('companion prompt', () => {
+	const root = globalThis as typeof globalThis & { window?: typeof globalThis };
+	root.window ??= root;
+
+	it('keeps a choice when the suggest modal closes first', async () => {
+		const seen: Array<string | null> = [];
+		const gate = createCompanionPromptGate((name) => { seen.push(name); });
+		gate.closed((run) => { setTimeout(run, 0); });
+		assert.deepEqual(seen, []);
+		gate.choose('TestCompanion');
+		assert.deepEqual(seen, ['TestCompanion']);
+		await waitTurn();
+		assert.deepEqual(seen, ['TestCompanion']);
+
+		const chosenFirst: Array<string | null> = [];
+		const early = createCompanionPromptGate((name) => { chosenFirst.push(name); });
+		early.choose('Jordan Lee');
+		early.closed((run) => { setTimeout(run, 0); });
+		await waitTurn();
+		assert.deepEqual(chosenFirst, ['Jordan Lee']);
+	});
+
+	it('skip and esc resolve empty once', async () => {
+		const skipped: Array<string | null> = [];
+		const gate = createCompanionPromptGate((name) => { skipped.push(name); });
+		gate.skip();
+		gate.closed((run) => { setTimeout(run, 0); });
+		await waitTurn();
+		assert.deepEqual(skipped, [null]);
+
+		const escaped: Array<string | null> = [];
+		await new Promise<void>((resolve) => {
+			const esc = createCompanionPromptGate((name) => {
+				escaped.push(name);
+				resolve();
+			});
+			esc.closed((run) => { setTimeout(run, 0); });
+			assert.deepEqual(escaped, []);
+		});
+		assert.deepEqual(escaped, [null]);
+	});
+
+	it('modal delivers a typed Use row after close, and Skip leaves the prompt empty', async () => {
+		const seen: Array<string | null> = [];
+		const modal = new CompanionSuggestModal({} as never, ['Jordan Lee', 'Sam Ortiz'], (name) => {
+			seen.push(name);
+		});
+		const typed = modal.getSuggestions('TestCompanion');
+		assert.equal(typed[0]?.value, 'TestCompanion');
+		assert.equal(typed[0]?.label, 'Use “TestCompanion”');
+		modal.onClose();
+		assert.deepEqual(seen, []);
+		const choice = typed[0];
+		assert.ok(choice);
+		modal.onChooseSuggestion(choice);
+		assert.deepEqual(seen, ['TestCompanion']);
+		await waitTurn();
+		assert.deepEqual(seen, ['TestCompanion']);
+
+		const skipped: Array<string | null> = [];
+		const skipModal = new CompanionSuggestModal({} as never, ['Jordan Lee'], (name) => {
+			skipped.push(name);
+		});
+		skipModal.onOpen();
+		clickLabeled(skipModal.modalEl as unknown as Clickable, 'Skip');
+		assert.deepEqual(skipped, [null]);
+		await waitTurn();
+		assert.deepEqual(skipped, [null]);
+
+		const escaped: Array<string | null> = [];
+		const escModal = new CompanionSuggestModal({} as never, [], (name) => {
+			escaped.push(name);
+		});
+		escModal.onClose();
+		assert.deepEqual(escaped, []);
+		await waitTurn();
+		assert.deepEqual(escaped, [null]);
+	});
+
+	it('writes Met With and Taken for a chosen companion and leaves them on skip or a miss', async () => {
+		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith' }];
+		const now = new Date(2026, 8, 27, 12, 4, 0);
+		const stored = await storedFromPrompt(['close', { choose: 'TestCompanion' }], false, notes);
+		const frontmatter: Record<string, unknown> = {
+			Address: '200 S Orange Ave, Orlando, FL',
+			Visits: 1,
+			'Successful Visits': 1,
+			Taken: ['Ada'],
+		};
+		applyVisitFrontmatter(frontmatter, 'home', now, stored);
+		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
+		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Visits, 2);
+		assert.equal(frontmatter['Successful Visits'], 2);
+
+		applyVisitFrontmatter(frontmatter, 'home', now, stored);
+		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Visits, 3);
+
+		assert.equal(await storedFromPrompt(['close', { choose: 'Pat Smith' }], true, notes), '[[Pat Smith]]');
+		assert.equal(await storedFromPrompt(['close', { choose: 'Pat Smith' }], false, notes), 'Pat Smith');
+		assert.equal(await storedFromPrompt(['close', { choose: 'Nobody' }], true, []), 'Nobody');
+
+		const skipped = await storedFromPrompt(['close'], false, notes);
+		assert.equal(skipped, '');
+		applyVisitFrontmatter(frontmatter, 'home', now, skipped);
+		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
+		assert.equal(frontmatter.Visits, 4);
+		assert.equal(frontmatter['Successful Visits'], 4);
+
+		applyVisitFrontmatter(frontmatter, 'miss', now, 'Pat Smith');
+		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
+		assert.equal(frontmatter.Visits, 5);
+		assert.equal(frontmatter['Successful Visits'], 4);
+	});
+});
+
+type Clickable = { children: Clickable[]; text: string; click: () => void };
+
+function clickLabeled(root: Clickable, text: string): void {
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.text === text) {
+			current.click();
+			return;
+		}
+		stack.push(...current.children);
+	}
+	throw new Error(`No control labeled ${text}`);
+}
+
+function waitTurn(): Promise<void> {
+	return new Promise((resolve) => { setTimeout(resolve, 0); });
+}
+
+async function storedFromPrompt(
+	events: ReadonlyArray<'close' | { choose: string }>,
+	link: boolean,
+	notes: { path: string; basename: string }[],
+): Promise<string> {
+	const picked = await new Promise<string | null>((resolve) => {
+		const gate = createCompanionPromptGate(resolve);
+		for (const event of events) {
+			if (event === 'close') gate.closed((run) => { setTimeout(run, 0); });
+			else gate.choose(event.choose);
+		}
+	});
+	const name = picked?.trim() ?? '';
+	if (!name) return '';
+	return formatStoredCompanion(name, link, notes);
+}
 
 describe('setup wizard', () => {
 	it('reports missing plugins and folders without treating the suggestion row as a failure', () => {

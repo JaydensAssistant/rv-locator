@@ -1,6 +1,7 @@
 import esbuild from 'esbuild';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 mkdirSync('tests-dist', { recursive: true });
 
@@ -13,6 +14,9 @@ await esbuild.build({
 	entryNames: '[name]',
 	outExtension: { '.js': '.cjs' },
 	external: ['node:test', 'node:assert/strict', 'node:fs', 'node:path'],
+	alias: {
+		obsidian: path.join(process.cwd(), 'tests/obsidian-stub.ts'),
+	},
 	logLevel: 'warning',
 });
 
