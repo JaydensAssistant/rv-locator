@@ -1,3 +1,26 @@
+.rv-locator-setup-nudge .rv-locator-setup-nudge-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.rv-locator-setup-nudge .rv-locator-setup-nudge-actions button {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	padding: 4px 8px;
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+}
+
+.rv-locator-setup-nudge .rv-locator-setup-nudge-actions button.mod-cta {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
 .rv-locator-view {
 	--rv-locator-name-color: var(--text-accent);
 	--rv-locator-visits-color: var(--text-accent);
@@ -711,6 +734,46 @@
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
 	line-height: 1.4;
+}
+
+/* Setup wizard. Page 2 stacks its actions and scrolls inside a typical modal. */
+.rv-locator-setup-wizard {
+	width: min(520px, calc(100vw - 32px));
+	max-height: min(85vh, 760px);
+}
+
+.rv-locator-setup-wizard .modal-content {
+	overflow-x: hidden;
+	overflow-y: auto;
+	max-height: min(70vh, 640px);
+	padding-bottom: 12px;
+}
+
+.rv-locator-setup-wizard .setting-item {
+	flex-wrap: wrap;
+	row-gap: 8px;
+}
+
+.rv-locator-setup-wizard .setting-item-control {
+	flex-wrap: wrap;
+	justify-content: flex-start;
+	gap: 8px;
+}
+
+.rv-locator-setup-actions {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 8px;
+	margin-top: 4px;
+}
+
+.rv-locator-setup-actions button {
+	width: 100%;
+	height: auto;
+	min-height: var(--input-height);
+	white-space: normal;
+	text-align: center;
 }
 
 .rv-locator-about p {

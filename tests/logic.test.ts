@@ -8,7 +8,7 @@ import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, comp
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
-import { requiredSetupGaps, setupChecklist, shouldShowSetupNudge, type SetupSnapshot } from '../src/setup-check';
+import { requiredSetupGaps, setupChecklist, shouldPersistSetupWizardCompleted, shouldShowSetupNudge, type SetupSnapshot } from '../src/setup-check';
 import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
@@ -682,7 +682,6 @@ describe('settings', () => {
 		assert.equal(merged.locationProperty, 'Location');
 		assert.equal(merged.mapLinkProperty, 'Map Link');
 		assert.equal(merged.cityProperty, '');
-		assert.equal(merged.linkCompanionsToNotes, false);
 		assert.equal(merged.defaultNewRvPriority, 3);
 		assert.equal(merged.newRvTemplateFile, '99 New RV.md');
 		assert.equal(merged.homeLogTemplateFile, '99 RV Log Home.md');
@@ -690,7 +689,6 @@ describe('settings', () => {
 		assert.equal(merged.setupWizardCompleted, false);
 		assert.equal(merged.setupIncompleteNudgeDismissed, false);
 		const tuned = mergeSettings({
-			linkCompanionsToNotes: true,
 			defaultNewRvPriority: 0,
 			newRvTemplateFile: 'Custom New.md',
 			homeLogTemplateFile: 'Home.md',
@@ -698,7 +696,6 @@ describe('settings', () => {
 			setupWizardCompleted: true,
 			setupIncompleteNudgeDismissed: true,
 		});
-		assert.equal(tuned.linkCompanionsToNotes, true);
 		assert.equal(tuned.defaultNewRvPriority, 0);
 		assert.equal(tuned.newRvTemplateFile, 'Custom New.md');
 		assert.equal(tuned.homeLogTemplateFile, 'Home.md');
@@ -709,14 +706,15 @@ describe('settings', () => {
 		assert.equal(ignored.setupIncompleteNudgeDismissed, true);
 		assert.equal(ignored.setupWizardCompleted, false);
 		const rejected = mergeSettings({
-			linkCompanionsToNotes: false,
 			defaultNewRvPriority: 9,
 			newRvTemplateFile: '../nope.md',
 			homeLogTemplateFile: 'notes.txt',
 			setupWizardCompleted: false,
 		});
-		assert.equal(rejected.linkCompanionsToNotes, false);
 		assert.equal(rejected.defaultNewRvPriority, 3);
+		const droppedCompanionLink = mergeSettings(JSON.parse('{"linkCompanionsToNotes":true,"defaultNewRvPriority":1}') as never);
+		assert.equal(droppedCompanionLink.defaultNewRvPriority, 1);
+		assert.equal('linkCompanionsToNotes' in droppedCompanionLink, false);
 		assert.equal(rejected.newRvTemplateFile, '99 New RV.md');
 		assert.equal(rejected.homeLogTemplateFile, '99 RV Log Home.md');
 		assert.equal(mergeSettings({ newRvTemplateFile: 'a<b>.md' }).newRvTemplateFile, '99 New RV.md');
@@ -1098,7 +1096,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.2');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.3');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1141,7 +1139,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.3/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1162,9 +1160,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.2');
+		assert.equal(plan.ref, 'v1.2.3');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.2/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.3/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1476,34 +1474,20 @@ describe('companions', () => {
 		assert.ok(modified > spoke);
 	});
 
-	it('dedupes Taken and links a matching note basename', () => {
+	it('dedupes Taken and stores a plain companion name', () => {
 		assert.deepEqual(appendCompanionTaken(['[[Sam]]'], 'sam'), ['[[Sam]]']);
 		assert.deepEqual(appendCompanionTaken(['Sam'], 'Pat'), ['Sam', 'Pat']);
 		assert.deepEqual(appendCompanionTaken(undefined, ''), []);
-		const notes = [
-			{ path: 'People/Sam.md', basename: 'Sam' },
-			{ path: 'Other/Sam.md', basename: 'Sam' },
-			{ path: 'People/Pat.md', basename: 'Pat' },
-		];
-		assert.equal(formatStoredCompanion('Pat', false, notes), 'Pat');
-		assert.equal(formatStoredCompanion('Pat', true, notes), '[[Pat]]');
-		assert.equal(formatStoredCompanion('Sam', true, notes), '[[People/Sam]]');
-		assert.equal(formatStoredCompanion('Ada', true, notes), 'Ada');
-		assert.equal(formatStoredCompanion('[[Pat]]', false, notes), 'Pat');
-		assert.equal(formatStoredCompanion('[[Nobody]]', true, notes), 'Nobody');
-		const aliased = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith', aliases: ['Patty'] }];
-		assert.equal(formatStoredCompanion('Patty', true, aliased), '[[Pat Smith]]');
-		assert.equal(formatStoredCompanion('Patty', false, aliased), 'Patty');
-		const named = [
-			{ path: 'People/Patty.md', basename: 'Patty' },
-			{ path: 'People/Pat Smith.md', basename: 'Pat Smith', aliases: ['Patty'] },
-		];
-		assert.equal(formatStoredCompanion('Patty', true, named), '[[Patty]]');
-		assert.equal(formatStoredCompanion('Pat', true, notes, () => '[[People/Pat|Pat]]'), '[[People/Pat|Pat]]');
+		assert.equal(formatStoredCompanion('Pat'), 'Pat');
+		assert.equal(formatStoredCompanion('[[Pat]]'), 'Pat');
+		assert.equal(formatStoredCompanion('[[People/Sam|Sam]]'), 'Sam');
+		assert.equal(formatStoredCompanion('[[Nobody]]'), 'Nobody');
+		assert.equal(formatStoredCompanion('  Ada  '), 'Ada');
+		assert.equal(formatStoredCompanion(''), '');
 		assert.deepEqual(appendCompanionTaken([['Ada']], 'Pat'), ['[[Ada]]', 'Pat']);
 		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
 		assert.equal(companionFrontmatterBlock('Pat'), 'Met With:\nTaken:\n  - "Pat"');
-		assert.equal(companionFrontmatterBlock('[[Pat]]'), 'Met With:\nTaken:\n  - "[[Pat]]"');
+		assert.equal(companionFrontmatterBlock(formatStoredCompanion('[[Pat]]')), 'Met With:\nTaken:\n  - "Pat"');
 	});
 
 	it('quotes Taken and Met With wikilinks that Obsidian flattened', () => {
@@ -1560,13 +1544,13 @@ describe('companions', () => {
 		assert.equal(frontmatter.Address, '142 Maple Street');
 		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada']);
-		applyVisitFrontmatter(frontmatter, 'home', now, '[[Pat]]');
+		applyVisitFrontmatter(frontmatter, 'home', now, formatStoredCompanion('[[Pat]]'));
 		assert.equal(frontmatter['Met With'], 'Ada');
-		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'Pat']);
 		applyVisitFrontmatter(frontmatter, 'home', now, 'Pat');
 		assert.equal(frontmatter.Address, '142 Maple Street');
 		assert.equal(frontmatter['Met With'], 'Ada');
-		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'Pat']);
 	});
 
 	it('offers a typed Use row as the name itself', () => {
@@ -1657,9 +1641,8 @@ describe('companion prompt', () => {
 	});
 
 	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {
-		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith' }];
 		const now = new Date(2026, 8, 27, 12, 4, 0);
-		const stored = await storedFromPrompt(['close', { choose: 'TestCompanion' }], false, notes);
+		const stored = await storedFromPrompt(['close', { choose: 'TestCompanion' }]);
 		const frontmatter: Record<string, unknown> = {
 			Address: '200 S Orange Ave, Orlando, FL',
 			Visits: 1,
@@ -1679,11 +1662,11 @@ describe('companion prompt', () => {
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Visits, 3);
 
-		assert.equal(await storedFromPrompt(['close', { choose: 'Pat Smith' }], true, notes), '[[Pat Smith]]');
-		assert.equal(await storedFromPrompt(['close', { choose: 'Pat Smith' }], false, notes), 'Pat Smith');
-		assert.equal(await storedFromPrompt(['close', { choose: 'Nobody' }], true, []), 'Nobody');
+		assert.equal(await storedFromPrompt(['close', { choose: 'Pat Smith' }]), 'Pat Smith');
+		assert.equal(await storedFromPrompt(['close', { choose: '[[Pat Smith]]' }]), 'Pat Smith');
+		assert.equal(await storedFromPrompt(['close', { choose: 'Nobody' }]), 'Nobody');
 
-		const skipped = await storedFromPrompt(['close'], false, notes);
+		const skipped = await storedFromPrompt(['close']);
 		assert.equal(skipped, '');
 		applyVisitFrontmatter(frontmatter, 'home', now, skipped);
 		assert.equal(frontmatter['Met With'], 'Ada');
@@ -1729,8 +1712,6 @@ function waitTurn(): Promise<void> {
 
 async function storedFromPrompt(
 	events: ReadonlyArray<'close' | { choose: string }>,
-	link: boolean,
-	notes: { path: string; basename: string }[],
 ): Promise<string> {
 	const picked = await new Promise<string | null>((resolve) => {
 		const gate = createCompanionPromptGate(resolve);
@@ -1741,7 +1722,7 @@ async function storedFromPrompt(
 	});
 	const name = picked?.trim() ?? '';
 	if (!name) return '';
-	return formatStoredCompanion(name, link, notes);
+	return formatStoredCompanion(name);
 }
 
 describe('setup wizard', () => {
@@ -1759,7 +1740,10 @@ describe('setup wizard', () => {
 		assert.equal(missing.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
 		assert.equal(missing.find((check) => check.id === 'extras')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'suggested')?.ok, true);
-		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('Link companions to notes is off'), true);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('Link companions'), false);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('New RV priority is 3'), true);
+		assert.equal(missing.find((check) => check.id === 'geoapify')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'geoapify')?.title.includes('Geoapify API key is missing'), true);
 		assert.equal(missing.find((check) => check.id === 'home-counties')?.ok, true);
 		assert.equal(missing.find((check) => check.id === 'home-counties')?.detail.includes('asks you to confirm'), true);
 		const named = setupChecklist(sampleSetup({ homeCounties: ['Orange', 'Lake'] }));
@@ -1773,7 +1757,7 @@ describe('setup wizard', () => {
 			resolvedTemplatesFolder: 'Ministry/Templates',
 			resolvedScriptsFolder: 'Ministry/Scripts',
 			files: [{ path: 'Ministry/Templates/99 New RV.md', exists: true }],
-			linkCompanionsToNotes: true,
+			geoapifyConfigured: true,
 		}));
 		assert.equal(ready.every((check) => check.ok), true);
 	});
@@ -1822,7 +1806,7 @@ describe('setup wizard', () => {
 		assert.equal(afterSkip.includes('asks you to confirm'), true);
 	});
 
-	it('nags when the wizard was never finished or a required step is missing', () => {
+	it('nags only for a required gap the wizard also shows', () => {
 		const ready = sampleSetup({
 			templaterEnabled: true,
 			metaBindEnabled: true,
@@ -1830,8 +1814,10 @@ describe('setup wizard', () => {
 			scriptsFolder: 'Scripts',
 			files: [{ path: 'Templates/99 New RV.md', exists: true }],
 			homeCounties: [],
+			geoapifyConfigured: true,
 		});
 		assert.deepEqual(requiredSetupGaps(ready, 'key'), []);
+		assert.equal(setupChecklist(ready).every((check) => check.ok), true);
 		assert.equal(shouldShowSetupNudge({
 			wizardCompleted: true,
 			nudgeDismissed: false,
@@ -1843,8 +1829,13 @@ describe('setup wizard', () => {
 			nudgeDismissed: false,
 			geoapifyApiKey: 'key',
 			snapshot: ready,
-		}), true);
+		}), false);
+		assert.equal(shouldPersistSetupWizardCompleted(false, ready, 'key'), true);
+		assert.equal(shouldPersistSetupWizardCompleted(true, ready, 'key'), false);
 		assert.deepEqual(requiredSetupGaps(ready, '  '), ['geoapify']);
+		const missingKey = setupChecklist({ ...ready, geoapifyConfigured: false });
+		assert.equal(missingKey.find((check) => check.id === 'geoapify')?.ok, false);
+		assert.equal(missingKey.find((check) => check.id === 'geoapify')?.detail.includes('RV Locator settings'), true);
 		assert.equal(shouldShowSetupNudge({
 			wizardCompleted: true,
 			nudgeDismissed: false,
@@ -1877,6 +1868,93 @@ describe('setup wizard', () => {
 			geoapifyApiKey: '',
 			snapshot: missing,
 		}), false);
+
+		const fallbackFiles = [
+			{ path: 'Templates/99 New RV.md', exists: true },
+			{ path: 'Templates/99 RV Log Home.md', exists: true },
+			{ path: 'Templates/99 RV Log Miss.md', exists: true },
+			{ path: 'Scripts/newRv.js', exists: true },
+			{ path: 'Scripts/rvLog.js', exists: true },
+			{ path: 'Scripts/geocodeNewRv.js', exists: true },
+		];
+		const fallback = sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: '',
+			scriptsFolder: '',
+			resolvedTemplatesFolder: 'Templates',
+			resolvedScriptsFolder: 'Scripts',
+			files: fallbackFiles,
+			geoapifyConfigured: true,
+		});
+		const fallbackChecks = setupChecklist(fallback);
+		assert.equal(fallbackChecks.find((check) => check.id === 'templates-folder')?.ok, true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'scripts-folder')?.ok, true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'templates-folder')?.detail.includes('templates_folder'), true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'extras')?.ok, true);
+		assert.deepEqual(requiredSetupGaps(fallback, 'key'), []);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: fallback,
+		}), false);
+
+		const scriptsMissing = sampleSetup({
+			...fallback,
+			files: fallbackFiles.map((file) => file.path.startsWith('Scripts/') ? { ...file, exists: false } : file),
+		});
+		const scriptGaps = requiredSetupGaps(scriptsMissing, 'key');
+		assert.equal(scriptGaps.includes('templates-folder'), false);
+		assert.equal(scriptGaps.includes('scripts-folder'), true);
+		assert.equal(scriptGaps.includes('extras'), true);
+		assert.equal(setupChecklist(scriptsMissing).find((check) => check.id === 'scripts-folder')?.ok, false);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: scriptsMissing,
+		}), true);
+	});
+
+	it('page 2 lists the Geoapify gap and every action button', async () => {
+		const blocked = new SetupWizardModal({} as never, async () => sampleSetup({ geoapifyConfigured: false }), wizardActions({}));
+		blocked.open();
+		await waitTurn();
+		clickLabeled(blocked.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		const blockedText = collectText(blocked.contentEl as unknown as Clickable);
+		assert.equal(blockedText.includes('Needs attention: Geoapify API key is missing'), true);
+		for (const label of ['Community plugins', 'Templater settings', 'Meta Bind settings', 'Update from GitHub', 'Check again', 'Done']) {
+			assert.equal(blockedText.includes(label), true, label);
+		}
+
+		const ready = new SetupWizardModal({} as never, async () => sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Templates',
+			scriptsFolder: 'Scripts',
+			files: [{ path: 'Templates/99 New RV.md', exists: true }],
+			geoapifyConfigured: true,
+		}), wizardActions({}));
+		ready.open();
+		await waitTurn();
+		clickLabeled(ready.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		const readyText = collectText(ready.contentEl as unknown as Clickable);
+		assert.equal(readyText.includes('Ready: Geoapify API key is set'), true);
+		assert.equal(readyText.includes('Needs attention'), false);
+		let dismissed = 0;
+		const done = new SetupWizardModal({} as never, async () => sampleSetup({}), wizardActions({
+			onDismiss: () => { dismissed += 1; },
+		}));
+		done.open();
+		await waitTurn();
+		clickLabeled(done.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		clickLabeled(done.contentEl as unknown as Clickable, 'Done');
+		assert.equal(dismissed, 1);
 	});
 });
 
@@ -1926,7 +2004,7 @@ function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
 		files: [],
 		defaultNewRvPriority: 3,
 		homeCounties: [],
-		linkCompanionsToNotes: false,
+		geoapifyConfigured: false,
 		newRvTemplateFile: '99 New RV.md',
 		homeLogTemplateFile: '99 RV Log Home.md',
 		missLogTemplateFile: '99 RV Log Miss.md',

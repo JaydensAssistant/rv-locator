@@ -14,13 +14,13 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { decideGeocodePick } from './home-base';
-import { aliasNames, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter, type CompanionNoteRef } from './companions';
+import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
-import { META_BIND_PLUGIN_ID, shouldShowSetupNudge } from './setup-check';
+import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -125,8 +125,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 
 		this.app.workspace.onLayoutReady(() => {
-			if (!shouldAutoOpenSetupWizard(this.settings.setupWizardCompleted, this.unloaded)) return;
-			this.openSetupWizard();
+			void this.syncSetupCompletion();
 		});
 	}
 
@@ -209,8 +208,8 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/**
 	 * One companion for a home visit or a new note. Empty when they skip.
-	 * Callers append the name to Taken only and leave Met With unchanged.
-	 * Wikilink form follows `linkCompanionsToNotes`.
+	 * Callers append the plain name to Taken only and leave Met With unchanged.
+	 * New writes do not create wikilinks.
 	 */
 	async promptCompanion(): Promise<string> {
 		const picked = await new Promise<string | null>((resolve) => {
@@ -219,12 +218,7 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		const name = picked?.trim() ?? '';
 		if (!name) return '';
-		return formatStoredCompanion(
-			name,
-			this.settings.linkCompanionsToNotes,
-			this.companionNoteRefs(),
-			(note) => this.markdownLinkFor(note.path),
-		);
+		return formatStoredCompanion(name);
 	}
 
 	/** Quoted Taken / Met With wikilinks, after processFrontMatter may have flattened them. */
@@ -249,24 +243,6 @@ export default class RVLocatorPlugin extends Plugin {
 		return collectRecentCompanionNames(notes);
 	}
 
-	private companionNoteRefs(): CompanionNoteRef[] {
-		return this.app.vault.getMarkdownFiles().map((file) => ({
-			path: file.path,
-			basename: file.basename,
-			aliases: aliasNames(this.app.metadataCache.getFileCache(file)?.frontmatter?.aliases),
-		}));
-	}
-
-	private markdownLinkFor(path: string): string {
-		const file = this.app.vault.getFileByPath(path);
-		if (!file) return '';
-		try {
-			return this.app.fileManager.generateMarkdownLink(file, '').trim();
-		} catch {
-			return '';
-		}
-	}
-
 	private loadSetupSnapshot() {
 		const templater = readTemplaterPlugin(this.app);
 		return readSetupSnapshot(this.app, this.settings, this.extrasPlacement(), templater?.settings ?? null);
@@ -282,7 +258,15 @@ export default class RVLocatorPlugin extends Plugin {
 	private async showSetupNudge(): Promise<void> {
 		try {
 			const snapshot = await this.loadSetupSnapshot();
-			if (this.unloaded || !shouldShowSetupNudge({
+			if (this.unloaded) {
+				this.setupNudgeOpen = false;
+				return;
+			}
+			// Required gaps empty → the notice stays down, and a stale false flag is saved.
+			if (shouldPersistSetupWizardCompleted(this.settings.setupWizardCompleted, snapshot, this.settings.geoapifyApiKey)) {
+				await this.markSetupWizardSeen();
+			}
+			if (!shouldShowSetupNudge({
 				wizardCompleted: this.settings.setupWizardCompleted,
 				nudgeDismissed: this.settings.setupIncompleteNudgeDismissed,
 				geoapifyApiKey: this.settings.geoapifyApiKey,
@@ -322,6 +306,29 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.saveSettings();
 	}
 
+	/**
+	 * Required gaps empty → treat setup as complete and do not auto-open the wizard.
+	 * A false `setupWizardCompleted` flag is saved in that case so Settings-only
+	 * setup does not keep nagging. When a gap remains, the first launch still opens
+	 * the wizard until Done (or a later empty-gap check) saves the flag.
+	 */
+	private async syncSetupCompletion(): Promise<void> {
+		if (this.unloaded) return;
+		try {
+			const snapshot = await this.loadSetupSnapshot();
+			if (this.unloaded) return;
+			if (requiredSetupGaps(snapshot, this.settings.geoapifyApiKey).length === 0) {
+				await this.markSetupWizardSeen();
+				return;
+			}
+		} catch {
+			// Snapshot failed; still offer the wizard when it has never been closed.
+		}
+		if (!shouldAutoOpenSetupWizard(this.settings.setupWizardCompleted, this.unloaded)) return;
+		this.openSetupWizard();
+	}
+
+	/** Done closes the wizard and saves this flag, including when a gap remains. */
 	private async markSetupWizardSeen(): Promise<void> {
 		if (this.settings.setupWizardCompleted) return;
 		this.settings.setupWizardCompleted = true;

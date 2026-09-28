@@ -10,13 +10,6 @@ export interface CompanionMention {
 	recentAt: number;
 }
 
-export interface CompanionNoteRef {
-	path: string;
-	basename: string;
-	/** Frontmatter aliases. A companion name may match one of these. */
-	aliases?: readonly string[];
-}
-
 export interface CompanionSuggestion {
 	/** Name stored on the note. A typed row uses the typed text, not the “Use …” label. */
 	value: string;
@@ -57,16 +50,6 @@ export function companionDisplayName(value: unknown): string {
 
 export function companionKey(value: string): string {
 	return companionDisplayName(value).trim().toLowerCase();
-}
-
-export function aliasNames(value: unknown): string[] {
-	if (Array.isArray(value)) {
-		return value
-			.map((item) => (typeof item === 'string' ? item.trim() : ''))
-			.filter((item) => item.length > 0);
-	}
-	if (typeof value === 'string' && value.trim()) return [value.trim()];
-	return [];
 }
 
 /**
@@ -143,33 +126,11 @@ export function appendCompanionTaken(existing: unknown, companion: string): stri
 }
 
 /**
- * When linking is on and one note name or alias matches, store `[[Note Name]]`.
- * Several matches use the path form Obsidian accepts. Otherwise the plain name.
- * `linkFor` may replace that with the vault’s own link for the same note.
+ * Plain name appended to Taken. A wikilink is reduced to its display name.
+ * New companion writes do not create wikilinks.
  */
-export function formatStoredCompanion(
-	name: string,
-	linkToNotes: boolean,
-	notes: readonly CompanionNoteRef[],
-	linkFor?: (note: CompanionNoteRef) => string,
-): string {
-	const plain = companionDisplayName(name) || name.trim();
-	if (!plain) return '';
-	if (!linkToNotes) return plain;
-	const chosen = pickCompanionNote(plain, notes);
-	if (!chosen) return plain;
-	const custom = linkFor?.(chosen)?.trim() ?? '';
-	if (custom) return custom;
-	return companionWikilink(plain, notes) ?? plain;
-}
-
-export function companionWikilink(name: string, notes: readonly CompanionNoteRef[]): string | null {
-	const chosen = pickCompanionNote(name, notes);
-	if (!chosen) return null;
-	const pool = matchingCompanionNotes(name, notes);
-	if (pool.length === 1) return `[[${chosen.basename}]]`;
-	const path = chosen.path.replace(/\\/g, '/').replace(/\.md$/i, '');
-	return path ? `[[${path}]]` : null;
+export function formatStoredCompanion(name: string): string {
+	return companionDisplayName(name) || name.trim();
 }
 
 /**
@@ -184,22 +145,6 @@ export function stabilizeCompanionFrontmatter(markdown: string): string {
 	const rewritten = rewriteCompanionLinkLines(lines);
 	if (rewritten.length === lines.length && rewritten.every((line, index) => line === lines[index])) return markdown;
 	return markdown.slice(0, fence.start) + rewritten.join(fence.nl) + markdown.slice(fence.end);
-}
-
-function pickCompanionNote(name: string, notes: readonly CompanionNoteRef[]): CompanionNoteRef | null {
-	const pool = matchingCompanionNotes(name, notes);
-	if (pool.length === 0) return null;
-	const wanted = name.trim();
-	const exact = pool.filter((note) => note.basename === wanted);
-	return (exact.length > 0 ? exact : pool)[0] ?? null;
-}
-
-function matchingCompanionNotes(name: string, notes: readonly CompanionNoteRef[]): CompanionNoteRef[] {
-	const wanted = name.trim().toLowerCase();
-	if (!wanted) return [];
-	const byName = notes.filter((note) => note.basename.trim().toLowerCase() === wanted);
-	if (byName.length > 0) return byName;
-	return notes.filter((note) => (note.aliases ?? []).some((alias) => alias.trim().toLowerCase() === wanted));
 }
 
 function wikilinkFromParsed(value: unknown): string | null {

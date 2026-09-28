@@ -48,7 +48,7 @@ export async function readSetupSnapshot(
 		files,
 		defaultNewRvPriority: settings.defaultNewRvPriority,
 		homeCounties: [...settings.homeCounties],
-		linkCompanionsToNotes: settings.linkCompanionsToNotes,
+		geoapifyConfigured: settings.geoapifyApiKey.trim().length > 0,
 		newRvTemplateFile: settings.newRvTemplateFile,
 		homeLogTemplateFile: settings.homeLogTemplateFile,
 		missLogTemplateFile: settings.missLogTemplateFile,
@@ -81,6 +81,7 @@ export class SetupWizardModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass('rv-locator-setup-wizard');
 		this.setTitle('RV Locator setup');
 		void this.render();
 	}
@@ -155,7 +156,7 @@ export class SetupWizardModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', { text: 'Step 2 of 2. Templates and scripts.' });
 		contentEl.createEl('p', {
-			text: 'Check Templater and Meta Bind, then put the New RV templates and scripts in Templater’s folders. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.',
+			text: 'Check the Geoapify key, Templater, and Meta Bind, then put the New RV templates and scripts in Templater’s folders. The setup notice uses this same list. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.',
 		});
 		const snapshot = await this.load();
 		if (this.closed || generation !== this.renderGeneration) return;
@@ -168,33 +169,21 @@ export class SetupWizardModal extends Modal {
 			});
 			item.createDiv({ cls: 'rv-locator-check-detail', text: check.detail });
 		}
-		new Setting(contentEl)
-			.addButton((button) => {
-				button.setButtonText('Community plugins');
-				button.onClick(() => { this.actions.openCommunityPlugins(); });
-			})
-			.addButton((button) => {
-				button.setButtonText('Templater settings');
-				button.onClick(() => { this.actions.openTemplaterSettings(); });
-			})
-			.addButton((button) => {
-				button.setButtonText('Meta Bind settings');
-				button.onClick(() => { this.actions.openMetaBindSettings(); });
-			});
-		new Setting(contentEl)
-			.addButton((button) => {
-				button.setButtonText('Update from GitHub');
-				button.setCta();
-				button.onClick(() => { this.actions.onPlaceExtras(); });
-			})
-			.addButton((button) => {
-				button.setButtonText('Check again');
-				button.onClick(() => { void this.render(); });
-			});
-		new Setting(contentEl)
-			.addButton((button) => {
-				button.setButtonText('Done');
-				button.onClick(() => { this.close(); });
-			});
+		const actions = contentEl.createDiv({ cls: 'rv-locator-setup-actions' });
+		this.actionButton(actions, 'Community plugins', () => { this.actions.openCommunityPlugins(); });
+		this.actionButton(actions, 'Templater settings', () => { this.actions.openTemplaterSettings(); });
+		this.actionButton(actions, 'Meta Bind settings', () => { this.actions.openMetaBindSettings(); });
+		this.actionButton(actions, 'Update from GitHub', () => { this.actions.onPlaceExtras(); }, true);
+		this.actionButton(actions, 'Check again', () => { void this.render(); });
+		this.actionButton(actions, 'Done', () => { this.close(); });
+	}
+
+	/** Full-width buttons so a typical Obsidian modal does not clip the row. */
+	private actionButton(parent: HTMLElement, label: string, onClick: () => void, cta = false): void {
+		const button = cta
+			? parent.createEl('button', { text: label, cls: 'mod-cta' })
+			: parent.createEl('button', { text: label });
+		button.setAttribute('type', 'button');
+		button.addEventListener('click', onClick);
 	}
 }

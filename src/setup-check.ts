@@ -19,7 +19,8 @@ export interface SetupSnapshot {
 	defaultNewRvPriority: number;
 	/** Saved home-base counties. Empty means geocode always asks you to confirm. */
 	homeCounties: string[];
-	linkCompanionsToNotes: boolean;
+	/** True when a Geoapify API key is saved. The key itself is not copied here. */
+	geoapifyConfigured: boolean;
 	newRvTemplateFile: string;
 	homeLogTemplateFile: string;
 	missLogTemplateFile: string;
@@ -40,7 +41,17 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 		: files.map((file) => `${file.exists ? 'Present' : 'Missing'}: ${file.path}`).join(' ');
 	const templatesRaw = snapshot.templatesFolder.trim();
 	const scriptsRaw = snapshot.scriptsFolder.trim();
+	const templatesReady = templaterFolderReady(templatesRaw, snapshot.resolvedTemplatesFolder, snapshot.files);
+	const scriptsReady = templaterFolderReady(scriptsRaw, snapshot.resolvedScriptsFolder, snapshot.files);
 	return [
+		{
+			id: 'geoapify',
+			ok: snapshot.geoapifyConfigured,
+			title: snapshot.geoapifyConfigured ? 'Geoapify API key is set' : 'Geoapify API key is missing',
+			detail: snapshot.geoapifyConfigured
+				? 'Nearby and geocode use the key saved in RV Locator settings.'
+				: 'Add a Geoapify API key in RV Locator settings. The setup notice stays up until that key is saved.',
+		},
 		{
 			id: 'templater',
 			ok: snapshot.templaterEnabled,
@@ -59,19 +70,31 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 		},
 		{
 			id: 'templates-folder',
-			ok: templatesRaw.length > 0,
-			title: templatesRaw ? `Templates folder: ${templatesRaw}` : 'Templater template folder is empty',
+			ok: templatesReady,
+			title: templatesRaw
+				? `Templates folder: ${templatesRaw}`
+				: templatesReady
+					? `Templates folder: ${snapshot.resolvedTemplatesFolder} (Templater setting is empty)`
+					: 'Templater template folder is empty',
 			detail: templatesRaw
 				? `Templates go in ${snapshot.resolvedTemplatesFolder}/ (Templater templates_folder).`
-				: `Set the template folder in Templater (templates_folder). Until then, files go in ${snapshot.resolvedTemplatesFolder}/.`,
+				: templatesReady
+					? `Templater’s templates_folder is empty. The template files are already in ${snapshot.resolvedTemplatesFolder}/, and that fallback is enough until the setting is filled in.`
+					: `Set the template folder in Templater (templates_folder). Until then, files go in ${snapshot.resolvedTemplatesFolder}/. The fallback counts only when those template files are already there.`,
 		},
 		{
 			id: 'scripts-folder',
-			ok: scriptsRaw.length > 0,
-			title: scriptsRaw ? `User scripts folder: ${scriptsRaw}` : 'Templater user scripts folder is empty',
+			ok: scriptsReady,
+			title: scriptsRaw
+				? `User scripts folder: ${scriptsRaw}`
+				: scriptsReady
+					? `User scripts folder: ${snapshot.resolvedScriptsFolder} (Templater setting is empty)`
+					: 'Templater user scripts folder is empty',
 			detail: scriptsRaw
 				? `Scripts go in ${snapshot.resolvedScriptsFolder}/ (Templater user_scripts_folder).`
-				: `Set the user scripts folder in Templater (user_scripts_folder). Until then, files go in ${snapshot.resolvedScriptsFolder}/.`,
+				: scriptsReady
+					? `Templater’s user_scripts_folder is empty. The script files are already in ${snapshot.resolvedScriptsFolder}/, and that fallback is enough until the setting is filled in.`
+					: `Set the user scripts folder in Templater (user_scripts_folder). Until then, files go in ${snapshot.resolvedScriptsFolder}/. The fallback counts only when those script files are already there.`,
 		},
 		{
 			id: 'extras',
@@ -95,7 +118,7 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 			id: 'suggested',
 			ok: true,
 			title: 'Suggested RV Locator settings',
-			detail: `New RV priority is ${snapshot.defaultNewRvPriority} (0–5). New RV “${snapshot.newRvTemplateFile}”, Home “${snapshot.homeLogTemplateFile}”, Not home “${snapshot.missLogTemplateFile}”. Link companions to notes is ${snapshot.linkCompanionsToNotes ? 'on' : 'off'}.`,
+			detail: `New RV priority is ${snapshot.defaultNewRvPriority} (0–5). New RV “${snapshot.newRvTemplateFile}”, Home “${snapshot.homeLogTemplateFile}”, Not home “${snapshot.missLogTemplateFile}”.`,
 		},
 	];
 }
@@ -104,20 +127,47 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 const OPTIONAL_SETUP_IDS = new Set(['home-counties', 'suggested']);
 
 /**
+ * A blank Templater folder is Ready when every extras file in the fallback
+ * folder is already present. The wizard row and the setup notice share this
+ * check, so Templates/ or Scripts/ does not nag once those files are there.
+ */
+function templaterFolderReady(raw: string, resolved: string, files: SetupFileStatus[]): boolean {
+	if (raw.trim().length > 0) return true;
+	const prefix = `${resolved.trim().replace(/\\/g, '/').replace(/\/+$/, '')}/`;
+	if (prefix === '/') return false;
+	const placed = files.filter((file) => file.path.replace(/\\/g, '/').startsWith(prefix));
+	return placed.length > 0 && placed.every((file) => file.exists);
+}
+
+/**
  * Required gaps only. Home counties are omitted because the wizard lets you skip them.
- * A blank Geoapify key is required even though the wizard checklist does not list it.
+ * The suggestion row is informational. Every other checklist row, including the
+ * Geoapify key, is required, and the wizard shows that same row.
+ * The key argument is what the checklist uses for Geoapify, so the notice cannot
+ * disagree with the wizard about whether the key is set.
  */
 export function requiredSetupGaps(snapshot: SetupSnapshot, geoapifyApiKey: string): string[] {
+	const aligned: SetupSnapshot = {
+		...snapshot,
+		geoapifyConfigured: geoapifyApiKey.trim().length > 0,
+	};
 	const gaps: string[] = [];
-	if (!geoapifyApiKey.trim()) gaps.push('geoapify');
-	for (const check of setupChecklist(snapshot)) {
+	for (const check of setupChecklist(aligned)) {
 		if (OPTIONAL_SETUP_IDS.has(check.id) || check.ok) continue;
 		gaps.push(check.id);
 	}
 	return gaps;
 }
 
-/** Notice while the wizard was never closed, or a required step is still missing. */
+/**
+ * The unfinished-setup notice uses the same required gaps as the wizard.
+ * Once those gaps are empty, the notice stays down even if `wizardCompleted`
+ * is still false (setup finished in Settings, or the wizard already shows Ready).
+ * Callers persist `setupWizardCompleted` when {@link shouldPersistSetupWizardCompleted}
+ * is true. Closing the wizard with Done also persists that flag, including when
+ * a gap remains. `nudgeDismissed` hides the notice while a gap remains and does
+ * not by itself mark setup complete.
+ */
 export function shouldShowSetupNudge(input: {
 	wizardCompleted: boolean;
 	nudgeDismissed: boolean;
@@ -125,6 +175,19 @@ export function shouldShowSetupNudge(input: {
 	snapshot: SetupSnapshot;
 }): boolean {
 	if (input.nudgeDismissed) return false;
-	if (!input.wizardCompleted) return true;
 	return requiredSetupGaps(input.snapshot, input.geoapifyApiKey).length > 0;
+}
+
+/**
+ * Save `setupWizardCompleted` when every required gap is already gone and the
+ * flag is still false. Done on the wizard saves the flag separately, even if
+ * a gap remains, so closing the wizard is not the only way the flag is set.
+ */
+export function shouldPersistSetupWizardCompleted(
+	wizardCompleted: boolean,
+	snapshot: SetupSnapshot,
+	geoapifyApiKey: string,
+): boolean {
+	if (wizardCompleted) return false;
+	return requiredSetupGaps(snapshot, geoapifyApiKey).length === 0;
 }

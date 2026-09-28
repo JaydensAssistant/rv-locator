@@ -218,16 +218,6 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
-		new Setting(containerEl)
-			.setName('Link companions to notes')
-			.setDesc('On, Taken stores [[Note Name]] when a note name or alias matches; otherwise plain text. Off is always plain text, and Met With is not changed.')
-			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.linkCompanionsToNotes);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.linkCompanionsToNotes = value;
-					await this.plugin.saveSettings();
-				});
-			});
 		this.templateFileSetting(
 			templateGeneration,
 			'New RV template file',
