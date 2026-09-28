@@ -661,6 +661,8 @@ describe('disk proof', () => {
 		const disk = readFileSync(file, 'utf8');
 		console.log(`\n----- VISIT COMPANION ${file} -----\n${disk}`);
 		assert.equal(addressLine(disk), addressLine(before));
+		assert.equal(disk.includes('---###'), false);
+		assert.equal(disk.includes('\n### Sat, 11pm — Sep 26, 2026\n'), true);
 		assert.equal(disk.includes('Met With: "Door"'), true);
 		assert.equal(disk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(disk.includes('  - "Ada"'), true);
@@ -1153,8 +1155,11 @@ function commitVisit(markdown: string, outcome: VisitOutcome, now: Date, compani
 	const close = `${nl}---`;
 	const end = next.indexOf(close, start);
 	if (end < 0) throw new Error('frontmatter did not close');
-	const head = next.slice(0, end + close.length);
-	return head + applyVisitBody(bodyOf(next), outcome, now);
+	const fenceEnd = end + close.length;
+	const afterFence = next.slice(fenceEnd);
+	// Obsidian's contentStart includes the newline after the closing fence.
+	const separator = afterFence.startsWith(nl) ? nl : '';
+	return next.slice(0, fenceEnd) + separator + applyVisitBody(afterFence.slice(separator.length), outcome, now);
 }
 
 function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; companionYaml: string; title: string }> {
