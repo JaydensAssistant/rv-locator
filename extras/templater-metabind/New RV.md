@@ -3,12 +3,11 @@ const rv = await tp.user.newRv(tp);
 -%>
 ---
 Address: "<% rv.addressYaml %>"
-Priority: 0
+Priority: <% rv.priority %>
 Met: "<% rv.created %>"
 Last Spoke: "<% rv.created %>"
 Last Attempted: "<% rv.created %>"
-Met With:
-Taken:
+<% rv.companionYaml %>
 Visits: 1
 Successful Visits: 1
 icon: door-open
@@ -52,6 +51,7 @@ cssclasses:
 > `INPUT[inlineList:Taken]`
 ### <% rv.stamp %>
 
+
 > [!note]- Attempt Log
 > - <% rv.stamp %> — success
 
@@ -63,7 +63,7 @@ id: rv-log-home
 hidden: true
 actions:
   - type: runTemplaterFile
-    templateFile: Templates/RV Log Home.md
+    templateFile: Templates/99 RV Log Home.md
 ```
 
 ```meta-bind-button
@@ -74,5 +74,5 @@ id: rv-log-miss
 hidden: true
 actions:
   - type: runTemplaterFile
-    templateFile: Templates/RV Log Miss.md
+    templateFile: Templates/99 RV Log Miss.md
 ```

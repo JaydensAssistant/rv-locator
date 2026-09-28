@@ -1,5 +1,11 @@
 import { DISTANCE_COLUMN_ID } from './constants';
 import { uniqueDatePropertyNames, parseDatePropertyNames } from './dates';
+import {
+	DEFAULT_HOME_LOG_TEMPLATE_FILE,
+	DEFAULT_MISS_LOG_TEMPLATE_FILE,
+	DEFAULT_NEW_RV_TEMPLATE_FILE,
+	safeTemplateFileName,
+} from './extras-sync';
 import { normalizeCountyList } from './home-base';
 
 export type DistanceUnit = 'miles' | 'kilometers';
@@ -23,7 +29,21 @@ export interface RVLocatorSettings {
 	testLongitude: number;
 	/** County names. Empty means geocode always opens the confirm picker. */
 	homeCounties: string[];
+	/** When true, a companion whose basename matches a note is stored as a wikilink. */
+	linkCompanionsToNotes: boolean;
+	/** Priority written on a new RV note. Integer 0–5. */
+	defaultNewRvPriority: number;
+	/** File name inside Templater's template folder for the New RV template. */
+	newRvTemplateFile: string;
+	/** File name for the Meta Bind Home template. */
+	homeLogTemplateFile: string;
+	/** File name for the Meta Bind Not home template. */
+	missLogTemplateFile: string;
+	/** The first-run setup wizard has been closed. Settings can open it again. */
+	setupWizardCompleted: boolean;
 }
+
+export const DEFAULT_NEW_RV_PRIORITY = 3;
 
 export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	geoapifyApiKey: '',
@@ -42,6 +62,12 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	testLatitude: 28.54,
 	testLongitude: -81.38,
 	homeCounties: [],
+	linkCompanionsToNotes: false,
+	defaultNewRvPriority: DEFAULT_NEW_RV_PRIORITY,
+	newRvTemplateFile: DEFAULT_NEW_RV_TEMPLATE_FILE,
+	homeLogTemplateFile: DEFAULT_HOME_LOG_TEMPLATE_FILE,
+	missLogTemplateFile: DEFAULT_MISS_LOG_TEMPLATE_FILE,
+	setupWizardCompleted: false,
 };
 
 export interface NearbySortPreference {
@@ -121,7 +147,23 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		testLatitude: finiteCoord(input.testLatitude, 90, DEFAULT_SETTINGS.testLatitude),
 		testLongitude: finiteCoord(input.testLongitude, 180, DEFAULT_SETTINGS.testLongitude),
 		homeCounties: normalizeCountyList(input.homeCounties),
+		linkCompanionsToNotes: input.linkCompanionsToNotes === true,
+		defaultNewRvPriority: sanitizeNewRvPriority(input.defaultNewRvPriority),
+		newRvTemplateFile: safeTemplateFileName(input.newRvTemplateFile, DEFAULT_NEW_RV_TEMPLATE_FILE),
+		homeLogTemplateFile: safeTemplateFileName(input.homeLogTemplateFile, DEFAULT_HOME_LOG_TEMPLATE_FILE),
+		missLogTemplateFile: safeTemplateFileName(input.missLogTemplateFile, DEFAULT_MISS_LOG_TEMPLATE_FILE),
+		setupWizardCompleted: input.setupWizardCompleted === true,
 	};
+}
+
+export function sanitizeNewRvPriority(value: unknown): number {
+	const parsed = typeof value === 'number'
+		? value
+		: typeof value === 'string' && value.trim() !== ''
+			? Number(value)
+			: Number.NaN;
+	if (!Number.isInteger(parsed) || parsed < 0 || parsed > 5) return DEFAULT_NEW_RV_PRIORITY;
+	return parsed;
 }
 
 function finiteCoord(value: unknown, limit: number, fallback: number): number {

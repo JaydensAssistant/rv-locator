@@ -2,30 +2,50 @@
  * Pinned extras download. The ref is the release tag for this plugin version.
  * Download URLs never use a floating branch such as `main` or `unstable`.
  * Nothing here reads or writes the Geoapify key or plugin `data.json`.
+ *
+ * Destinations come from Templater's `templates_folder` and `user_scripts_folder`
+ * (SilentVoid13/Templater settings) plus the configured template file names.
+ * Snippets and documentation files are not synced.
  */
 export const EXTRAS_SYNC_REPO = 'JaydensAssistant/rv-locator';
-/** Release tag baked into this build. Matches manifest version 1.1.5. */
-export const EXTRAS_SYNC_REF = 'v1.1.5';
+/** Release tag baked into this build. Matches manifest version 1.2.0. */
+export const EXTRAS_SYNC_REF = 'v1.2.0';
 export const EXTRAS_SYNC_HOST = 'raw.githubusercontent.com';
 export const EXTRAS_MAX_FILE_BYTES = 256 * 1024;
 export const EXTRAS_MAX_TOTAL_BYTES = 1024 * 1024;
 
+export const DEFAULT_TEMPLATES_FOLDER = 'Templates';
+export const DEFAULT_SCRIPTS_FOLDER = 'Scripts';
+export const DEFAULT_NEW_RV_TEMPLATE_FILE = '99 New RV.md';
+export const DEFAULT_HOME_LOG_TEMPLATE_FILE = '99 RV Log Home.md';
+export const DEFAULT_MISS_LOG_TEMPLATE_FILE = '99 RV Log Miss.md';
+/** Previous New RV file name. The + button still accepts it. */
+export const LEGACY_NEW_RV_TEMPLATE_FILE = 'New RV.md';
+
+export interface ExtrasPlacement {
+	templatesFolder: string;
+	scriptsFolder: string;
+	newRvFileName: string;
+	homeLogFileName: string;
+	missLogFileName: string;
+}
+
+type ExtrasSyncEntry =
+	| { repo: string; role: 'new-rv' | 'home-log' | 'miss-log' }
+	| { repo: string; role: 'script'; file: string };
+
 /**
- * `vault` is a path from the vault root.
- * `configRelative` is placed under the vault config directory (`app.vault.configDir`),
- * and only as a snippets CSS file. Plugin folders are never a destination.
+ * Templates and user scripts only. No CSS snippet and no documentation.
+ * Vault paths are resolved from {@link extrasDestinations}.
  */
-export const EXTRAS_SYNC_FILES = [
-	{ repo: 'extras/templater-metabind/New RV.md', vault: 'Templates/New RV.md' },
-	{ repo: 'extras/templater-metabind/RV Log Home.md', vault: 'Templates/RV Log Home.md' },
-	{ repo: 'extras/templater-metabind/RV Log Miss.md', vault: 'Templates/RV Log Miss.md' },
-	{ repo: 'extras/templater-metabind/newRv.js', vault: 'Scripts/newRv.js' },
-	{ repo: 'extras/templater-metabind/rvLog.js', vault: 'Scripts/rvLog.js' },
-	{ repo: 'extras/templater-metabind/geocodeNewRv.js', vault: 'Scripts/geocodeNewRv.js' },
-	{ repo: 'extras/templater-metabind/rv-dashboard.css', configRelative: 'snippets/rv-dashboard.css' },
-	{ repo: 'extras/templater-metabind/NEW-RV-GEOCODE.md', vault: 'Templates/NEW-RV-GEOCODE.md' },
-	{ repo: 'extras/templater-metabind/RV-LOG-BUTTONS-TEMPLATER.md', vault: 'Templates/RV-LOG-BUTTONS-TEMPLATER.md' },
-] as const;
+export const EXTRAS_SYNC_FILES: readonly ExtrasSyncEntry[] = [
+	{ repo: 'extras/templater-metabind/New RV.md', role: 'new-rv' },
+	{ repo: 'extras/templater-metabind/RV Log Home.md', role: 'home-log' },
+	{ repo: 'extras/templater-metabind/RV Log Miss.md', role: 'miss-log' },
+	{ repo: 'extras/templater-metabind/newRv.js', role: 'script', file: 'newRv.js' },
+	{ repo: 'extras/templater-metabind/rvLog.js', role: 'script', file: 'rvLog.js' },
+	{ repo: 'extras/templater-metabind/geocodeNewRv.js', role: 'script', file: 'geocodeNewRv.js' },
+];
 
 const FLOATING_REFS = new Set(['main', 'master', 'unstable', 'head', 'HEAD']);
 
@@ -46,14 +66,77 @@ export function safeConfigDir(configDir: string): string {
 	return dir;
 }
 
-export function extrasDestinations(configDir: string): { repo: string; vault: string }[] {
-	const dir = safeConfigDir(configDir);
-	return EXTRAS_SYNC_FILES.map((file) => {
-		if ('configRelative' in file) {
-			return { repo: file.repo, vault: `${dir}/${file.configRelative}` };
-		}
-		return { repo: file.repo, vault: file.vault };
-	});
+/** A vault-relative folder Templater may store. Unsafe or empty values use the fallback. */
+export function safeVaultFolder(value: unknown, fallback: string): string {
+	const raw = typeof value === 'string' ? value.trim().replace(/\\/g, '/') : '';
+	const folder = raw.replace(/^\/+|\/+$/g, '');
+	if (!folder || folder === fallback) return fallback;
+	if (folder.startsWith('/') || /^[A-Za-z]:/.test(folder)) return fallback;
+	const parts = folder.split('/');
+	if (parts.some((part) => !part || part === '.' || part === '..')) return fallback;
+	const lowerParts = parts.map((part) => part.toLowerCase());
+	if (lowerParts.includes('plugins') || lowerParts.some((part) => part.includes('secret'))) return fallback;
+	return folder;
+}
+
+/** A template file name with no directory. Unsafe values use the fallback. */
+export function safeTemplateFileName(value: unknown, fallback: string): string {
+	if (typeof value !== 'string') return fallback;
+	const name = value.trim();
+	if (!name || name === fallback) return fallback;
+	if (/[\\/]/.test(name) || name.includes('..') || name.startsWith('.')) return fallback;
+	if (!/\.md$/i.test(name)) return fallback;
+	if (/[\0<>:"|?*]/.test(name)) return fallback;
+	if (name.toLowerCase().includes('secret')) return fallback;
+	return name;
+}
+
+export function resolveExtrasPlacement(partial?: Partial<ExtrasPlacement> | null): ExtrasPlacement {
+	return {
+		templatesFolder: safeVaultFolder(partial?.templatesFolder, DEFAULT_TEMPLATES_FOLDER),
+		scriptsFolder: safeVaultFolder(partial?.scriptsFolder, DEFAULT_SCRIPTS_FOLDER),
+		newRvFileName: safeTemplateFileName(partial?.newRvFileName, DEFAULT_NEW_RV_TEMPLATE_FILE),
+		homeLogFileName: safeTemplateFileName(partial?.homeLogFileName, DEFAULT_HOME_LOG_TEMPLATE_FILE),
+		missLogFileName: safeTemplateFileName(partial?.missLogFileName, DEFAULT_MISS_LOG_TEMPLATE_FILE),
+	};
+}
+
+export function extrasDestinations(
+	configDir: string,
+	placement?: Partial<ExtrasPlacement> | null,
+): { repo: string; vault: string }[] {
+	safeConfigDir(configDir);
+	const place = resolveExtrasPlacement(placement);
+	return EXTRAS_SYNC_FILES.map((file) => ({
+		repo: file.repo,
+		vault: vaultPathFor(file, place),
+	}));
+}
+
+/**
+ * Point the New RV Meta Bind buttons at the resolved Home and Not home templates.
+ * Other lines are left as they are.
+ */
+export function rewriteNewRvTemplate(contents: string, placement?: Partial<ExtrasPlacement> | null): string {
+	const place = resolveExtrasPlacement(placement);
+	const home = `${place.templatesFolder}/${place.homeLogFileName}`;
+	const miss = `${place.templatesFolder}/${place.missLogFileName}`;
+	const withHome = replaceTemplateFileForId(contents, 'rv-log-home', home);
+	return replaceTemplateFileForId(withHome, 'rv-log-miss', miss);
+}
+
+function replaceTemplateFileForId(contents: string, id: string, templatePath: string): string {
+	const pattern = new RegExp(`(id:\\s*${id}\\b[\\s\\S]*?templateFile:)\\s*[^\\n\\r]*`);
+	if (!pattern.test(contents)) return contents;
+	const safe = templatePath.replace(/\$/g, '$$');
+	return contents.replace(pattern, `$1 ${safe}`);
+}
+
+function vaultPathFor(file: ExtrasSyncEntry, place: ExtrasPlacement): string {
+	if (file.role === 'script') return `${place.scriptsFolder}/${file.file}`;
+	if (file.role === 'home-log') return `${place.templatesFolder}/${place.homeLogFileName}`;
+	if (file.role === 'miss-log') return `${place.templatesFolder}/${place.missLogFileName}`;
+	return `${place.templatesFolder}/${place.newRvFileName}`;
 }
 
 export interface ExtrasFetchResult {
@@ -142,11 +225,15 @@ export function extrasRedirectUrl(requestUrl: string, location: string, ref = EX
 }
 
 /** Exact vault destinations only. Rejects traversal, plugins, secrets, and other extensions. */
-export function isAllowlistedExtrasPath(path: string, configDir: string): boolean {
+export function isAllowlistedExtrasPath(
+	path: string,
+	configDir: string,
+	placement?: Partial<ExtrasPlacement> | null,
+): boolean {
 	if (!isSafeRelativeExtrasPath(path)) return false;
 	let destinations: { repo: string; vault: string }[];
 	try {
-		destinations = extrasDestinations(configDir);
+		destinations = extrasDestinations(configDir, placement);
 	} catch {
 		return false;
 	}
@@ -164,13 +251,11 @@ export function isSafeRelativeExtrasPath(path: string): boolean {
 	if (/(^|\/)data\.json$/.test(lower)) return false;
 	if (lower.includes('secret')) return false;
 	if (!allowedExtrasExtension(text)) return false;
-	const folder = parts[0]?.toLowerCase() ?? '';
-	if (folder === 'templates' || folder === 'scripts') return true;
-	return parts.length === 3 && parts[1] === 'snippets';
+	return true;
 }
 
 function allowedExtrasExtension(path: string): boolean {
-	return /\.(md|js|css)$/i.test(path);
+	return /\.(md|js)$/i.test(path);
 }
 
 export async function sha256Hex(text: string): Promise<string> {
@@ -185,13 +270,15 @@ export async function downloadExtras(
 	fetchText: (url: string) => Promise<ExtrasFetchResult>,
 	configDir: string,
 	ref = EXTRAS_SYNC_REF,
+	placement?: Partial<ExtrasPlacement> | null,
 ): Promise<ExtrasSyncPlan> {
 	const pin = assertPinnedRef(ref);
+	const place = resolveExtrasPlacement(placement);
 	const files: ExtrasSyncFile[] = [];
 	const failed: ExtrasSyncFailure[] = [];
 	let total = 0;
-	for (const file of extrasDestinations(configDir)) {
-		if (!isAllowlistedExtrasPath(file.vault, configDir) || !allowedExtrasExtension(file.repo)) {
+	for (const file of extrasDestinations(configDir, place)) {
+		if (!isAllowlistedExtrasPath(file.vault, configDir, place) || !allowedExtrasExtension(file.repo)) {
 			failed.push({ vaultPath: file.vault, reason: 'not allowlisted' });
 			continue;
 		}
@@ -210,7 +297,8 @@ export async function downloadExtras(
 				failed.push({ vaultPath: file.vault, reason: `HTTP ${response.status}` });
 				continue;
 			}
-			const bytes = new TextEncoder().encode(response.text).byteLength;
+			const text = file.repo.endsWith('/New RV.md') ? rewriteNewRvTemplate(response.text, place) : response.text;
+			const bytes = new TextEncoder().encode(text).byteLength;
 			if (bytes > EXTRAS_MAX_FILE_BYTES) {
 				failed.push({ vaultPath: file.vault, reason: 'file exceeds size cap' });
 				continue;
@@ -222,8 +310,8 @@ export async function downloadExtras(
 			total += bytes;
 			files.push({
 				vaultPath: file.vault,
-				contents: response.text,
-				sha256: await sha256Hex(response.text),
+				contents: text,
+				sha256: await sha256Hex(text),
 				bytes,
 			});
 		} catch (error) {

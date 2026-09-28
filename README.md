@@ -1,4 +1,4 @@
-# RV Locator 1.1.5
+# RV Locator 1.2.0
 
 Obsidian plugin: Geoapify geocode for return-visit notes + live Nearby Bases views (Vanilla / Glancable). **Never overwrites `Address`.**
 
@@ -24,15 +24,15 @@ Prefer desktop install + vault sync. Details: `docs/SETUP-iOS-1.1.0.md`.
 
 ## New RV note (Templater)
 
-Copy `extras/templater-metabind/newRv.js` into Templater user scripts and use `extras/templater-metabind/New RV.md` as the template. It prompts for householder name and Address, renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, and starts Visits and Successful Visits at 1, then runs `rv-locator:geocode-current-note`. The top of the note is a bold two-line quote strip: Hubs, then Address with a 🗺️ link to `https://www.google.com/maps/search/?api=1&query=<urlencoded address>`. Geocode writes `Map Link` from the stored Address (coordinates stay on `Location` only). A street with no city gets the note’s City added to that search query only. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `> [!rv]-` dashboard starts on the next line. The `###` stamp follows Taken immediately, then one blank line and the Attempt Log. Home does not repeat a `##` or `###` stamp that is already there. Settings can refresh these extras from the pinned tag `v1.1.5` (not a moving branch). Existing files are skipped unless overwrite is checked. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
+Copy `extras/templater-metabind/newRv.js` into Templater’s user scripts folder and use `99 New RV.md` from Templater’s template folder (the file in this repo is `extras/templater-metabind/New RV.md`). It prompts for householder name, Address, then one companion. The companion is a suggester of recent Met With / Taken names plus a free-text name. That name is written to Met With and appended to Taken. Skipping it leaves both blank. Priority defaults to 3 (`defaultNewRvPriority`, 0–5). The note renames to `{Name} on {Street}`, seeds Met / Last Spoke / Last Attempted, and starts Visits and Successful Visits at 1, then runs `rv-locator:geocode-current-note`. The top of the note is a bold two-line quote strip: Hubs, then Address with a 🗺️ link to `https://www.google.com/maps/search/?api=1&query=<urlencoded address>`. Geocode writes `Map Link` from the stored Address (coordinates stay on `Location` only) and always writes `City`. A street with no city gets the note’s City added to that search query only. An empty City-property setting only skips an optional alias. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `> [!rv]-` dashboard starts on the next line. The `###` stamp follows Taken, then two blank lines (padding for notes) and the Attempt Log. Home asks for the companion again and does not repeat a `##` or `###` stamp that is already there. Not home does not ask. `linkCompanionsToNotes` (default off) stores `[[Note Name]]` when a note basename matches. Settings can refresh templates and scripts from the pinned tag `v1.2.0` (not a moving branch) into Templater’s `templates_folder` and `user_scripts_folder`. Documentation and the CSS snippet are not part of that download. Existing files are skipped unless overwrite is checked. The setup wizard checks that Templater and Meta Bind are enabled and does not install them. `cssclass: rv-dashboard` keeps the phone from scrolling sideways. See `extras/templater-metabind/NEW-RV-GEOCODE.md`.
 
 ## Verify
 
 ```bash
 shasum -a 256 main.js styles.css manifest.json
-# main.js       e22722a439a316e9bfbabdb6319c2b95cb77c6d2352a9d11255b3e7775229652
-# styles.css    f8fa6cc778342acdd47a90e8a26e12381495fd7b3961b394e7bfcc0849192ede
-# manifest.json 148bdc553725130f600a1e5c262c23979d3375635a686f43882c20180590b6ed
+# main.js       05eccd88af3b8f8881511886916e8230828619d3ab2b2bf02de5a1b5d1ad5c5b
+# styles.css    01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de
+# manifest.json 093f36e876f0798394a59f21f8afc9846e35aa9185bdda69be347a0e626cbc25
 ```
 
 ## Attribution

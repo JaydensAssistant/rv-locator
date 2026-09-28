@@ -3,7 +3,9 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
-import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_REF, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, planExtrasWrite, sha256Hex } from '../src/extras-sync';
+import { appendCompanionTaken, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
+import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, planExtrasWrite, rewriteNewRvTemplate, sha256Hex } from '../src/extras-sync';
+import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
@@ -674,6 +676,39 @@ describe('settings', () => {
 		assert.equal(merged.locationProperty, 'Location');
 		assert.equal(merged.mapLinkProperty, 'Map Link');
 		assert.equal(merged.cityProperty, '');
+		assert.equal(merged.linkCompanionsToNotes, false);
+		assert.equal(merged.defaultNewRvPriority, 3);
+		assert.equal(merged.newRvTemplateFile, '99 New RV.md');
+		assert.equal(merged.homeLogTemplateFile, '99 RV Log Home.md');
+		assert.equal(merged.missLogTemplateFile, '99 RV Log Miss.md');
+		assert.equal(merged.setupWizardCompleted, false);
+		const tuned = mergeSettings({
+			linkCompanionsToNotes: true,
+			defaultNewRvPriority: 0,
+			newRvTemplateFile: 'Custom New.md',
+			homeLogTemplateFile: 'Home.md',
+			missLogTemplateFile: 'Miss.md',
+			setupWizardCompleted: true,
+		});
+		assert.equal(tuned.linkCompanionsToNotes, true);
+		assert.equal(tuned.defaultNewRvPriority, 0);
+		assert.equal(tuned.newRvTemplateFile, 'Custom New.md');
+		assert.equal(tuned.homeLogTemplateFile, 'Home.md');
+		assert.equal(tuned.missLogTemplateFile, 'Miss.md');
+		assert.equal(tuned.setupWizardCompleted, true);
+		const rejected = mergeSettings({
+			linkCompanionsToNotes: false,
+			defaultNewRvPriority: 9,
+			newRvTemplateFile: '../nope.md',
+			homeLogTemplateFile: 'notes.txt',
+			setupWizardCompleted: false,
+		});
+		assert.equal(rejected.linkCompanionsToNotes, false);
+		assert.equal(rejected.defaultNewRvPriority, 3);
+		assert.equal(rejected.newRvTemplateFile, '99 New RV.md');
+		assert.equal(rejected.homeLogTemplateFile, '99 RV Log Home.md');
+		assert.equal(mergeSettings({ defaultNewRvPriority: '5' }).defaultNewRvPriority, 5);
+		assert.equal(mergeSettings({ defaultNewRvPriority: 1.5 }).defaultNewRvPriority, 3);
 		assert.deepEqual(merged.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
 		const legacy = mergeSettings({ weekdayDateProperties: 'Last Spc, Met' } as Partial<RVLocatorSettings>);
 		assert.deepEqual(legacy.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
@@ -811,8 +846,10 @@ describe('visit log', () => {
 		assert.equal(formatVisitStamp(now), formatGlancableVisitStamp(now));
 		assert.equal(formatFrontmatterDateTime(now), '2026-09-26T23:12:04');
 		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', Visits: 2, 'Successful Visits': 1 };
-		applyVisitFrontmatter(frontmatter, 'home', now);
+		applyVisitFrontmatter(frontmatter, 'home', now, 'Sam');
 		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], 'Sam');
+		assert.deepEqual(frontmatter.Taken, ['Sam']);
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 2);
 		assert.equal(frontmatter['Last Spoke'], '2026-09-26T23:12:04');
@@ -822,6 +859,7 @@ describe('visit log', () => {
 			'Talked on the porch.',
 			'',
 			'### Sat, 11pm — Sep 26, 2026',
+			'',
 			'',
 			'> [!note]- Attempt Log',
 			'> - Sat, 11pm — Sep 26, 2026 — success',
@@ -840,8 +878,10 @@ describe('visit log', () => {
 			'Successful Visits': 1,
 			'Last Spoke': '2026-09-01T10:00:00',
 		};
-		applyVisitFrontmatter(frontmatter, 'miss', now);
+		applyVisitFrontmatter(frontmatter, 'miss', now, 'Sam');
 		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], undefined);
+		assert.equal(frontmatter.Taken, undefined);
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 1);
 		assert.equal(frontmatter['Last Spoke'], '2026-09-01T10:00:00');
@@ -882,6 +922,7 @@ describe('visit log', () => {
 		const more = applyVisitBody(expanded, 'home', now);
 		assert.equal(more, [
 			'### Sat, 11pm — Sep 26, 2026',
+			'',
 			'',
 			'> [!note]+ Attempt Log',
 			'> - Mon, 9am — Sep 1, 2026 — not home',
@@ -987,14 +1028,30 @@ function activeRow(id: string, priority: number, lastSpoke: string, name: string
 }
 
 describe('new RV launch', () => {
-	it('uses Templater’s templates folder, then Templates/New RV.md', () => {
-		assert.deepEqual(newRvTemplateCandidates('Templates'), [DEFAULT_NEW_RV_TEMPLATE]);
-		assert.deepEqual(newRvTemplateCandidates('Ministry/Templates'), [
-			'Ministry/Templates/New RV.md',
-			DEFAULT_NEW_RV_TEMPLATE,
+	it('uses the configured name under Templater’s folder, then older names', () => {
+		assert.equal(DEFAULT_NEW_RV_TEMPLATE, 'Templates/99 New RV.md');
+		assert.deepEqual(newRvTemplateCandidates('Templates'), [
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
 		]);
-		assert.deepEqual(newRvTemplateCandidates('../secret'), [DEFAULT_NEW_RV_TEMPLATE]);
-		assert.deepEqual(newRvTemplateCandidates(''), [DEFAULT_NEW_RV_TEMPLATE]);
+		assert.deepEqual(newRvTemplateCandidates('Ministry/Templates', '99 New RV.md'), [
+			'Ministry/Templates/99 New RV.md',
+			'Ministry/Templates/New RV.md',
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates('Ministry/Templates', 'New RV.md'), [
+			'Ministry/Templates/New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates('../secret'), [
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates(''), [
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
 		assert.equal(newRvLaunchError(false, false, [DEFAULT_NEW_RV_TEMPLATE])?.includes('Templater is not enabled'), true);
 		assert.equal(newRvLaunchError(true, false, [DEFAULT_NEW_RV_TEMPLATE])?.includes(DEFAULT_NEW_RV_TEMPLATE), true);
 		assert.equal(newRvLaunchError(true, true, [DEFAULT_NEW_RV_TEMPLATE]), null);
@@ -1005,30 +1062,50 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.1.5');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.0');
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'unstable'));
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'main'));
-		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js'));
-		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js'));
 		assert.throws(() => assertExtrasDownloadUrl('https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/Scripts/newRv.js'));
 		assert.throws(() => extrasRedirectUrl(
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js',
-			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/Scripts/newRv.js',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js',
+			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/Scripts/newRv.js',
 		));
 		const configDir = '.obsidian';
-		assert.equal(isAllowlistedExtrasPath('Templates/New RV.md', configDir), true);
-		assert.equal(isAllowlistedExtrasPath(`${configDir}/snippets/rv-dashboard.css`, configDir), true);
+		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir), true);
+		assert.equal(isAllowlistedExtrasPath('Templates/New RV.md', configDir), false);
+		assert.equal(isAllowlistedExtrasPath('Templates/NEW-RV-GEOCODE.md', configDir), false);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/snippets/rv-dashboard.css`, configDir), false);
 		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/data.json`, configDir), false);
 		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/main.js`, configDir), false);
 		assert.equal(isAllowlistedExtrasPath('Templates/../data.json', configDir), false);
 		assert.equal(isAllowlistedExtrasPath('/etc/passwd', configDir), false);
 		assert.equal(isAllowlistedExtrasPath('Scripts/newRv.js', configDir), true);
 		assert.equal(isAllowlistedExtrasPath('Scripts/secret.js', configDir), false);
-		assert.equal(extrasDestinations(configDir).every((file) => /\.(md|js|css)$/.test(file.vault)), true);
+		const custom = {
+			templatesFolder: 'Ministry/Templates',
+			scriptsFolder: 'Ministry/Scripts',
+			newRvFileName: '99 New RV.md',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		};
+		assert.equal(isAllowlistedExtrasPath('Ministry/Templates/99 New RV.md', configDir, custom), true);
+		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir, custom), false);
+		assert.equal(isAllowlistedExtrasPath('Ministry/Templates/../data.json', configDir, custom), false);
+		const unsafe = extrasDestinations(configDir, { templatesFolder: '../nope', scriptsFolder: 'plugins/templater', newRvFileName: 'bad/name.md' });
+		assert.equal(unsafe.some((file) => file.vault === 'Templates/99 New RV.md'), true);
+		assert.equal(unsafe.some((file) => file.vault === 'Scripts/newRv.js'), true);
+		assert.equal(unsafe.some((file) => file.vault.includes('..') || file.vault.includes('plugins')), false);
+		assert.equal(extrasDestinations(configDir).every((file) => /\.(md|js)$/.test(file.vault)), true);
+		assert.equal(extrasDestinations(configDir).some((file) => file.vault.endsWith('.css') || file.vault.includes('NEW-RV-GEOCODE')), false);
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.1.5/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.0/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1049,17 +1126,148 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.1.5');
+		assert.equal(plan.ref, 'v1.2.0');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.1.5/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.0/')), true);
+		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/rvLog.js'), true);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/geocodeNewRv.js' && item.reason === 'file exceeds size cap'), true);
 		assert.equal(plan.files.some((file) => file.vaultPath === 'Scripts/newRv.js'), false);
 		assert.equal(plan.files.some((file) => file.vaultPath === '.obsidian/plugins/rv-locator/data.json'), false);
-		const note = plan.files.find((file) => file.vaultPath === 'Templates/New RV.md');
+		const note = plan.files.find((file) => file.vaultPath === 'Templates/99 New RV.md');
 		assert.equal(note?.contents.startsWith('body:https://raw.githubusercontent.com/'), true);
 		assert.equal(note?.sha256, await sha256Hex(note?.contents ?? ''));
 	});
+
+	it('rewrites New RV templateFile paths to the resolved Home and Not home templates', async () => {
+		const source = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
+		const placement = {
+			templatesFolder: 'Ministry/Templates',
+			scriptsFolder: 'Ministry/Scripts',
+			newRvFileName: '99 New RV.md',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		};
+		const rewritten = rewriteNewRvTemplate(source, placement);
+		assert.equal(rewritten.includes('templateFile: Ministry/Templates/99 RV Log Home.md'), true);
+		assert.equal(rewritten.includes('templateFile: Ministry/Templates/99 RV Log Miss.md'), true);
+		assert.equal(rewritten.includes('templateFile: Templates/99 RV Log Home.md'), false);
+		assert.equal(rewritten.includes('templateFile: Templates/99 RV Log Miss.md'), false);
+		assert.equal(rewritten.includes('id: rv-log-home'), true);
+		assert.equal(rewritten.includes('id: rv-log-miss'), true);
+		const same = rewriteNewRvTemplate(source);
+		assert.equal(same.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(same.includes('templateFile: Templates/99 RV Log Miss.md'), true);
+		const plan = await downloadExtras(async (fetched) => ({
+			ok: true,
+			status: 200,
+			text: fetched.endsWith('/New%20RV.md') || fetched.includes('/New%20RV.md') ? source : 'script',
+			finalUrl: fetched,
+		}), '.obsidian', EXTRAS_SYNC_REF, placement);
+		const note = plan.files.find((file) => file.vaultPath === 'Ministry/Templates/99 New RV.md');
+		assert.equal(note?.contents.includes('templateFile: Ministry/Templates/99 RV Log Home.md'), true);
+		assert.equal(plan.files.some((file) => file.vaultPath.endsWith('.css') || file.vaultPath.includes('GEOCODE')), false);
+		assert.equal(plan.failed.length, 0);
+	});
 });
+
+describe('companions', () => {
+	it('orders recent names from the newest note, Met With before Taken', () => {
+		const names = recentCompanionNames([
+			{ metWith: 'Jane', taken: ['Jane', 'Sam'], recentAt: Date.parse('2026-09-01T10:00:00') },
+			{ metWith: '[[Sam]]', taken: ['Pat', '[[People/Jo|Jo]]'], recentAt: Date.parse('2026-09-20T15:00:00') },
+		]);
+		assert.deepEqual(names, ['Sam', 'Pat', 'Jo', 'Jane']);
+		const spoke = companionRecency({ 'Last Spoke': '2026-09-20T15:00:00', Met: '2026-01-01T00:00:00' }, 0);
+		const modified = companionRecency({ Met: '2026-01-01' }, Date.parse('2026-12-01T00:00:00'));
+		assert.ok(modified > spoke);
+	});
+
+	it('dedupes Taken and links a matching note basename', () => {
+		assert.deepEqual(appendCompanionTaken(['[[Sam]]'], 'sam'), ['[[Sam]]']);
+		assert.deepEqual(appendCompanionTaken(['Sam'], 'Pat'), ['Sam', 'Pat']);
+		assert.deepEqual(appendCompanionTaken(undefined, ''), []);
+		const notes = [
+			{ path: 'People/Sam.md', basename: 'Sam' },
+			{ path: 'Other/Sam.md', basename: 'Sam' },
+			{ path: 'People/Pat.md', basename: 'Pat' },
+		];
+		assert.equal(formatStoredCompanion('Pat', false, notes), 'Pat');
+		assert.equal(formatStoredCompanion('Pat', true, notes), '[[Pat]]');
+		assert.equal(formatStoredCompanion('Sam', true, notes), '[[People/Sam]]');
+		assert.equal(formatStoredCompanion('Ada', true, notes), 'Ada');
+		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
+		assert.equal(companionFrontmatterBlock('Pat'), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+	});
+
+	it('caps the suggester and keeps a skipped companion off the note', () => {
+		const notes = Array.from({ length: 40 }, (_, index) => ({
+			metWith: `Person ${index}`,
+			taken: [],
+			recentAt: index,
+		}));
+		assert.equal(recentCompanionNames(notes).length, RECENT_COMPANION_LIMIT);
+		assert.equal(recentCompanionNames(notes)[0], 'Person 39');
+		const now = new Date(2026, 8, 26, 23, 12, 4);
+		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', 'Met With': 'Ada', Taken: ['Ada'] };
+		applyVisitFrontmatter(frontmatter, 'home', now, '  ');
+		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada']);
+		applyVisitFrontmatter(frontmatter, 'home', now, '[[Pat]]');
+		assert.equal(frontmatter['Met With'], '[[Pat]]');
+		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
+		applyVisitFrontmatter(frontmatter, 'home', now, 'Pat');
+		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], 'Pat');
+		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
+	});
+});
+
+describe('setup wizard', () => {
+	it('reports missing plugins and folders without treating the suggestion row as a failure', () => {
+		const missing = setupChecklist(sampleSetup({
+			files: [{ path: 'Templates/99 New RV.md', exists: false }],
+		}));
+		assert.equal(missing.find((check) => check.id === 'templater')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'templater')?.detail.includes('does not install'), true);
+		assert.equal(missing.find((check) => check.id === 'meta-bind')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'templates-folder')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'templates-folder')?.detail.includes('templates_folder'), true);
+		assert.equal(missing.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
+		assert.equal(missing.find((check) => check.id === 'extras')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.ok, true);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('linkCompanionsToNotes is off'), true);
+		const ready = setupChecklist(sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Ministry/Templates',
+			scriptsFolder: 'Ministry/Scripts',
+			resolvedTemplatesFolder: 'Ministry/Templates',
+			resolvedScriptsFolder: 'Ministry/Scripts',
+			files: [{ path: 'Ministry/Templates/99 New RV.md', exists: true }],
+			linkCompanionsToNotes: true,
+		}));
+		assert.equal(ready.every((check) => check.ok), true);
+	});
+});
+
+function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
+	return {
+		templaterEnabled: false,
+		metaBindEnabled: false,
+		templatesFolder: '',
+		scriptsFolder: '',
+		resolvedTemplatesFolder: 'Templates',
+		resolvedScriptsFolder: 'Scripts',
+		files: [],
+		defaultNewRvPriority: 3,
+		linkCompanionsToNotes: false,
+		newRvTemplateFile: '99 New RV.md',
+		homeLogTemplateFile: '99 RV Log Home.md',
+		missLogTemplateFile: '99 RV Log Miss.md',
+		...partial,
+	};
+}

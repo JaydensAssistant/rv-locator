@@ -6,8 +6,12 @@
  * This script may write Address once, when that property is still empty.
  * RV Locator never writes Address.
  *
- * The drop-in template is `New RV.md`. It calls:
+ * The drop-in template is `99 New RV.md` (older vaults may still use `New RV.md`). It calls:
  *   const rv = await tp.user.newRv(tp)
+ *
+ * After the householder and Address, it asks who they brought. One person.
+ * That name is written to Met With and appended to Taken. Cancel leaves both blank.
+ * Priority comes from RV Locator `defaultNewRvPriority` (0–5, default 3).
  *
  * Street short names and the visit stamp mirror src/note-name.ts and
  * src/dates.ts formatGlancableVisitStamp (`Wed, 2pm — Sep 9, 2026`).
@@ -255,9 +259,198 @@ async function promptText(tp, label) {
   }
 }
 
+// Companion gather/store stays in step with src/companions.ts.
+const COMPANION_LIMIT = 24;
+const COMPANION_NEW = { kind: "new" };
+
+function rvPlugin() {
+  const plugins = app.plugins && app.plugins.plugins;
+  return plugins ? plugins["rv-locator"] : null;
+}
+
+function companionDisplayName(value) {
+  if (typeof value !== "string") return "";
+  const text = value.trim();
+  if (!text) return "";
+  const link = /^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]$/.exec(text);
+  if (!link) return text;
+  const alias = (link[2] || "").trim();
+  if (alias) return alias;
+  const target = (link[1] || "").trim();
+  const base = target.split("/").pop() || target;
+  return base.trim();
+}
+
+function takenItems(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter((item) => item.length > 0);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function companionKey(value) {
+  return companionDisplayName(value).trim().toLowerCase();
+}
+
+function parseCompanionStamp(value) {
+  if (value instanceof Date) {
+    const time = value.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  if (!text) return null;
+  const local = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/.exec(text);
+  if (local) {
+    const date = new Date(
+      Number(local[1]),
+      Number(local[2]) - 1,
+      Number(local[3]),
+      Number(local[4] || 0),
+      Number(local[5] || 0),
+      Number(local[6] || 0),
+    );
+    const time = date.getTime();
+    return Number.isNaN(time) ? null : time;
+  }
+  const parsed = Date.parse(text);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function companionRecency(fm, mtime) {
+  const stamps = ["Last Spoke", "Last Attempted", "Met"]
+    .map((key) => parseCompanionStamp(fm ? fm[key] : undefined))
+    .filter((value) => value != null);
+  const latest = stamps.length ? Math.max.apply(null, stamps) : 0;
+  const modified = Number.isFinite(mtime) ? mtime : 0;
+  return Math.max(latest, modified);
+}
+
+function recentCompanionNames(notes) {
+  const sorted = notes.slice().sort((a, b) => b.recentAt - a.recentAt);
+  const seen = new Set();
+  const names = [];
+  for (const note of sorted) {
+    const values = [note.metWith].concat(takenItems(note.taken));
+    for (const raw of values) {
+      const label = companionDisplayName(raw);
+      if (!label) continue;
+      const key = label.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(label);
+      if (names.length >= COMPANION_LIMIT) return names;
+    }
+  }
+  return names;
+}
+
+function markdownFiles() {
+  if (!app.vault || typeof app.vault.getMarkdownFiles !== "function") return [];
+  const files = app.vault.getMarkdownFiles();
+  return Array.isArray(files) ? files : [];
+}
+
+function fileFrontmatter(file) {
+  if (!app.metadataCache || typeof app.metadataCache.getFileCache !== "function") return null;
+  const cache = app.metadataCache.getFileCache(file);
+  return cache && cache.frontmatter ? cache.frontmatter : null;
+}
+
+function recentNamesFromVault() {
+  const notes = [];
+  for (const file of markdownFiles()) {
+    const fm = fileFrontmatter(file);
+    if (!fm) continue;
+    const mtime = file && file.stat && typeof file.stat.mtime === "number" ? file.stat.mtime : 0;
+    notes.push({ metWith: fm["Met With"], taken: fm.Taken, recentAt: companionRecency(fm, mtime) });
+  }
+  return recentCompanionNames(notes);
+}
+
+function companionNoteRefs() {
+  return markdownFiles()
+    .map((file) => ({
+      path: typeof file.path === "string" ? file.path : "",
+      basename: typeof file.basename === "string" ? file.basename : "",
+    }))
+    .filter((file) => file.basename);
+}
+
+function formatStoredCompanion(name) {
+  const plain = companionDisplayName(name) || String(name || "").trim();
+  if (!plain) return "";
+  const plugin = rvPlugin();
+  const settings = plugin && plugin.settings;
+  if (!settings || settings.linkCompanionsToNotes !== true) return plain;
+  const wanted = plain.toLowerCase();
+  const matches = companionNoteRefs().filter((note) => note.basename.trim().toLowerCase() === wanted);
+  if (matches.length === 0) return plain;
+  const exact = matches.filter((note) => note.basename === plain);
+  const pool = exact.length ? exact : matches;
+  if (pool.length === 1) return `[[${pool[0].basename}]]`;
+  const path = String(pool[0].path || "").replace(/\\/g, "/").replace(/\.md$/i, "");
+  return path ? `[[${path}]]` : plain;
+}
+
+function companionFrontmatterBlock(stored) {
+  const name = String(stored || "").trim();
+  if (!name) return "Met With:\nTaken:";
+  const quoted = `"${yamlQuoted(name)}"`;
+  return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;
+}
+
+function newRvPriority() {
+  const plugin = rvPlugin();
+  const settings = plugin && plugin.settings;
+  const raw = settings ? settings.defaultNewRvPriority : undefined;
+  const parsed = typeof raw === "number" ? raw : typeof raw === "string" && String(raw).trim() !== "" ? Number(raw) : NaN;
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 5) return 3;
+  return parsed;
+}
+
+async function askCompanionFallback(tp) {
+  const recent = recentNamesFromVault();
+  if (recent.length && tp && tp.system && typeof tp.system.suggester === "function") {
+    let picked = null;
+    try {
+      const choices = recent.map((item) => ({ kind: "recent", name: item })).concat([COMPANION_NEW]);
+      picked = await tp.system.suggester(
+        (item) => (item && item.kind === "new" ? "Type a new name…" : item.name),
+        choices,
+        false,
+        "Who did they bring?",
+      );
+    } catch {
+      picked = null;
+    }
+    if (!picked) return "";
+    if (picked.kind === "new") return promptText(tp, "Who did they bring?");
+    return typeof picked.name === "string" ? picked.name.trim() : "";
+  }
+  return promptText(tp, "Who did they bring?");
+}
+
+async function askCompanion(tp) {
+  const plugin = rvPlugin();
+  if (plugin && typeof plugin.promptCompanion === "function") {
+    try {
+      const value = await plugin.promptCompanion();
+      return typeof value === "string" ? value.trim() : "";
+    } catch {
+      return "";
+    }
+  }
+  const picked = await askCompanionFallback(tp);
+  return formatStoredCompanion(picked);
+}
+
 async function newRv(tp) {
   const name = sanitizeNoteName(await promptText(tp, "Householder name"));
   const address = (await promptText(tp, "Address")).replace(/\r?\n/g, " ").trim();
+  const companion = await askCompanion(tp);
   const street = sanitizeNoteName(streetShortName(address));
   const title = name && street ? `${name} on ${street}` : "";
 
@@ -286,6 +479,8 @@ async function newRv(tp) {
     created,
     stamp,
     title,
+    priority: newRvPriority(),
+    companionYaml: companionFrontmatterBlock(companion),
   };
 }
 

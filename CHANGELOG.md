@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+`main.js` SHA-256: `05eccd88af3b8f8881511886916e8230828619d3ab2b2bf02de5a1b5d1ad5c5b`
+
+`styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
+
+`manifest.json` SHA-256: `093f36e876f0798394a59f21f8afc9846e35aa9185bdda69be347a0e626cbc25`
+
+- New RV asks for one companion after the householder and Address. The suggester lists recent companions and accepts a new name. That name is written to Met With and appended to Taken, deduped. Cancel or a blank answer leaves both blank. Home (Meta Bind → `rvLog.js`, and the Nearby / Glancable success tap) asks the same question. Not home does not ask.
+- Recent names come from markdown notes’ Met With, then Taken. Wikilinks use the alias, otherwise the note basename. Notes are ordered by the latest of Last Spoke, Last Attempted, Met, and the file modification time. The same person is listed once (case-insensitive). The list is capped at 24.
+- `linkCompanionsToNotes` (default off) stores `[[Note Name]]` when one vault note’s basename matches. Several matches use the path form. No match stays plain text. There is no prefix or suffix setting. The same form is used for Met With and the Taken append.
+- New notes default to Priority 3. `defaultNewRvPriority` is an integer 0–5 (default 3) and is what New RV writes.
+- Template file names are settings: `newRvTemplateFile` (`99 New RV.md`), `homeLogTemplateFile` (`99 RV Log Home.md`), `missLogTemplateFile` (`99 RV Log Miss.md`). Extras sync writes those names into Templater’s `templates_folder` and the scripts into `user_scripts_folder`. Empty Templater folders fall back to `Templates/` and `Scripts/`. The + button looks up the configured New RV name in the Templater folder, then `New RV.md`.
+- Syncing New RV rewrites the Meta Bind `templateFile:` paths to the resolved Home and Not home templates. Documentation files and `rv-dashboard.css` are not in the download list. The pin is tag `v1.2.0` on `raw.githubusercontent.com`.
+- The setup wizard checks that Templater and Meta Bind are enabled, shows the Templater folders, and can place extras. It opens Settings. It does not install community plugins. It runs once until dismissed; Settings can open it again.
+- A new `###` visit stamp has two blank lines before Attempt Log, so there is a line of padding for notes.
+- The City property helper text matches the writer: geocode always writes `City`. An empty City-property setting only skips the optional alias.
+- `.lock-assemble/` is no longer in the tree. Address is still never overwritten. Map Link is still a Google Maps address search, and City is still appended to that query when Address has no city.
+
 ## 1.1.5
 
 `main.js` SHA-256: `e22722a439a316e9bfbabdb6319c2b95cb77c6d2352a9d11255b3e7775229652`

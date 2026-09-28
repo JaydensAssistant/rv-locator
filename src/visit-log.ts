@@ -1,3 +1,4 @@
+import { appendCompanionTaken } from './companions';
 import { formatGlancableVisitStamp } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
@@ -9,6 +10,8 @@ const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const ADDRESS_KEY = 'Address';
 const CALLOUT_HEADER = '> [!note]- Attempt Log';
 const STAMP_LEVEL = '###';
+/** Empty lines between a new `###` stamp and Attempt Log. The extra line is note padding. */
+const STAMP_NOTE_BLANKS = 2;
 
 /** Local date-time stored on Last Spoke / Last Attempted. No UTC shift. */
 export function formatFrontmatterDateTime(date: Date): string {
@@ -25,11 +28,14 @@ export function formatVisitStamp(date: Date): string {
  * Frontmatter for one logged visit. Address is never assigned.
  * Home bumps Visits and Successful Visits and sets Last Spoke and Last Attempted.
  * A miss bumps Visits and sets Last Attempted only.
+ * A non-empty home companion overwrites Met With and is appended to Taken.
+ * A blank companion, and every miss, leaves Met With and Taken alone.
  */
 export function applyVisitFrontmatter(
 	frontmatter: Record<string, unknown>,
 	outcome: VisitOutcome,
 	now: Date,
+	companion?: string | null,
 ): void {
 	const address = readProperty(frontmatter, ADDRESS_KEY);
 	const hadAddress = Object.keys(frontmatter).some((key) => key.toLowerCase() === ADDRESS_KEY.toLowerCase());
@@ -39,6 +45,11 @@ export function applyVisitFrontmatter(
 	if (outcome === 'home') {
 		bumpCount(frontmatter, 'Successful Visits');
 		assignProperty(frontmatter, 'Last Spoke', stamp);
+		const stored = typeof companion === 'string' ? companion.trim() : '';
+		if (stored) {
+			assignProperty(frontmatter, 'Met With', stored);
+			assignProperty(frontmatter, 'Taken', appendCompanionTaken(readProperty(frontmatter, 'Taken'), stored));
+		}
 	}
 	if (!hadAddress) {
 		removeProperty(frontmatter, ADDRESS_KEY);
@@ -51,8 +62,9 @@ export function applyVisitFrontmatter(
 
 /**
  * Body text below the frontmatter.
- * A home visit inserts `### <stamp>` and a blank line just above Attempt Log,
- * unless that Glancable stamp is already a `##` or `###` heading.
+ * A home visit inserts `### <stamp>` and two blank lines just above Attempt Log
+ * (one extra line of padding for notes), unless that Glancable stamp is already
+ * a `##` or `###` heading.
  * Both outcomes append `> - <stamp> — success|not home` inside a collapsed
  * `> [!note]- Attempt Log` callout. An old `## Attempt Log` heading is migrated
  * to that callout on write. Address is not part of the body edit.
@@ -142,9 +154,10 @@ function insertHomeHeading(body: string, stamp: string): string {
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
 	const after = lines.slice(found.index);
 	const heading = `${STAMP_LEVEL} ${stamp}`;
+	const padding = Array.from({ length: STAMP_NOTE_BLANKS }, () => '');
 	const block = before.length > 0
-		? ['', heading, '', ...after]
-		: [heading, '', ...after];
+		? ['', heading, ...padding, ...after]
+		: [heading, ...padding, ...after];
 	return [...before, ...block].join('\n');
 }
 
