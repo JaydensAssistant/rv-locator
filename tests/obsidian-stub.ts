@@ -4,7 +4,7 @@ class FakeEl {
 	children: FakeEl[] = [];
 	text = '';
 	tag = 'div';
-	private listeners = new Map<string, Array<() => void>>();
+	private listeners = new Map<string, Array<(value?: string) => void>>();
 
 	addClass(_cls?: string): void {}
 
@@ -27,9 +27,12 @@ class FakeEl {
 		this.text = text;
 	}
 
-	empty(): void {}
+	empty(): void {
+		this.children = [];
+		this.text = '';
+	}
 
-	addEventListener(type: string, fn: () => void): void {
+	addEventListener(type: string, fn: (value?: string) => void): void {
 		const list = this.listeners.get(type) ?? [];
 		list.push(fn);
 		this.listeners.set(type, list);
@@ -37,6 +40,55 @@ class FakeEl {
 
 	click(): void {
 		for (const fn of this.listeners.get('click') ?? []) fn();
+	}
+
+	emit(type: string, value?: string): void {
+		if (value !== undefined) this.text = value;
+		for (const fn of this.listeners.get(type) ?? []) fn(value);
+	}
+}
+
+class FakeButton {
+	text = '';
+	private clickFn: (() => void) | null = null;
+
+	setButtonText(text: string): this {
+		this.text = text;
+		return this;
+	}
+
+	setCta(): this { return this; }
+
+	onClick(fn: () => void): this {
+		this.clickFn = fn;
+		return this;
+	}
+
+	click(): void {
+		this.clickFn?.();
+	}
+}
+
+class FakeTextArea {
+	value = '';
+	inputEl = { rows: 0 };
+	private changeFn: ((value: string) => void) | null = null;
+
+	setValue(value: string): this {
+		this.value = value;
+		return this;
+	}
+
+	setPlaceholder(_placeholder: string): this { return this; }
+
+	onChange(fn: (value: string) => void): this {
+		this.changeFn = fn;
+		return this;
+	}
+
+	apply(value: string): void {
+		this.value = value;
+		this.changeFn?.(value);
 	}
 }
 
@@ -92,11 +144,24 @@ export class Notice {
 }
 
 export class Setting {
-	constructor(_el?: unknown) {}
+	constructor(private el?: FakeEl) {}
 	setName(_name: string): this { return this; }
 	setDesc(_desc: string): this { return this; }
 	setHeading(): this { return this; }
-	addButton(_cb: (button: unknown) => void): this { return this; }
+	addButton(cb: (button: FakeButton) => void): this {
+		const button = new FakeButton();
+		cb(button);
+		const node = this.el?.createEl('button', { text: button.text });
+		node?.addEventListener('click', () => { button.click(); });
+		return this;
+	}
+	addTextArea(cb: (text: FakeTextArea) => void): this {
+		const text = new FakeTextArea();
+		cb(text);
+		const node = this.el?.createEl('textarea', { text: text.value });
+		node?.addEventListener('change', (value) => { text.apply(value ?? ''); });
+		return this;
+	}
 	addDropdown(_cb: (dropdown: unknown) => void): this { return this; }
 	addToggle(_cb: (toggle: unknown) => void): this { return this; }
 	addText(_cb: (text: unknown) => void): this { return this; }
@@ -110,3 +175,7 @@ export class Vault {
 }
 
 export type App = object;
+
+export function normalizePath(path: string): string {
+	return path.replace(/\\/g, '/');
+}

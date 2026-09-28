@@ -8,6 +8,7 @@ import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, comp
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
+import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
@@ -16,7 +17,7 @@ import { getCached, rememberResults, trimCache } from '../src/cache';
 import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
 import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatGlancableStampFromRaw, formatGlancableVisitStamp, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
-import { decideGeocodePick, isFullConfidence } from '../src/home-base';
+import { decideGeocodePick, isFullConfidence, parseHomeCountyLines } from '../src/home-base';
 import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
@@ -675,6 +676,8 @@ describe('settings', () => {
 		assert.deepEqual(merged.homeCounties, []);
 		const homes = mergeSettings({ homeCounties: ['Orange', 'orange county', 'Lake'] });
 		assert.deepEqual(homes.homeCounties, ['Orange', 'Lake']);
+		assert.deepEqual(parseHomeCountyLines('Orange\n\n Lake \n'), ['Orange', 'Lake']);
+		assert.deepEqual(mergeSettings({ homeCounties: parseHomeCountyLines('Orange County\norange\nLake') }).homeCounties, ['Orange County', 'Lake']);
 		assert.equal(merged.locationProperty, 'Location');
 		assert.equal(merged.mapLinkProperty, 'Map Link');
 		assert.equal(merged.cityProperty, '');
@@ -1416,7 +1419,13 @@ describe('companion prompt', () => {
 	});
 });
 
-type Clickable = { children: Clickable[]; text: string; click: () => void };
+type Clickable = {
+	children: Clickable[];
+	text: string;
+	tag?: string;
+	click: () => void;
+	emit: (type: string, value?: string) => void;
+};
 
 function clickLabeled(root: Clickable, text: string): void {
 	const stack = [root];
@@ -1469,6 +1478,11 @@ describe('setup wizard', () => {
 		assert.equal(missing.find((check) => check.id === 'extras')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'suggested')?.ok, true);
 		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('linkCompanionsToNotes is off'), true);
+		assert.equal(missing.find((check) => check.id === 'home-counties')?.ok, true);
+		assert.equal(missing.find((check) => check.id === 'home-counties')?.detail.includes('asks you to confirm'), true);
+		const named = setupChecklist(sampleSetup({ homeCounties: ['Orange', 'Lake'] }));
+		assert.equal(named.find((check) => check.id === 'home-counties')?.title, 'Home counties: Orange, Lake');
+		assert.equal(named.find((check) => check.id === 'home-counties')?.ok, true);
 		const ready = setupChecklist(sampleSetup({
 			templaterEnabled: true,
 			metaBindEnabled: true,
@@ -1481,7 +1495,86 @@ describe('setup wizard', () => {
 		}));
 		assert.equal(ready.every((check) => check.ok), true);
 	});
+
+	it('asks for home counties, saves the settings list, and skip leaves it unchanged', async () => {
+		assert.equal(shouldAutoOpenSetupWizard(false, false), true);
+		assert.equal(shouldAutoOpenSetupWizard(true, false), false);
+		assert.equal(shouldAutoOpenSetupWizard(false, true), false);
+
+		let counties = ['Orange'];
+		const saved: string[][] = [];
+		const opened = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: counties }), wizardActions({
+			onSaveHomeCounties: async (next) => {
+				saved.push(next);
+				counties = mergeSettings({ homeCounties: next }).homeCounties;
+			},
+		}));
+		opened.open();
+		await waitTurn();
+		const firstCopy = collectText(opened.contentEl as unknown as Clickable);
+		assert.equal(firstCopy.includes('where you normally work return visits'), true);
+		assert.equal(firstCopy.includes('wrong-city pick'), true);
+		assert.equal(firstCopy.includes('asks you to confirm'), true);
+		const area = findTagged(opened.contentEl as unknown as Clickable, 'textarea');
+		assert.equal(area.text, 'Orange');
+		area.emit('change', 'Orange County\norange\nLake');
+		clickLabeled(opened.contentEl as unknown as Clickable, 'Save and continue');
+		await waitTurn();
+		assert.deepEqual(saved, [['Orange County', 'orange', 'Lake']]);
+		assert.deepEqual(counties, ['Orange County', 'Lake']);
+		const afterSave = collectText(opened.contentEl as unknown as Clickable);
+		assert.equal(afterSave.includes('Home counties: Orange County, Lake'), true);
+		assert.equal(afterSave.includes('Step 2 of 2'), true);
+
+		let skippedSaved = 0;
+		const skipped = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: [] }), wizardActions({
+			onSaveHomeCounties: async () => { skippedSaved += 1; },
+		}));
+		skipped.open();
+		await waitTurn();
+		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		assert.equal(skippedSaved, 0);
+		const afterSkip = collectText(skipped.contentEl as unknown as Clickable);
+		assert.equal(afterSkip.includes('Home counties: none'), true);
+		assert.equal(afterSkip.includes('asks you to confirm'), true);
+	});
 });
+
+function wizardActions(partial: Partial<ConstructorParameters<typeof SetupWizardModal>[2]>): ConstructorParameters<typeof SetupWizardModal>[2] {
+	return {
+		onDismiss: () => {},
+		onPlaceExtras: () => {},
+		openCommunityPlugins: () => {},
+		openTemplaterSettings: () => {},
+		openMetaBindSettings: () => {},
+		onSaveHomeCounties: async () => {},
+		...partial,
+	};
+}
+
+function collectText(root: Clickable): string {
+	const parts: string[] = [];
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.text) parts.push(current.text);
+		stack.push(...current.children);
+	}
+	return parts.join('\n');
+}
+
+function findTagged(root: Clickable, tag: string): Clickable {
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.tag === tag) return current;
+		stack.push(...current.children);
+	}
+	throw new Error(`No ${tag}`);
+}
 
 function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
 	return {
@@ -1493,6 +1586,7 @@ function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
 		resolvedScriptsFolder: 'Scripts',
 		files: [],
 		defaultNewRvPriority: 3,
+		homeCounties: [],
 		linkCompanionsToNotes: false,
 		newRvTemplateFile: '99 New RV.md',
 		homeLogTemplateFile: '99 RV Log Home.md',

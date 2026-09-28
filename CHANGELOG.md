@@ -2,7 +2,7 @@
 
 ## 1.2.2
 
-`main.js` SHA-256: `eb768914f134a598ff2f0fde194cd6ce97a21303b42c9137302f45dfc53e9988`
+`main.js` SHA-256: `b4db5c20d4d23a1abc72816287768000443c05defcfe96333e5cc25301ac666c`
 
 `styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
 
@@ -12,6 +12,7 @@
 - Skip and Esc still leave Met With and Taken unchanged. Not home still does not ask. A name already on Taken is not added again.
 - `linkCompanionsToNotes` still applies only to the Taken write: off stores plain text, and on stores `[[Note Name]]` when a note basename matches. It does not write Met With.
 - Home no longer skips a `###` stamp when that rounded-hour heading is already on the note. A second Home or Not home applies immediately: counts, timestamps, Attempt Log, and (for Home) another stamp. The plugin button and Meta Bind / Templater `rvLog.js` use the same rule. There is no setting that turns a time lock back on.
+- The setup wizard starts with a home region step: the counties where you normally work return visits. A fully confident geocode hit in one of them can be saved without asking, which avoids a wrong-city pick. You can enter one or more counties, the same list as Home base counties, or skip. Skip leaves the saved list unchanged. An empty list still always asks you to confirm. The wizard does not open again on its own after it has been closed. Settings → Open setup wizard includes the home-region step.
 - Extras sync is pinned to tag `v1.2.2` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
 
 ## 1.2.1

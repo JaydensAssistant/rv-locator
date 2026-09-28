@@ -21,7 +21,7 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
 import { META_BIND_PLUGIN_ID } from './setup-check';
-import { SetupWizardModal, readSetupSnapshot } from './setup-wizard';
+import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
@@ -120,7 +120,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 
 		this.app.workspace.onLayoutReady(() => {
-			if (this.unloaded || this.settings.setupWizardCompleted) return;
+			if (!shouldAutoOpenSetupWizard(this.settings.setupWizardCompleted, this.unloaded)) return;
 			this.openSetupWizard();
 		});
 	}
@@ -190,6 +190,10 @@ export default class RVLocatorPlugin extends Plugin {
 			openCommunityPlugins: () => { this.openObsidianSettings('community-plugins'); },
 			openTemplaterSettings: () => { this.openObsidianSettings(TEMPLATER_PLUGIN_ID); },
 			openMetaBindSettings: () => { this.openObsidianSettings(META_BIND_PLUGIN_ID); },
+			onSaveHomeCounties: async (counties) => {
+				this.settings.homeCounties = counties;
+				await this.saveSettings();
+			},
 		});
 		modal.open();
 	}

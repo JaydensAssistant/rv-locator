@@ -1,6 +1,7 @@
 import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, type App } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
 import { parseDatePropertyNames } from './dates';
+import { parseHomeCountyLines } from './home-base';
 import {
 	EXTRAS_SYNC_REF,
 	EXTRAS_SYNC_REPO,
@@ -111,7 +112,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				text.setPlaceholder('Orange\nLake');
 				text.setValue(this.plugin.settings.homeCounties.join('\n'));
 				text.onChange(async (value) => {
-					this.plugin.settings.homeCounties = value.split(/\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+					this.plugin.settings.homeCounties = parseHomeCountyLines(value);
 					await this.plugin.saveSettings();
 				});
 			});
@@ -182,7 +183,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Templater and Meta Bind').setHeading();
 		new Setting(containerEl)
 			.setName('Setup wizard')
-			.setDesc('Checks that Templater and Meta Bind are enabled, shows the folders Templater is using, and places templates and scripts after you confirm. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands.')
+			.setDesc('Starts with home counties, then checks that Templater and Meta Bind are enabled, shows the folders Templater is using, and places templates and scripts after you confirm. Home counties here are the same list as Home base counties. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands.')
 			.addButton((button) => {
 				button.setButtonText('Open setup wizard');
 				button.onClick(() => { this.plugin.openSetupWizard(); });

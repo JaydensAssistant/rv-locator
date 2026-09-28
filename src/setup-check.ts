@@ -19,6 +19,8 @@ export interface SetupSnapshot {
 	resolvedScriptsFolder: string;
 	files: SetupFileStatus[];
 	defaultNewRvPriority: number;
+	/** Saved home-base counties. Empty means geocode always asks you to confirm. */
+	homeCounties: string[];
 	linkCompanionsToNotes: boolean;
 	newRvTemplateFile: string;
 	homeLogTemplateFile: string;
@@ -80,6 +82,16 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 				? 'Templates and scripts are in place'
 				: 'Templates or scripts are missing',
 			detail: fileDetail,
+		},
+		{
+			id: 'home-counties',
+			ok: true,
+			title: snapshot.homeCounties.length > 0
+				? `Home counties: ${snapshot.homeCounties.join(', ')}`
+				: 'Home counties: none',
+			detail: snapshot.homeCounties.length > 0
+				? 'These are the counties where you normally work return visits. A fully confident geocode hit in one of them can be saved without asking. A hit in another county still asks you to confirm, so a wrong city is less likely to be saved.'
+				: 'No home counties are saved, so every geocode match asks you to confirm. Add them in this wizard or under Home base counties in RV Locator settings.',
 		},
 		{
 			id: 'suggested',

@@ -50,6 +50,11 @@ export function normalizeCounty(value: string): string {
 		.trim();
 }
 
+/** One county per line, the same split the Home base counties textarea uses. */
+export function parseHomeCountyLines(value: string): string[] {
+	return value.split(/\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+}
+
 export function normalizeCountyList(value: unknown): string[] {
 	const chunks: string[] = [];
 	const source = Array.isArray(value) ? value : [value];
