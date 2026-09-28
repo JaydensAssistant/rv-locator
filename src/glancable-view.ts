@@ -131,43 +131,32 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		const suggest = foot.createEl('button', {
-			cls: 'rv-locator-suggest-times',
-			text: 'Suggest times',
-			attr: {
-				type: 'button',
-				title: 'Suggest return times',
-				'aria-label': `Suggest return times for ${row.name}`,
-			},
-		});
-		suggest.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			void this.plugin.suggestReturnFor(row.path, row.name);
-		});
-		this.paintActions(card, rank, row, urgency);
+		this.paintUrgency(card, urgency);
+		this.paintActions(card, rank, row);
 	}
 
-	private paintActions(parent: HTMLElement, rank: string | null, row: RowModel, urgency: number | null): void {
+	private paintUrgency(card: HTMLElement, urgency: number | null): void {
+		const marks = urgencyMark(urgencyBand(urgency));
+		if (marks.glyphs.length === 0) return;
+		card.addClass('has-urgency');
+		const flags = `${marks.bold ? ' is-bold' : ''}${marks.underline ? ' is-peak' : ''}`;
+		card.createSpan({
+			cls: `rv-locator-urgency${flags}`,
+			text: marks.glyphs,
+			attr: {
+				'data-band': String(urgencyBand(urgency)),
+				title: urgency == null ? 'Urgency' : `Urgency ${urgency.toFixed(2)}`,
+			},
+		});
+	}
+
+	private paintActions(parent: HTMLElement, rank: string | null, row: RowModel): void {
 		const showRank = rank != null;
 		const map = this.mapCell(row);
 		const showMap = map?.kind === 'url' && Boolean(map.text);
-		const marks = urgencyMark(urgencyBand(urgency));
-		const showMarks = marks.glyphs.length > 0;
-		if (!showRank && !showMap && !showMarks) return;
+		if (!showRank && !showMap) return;
 		parent.addClass('has-actions');
 		const actions = parent.createSpan('rv-locator-card-actions');
-		if (showMarks) {
-			const flags = `${marks.bold ? ' is-bold' : ''}${marks.underline ? ' is-peak' : ''}`;
-			actions.createSpan({
-				cls: `rv-locator-urgency${flags}`,
-				text: marks.glyphs,
-				attr: {
-					'data-band': String(urgencyBand(urgency)),
-					title: urgency == null ? 'Urgency' : `Urgency ${urgency.toFixed(2)}`,
-				},
-			});
-		}
 		if (showRank && rank) {
 			const pill = actions.createEl('button', {
 				cls: 'rv-locator-priority-pill',

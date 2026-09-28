@@ -260,7 +260,7 @@ describe('dayparts and return suggester', () => {
 		assert.ok(half > 0.3);
 	});
 
-	it('talks about several times to avoid, with counts, and does not merge weekdays', () => {
+	it('lists avoid, untried, and strongest as short lines and does not merge weekdays', () => {
 		const buckets: AttemptBuckets = {
 			'5:late-morning': { homes: 1, trials: 5 },
 			'5:afternoon': { homes: 1, trials: 5 },
@@ -274,19 +274,22 @@ describe('dayparts and return suggester', () => {
 			multipliers: { goOut: 1, willing: 0.65 },
 			now: new Date(2026, 8, 24, 12, 0, 0),
 		});
-		assert.match(digest.text, /Alright, they were practically never home \(1\/5, soft rate 0\.29\) on Friday late morning, afternoon, or evening\./);
-		assert.match(digest.text, /You've never tried Saturday late morning \(0\/0, soft rate 0\.50\) — do that\./);
-		assert.match(digest.text, /The strongest logged score is Friday late morning \(1\/5, soft rate 0\.29, score 0\.12\)/);
+		assert.equal(digest.text, digest.sentences.join('\n'));
+		assert.equal(digest.sentences[0], 'Avoid · Fri late morning, afternoon, evening · 1/5');
+		assert.equal(digest.sentences.find((line) => line.startsWith('Untried')), 'Untried · Sat late morning');
+		assert.equal(digest.sentences.includes('Strongest · Fri late morning · 1/5 · 0.12 · avoid'), true);
+		assert.equal(digest.sentences[0]?.includes('Wed'), false);
 		assert.equal(digest.text.includes('Wednesday'), false);
 		assert.equal(/\balways\b/i.test(digest.text), false);
-		const stripped = digest.text.replaceAll('practically never home', '').replaceAll('never tried', '');
-		assert.equal(/\bnever\b/i.test(stripped), false);
+		assert.equal(/\bnever\b/i.test(digest.text), false);
+		assert.equal(/\b(Alright|You've|do that)\b/.test(digest.text), false);
+		assert.equal(digest.sentences.every((line) => !/[.!?]$/.test(line)), true);
 		const empty = suggestReturnDigest({
 			buckets: {},
 			grid,
 			multipliers: { goOut: 1, willing: 0.65 },
 		});
-		assert.match(empty.text, /Not enough data/);
+		assert.deepEqual(empty.sentences, ['No visits yet']);
 		assert.equal(/\balways\b/i.test(empty.text), false);
 		assert.equal(/\bnever\b/i.test(empty.text), false);
 
@@ -296,9 +299,9 @@ describe('dayparts and return suggester', () => {
 			multipliers: { goOut: 1, willing: 0.65 },
 			now: new Date(2026, 8, 24, 12, 0, 0),
 		});
-		assert.equal(half.text.includes('practically never home'), false);
-		assert.equal(half.text.includes('rarely home'), false);
-		assert.match(half.text, /Wednesday evening \(5\/10, soft rate 0\.50/);
+		assert.equal(half.sentences.includes('None to avoid'), true);
+		assert.equal(half.text.includes('Avoid ·'), false);
+		assert.equal(half.sentences.includes('Strongest · Wed evening · 5/10 · 0.25'), true);
 	});
 });
 
@@ -404,8 +407,16 @@ describe('settings defaults', () => {
 		const graphs = settingsGraphs(settings);
 		assert.equal(graphs.likelihood, '');
 		assert.match(graphs.ladder, /Urgency by days/);
+		assert.match(graphs.ladder, /stroke="var\(--rv-graph-axis\)"/);
+		assert.match(graphs.ladder, /stroke="var\(--rv-graph-guide\)"/);
+		assert.match(graphs.ladder, /fill="var\(--text-normal\)"/);
+		assert.match(graphs.ladder, /stroke="var\(--rv-series-5\)"/);
+		assert.equal(graphs.ladder.includes('#888'), false);
+		assert.equal(graphs.ladder.includes('#bbb'), false);
+		assert.equal(graphs.ladder.includes('#d64545'), false);
 		assert.match(graphs.ramp, /3d/);
 		assert.match(graphs.ideality, /Ideality vs miles/);
+		assert.match(graphs.ideality, /stroke="var\(--rv-series-urgency\)"/);
 		assert.match(graphs.floors, /Ideality floors/);
 		const shifted = settingsGraphs(mergeSettings({
 			urgencyThresholdDays: { ...settings.urgencyThresholdDays, 5: 10 },
@@ -418,5 +429,8 @@ describe('settings defaults', () => {
 		assert.notEqual(shifted.ideality, graphs.ideality);
 		assert.notEqual(shifted.floors, graphs.floors);
 		assert.match(shifted.likelihood, /Home-likelihood multiplier/);
+		assert.match(shifted.likelihood, /stroke="var\(--rv-series-home\)"/);
+		assert.match(shifted.likelihood, /stroke="var\(--rv-series-none\)"/);
+		assert.equal(shifted.likelihood.includes('#888'), false);
 	});
 });

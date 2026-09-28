@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.5
+
+`main.js` SHA-256: `f1cf2a6cad6d6998c71a9f970e98d045fe702814cf95ed0473186567f4656d71`
+
+`styles.css` SHA-256: `e9678c791594d0a09d58e0f24698a432dc3e05910d9a02b96eafe6db3a00f82f`
+
+`manifest.json` SHA-256: `ff80dd76d7370d92a6dcf74b3ac6b3f1633c5fa9921cddbdfce614233c328c98`
+
+- Suggest return times are short lines (weekday and daypart, then a count). Avoid, untried, and strongest stay the same slots. The Glancable card button is gone. The digest is drawn under the Attempt Log callout title, so it stays visible while that callout is collapsed and sits above the log when it is open. The Suggest return times command still opens the same lines. Address is not written.
+- Urgency marks sit in the top-right of a Glancable card, larger than the old stack above the priority pill, in the urgency accent color.
+- Settings graphs use theme colors for axes, labels, curves, and threshold guides, with a lighter set in dark mode.
+- Extras sync is pinned to tag `v1.2.5` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.4
 
 `main.js` SHA-256: `881bbfa5d28bbc449d220edb4d3b7a48ef41d168f858d2af8711e7aebed5b68a`

@@ -178,10 +178,11 @@ export interface ReturnDigest {
 	sentences: string[];
 }
 
-const NOT_ENOUGH = 'Not enough data yet. The Attempt Log has no visits to score, so this cannot list times to avoid or a strongest return slot.';
+const NOT_ENOUGH = 'No visits yet';
 
 /**
  * Deterministic avoid-list. The strongest score is mentioned, and the copy leans on times to skip plus untried go-out slots.
+ * Lines are short fragments: weekday crumb, daypart, and a count. Selection is unchanged.
  */
 export function suggestReturnDigest(args: {
 	buckets: AttemptBuckets;
@@ -206,15 +207,13 @@ export function suggestReturnDigest(args: {
 		.sort((a, b) => b.score - a.score || compareUpcoming(a, b, now))
 		.slice(0, 2);
 
-	const sentences: string[] = [];
-	if (avoid.length > 0) sentences.push(avoidSentence(avoid));
-	else sentences.push('Alright. No logged time stands out as one to avoid.');
-	const untriedLead = untriedSentence(untried);
-	if (untriedLead) sentences.push(untriedLead);
-	if (best) sentences.push(bestSentence(best, avoidKeys.has(slotKey(best))));
-	else sentences.push('Logged visits are not on a Willing or Go out time, so there is no strongest score there yet.');
-	if (alternates.length > 0) sentences.push(alternateSentence(alternates));
-	return { text: sentences.join(' '), sentences };
+	const sentences = [
+		...avoidLines(avoid),
+		...untriedLines(untried),
+		best ? bestLine(best, avoidKeys.has(slotKey(best))) : 'No scored time',
+		...alternateLines(alternates),
+	];
+	return { text: sentences.join('\n'), sentences };
 }
 
 export interface UpcomingSlot {
@@ -280,8 +279,9 @@ function avoidTone(slot: SlotFact): 'never' | 'rarely' {
 	return 'rarely';
 }
 
-function avoidSentence(slots: SlotFact[]): string {
-	const groups: Array<{ weekday: number; dayparts: Daypart[]; homes: number; trials: number; tone: 'never' | 'rarely'; rate: number }> = [];
+function avoidLines(slots: SlotFact[]): string[] {
+	if (slots.length === 0) return ['None to avoid'];
+	const groups: Array<{ weekday: number; dayparts: Daypart[]; homes: number; trials: number; tone: 'never' | 'rarely' }> = [];
 	for (const slot of slots) {
 		const tone = avoidTone(slot);
 		const last = groups[groups.length - 1];
@@ -301,63 +301,34 @@ function avoidSentence(slots: SlotFact[]): string {
 			homes: slot.homes,
 			trials: slot.trials,
 			tone,
-			rate: slot.rate,
 		});
 	}
-	const parts = groups.map((group) => {
-		const phrase = group.tone === 'never' ? 'practically never home' : 'rarely home';
-		return `${phrase} (${formatCount(group.homes, group.trials)}) on ${formatWeekdayDayparts(group.weekday, group.dayparts)}`;
-	});
-	return `Alright, they were ${joinClauses(parts)}.`;
+	return groups.map((group) => `Avoid · ${formatWeekdayDayparts(group.weekday, group.dayparts)} · ${group.homes}/${group.trials}`);
 }
 
-function untriedSentence(slots: SlotFact[]): string {
-	const shown = slots.slice(0, 3);
-	const first = shown[0];
-	if (!first) return '';
-	const lead = `You've never tried ${formatSlot(first)} (${formatCount(0, 0)}) — do that.`;
-	const rest = shown.slice(1);
-	if (rest.length === 0) return lead;
-	const more = rest.map((slot) => `${formatSlot(slot)} (${formatCount(0, 0)})`).join(' or ');
-	return `${lead} You also have not tried ${more}.`;
+function untriedLines(slots: SlotFact[]): string[] {
+	return slots.slice(0, 3).map((slot) => `Untried · ${slotCrumb(slot)}`);
 }
 
-function bestSentence(slot: SlotFact, avoided: boolean): string {
-	const detail = `${formatSlot(slot)} (${formatCount(slot.homes, slot.trials)}, score ${slot.score.toFixed(2)})`;
-	if (avoided) {
-		return `The strongest logged score is ${detail}, and that time still belongs on the careful list.`;
-	}
-	return `The strongest score is ${detail}.`;
+function bestLine(slot: SlotFact, avoided: boolean): string {
+	const flag = avoided ? ' · avoid' : '';
+	return `Strongest · ${slotCrumb(slot)} · ${slot.homes}/${slot.trials} · ${slot.score.toFixed(2)}${flag}`;
 }
 
-function alternateSentence(slots: SlotFact[]): string {
-	const bits = slots.map((slot) => `${formatSlot(slot)} (${formatCount(slot.homes, slot.trials)})`);
-	if (bits.length === 1) return `Also consider ${bits[0]}.`;
-	return `Also consider ${bits[0]} or ${bits[1]}.`;
+function alternateLines(slots: SlotFact[]): string[] {
+	return slots.map((slot) => `Also · ${slotCrumb(slot)} · ${slot.homes}/${slot.trials}`);
 }
 
-function formatCount(homes: number, trials: number): string {
-	return `${homes}/${trials}, soft rate ${laplaceRate(homes, trials).toFixed(2)}`;
-}
-
-function formatSlot(slot: SlotFact): string {
-	return `${weekdayName(slot.weekday)} ${daypartLabel(slot.daypart)}`;
+function slotCrumb(slot: SlotFact): string {
+	return `${weekdayShort(slot.weekday)} ${daypartLabel(slot.daypart)}`;
 }
 
 function formatWeekdayDayparts(weekday: number, dayparts: Daypart[]): string {
 	const labels = dayparts.map((daypart) => daypartLabel(daypart));
+	const day = weekdayShort(weekday);
 	const first = labels[0] ?? '';
-	if (labels.length <= 1) return `${weekdayName(weekday)} ${first}`;
-	if (labels.length === 2) return `${weekdayName(weekday)} ${first} or ${labels[1]}`;
-	const middle = labels.slice(1, -1).join(', ');
-	const last = labels[labels.length - 1];
-	return `${weekdayName(weekday)} ${first}, ${middle}, or ${last}`;
-}
-
-function joinClauses(parts: string[]): string {
-	if (parts.length <= 1) return parts[0] ?? '';
-	if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-	return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+	if (labels.length <= 1) return `${day} ${first}`.trim();
+	return `${day} ${labels.join(', ')}`;
 }
 
 function pickBest(slots: SlotFact[], now: Date): SlotFact | null {

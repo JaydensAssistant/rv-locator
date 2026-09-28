@@ -1,4 +1,5 @@
 import { Modal, Setting, type App } from 'obsidian';
+import { paintReturnDigest } from './attempt-digest';
 import type { PlannerSlotView } from './planner';
 
 export class ReturnSuggestModal extends Modal {
@@ -10,13 +11,8 @@ export class ReturnSuggestModal extends Modal {
 		this.setTitle('Suggest return times');
 		this.modalEl.addClass('rv-locator-modal');
 		const { contentEl } = this;
-		contentEl.createEl('p', {
-			cls: 'rv-locator-modal-copy',
-			text: `Return times for “${this.displayName}”. Counts come from the Attempt Log. Address is not changed.`,
-		});
-		for (const sentence of this.sentences) {
-			contentEl.createEl('p', { cls: 'rv-locator-modal-copy', text: sentence });
-		}
+		contentEl.createDiv({ cls: 'rv-locator-modal-copy', text: this.displayName });
+		paintReturnDigest(contentEl.createDiv('rv-locator-return-digest'), this.sentences);
 		new Setting(contentEl).addButton((button) => {
 			button.setButtonText('Close');
 			button.onClick(() => this.close());

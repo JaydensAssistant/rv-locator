@@ -22,6 +22,7 @@ import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from '
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
 import { buildIdealityPlan } from './planner';
 import { IdealityPlannerModal, ReturnSuggestModal } from './score-modals';
+import { attemptLogCallouts, ensureReturnDigestHost, paintReturnDigest as renderReturnDigest } from './attempt-digest';
 import { parseAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
@@ -72,6 +73,7 @@ export default class RVLocatorPlugin extends Plugin {
 	bulkAborted = false;
 
 	private viewRefreshers = new Set<() => void>();
+	private returnDigests = new Set<{ path: string; host: HTMLElement }>();
 	private attemptBuckets = new Map<string, { mtime: number; buckets: AttemptBuckets }>();
 	private attemptPrefetch: Promise<void> | null = null;
 	private persistQueued: Promise<void> = Promise.resolve();
@@ -139,6 +141,12 @@ export default class RVLocatorPlugin extends Plugin {
 		if (registered.some((ok) => !ok)) {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
+
+		this.registerMarkdownPostProcessor((element, context) => {
+			for (const callout of attemptLogCallouts(element)) {
+				this.watchReturnDigest(context.sourcePath, ensureReturnDigestHost(callout));
+			}
+		});
 
 		this.app.workspace.onLayoutReady(() => {
 			void this.syncSetupCompletion();
@@ -374,6 +382,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.settings = mergeSettings(this.settings);
 		await this.persist();
 		for (const callback of this.viewRefreshers) callback();
+		this.refreshReturnDigests();
 	}
 
 	cachedAttemptBuckets(path: string): AttemptBuckets | null {
@@ -391,6 +400,48 @@ export default class RVLocatorPlugin extends Plugin {
 			this.attemptPrefetch = null;
 			for (const callback of this.viewRefreshers) callback();
 		});
+	}
+
+	private watchReturnDigest(path: string, host: HTMLElement): void {
+		for (const item of this.returnDigests) {
+			if (!item.host.isConnected) this.returnDigests.delete(item);
+		}
+		this.returnDigests.add({ path, host });
+		void this.paintReturnDigest(path, host);
+	}
+
+	private refreshReturnDigests(): void {
+		for (const item of this.returnDigests) {
+			if (!item.host.isConnected) {
+				this.returnDigests.delete(item);
+				continue;
+			}
+			void this.paintReturnDigest(item.path, item.host);
+		}
+	}
+
+	private async paintReturnDigest(path: string, host: HTMLElement): Promise<void> {
+		const generation = Number(host.dataset.rvDigestGen ?? '0') + 1;
+		host.dataset.rvDigestGen = String(generation);
+		const stale = (): boolean => host.dataset.rvDigestGen !== String(generation) || !host.isConnected;
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) {
+			if (!stale()) renderReturnDigest(host, []);
+			return;
+		}
+		try {
+			const buckets = await this.readAttemptBuckets(file);
+			if (stale()) return;
+			const digest = suggestReturnDigest({
+				buckets,
+				grid: this.settings.availabilityGrid,
+				multipliers: this.settings.availabilityMultipliers,
+				now: new Date(),
+			});
+			renderReturnDigest(host, digest.sentences);
+		} catch {
+			if (!stale()) renderReturnDigest(host, ['Attempt Log unread']);
+		}
 	}
 
 	async suggestReturnFor(path: string, displayName: string): Promise<void> {

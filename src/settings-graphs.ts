@@ -3,12 +3,13 @@ import type { PriorityBand, PriorityDays, RVLocatorSettings } from './types';
 
 const PRIORITIES: readonly PriorityBand[] = [5, 4, 3, 2, 1];
 
-const PRIORITY_COLOR: Record<PriorityBand, string> = {
-	1: '#4c78d8',
-	2: '#3c9a4a',
-	3: '#c6a000',
-	4: '#e07a1f',
-	5: '#d64545',
+/** CSS variable suffix. Colors live in styles.css so light and dark themes can differ. */
+const PRIORITY_TOKEN: Record<PriorityBand, string> = {
+	1: '1',
+	2: '2',
+	3: '3',
+	4: '4',
+	5: '5',
 };
 
 export interface SettingsGraphs {
@@ -44,7 +45,7 @@ export function urgencyLadderSvg(thresholds: PriorityDays): string {
 		yMax,
 		series: samples.map((series) => ({
 			label: `P${series.band}`,
-			color: PRIORITY_COLOR[series.band],
+			token: PRIORITY_TOKEN[series.band],
 			points: series.points,
 		})),
 		guides: [{ x: null, y: 1, label: '1' }],
@@ -55,7 +56,7 @@ export function urgencyRampSvg(thresholds: PriorityDays): string {
 	const domain = 6;
 	const series = PRIORITIES.map((band) => ({
 		label: `P${band}`,
-		color: PRIORITY_COLOR[band],
+		token: PRIORITY_TOKEN[band],
 		points: sampleDays(domain, 36, (day) => urgencyScore(day, band, thresholds) ?? 0),
 	}));
 	const yMax = Math.max(0.5, ...series.flatMap((item) => item.points.map((point) => point[1]))) * 1.15;
@@ -90,7 +91,7 @@ export function idealityMilesSvg(territorySpan: number): string {
 		yLabel: 'ideality',
 		xMax,
 		yMax,
-		series: [{ label: 'urgency 1', color: '#d64545', points }],
+		series: [{ label: 'urgency 1', token: 'urgency', points }],
 		guides: [
 			{ x: territorySpan, y: null, label: 'span' },
 			{ x: null, y: 1, label: '1' },
@@ -102,7 +103,7 @@ export function idealityFloorSvg(settings: RVLocatorSettings): string {
 	const domain = Math.max(21, ...PRIORITIES.map((band) => settings.idealityFloorDays[band])) * 1.15;
 	const series = PRIORITIES.map((band) => ({
 		label: `P${band}`,
-		color: PRIORITY_COLOR[band],
+		token: PRIORITY_TOKEN[band],
 		points: sampleDays(domain, 48, (day) => idealityScore({
 			days: day,
 			priority: band,
@@ -127,14 +128,14 @@ export function idealityFloorSvg(settings: RVLocatorSettings): string {
 
 export function likelihoodSvg(): string {
 	const domain = 30;
-	const curves: Array<{ label: string; color: string; homes: (n: number) => number }> = [
-		{ label: 'all home', color: '#3c9a4a', homes: (n) => n },
-		{ label: 'half home', color: '#c6a000', homes: (n) => n / 2 },
-		{ label: 'none home', color: '#d64545', homes: () => 0 },
+	const curves: Array<{ label: string; token: string; homes: (n: number) => number }> = [
+		{ label: 'all home', token: 'home', homes: (n) => n },
+		{ label: 'half home', token: 'half', homes: (n) => n / 2 },
+		{ label: 'none home', token: 'none', homes: () => 0 },
 	];
 	const series = curves.map((curve) => ({
 		label: curve.label,
-		color: curve.color,
+		token: curve.token,
 		points: sampleDays(domain, 31, (n) => likelihoodMultiplier(curve.homes(n), n)),
 	}));
 	return lineChart({
@@ -157,7 +158,7 @@ interface Guide {
 
 interface Series {
 	label: string;
-	color: string;
+	token: string;
 	points: Array<[number, number]>;
 }
 
@@ -198,32 +199,36 @@ function lineChart(args: {
 		return top + (1 - t) * (height - top - bottom);
 	};
 	const parts: string[] = [
-		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" role="img">`,
+		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="rv-locator-chart" role="img">`,
 		`<title>${escapeXml(args.title)}</title>`,
-		`<text x="${left}" y="14" font-size="11" font-family="sans-serif">${escapeXml(args.title)}</text>`,
-		`<line x1="${left}" y1="${yScale(yMin)}" x2="${width - right}" y2="${yScale(yMin)}" stroke="#888" stroke-width="1"/>`,
-		`<line x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}" stroke="#888" stroke-width="1"/>`,
-		`<text x="${width / 2}" y="${height - 4}" text-anchor="middle" font-size="10" font-family="sans-serif">${escapeXml(args.xLabel)}</text>`,
-		`<text x="12" y="${(top + height - bottom) / 2}" font-size="10" font-family="sans-serif" transform="rotate(-90 12 ${(top + height - bottom) / 2})">${escapeXml(args.yLabel)}</text>`,
+		`<text class="rv-graph-title" x="${left}" y="15" fill="var(--text-normal)" font-size="12" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(args.title)}</text>`,
+		`<line class="rv-graph-axis" x1="${left}" y1="${yScale(yMin)}" x2="${width - right}" y2="${yScale(yMin)}" stroke="var(--rv-graph-axis)" stroke-width="1.25"/>`,
+		`<line class="rv-graph-axis" x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}" stroke="var(--rv-graph-axis)" stroke-width="1.25"/>`,
+		`<text class="rv-graph-label" x="${width / 2}" y="${height - 4}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="var(--font-interface), sans-serif">${escapeXml(args.xLabel)}</text>`,
+		`<text class="rv-graph-label" x="13" y="${(top + height - bottom) / 2}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="var(--font-interface), sans-serif" transform="rotate(-90 13 ${(top + height - bottom) / 2})">${escapeXml(args.yLabel)}</text>`,
 	];
 	for (const guide of args.guides) {
 		if (guide.y != null) {
-			const y = yScale(guide.y).toFixed(1);
-			parts.push(`<line x1="${left}" y1="${y}" x2="${width - right}" y2="${y}" stroke="#bbb" stroke-dasharray="3 3"/>`);
+			const y = yScale(guide.y);
+			const yText = y.toFixed(1);
+			const labelY = (y < top + 16 ? y + 12 : y - 4).toFixed(1);
+			parts.push(`<line class="rv-graph-guide" x1="${left}" y1="${yText}" x2="${width - right}" y2="${yText}" stroke="var(--rv-graph-guide)" stroke-width="1.35" stroke-dasharray="4 3"/>`);
+			parts.push(`<text class="rv-graph-guide-label" x="${width - right}" y="${labelY}" text-anchor="end" fill="var(--text-accent)" font-size="11" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(guide.label)}</text>`);
 		}
 		if (guide.x != null) {
 			const x = xScale(guide.x).toFixed(1);
-			parts.push(`<line x1="${x}" y1="${top}" x2="${x}" y2="${height - bottom}" stroke="#bbb" stroke-dasharray="3 3"/>`);
-			parts.push(`<text x="${x}" y="${height - bottom + 12}" font-size="9" font-family="sans-serif">${escapeXml(guide.label)}</text>`);
+			parts.push(`<line class="rv-graph-guide" x1="${x}" y1="${top}" x2="${x}" y2="${height - bottom}" stroke="var(--rv-graph-guide)" stroke-width="1.35" stroke-dasharray="4 3"/>`);
+			parts.push(`<text class="rv-graph-guide-label" x="${x}" y="${top + 12}" text-anchor="middle" fill="var(--text-accent)" font-size="11" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(guide.label)}</text>`);
 		}
 	}
 	args.series.forEach((series, index) => {
+		const color = `var(--rv-series-${series.token})`;
 		const points = series.points
 			.map(([x, y]) => `${xScale(x).toFixed(1)},${yScale(y).toFixed(1)}`)
 			.join(' ');
-		parts.push(`<polyline fill="none" stroke="${series.color}" stroke-width="1.6" points="${points}"/>`);
-		const legendX = left + index * 62;
-		parts.push(`<text x="${legendX}" y="${height - 16}" font-size="9" font-family="sans-serif" fill="${series.color}">${escapeXml(series.label)}</text>`);
+		parts.push(`<polyline class="rv-graph-series rv-series-${series.token}" fill="none" stroke="${color}" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round" points="${points}"/>`);
+		const legendX = left + index * 64;
+		parts.push(`<text class="rv-graph-legend rv-series-${series.token}" x="${legendX}" y="${height - 16}" fill="${color}" font-size="11" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(series.label)}</text>`);
 	});
 	parts.push('</svg>');
 	return parts.join('');
