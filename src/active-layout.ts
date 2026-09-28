@@ -64,6 +64,11 @@ export const SORT_PRESETS = [
 		defaultDirection: 'ASC',
 		labels: { ASC: 'Attempted · oldest', DESC: 'Attempted · newest' },
 	},
+	{
+		property: 'note.Met',
+		defaultDirection: 'DESC',
+		labels: { ASC: 'Met · oldest', DESC: 'Met · newest' },
+	},
 ] as const;
 
 export type SortPreset = (typeof SORT_PRESETS)[number];
@@ -223,7 +228,7 @@ export function shouldUseActiveSort(sorts: readonly { property: string }[]): boo
 	});
 }
 
-/** Toolbar defaults first (Spoke and Attempted: oldest). Then the Active RVs keys, such as Met. */
+/** Toolbar defaults first (Spoke and Attempted: oldest; Met: newest). Then the Active RVs keys. */
 export function preferredSortDirection(property: string): 'ASC' | 'DESC' {
 	const preset = SORT_PRESETS.find((item) => item.property === property);
 	if (preset) return preset.defaultDirection;

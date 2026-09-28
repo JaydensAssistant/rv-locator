@@ -397,11 +397,11 @@ describe('distance and dates', () => {
 		assert.equal(scrambled[scrambled.length - 1], 'note.Taken');
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, null)),
-			['Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest'],
+			['Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest'],
 		);
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
-			['Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest'],
+			['Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest'],
 		);
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
@@ -497,6 +497,46 @@ describe('distance and dates', () => {
 		assert.equal(parsePriority('Low'), null);
 		assert.equal(visiblePropertyText('"[[Return Visits Hub]]"'), 'Return Visits Hub');
 		assert.equal(visiblePropertyText('Person 1'), 'Person 1');
+	});
+
+	it('sorts Met newest first, flips to oldest, and keeps a missing Met last', () => {
+		const met = SORT_PRESETS.find((preset) => preset.property === 'note.Met');
+		const spoke = SORT_PRESETS.find((preset) => preset.property === 'note.Last Spoke');
+		const attempted = SORT_PRESETS.find((preset) => preset.property === 'note.Last Attempted');
+		assert.ok(met && spoke && attempted);
+		assert.equal(met.defaultDirection, 'DESC');
+		assert.equal(spoke.defaultDirection, 'ASC');
+		assert.equal(attempted.defaultDirection, 'ASC');
+		assert.equal(sortPresetChipLabel(met, null), 'Met · newest');
+		assert.equal(sortPresetChipLabel(met, 'DESC'), 'Met · newest');
+		assert.equal(sortPresetChipLabel(met, 'ASC'), 'Met · oldest');
+		assert.deepEqual(nextPresetSort(null, met), { property: 'note.Met', direction: 'DESC' });
+		assert.deepEqual(
+			nextPresetSort({ property: 'note.Met', direction: 'DESC' }, met),
+			{ property: 'note.Met', direction: 'ASC' },
+		);
+		assert.deepEqual(
+			nextPresetSort({ property: 'note.Met', direction: 'ASC' }, met),
+			{ property: 'note.Met', direction: 'DESC' },
+		);
+		const row = (id: string, metValue: number | null) => ({
+			lat: null,
+			lon: null,
+			id,
+			sortKeys: {
+				'note.Met': metValue == null ? { kind: 'empty' as const } : { kind: 'date' as const, value: metValue },
+			},
+		});
+		const rows = [
+			row('mid', Date.parse('2026-06-01T00:00:00')),
+			row('none', null),
+			row('new', Date.parse('2026-09-01T00:00:00')),
+			row('old', Date.parse('2026-01-01T00:00:00')),
+		];
+		const newest = sortRows(rows, nextPresetSort(null, met), null, DISTANCE_COLUMN_ID);
+		assert.deepEqual(newest.map((item) => item.id), ['new', 'mid', 'old', 'none']);
+		const oldest = sortRows(rows, nextPresetSort({ property: 'note.Met', direction: 'DESC' }, met), null, DISTANCE_COLUMN_ID);
+		assert.deepEqual(oldest.map((item) => item.id), ['old', 'mid', 'new', 'none']);
 	});
 
 	it('sorts like Active RVs before any distance override', () => {

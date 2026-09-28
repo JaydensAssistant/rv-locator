@@ -135,7 +135,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
-			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest. The first tap uses nearest, high, or longest-ago, and tapping the selected chip flips direction; the last choice is remembered.',
+			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest, Met newest or oldest. The first tap uses nearest, high, longest-ago, or newest for Met, and tapping the selected chip flips direction; the last choice is remembered.',
 		});
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',

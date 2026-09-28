@@ -2,7 +2,7 @@
 
 ## 1.2.3
 
-`main.js` SHA-256: `67e259bffde4211a07771d19f5dab9b6570d8a49aab1ebe37a7a7147c04d0701`
+`main.js` SHA-256: `9ca43507243b97e7d8da814de410232c7ab5a8168d0bbb8bc38cf40a0bbec967`
 
 `styles.css` SHA-256: `73ae6077410bbfcc90b028749d6c4731a47d7dc15352dc80f0b96e02a47217c1`
 
@@ -11,6 +11,7 @@
 - The Link companions to notes setting is removed. A companion chosen after Home, or while creating a new RV, is still appended to Taken only, as plain text. Met With is left unchanged. Skip and Esc still leave both unchanged. Not home still does not ask. New writes do not create wikilinks, including when an older `linkCompanionsToNotes` value is still in plugin data. A wikilink Obsidian flattens into an unquoted `[[Name]]` or a nested list is still written back as `"[[Name]]"` so an existing link stays on the note. The plugin Home button and Meta Bind / Templater `rvLog.js` and `newRv.js` use that same plain-text write.
 - The unfinished-setup notice follows the same required rows as setup wizard page 2. Geoapify is on that page, so a missing key cannot say Ready on the wizard and still show the notice. A blank Templater `templates_folder` or `user_scripts_folder` is Ready when the template or script files are already in the fallback folder (`Templates/` or `Scripts/`). Once those required gaps are empty, the notice stays down even if `setupWizardCompleted` was still false, and that flag is saved. Closing the wizard with Done also saves the flag, including when a gap remains. Empty home counties are still not a required gap. Don't remind me again is unchanged.
 - Setup wizard page 2 scrolls inside the modal. Community plugins, Templater settings, Meta Bind settings, Update from GitHub, Check again, and Done are stacked so they stay visible on a typical desktop modal.
+- Nearby and Glancable have a Met sort chip beside Nearest, Priority, Spoke, and Attempted. The first tap is Met · newest. Tapping it again is Met · oldest. Spoke and Attempted still start at oldest. A missing Met stays last, the same as a missing Last Spoke or Last Attempted. The choice is saved with the other chips.
 - Extras sync is pinned to tag `v1.2.3` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
 
 ## 1.2.2
