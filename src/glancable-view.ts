@@ -1,13 +1,18 @@
 import { setIcon, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
+import { glancableColumns } from './glancable-density';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
+import { rowUrgency } from './row-score';
+import { urgencyAccentColor, urgencyBand, urgencyMark } from './scoring';
+import type { GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
 	readonly type: string;
+	private layoutObserver: ResizeObserver | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -22,6 +27,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	protected paint(): void {
+		this.applyDensity();
 		const groups = this.sortedGroups();
 		groups.forEach((group, groupIndex) => {
 			if (group.label) {
@@ -32,80 +38,136 @@ export class NearbyGlancableView extends NearbyBasesView {
 				this.paintCard(grid, row, `${groupIndex}:${rowIndex}:${row.path}`);
 			});
 		});
+		this.applyColumnSnap();
+		this.watchLayout();
 	}
 
 	private paintCard(parent: HTMLElement, row: RowModel, key: string): void {
 		const card = parent.createDiv('rv-locator-card');
 		const rank = priorityRank(this.cellNamed(row, 'Priority'));
+		const urgency = rowUrgency(row, this.plugin.settings);
+		const band = urgencyBand(urgency);
+		card.setAttr('data-urgency-band', String(band));
+		if (urgency != null && urgency > 0) {
+			card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency));
+		}
+		const titleBits: string[] = [];
 		if (rank) {
 			card.setAttr('data-priority', rank);
-			card.setAttr('title', `Priority ${rank}`);
+			titleBits.push(`Priority ${rank}`);
 		}
+		if (urgency != null) titleBits.push(`Urgency ${urgency.toFixed(2)}`);
+		if (titleBits.length > 0) card.setAttr('title', titleBits.join('. '));
 
-		const name = card.createDiv('rv-locator-card-name');
-		name.setAttr('data-line', glancableLineId(0));
-		const link = name.createEl('a', {
-			cls: 'rv-locator-file-link',
-			text: row.name,
-			href: row.path,
-			title: row.name,
-		});
-		this.bindFileLink(link, row.path);
-
-		const place = card.createDiv('rv-locator-place');
-		place.setAttr('data-line', glancableLineId(1));
-		if (row.addressStreet) {
-			place.createSpan({
-				cls: 'rv-locator-card-street',
-				text: row.addressStreet,
-				title: row.addressText || row.addressStreet,
+		if (this.lineOn('name')) {
+			const name = card.createDiv('rv-locator-card-name');
+			name.setAttr('data-line', glancableLineId(0));
+			const link = name.createEl('a', {
+				cls: 'rv-locator-file-link',
+				text: row.name,
+				href: row.path,
+				title: row.name,
 			});
+			this.bindFileLink(link, row.path);
 		}
-		if (row.addressCity) {
-			place.createSpan({
-				cls: 'rv-locator-city-lg',
-				text: row.addressCity,
-				title: row.addressText || row.addressCity,
-			});
-		}
-		const distance = this.distanceLabel(row);
-		const live = distance !== '—';
-		const distEl = place.createSpan({
-			cls: `rv-locator-distance-lg${live ? ' is-live' : ' is-missing'}`,
-			text: live ? `· ${distance}` : '· —',
-			attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
-		});
-		distEl.setAttr('title', live ? distance : 'No position');
-		this.rememberDistance(key, distEl, row);
 
-		const when = card.createDiv('rv-locator-when');
-		this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2));
-		this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3));
-		this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4));
+		const showStreet = this.lineOn('street') && Boolean(row.addressStreet);
+		const showCity = this.lineOn('city') && Boolean(row.addressCity);
+		const showDistance = this.lineOn('distance');
+		if (showStreet || showCity || showDistance) {
+			const place = card.createDiv('rv-locator-place');
+			place.setAttr('data-line', glancableLineId(1));
+			if (showStreet && row.addressStreet) {
+				place.createSpan({
+					cls: 'rv-locator-card-street',
+					text: row.addressStreet,
+					title: row.addressText || row.addressStreet,
+				});
+			}
+			if (showCity && row.addressCity) {
+				place.createSpan({
+					cls: 'rv-locator-city-lg',
+					text: row.addressCity,
+					title: row.addressText || row.addressCity,
+				});
+			}
+			if (showDistance) {
+				const distance = this.distanceLabel(row);
+				const live = distance !== '—';
+				const distEl = place.createSpan({
+					cls: `rv-locator-distance-lg${live ? ' is-live' : ' is-missing'}`,
+					text: live ? `· ${distance}` : '· —',
+					attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
+				});
+				distEl.setAttr('title', live ? distance : 'No position');
+				this.rememberDistance(key, distEl, row);
+			}
+		}
+
+		const showSpoke = this.lineOn('last-spoke');
+		const showAttempted = this.lineOn('last-attempted');
+		const showMet = this.lineOn('met');
+		if (showSpoke || showAttempted || showMet) {
+			const when = card.createDiv('rv-locator-when');
+			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2));
+			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3));
+			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4));
+		}
 
 		const foot = card.createDiv('rv-locator-card-foot');
 		foot.setAttr('data-line', glancableLineId(5));
-		const metWith = this.cellNamed(row, 'Met With');
-		const metText = metWith && metWith.kind !== 'empty' && metWith.text && metWith.text !== '—'
-			? metWith.text
-			: '';
-		this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
-		const ratio = visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'));
-		const ratioEl = foot.createSpan({
-			cls: 'rv-locator-slot rv-locator-visits',
-			attr: { title: ratio.title },
+		if (this.lineOn('met-with')) {
+			const metWith = this.cellNamed(row, 'Met With');
+			const metText = metWith && metWith.kind !== 'empty' && metWith.text && metWith.text !== '—'
+				? metWith.text
+				: '';
+			this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
+		}
+		if (this.lineOn('visits')) {
+			const ratio = visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'));
+			const ratioEl = foot.createSpan({
+				cls: 'rv-locator-slot rv-locator-visits',
+				attr: { title: ratio.title },
+			});
+			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
+		}
+		const suggest = foot.createEl('button', {
+			cls: 'rv-locator-suggest-times',
+			text: 'Suggest times',
+			attr: {
+				type: 'button',
+				title: 'Suggest return times',
+				'aria-label': `Suggest return times for ${row.name}`,
+			},
 		});
-		ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
-		this.paintActions(card, rank, row);
+		suggest.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			void this.plugin.suggestReturnFor(row.path, row.name);
+		});
+		this.paintActions(card, rank, row, urgency);
 	}
 
-	private paintActions(parent: HTMLElement, rank: string | null, row: RowModel): void {
+	private paintActions(parent: HTMLElement, rank: string | null, row: RowModel, urgency: number | null): void {
 		const showRank = rank != null;
 		const map = this.mapCell(row);
 		const showMap = map?.kind === 'url' && Boolean(map.text);
-		if (!showRank && !showMap) return;
+		const marks = urgencyMark(urgencyBand(urgency));
+		const showMarks = marks.glyphs.length > 0;
+		if (!showRank && !showMap && !showMarks) return;
 		parent.addClass('has-actions');
 		const actions = parent.createSpan('rv-locator-card-actions');
+		if (showMarks) {
+			const flags = `${marks.bold ? ' is-bold' : ''}${marks.underline ? ' is-peak' : ''}`;
+			actions.createSpan({
+				cls: `rv-locator-urgency${flags}`,
+				text: marks.glyphs,
+				attr: {
+					'data-band': String(urgencyBand(urgency)),
+					title: urgency == null ? 'Urgency' : `Urgency ${urgency.toFixed(2)}`,
+				},
+			});
+		}
 		if (showRank && rank) {
 			const pill = actions.createEl('button', {
 				cls: 'rv-locator-priority-pill',
@@ -184,6 +246,39 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const column = this.columnNamed(name);
 		if (!column) return undefined;
 		return row.cells.find((cell) => cell.id === column.id);
+	}
+
+	private lineOn(id: GlancableLineId): boolean {
+		return this.plugin.settings.glancableLines[id] !== false;
+	}
+
+	private applyDensity(): void {
+		const settings = this.plugin.settings;
+		this.root.style.setProperty('--rv-pad-y', `${settings.glancablePaddingY}px`);
+		this.root.style.setProperty('--rv-pad-x', `${settings.glancablePaddingX}px`);
+		this.root.style.setProperty('--rv-font-scale', String(settings.glancableFontScale));
+		this.root.style.setProperty(
+			'--rv-line-max',
+			settings.glancableMaxLineChars > 0 ? `${settings.glancableMaxLineChars}ch` : '100%',
+		);
+	}
+
+	private applyColumnSnap(): void {
+		const columns = glancableColumns(this.scrollEl.clientWidth, this.plugin.settings);
+		const template = columns === 2 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
+		for (const node of Array.from(this.scrollEl.querySelectorAll('.rv-locator-card-grid'))) {
+			(node as HTMLElement).style.gridTemplateColumns = template;
+		}
+	}
+
+	private watchLayout(): void {
+		if (this.layoutObserver || typeof ResizeObserver === 'undefined') return;
+		this.layoutObserver = new ResizeObserver(() => this.applyColumnSnap());
+		this.layoutObserver.observe(this.scrollEl);
+		this.register(() => {
+			this.layoutObserver?.disconnect();
+			this.layoutObserver = null;
+		});
 	}
 
 	private columnNamed(name: string): ColumnModel | undefined {

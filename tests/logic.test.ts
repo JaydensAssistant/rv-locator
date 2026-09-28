@@ -397,11 +397,11 @@ describe('distance and dates', () => {
 		assert.equal(scrambled[scrambled.length - 1], 'note.Taken');
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, null)),
-			['Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest'],
+			['Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest', 'Urgency · high', 'Ideality · high'],
 		);
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
-			['Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest'],
+			['Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest', 'Urgency · low', 'Ideality · low'],
 		);
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
@@ -722,7 +722,7 @@ describe('settings', () => {
 		assert.equal(merged.locationProperty, 'Location');
 		assert.equal(merged.mapLinkProperty, 'Map Link');
 		assert.equal(merged.cityProperty, '');
-		assert.equal(merged.defaultNewRvPriority, 3);
+		assert.equal(merged.defaultNewRvPriority, 4);
 		assert.equal(merged.newRvTemplateFile, '99 New RV.md');
 		assert.equal(merged.homeLogTemplateFile, '99 RV Log Home.md');
 		assert.equal(merged.missLogTemplateFile, '99 RV Log Miss.md');
@@ -751,7 +751,7 @@ describe('settings', () => {
 			homeLogTemplateFile: 'notes.txt',
 			setupWizardCompleted: false,
 		});
-		assert.equal(rejected.defaultNewRvPriority, 3);
+		assert.equal(rejected.defaultNewRvPriority, 4);
 		const droppedCompanionLink = mergeSettings(JSON.parse('{"linkCompanionsToNotes":true,"defaultNewRvPriority":1}') as never);
 		assert.equal(droppedCompanionLink.defaultNewRvPriority, 1);
 		assert.equal('linkCompanionsToNotes' in droppedCompanionLink, false);
@@ -771,7 +771,7 @@ describe('settings', () => {
 		assert.equal(pathInsideFolder('Templates', 'Templates/../data.json'), false);
 		assert.equal(pathInsideFolder('Templates', 'TemplatesExtra/99 New RV.md'), false);
 		assert.equal(mergeSettings({ defaultNewRvPriority: '5' }).defaultNewRvPriority, 5);
-		assert.equal(mergeSettings({ defaultNewRvPriority: 1.5 }).defaultNewRvPriority, 3);
+		assert.equal(mergeSettings({ defaultNewRvPriority: 1.5 }).defaultNewRvPriority, 4);
 		assert.deepEqual(merged.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
 		const legacy = mergeSettings({ weekdayDateProperties: 'Last Spc, Met' } as Partial<RVLocatorSettings>);
 		assert.deepEqual(legacy.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
@@ -1136,7 +1136,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.3');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.4');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1179,7 +1179,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.3/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.4/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1200,9 +1200,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.3');
+		assert.equal(plan.ref, 'v1.2.4');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.3/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.4/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

@@ -11,6 +11,10 @@ export const GLANCABLE_INACTIVE_VIEW_TYPE = 'rv-locator-nearby-glancable-inactiv
 /** Virtual column id. This is never written to note frontmatter. */
 export const DISTANCE_COLUMN_ID = 'rv-locator.distance';
 
+/** Virtual sort ids. Scores stay in the view and are never written to notes. */
+export const URGENCY_COLUMN_ID = 'rv-locator.urgency';
+export const IDEALITY_COLUMN_ID = 'rv-locator.ideality';
+
 /**
  * Geoapify documents `api-eu.geoapify.com` as the EU-focused service endpoint
  * (EU infrastructure via BunnyCDN). The default `api.geoapify.com` host is not used.

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.4
+
+`main.js` SHA-256: `881bbfa5d28bbc449d220edb4d3b7a48ef41d168f858d2af8711e7aebed5b68a`
+
+`styles.css` SHA-256: `b93519debd051e50c64ea3b73c3e6257b41e1c6de10765d2f1a2fc9fec36f300`
+
+`manifest.json` SHA-256: `a543a3f707e6b930878072646dcaeea5a8246145979e0d51e14ab0b9979b0e9f`
+
+- Urgency is days since Last Spoke divided by a priority threshold (P5 4, P4 7, P3 21, P2 63, P1 189, all configurable). Under 3 days, every priority fades toward 0. The value keeps growing past 1. Glancable shows `!` marks above the priority pill and map pin (1–3 plain, 4 bold, 5 bold and underlined) and paints the left accent from urgency. The priority number stays on the pill.
+- Ideality is urgency times `(territory span / miles) ^ 0.555`. Territory span defaults to 15 miles and is not in the setup wizard. Each priority has a soft floor (P5 3d, P4 4d, P3 7d, P2 14d, P1 42d). The Ideality sort chip is off until enabled. Optional home likelihood (off) uses only the current weekday and daypart, with a 50% prior. The ideality planner (off, and idle until likelihood is on) holds distance at the territory span.
+- New RV priority defaults to 4.
+- Glancable density settings cover vertical and horizontal padding, max line length, a font-size multiplier, and a toggle for each card line. Two columns turn on when the measured card fits twice. Defaults keep today’s spacing.
+- Sort chips can be hidden one by one. Nearest, Priority, Spoke, Attempted, and Met stay on. Urgency starts on. Ideality stays off.
+- Attempt Log times bucket into weekday × daypart (early morning through 9:30, late morning until noon, afternoon until 4:30, evening after 4:30). Suggest return times, on the card and as a command, lists times to avoid, untried go-out slots, and the strongest score, with soft rates and counts. An empty log says there is not enough data. The availability grid is Off / Willing / Go out, with multipliers 1.0 and 0.65.
+- Settings graphs redraw from the live urgency, ideality, floor, and likelihood numbers.
+- Address is still never overwritten. Companions stay plain text. Lookups stay on `api-eu.geoapify.com`.
+- Extras sync is pinned to tag `v1.2.4` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.3
 
 `main.js` SHA-256: `9ca43507243b97e7d8da814de410232c7ab5a8168d0bbb8bc38cf40a0bbec967`

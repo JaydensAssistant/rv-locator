@@ -4,6 +4,11 @@ const EARTH_RADIUS_METERS = 6_371_008.8;
 const METERS_PER_MILE = 1609.344;
 const METERS_PER_KILOMETER = 1000;
 
+/** Ideality always uses miles, even when Nearby is showing kilometers. */
+export function milesFromMeters(meters: number): number {
+	return meters / METERS_PER_MILE;
+}
+
 export function haversineMeters(from: LatLon, to: LatLon): number {
 	const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 	const lat1 = toRad(from.lat);
