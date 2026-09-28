@@ -2,7 +2,7 @@
 
 ## 1.2.2
 
-`main.js` SHA-256: `fe5e6e9faad2267212af3f130cb782af516e0176097558e9af95edb1e34a8012`
+`main.js` SHA-256: `eb768914f134a598ff2f0fde194cd6ce97a21303b42c9137302f45dfc53e9988`
 
 `styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
 
@@ -11,6 +11,7 @@
 - A companion chosen after Home, or while creating a new RV, is appended to Taken only. Met With is the person at the door and is left unchanged. The same rule applies to the plugin Home button, Meta Bind / Templater `rvLog.js`, and New RV (`newRv.js` / `plugin.promptCompanion()`).
 - Skip and Esc still leave Met With and Taken unchanged. Not home still does not ask. A name already on Taken is not added again.
 - `linkCompanionsToNotes` still applies only to the Taken write: off stores plain text, and on stores `[[Note Name]]` when a note basename matches. It does not write Met With.
+- Home no longer skips a `###` stamp when that rounded-hour heading is already on the note. A second Home or Not home applies immediately: counts, timestamps, Attempt Log, and (for Home) another stamp. The plugin button and Meta Bind / Templater `rvLog.js` use the same rule. There is no setting that turns a time lock back on.
 - Extras sync is pinned to tag `v1.2.2` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
 
 ## 1.2.1

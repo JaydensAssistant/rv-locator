@@ -677,6 +677,9 @@ describe('disk proof', () => {
 		assert.equal(againDisk.includes('Met With: "Door"'), true);
 		assert.equal(againDisk.split('  - "TestCompanion"').length, 2);
 		assert.equal(againDisk.includes('Visits: 3'), true);
+		assert.equal(againDisk.includes('Successful Visits: 3'), true);
+		assert.equal(againDisk.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
+		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 3);
 
 		const skipped = commitVisit(againDisk, 'home', now, '  ');
 		writeFileSync(file, skipped);
@@ -694,7 +697,10 @@ describe('disk proof', () => {
 		assert.equal(missDisk.split('  - "TestCompanion"').length, 2);
 		assert.equal(missDisk.includes('  - "Pat"'), false);
 		assert.equal(missDisk.includes('— not home'), true);
+		assert.equal(missDisk.includes('Visits: 5'), true);
 		assert.equal(missDisk.includes('Successful Visits: 4'), true);
+		assert.equal(missDisk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
+		assert.equal(missDisk.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 3);
 	});
 
 	it('migrates a legacy Attempt Log heading on disk and does not invent Address', () => {
@@ -808,8 +814,19 @@ describe('disk proof', () => {
 		assert.equal(addressLine(secondHome), `Address: ${yamlQuote(address)}`);
 		assert.equal(secondHome.includes('Visits: 4'), true);
 		assert.equal(secondHome.includes('Successful Visits: 3'), true);
-		assert.deepEqual(secondHome.split('\n').filter((line) => /^#{2,3} /.test(line)), firstHeadings);
+		const secondHeadings = secondHome.split('\n').filter((line) => /^#{2,3} /.test(line));
+		assert.deepEqual(secondHeadings, [firstHeadings[0], firstHeadings[0]]);
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
+		assert.equal(notices.at(-1), 'Logged success');
+
+		await rvLog({ config: { target_file: { path: missFile } } }, 'miss');
+		const secondMiss = readFileSync(missFile, 'utf8');
+		assert.equal(addressLine(secondMiss), `Address: ${yamlQuote(address)}`);
+		assert.equal(secondMiss.includes('Visits: 4'), true);
+		assert.equal(secondMiss.includes('Successful Visits: 1'), true);
+		assert.equal(secondMiss.split('\n').filter((line) => line.includes('— not home')).length, 2);
+		assert.equal(secondMiss.includes('\n### '), false);
+		assert.equal(notices.at(-1), 'Logged not home');
 
 		const laterFile = join(dir, 'later.md');
 		writeFileSync(laterFile, [

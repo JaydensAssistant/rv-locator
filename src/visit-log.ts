@@ -62,8 +62,8 @@ export function applyVisitFrontmatter(
 /**
  * Body text below the frontmatter.
  * A home visit inserts `### <stamp>` and two blank lines just above Attempt Log
- * (one extra line of padding for notes), unless that Glancable stamp is already
- * a `##` or `###` heading.
+ * (one extra line of padding for notes). A second Home in the same rounded
+ * hour still inserts another stamp.
  * Both outcomes append `> - <stamp> — success|not home` inside a collapsed
  * `> [!note]- Attempt Log` callout. An old `## Attempt Log` heading is migrated
  * to that callout on write. Address is not part of the body edit.
@@ -139,14 +139,8 @@ function ensureAttemptLog(body: string): string {
 	return normalized;
 }
 
-function stampHeadings(stamp: string): string[] {
-	return [`## ${stamp}`, `${STAMP_LEVEL} ${stamp}`];
-}
-
 function insertHomeHeading(body: string, stamp: string): string {
 	const lines = body.split('\n');
-	const known = stampHeadings(stamp);
-	if (lines.some((line) => known.includes(line.trim()))) return body;
 	const found = findAttemptLog(lines);
 	if (!found || found.kind !== 'callout') return body;
 	const before = lines.slice(0, found.index);

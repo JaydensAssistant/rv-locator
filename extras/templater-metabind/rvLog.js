@@ -4,10 +4,10 @@
  *
  * Attempt Log is a collapsed callout. An old `## Attempt Log` heading is
  * migrated to that callout on the next Home / Not home write.
- * Home inserts a Glancable `###` stamp above the log only when that exact
- * stamp is not already a `##` or `###` heading. Two blank lines sit between
- * that stamp and Attempt Log so there is room for notes. Counters and the
- * Attempt Log bullet still update.
+ * Home inserts a Glancable `###` stamp above the log, including a second
+ * Home in the same rounded hour. Two blank lines sit between that stamp and
+ * Attempt Log so there is room for notes. Counters and the Attempt Log
+ * bullet update on every Home and Not home.
  *
  * Home also asks who they brought (one person). That name is appended to
  * Taken and does not change Met With. Not home does not ask, and a skipped
@@ -115,9 +115,6 @@ function ensureAttemptLog(body) {
 
 function insertHomeHeading(body, whenLabel) {
   const lines = body.split("\n");
-  const known = [`## ${whenLabel}`, `### ${whenLabel}`];
-  // New RV already wrote this stamp as ###. A second Home in the same rounded hour must not repeat it.
-  if (lines.some((line) => known.includes(line.trim()))) return body;
   const found = findAttemptLog(lines);
   if (!found || found.kind !== "callout") return body;
   const before = lines.slice(0, found.index);

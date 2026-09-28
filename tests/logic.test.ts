@@ -954,7 +954,7 @@ describe('visit log', () => {
 		assert.ok(more.indexOf('### Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
 	});
 
-	it('skips a home stamp that already exists as ## or ###', () => {
+	it('writes another home stamp in the same rounded hour, and a miss still logs', () => {
 		const existing = [
 			'### Sat, 11pm — Sep 26, 2026',
 			'',
@@ -963,14 +963,20 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const next = applyVisitBody(existing, 'home', now);
-		assert.equal(next.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(next.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
 		assert.equal(next.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
 
 		const legacy = existing.replace('### Sat', '## Sat');
 		const kept = applyVisitBody(legacy, 'home', now);
 		assert.equal(kept.includes('## Sat, 11pm — Sep 26, 2026'), true);
-		assert.equal(kept.includes('### Sat, 11pm — Sep 26, 2026'), false);
-		assert.equal(kept.split('\n').filter((line) => line.trim() === '## Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(kept.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(kept.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
+
+		const missed = applyVisitBody(next, 'miss', now);
+		assert.equal(missed.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
+		assert.equal(missed.includes('> - Sat, 11pm — Sep 26, 2026 — not home'), true);
+		const missedAgain = applyVisitBody(missed, 'miss', now);
+		assert.equal(missedAgain.split('\n').filter((line) => line.endsWith('— not home')).length, 2);
 	});
 
 	it('migrates a legacy ## Attempt Log heading into a collapsed callout', () => {
