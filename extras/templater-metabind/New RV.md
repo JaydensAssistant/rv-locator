@@ -18,7 +18,7 @@ cssclasses:
   - "hide-props"
   - "rv-dashboard"
 ---
-> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 > **Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
 
 `BUTTON[rv-log-home, rv-log-miss]`

@@ -40,7 +40,7 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 The first two body lines are markdown quotes, with no blank line between them. There is no `Map Link:` label and no Meta Bind view of the URL (a link view shows the raw URL text). The map icon is a normal markdown link. Templater fills it at create from the address just typed:
 
 ```markdown
-> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 > **Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
 ```
 

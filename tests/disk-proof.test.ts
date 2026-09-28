@@ -517,7 +517,9 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 1'), true);
 		assert.equal(createdText.includes('Successful Visits: 1'), true);
-		assert.equal(createdText.includes('> **Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n> **Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		assert.equal(createdText.includes('> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n> **Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		const hubsLine = createdText.split('\n').find((line) => line.startsWith('> **Hubs:**'));
+		assert.equal(hubsLine?.match(/\*\*Hubs:\*\*( *)`INPUT/)?.[1].length, 6);
 		assert.equal(createdText.includes('VIEW[{["Map Link"]}]'), false);
 		assert.equal(createdText.includes('VIEW[{Map Link}]'), false);
 		assert.equal(createdText.includes('Map Link:'), false);
