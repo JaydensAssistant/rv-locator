@@ -47,7 +47,7 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 			title: snapshot.templaterEnabled ? 'Templater is enabled' : 'Templater is not enabled',
 			detail: snapshot.templaterEnabled
 				? `Templater (${TEMPLATER_PLUGIN_ID}) runs New RV and the Home / Not home templates.`
-				: 'Enable Templater from Community plugins. RV Locator does not install it for you.',
+				: 'Enable Templater from Community plugins. RV Locator does not install or enable it, and it does not turn on Templater system commands.',
 		},
 		{
 			id: 'meta-bind',
@@ -55,7 +55,7 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 			title: snapshot.metaBindEnabled ? 'Meta Bind is enabled' : 'Meta Bind is not enabled',
 			detail: snapshot.metaBindEnabled
 				? `Meta Bind (${META_BIND_PLUGIN_ID}) runs the Home and Not home buttons on the note.`
-				: 'Enable Meta Bind from Community plugins. RV Locator does not install it for you.',
+				: 'Enable Meta Bind from Community plugins. RV Locator does not install or enable it, and it does not turn on the Meta Bind JS Engine.',
 		},
 		{
 			id: 'templates-folder',

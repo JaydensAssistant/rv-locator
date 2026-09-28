@@ -182,7 +182,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Templater and Meta Bind').setHeading();
 		new Setting(containerEl)
 			.setName('Setup wizard')
-			.setDesc('Checks that Templater and Meta Bind are enabled, shows the folders Templater is using, and places templates and scripts. RV Locator does not install community plugins.')
+			.setDesc('Checks that Templater and Meta Bind are enabled, shows the folders Templater is using, and places templates and scripts after you confirm. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands.')
 			.addButton((button) => {
 				button.setButtonText('Open setup wizard');
 				button.onClick(() => { this.plugin.openSetupWizard(); });
@@ -399,7 +399,7 @@ class ExtrasSyncConfirmModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Update Templater / Meta Bind extras');
 		this.contentEl.createEl('p', {
-			text: `Pinned ref ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked. Templater system commands stay off. The Meta Bind JS Engine is not required. Notes, Address, and the Geoapify key are not touched.`,
+			text: `Pinned ref ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked. This update does not enable plugins, the Meta Bind JS Engine, or Templater system commands. Notes, Address, and the Geoapify key are not touched.`,
 		});
 		const list = this.contentEl.createEl('ul');
 		const actions: HTMLElement[] = [];

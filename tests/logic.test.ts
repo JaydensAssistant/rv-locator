@@ -4,7 +4,7 @@ import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
 import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
 import { appendCompanionTaken, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
-import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, planExtrasWrite, rewriteNewRvTemplate, sha256Hex } from '../src/extras-sync';
+import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
@@ -707,6 +707,19 @@ describe('settings', () => {
 		assert.equal(rejected.defaultNewRvPriority, 3);
 		assert.equal(rejected.newRvTemplateFile, '99 New RV.md');
 		assert.equal(rejected.homeLogTemplateFile, '99 RV Log Home.md');
+		assert.equal(mergeSettings({ newRvTemplateFile: 'a<b>.md' }).newRvTemplateFile, '99 New RV.md');
+		assert.equal(mergeSettings({ newRvTemplateFile: 'bad\\name.md' }).newRvTemplateFile, '99 New RV.md');
+		assert.equal(mergeSettings({ newRvTemplateFile: '/tmp/Home.md' }).newRvTemplateFile, '99 New RV.md');
+		assert.equal(safeTemplateFileName('New RV.md', '99 New RV.md'), 'New RV.md');
+		assert.equal(safeTemplateFileName('notes.txt', '99 New RV.md'), '99 New RV.md');
+		assert.equal(safeVaultFolder('+/Templates', 'Templates'), '+/Templates');
+		assert.equal(safeVaultFolder('Ministry/Templates', 'Templates'), 'Ministry/Templates');
+		assert.equal(safeVaultFolder('~/Templates', 'Templates'), 'Templates');
+		assert.equal(safeVaultFolder('..\\nope', 'Templates'), 'Templates');
+		assert.equal(safeVaultFolder('C:/Templates', 'Templates'), 'Templates');
+		assert.equal(pathInsideFolder('+/Templates', '+/Templates/99 New RV.md'), true);
+		assert.equal(pathInsideFolder('Templates', 'Templates/../data.json'), false);
+		assert.equal(pathInsideFolder('Templates', 'TemplatesExtra/99 New RV.md'), false);
 		assert.equal(mergeSettings({ defaultNewRvPriority: '5' }).defaultNewRvPriority, 5);
 		assert.equal(mergeSettings({ defaultNewRvPriority: 1.5 }).defaultNewRvPriority, 3);
 		assert.deepEqual(merged.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
@@ -1170,6 +1183,39 @@ describe('extras sync', () => {
 		assert.equal(note?.contents.includes('templateFile: Ministry/Templates/99 RV Log Home.md'), true);
 		assert.equal(plan.files.some((file) => file.vaultPath.endsWith('.css') || file.vaultPath.includes('GEOCODE')), false);
 		assert.equal(plan.failed.length, 0);
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.role === 'new-rv' && file.repo !== NEW_RV_TEMPLATE_REPO), false);
+		const plus = {
+			templatesFolder: '+/Templates',
+			scriptsFolder: 'Scripts',
+			newRvFileName: '99 New RV.md',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		};
+		assert.equal(isAllowlistedExtrasPath('+/Templates/99 New RV.md', '.obsidian', plus), true);
+		assert.equal(isAllowlistedExtrasPath('+/Templates/../data.json', '.obsidian', plus), false);
+	});
+
+	it('refuses a fetched New RV body whose templateFile path leaves the templates folder', async () => {
+		const source = [
+			'id: rv-log-home',
+			'templateFile: Templates/99 RV Log Home.md',
+			'templateFile: ../data.json',
+			'id: rv-log-miss',
+			'templateFile: Templates/99 RV Log Miss.md',
+			'',
+		].join('\n');
+		assert.throws(() => rewriteNewRvTemplate(source));
+		const plan = await downloadExtras(async (fetched) => ({
+			ok: true,
+			status: 200,
+			text: source,
+			finalUrl: fetched,
+		}), '.obsidian');
+		assert.equal(plan.files.some((file) => file.vaultPath === 'Templates/99 New RV.md'), false);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Templates/99 New RV.md' && item.reason.includes('templates folder')), true);
+		const script = plan.files.find((file) => file.vaultPath === 'Scripts/newRv.js');
+		assert.equal(script?.contents, source);
+		assert.equal(plan.files.some((file) => file.vaultPath.endsWith('.js') && file.contents.includes('templateFile: Ministry/')), false);
 	});
 });
 
@@ -1233,6 +1279,8 @@ describe('setup wizard', () => {
 		}));
 		assert.equal(missing.find((check) => check.id === 'templater')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'templater')?.detail.includes('does not install'), true);
+		assert.equal(missing.find((check) => check.id === 'templater')?.detail.includes('system commands'), true);
+		assert.equal(missing.find((check) => check.id === 'meta-bind')?.detail.includes('JS Engine'), true);
 		assert.equal(missing.find((check) => check.id === 'meta-bind')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'templates-folder')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'templates-folder')?.detail.includes('templates_folder'), true);

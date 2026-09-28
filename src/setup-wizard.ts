@@ -83,7 +83,7 @@ export class SetupWizardModal extends Modal {
 		const { contentEl } = this;
 		contentEl.empty();
 		contentEl.createEl('p', {
-			text: 'Check Templater and Meta Bind, then place the New RV templates and scripts into the folders Templater is using. RV Locator does not install community plugins.',
+			text: 'Check Templater and Meta Bind, then place the New RV templates and scripts into the folders Templater is using. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands. Use the settings buttons and confirm those yourself.',
 		});
 		const snapshot = await this.load();
 		if (this.closed || generation !== this.renderGeneration) return;

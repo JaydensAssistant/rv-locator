@@ -8,7 +8,12 @@
  * Snippets and documentation files are not synced.
  */
 export const EXTRAS_SYNC_REPO = 'JaydensAssistant/rv-locator';
-/** Release tag baked into this build. Matches manifest version 1.2.0. */
+/**
+ * Release tag this build downloads. Matches manifest 1.2.0.
+ * The GitHub tag must exist before Update from GitHub can fetch these files.
+ * This plugin does not create that tag. Do not point this pin at v1.1.5,
+ * `main`, or `unstable`.
+ */
 export const EXTRAS_SYNC_REF = 'v1.2.0';
 export const EXTRAS_SYNC_HOST = 'raw.githubusercontent.com';
 export const EXTRAS_MAX_FILE_BYTES = 256 * 1024;
@@ -30,16 +35,25 @@ export interface ExtrasPlacement {
 	missLogFileName: string;
 }
 
+/** Only this fetched body may have Home / Not home `templateFile:` paths rewritten. */
+export const NEW_RV_TEMPLATE_REPO = 'extras/templater-metabind/New RV.md';
+
 type ExtrasSyncEntry =
 	| { repo: string; role: 'new-rv' | 'home-log' | 'miss-log' }
 	| { repo: string; role: 'script'; file: string };
+
+/** Basename only. Starts with a letter or digit. No directories. */
+const TEMPLATE_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9 ._-]{0,120}\.md$/;
+const SCRIPT_FILE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}\.js$/;
+/** A path segment. `+` alone is the vault folder used by `+/Templates`. */
+const FOLDER_SEGMENT = /^(?:\+|[A-Za-z0-9][A-Za-z0-9 ._+-]{0,80})$/;
 
 /**
  * Templates and user scripts only. No CSS snippet and no documentation.
  * Vault paths are resolved from {@link extrasDestinations}.
  */
 export const EXTRAS_SYNC_FILES: readonly ExtrasSyncEntry[] = [
-	{ repo: 'extras/templater-metabind/New RV.md', role: 'new-rv' },
+	{ repo: NEW_RV_TEMPLATE_REPO, role: 'new-rv' },
 	{ repo: 'extras/templater-metabind/RV Log Home.md', role: 'home-log' },
 	{ repo: 'extras/templater-metabind/RV Log Miss.md', role: 'miss-log' },
 	{ repo: 'extras/templater-metabind/newRv.js', role: 'script', file: 'newRv.js' },
@@ -68,12 +82,15 @@ export function safeConfigDir(configDir: string): string {
 
 /** A vault-relative folder Templater may store. Unsafe or empty values use the fallback. */
 export function safeVaultFolder(value: unknown, fallback: string): string {
-	const raw = typeof value === 'string' ? value.trim().replace(/\\/g, '/') : '';
+	if (typeof value !== 'string') return fallback;
+	const raw = value.trim();
+	if (!raw || raw === fallback) return fallback;
+	if (raw.includes('\\') || raw.includes('\0') || raw.includes(':') || raw.includes('..')) return fallback;
+	if (raw.startsWith('/') || raw.startsWith('~') || /^[A-Za-z]:/.test(raw)) return fallback;
 	const folder = raw.replace(/^\/+|\/+$/g, '');
 	if (!folder || folder === fallback) return fallback;
-	if (folder.startsWith('/') || /^[A-Za-z]:/.test(folder)) return fallback;
 	const parts = folder.split('/');
-	if (parts.some((part) => !part || part === '.' || part === '..')) return fallback;
+	if (parts.some((part) => !FOLDER_SEGMENT.test(part))) return fallback;
 	const lowerParts = parts.map((part) => part.toLowerCase());
 	if (lowerParts.includes('plugins') || lowerParts.some((part) => part.includes('secret'))) return fallback;
 	return folder;
@@ -84,11 +101,30 @@ export function safeTemplateFileName(value: unknown, fallback: string): string {
 	if (typeof value !== 'string') return fallback;
 	const name = value.trim();
 	if (!name || name === fallback) return fallback;
-	if (/[\\/]/.test(name) || name.includes('..') || name.startsWith('.')) return fallback;
-	if (!/\.md$/i.test(name)) return fallback;
-	if (/[\0<>:"|?*]/.test(name)) return fallback;
+	if (name.includes('..') || name.includes('\\') || name.includes('/') || name.includes('\0')) return fallback;
+	if (name.startsWith('/') || name.startsWith('~') || /^[A-Za-z]:/.test(name)) return fallback;
+	if (!TEMPLATE_FILE_NAME.test(name)) return fallback;
 	if (name.toLowerCase().includes('secret')) return fallback;
 	return name;
+}
+
+/**
+ * True when `filePath` is exactly `folder/basename` and the basename has no slash.
+ * Rejects traversal, absolute paths, and a file that merely starts with the folder name.
+ */
+export function pathInsideFolder(folder: string, filePath: string): boolean {
+	const dir = folder.trim();
+	const file = filePath.trim();
+	if (!dir || !file) return false;
+	if (dir.includes('\\') || file.includes('\\') || dir.includes('\0') || file.includes('\0')) return false;
+	if (dir.startsWith('/') || file.startsWith('/') || dir.startsWith('~') || file.startsWith('~')) return false;
+	if (/^[A-Za-z]:/.test(dir) || /^[A-Za-z]:/.test(file)) return false;
+	if (dir.includes('..') || file.includes('..')) return false;
+	const prefix = `${dir}/`;
+	if (!file.startsWith(prefix)) return false;
+	const base = file.slice(prefix.length);
+	if (!base || base.includes('/') || base === '.' || base === '..') return false;
+	return true;
 }
 
 export function resolveExtrasPlacement(partial?: Partial<ExtrasPlacement> | null): ExtrasPlacement {
@@ -121,8 +157,28 @@ export function rewriteNewRvTemplate(contents: string, placement?: Partial<Extra
 	const place = resolveExtrasPlacement(placement);
 	const home = `${place.templatesFolder}/${place.homeLogFileName}`;
 	const miss = `${place.templatesFolder}/${place.missLogFileName}`;
+	if (!pathInsideFolder(place.templatesFolder, home) || !pathInsideFolder(place.templatesFolder, miss)) {
+		throw new Error('templateFile path left the templates folder');
+	}
 	const withHome = replaceTemplateFileForId(contents, 'rv-log-home', home);
-	return replaceTemplateFileForId(withHome, 'rv-log-miss', miss);
+	const rewritten = replaceTemplateFileForId(withHome, 'rv-log-miss', miss);
+	const targets = templateFileTargets(rewritten);
+	if (targets.some((target) => !pathInsideFolder(place.templatesFolder, target))) {
+		throw new Error('templateFile path left the templates folder');
+	}
+	if (targets.length === 0) return contents;
+	if (!targets.includes(home) || !targets.includes(miss)) {
+		throw new Error('templateFile path left the templates folder');
+	}
+	return rewritten;
+}
+
+function templateFileTargets(contents: string): string[] {
+	const targets: string[] = [];
+	for (const match of contents.matchAll(/^[ \t]*templateFile:[ \t]*([^\n\r]*)$/gm)) {
+		targets.push((match[1] ?? '').trim());
+	}
+	return targets;
 }
 
 function replaceTemplateFileForId(contents: string, id: string, templatePath: string): string {
@@ -133,10 +189,17 @@ function replaceTemplateFileForId(contents: string, id: string, templatePath: st
 }
 
 function vaultPathFor(file: ExtrasSyncEntry, place: ExtrasPlacement): string {
-	if (file.role === 'script') return `${place.scriptsFolder}/${file.file}`;
+	if (file.role === 'script') return `${place.scriptsFolder}/${assertScriptFileName(file.file)}`;
 	if (file.role === 'home-log') return `${place.templatesFolder}/${place.homeLogFileName}`;
 	if (file.role === 'miss-log') return `${place.templatesFolder}/${place.missLogFileName}`;
 	return `${place.templatesFolder}/${place.newRvFileName}`;
+}
+
+function assertScriptFileName(name: string): string {
+	if (!SCRIPT_FILE_NAME.test(name) || name.includes('..') || name.includes('/') || name.includes('\\')) {
+		throw new Error(`Refusing script file name ${name}`);
+	}
+	return name;
 }
 
 export interface ExtrasFetchResult {
@@ -237,7 +300,14 @@ export function isAllowlistedExtrasPath(
 	} catch {
 		return false;
 	}
-	return destinations.some((file) => file.vault === path.trim());
+	const text = path.trim();
+	const match = destinations.find((file) => file.vault === text);
+	if (!match) return false;
+	const entry = EXTRAS_SYNC_FILES.find((file) => file.repo === match.repo);
+	if (!entry) return false;
+	const place = resolveExtrasPlacement(placement);
+	const folder = entry.role === 'script' ? place.scriptsFolder : place.templatesFolder;
+	return pathInsideFolder(folder, text);
 }
 
 export function isSafeRelativeExtrasPath(path: string): boolean {
@@ -297,7 +367,9 @@ export async function downloadExtras(
 				failed.push({ vaultPath: file.vault, reason: `HTTP ${response.status}` });
 				continue;
 			}
-			const text = file.repo.endsWith('/New RV.md') ? rewriteNewRvTemplate(response.text, place) : response.text;
+			const text = file.repo === NEW_RV_TEMPLATE_REPO
+				? rewriteNewRvTemplate(response.text, place)
+				: response.text;
 			const bytes = new TextEncoder().encode(text).byteLength;
 			if (bytes > EXTRAS_MAX_FILE_BYTES) {
 				failed.push({ vaultPath: file.vault, reason: 'file exceeds size cap' });
