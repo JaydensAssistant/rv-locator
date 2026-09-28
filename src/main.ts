@@ -20,6 +20,9 @@ import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visi
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
+import { buildIdealityPlan } from './planner';
+import { IdealityPlannerModal, ReturnSuggestModal } from './score-modals';
+import { parseAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { CancelledError, RequestPacer } from './pacer';
@@ -69,6 +72,8 @@ export default class RVLocatorPlugin extends Plugin {
 	bulkAborted = false;
 
 	private viewRefreshers = new Set<() => void>();
+	private attemptBuckets = new Map<string, { mtime: number; buckets: AttemptBuckets }>();
+	private attemptPrefetch: Promise<void> | null = null;
 	private persistQueued: Promise<void> = Promise.resolve();
 	private creatingNewRv = false;
 	private wizardOpen = false;
@@ -110,6 +115,17 @@ export default class RVLocatorPlugin extends Plugin {
 			callback: () => {
 				const modal = new SuccessfulVisitsModal(this.app, this, (choice, report) => this.runSuccessfulVisitsFill(choice, report));
 				modal.open();
+			},
+		});
+
+		this.addCommand({
+			id: 'suggest-return-times',
+			name: 'Suggest return times',
+			checkCallback: (checking) => {
+				const file = this.app.workspace.getActiveFile();
+				const available = !!file && file.extension === 'md';
+				if (available && !checking && file) void this.suggestReturnFor(file.path, file.basename);
+				return available;
 			},
 		});
 
@@ -358,6 +374,71 @@ export default class RVLocatorPlugin extends Plugin {
 		this.settings = mergeSettings(this.settings);
 		await this.persist();
 		for (const callback of this.viewRefreshers) callback();
+	}
+
+	cachedAttemptBuckets(path: string): AttemptBuckets | null {
+		const file = this.app.vault.getFileByPath(path);
+		const cached = this.attemptBuckets.get(path);
+		if (!cached) return null;
+		if (file && cached.mtime !== file.stat.mtime) return null;
+		return cached.buckets;
+	}
+
+	prefetchAttemptBuckets(paths: readonly string[]): void {
+		const missing = paths.filter((path) => this.cachedAttemptBuckets(path) == null);
+		if (missing.length === 0 || this.attemptPrefetch) return;
+		this.attemptPrefetch = this.loadAttemptBuckets(missing).finally(() => {
+			this.attemptPrefetch = null;
+			for (const callback of this.viewRefreshers) callback();
+		});
+	}
+
+	async suggestReturnFor(path: string, displayName: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) {
+			new Notice('That note is not in the vault.');
+			return;
+		}
+		const buckets = await this.readAttemptBuckets(file);
+		const digest = suggestReturnDigest({
+			buckets,
+			grid: this.settings.availabilityGrid,
+			multipliers: this.settings.availabilityMultipliers,
+			now: new Date(),
+		});
+		new ReturnSuggestModal(this.app, displayName, digest.sentences).open();
+	}
+
+	async openIdealityPlanner(people: readonly { path: string; name: string; priority: number | null; days: number | null }[]): Promise<void> {
+		const loaded = [];
+		for (const person of people) {
+			const file = this.app.vault.getFileByPath(person.path);
+			const buckets = file ? await this.readAttemptBuckets(file) : {};
+			loaded.push({ name: person.name, days: person.days, priority: person.priority, buckets });
+		}
+		const slots = buildIdealityPlan({ people: loaded, settings: this.settings, now: new Date() });
+		new IdealityPlannerModal(this.app, this.settings.territorySpanMiles, slots).open();
+	}
+
+	private async loadAttemptBuckets(paths: readonly string[]): Promise<void> {
+		for (const path of paths) {
+			const file = this.app.vault.getFileByPath(path);
+			if (!file) continue;
+			try {
+				await this.readAttemptBuckets(file);
+			} catch {
+				this.attemptBuckets.set(path, { mtime: file.stat.mtime, buckets: {} });
+			}
+		}
+	}
+
+	private async readAttemptBuckets(file: TFile): Promise<AttemptBuckets> {
+		const cached = this.attemptBuckets.get(file.path);
+		if (cached && cached.mtime === file.stat.mtime) return cached.buckets;
+		const text = await this.app.vault.cachedRead(file);
+		const buckets = parseAttemptLog(text);
+		this.attemptBuckets.set(file.path, { mtime: file.stat.mtime, buckets });
+		return buckets;
 	}
 
 	setNearbySort(sort: NearbySortPreference): void {

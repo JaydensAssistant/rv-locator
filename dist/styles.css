@@ -39,6 +39,7 @@
 	flex: 1 1 auto;
 	min-height: 0;
 	overflow: auto;
+	overflow-anchor: none;
 	-webkit-overflow-scrolling: touch;
 }
 
@@ -413,23 +414,16 @@
 	max-width: 100%;
 	min-height: min-content;
 	margin: 0;
-	padding: 8px 10px 8px 12px;
+	padding: var(--rv-pad-y, 8px) var(--rv-pad-x, 10px) var(--rv-pad-y, 8px) calc(var(--rv-pad-x, 10px) + 2px);
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 12px;
 	background: var(--background-secondary);
-	box-shadow: inset 4px 0 0 var(--background-modifier-border);
+	box-shadow: inset 4px 0 0 var(--rv-urgency-accent, var(--background-modifier-border));
 }
 
 .rv-locator-glancable .rv-locator-card.has-actions {
-	padding-right: 52px;
+	padding-right: calc(var(--rv-pad-x, 10px) + 42px);
 }
-
-.rv-locator-glancable .rv-locator-card[data-priority="0"] { box-shadow: inset 4px 0 0 var(--rv-locator-rail-inactive, var(--text-faint)); }
-.rv-locator-glancable .rv-locator-card[data-priority="1"] { box-shadow: inset 4px 0 0 var(--color-blue); }
-.rv-locator-glancable .rv-locator-card[data-priority="2"] { box-shadow: inset 4px 0 0 var(--color-green); }
-.rv-locator-glancable .rv-locator-card[data-priority="3"] { box-shadow: inset 4px 0 0 var(--color-yellow); }
-.rv-locator-glancable .rv-locator-card[data-priority="4"] { box-shadow: inset 4px 0 0 var(--color-orange); }
-.rv-locator-glancable .rv-locator-card[data-priority="5"] { box-shadow: inset 4px 0 0 var(--color-red); }
 
 .rv-locator-glancable .rv-locator-place {
 	display: flex;
@@ -445,7 +439,8 @@
 	max-width: 100%;
 	margin: 0;
 	color: var(--text-normal);
-	font-size: 20px;
+	font-size: calc(20px * var(--rv-font-scale, 1));
+	max-width: var(--rv-line-max, 100%);
 	line-height: 1.15;
 	font-weight: 700;
 	overflow: hidden;
@@ -478,17 +473,18 @@
 	max-width: 100%;
 	overflow: hidden;
 	color: var(--text-normal);
-	font-size: 13px;
+	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 600;
 	line-height: 1.25;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	max-width: var(--rv-line-max, 100%);
 }
 
 .rv-locator-glancable .rv-locator-distance-lg {
 	flex: 0 0 auto;
 	color: var(--text-accent);
-	font-size: 13px;
+	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
 	line-height: 1.25;
@@ -506,11 +502,12 @@
 	margin: 0;
 	overflow: hidden;
 	color: var(--text-faint);
-	font-size: 12px;
+	font-size: calc(12px * var(--rv-font-scale, 1));
 	font-weight: 400;
 	line-height: 1.25;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	max-width: var(--rv-line-max, 100%);
 }
 
 .rv-locator-glancable .rv-locator-when {
@@ -545,8 +542,9 @@
 	min-width: 0;
 	max-width: 100%;
 	color: var(--text-muted);
-	font-size: 12px;
+	font-size: calc(12px * var(--rv-font-scale, 1));
 	line-height: 1.2;
+	max-width: var(--rv-line-max, 100%);
 }
 
 .rv-locator-glancable .rv-locator-slot.is-empty {
@@ -653,11 +651,43 @@
 	background: var(--interactive-accent);
 	color: var(--text-on-accent);
 	font-family: inherit;
-	font-size: 13px;
+	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 700;
 	font-variant-numeric: tabular-nums;
 	line-height: 1;
 	cursor: pointer;
+}
+
+.rv-locator-glancable .rv-locator-urgency {
+	color: var(--rv-urgency-accent, var(--text-normal));
+	font-size: calc(14px * var(--rv-font-scale, 1));
+	font-weight: 500;
+	letter-spacing: -0.04em;
+	line-height: 1;
+}
+
+.rv-locator-glancable .rv-locator-urgency.is-bold {
+	font-weight: 800;
+}
+
+.rv-locator-glancable .rv-locator-urgency.is-peak {
+	font-weight: 800;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+}
+
+.rv-locator-suggest-times {
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-accent);
+	font: inherit;
+	font-size: calc(12px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	cursor: pointer;
+	text-decoration: underline;
+	text-underline-offset: 2px;
 }
 
 .rv-locator-priority-btn {
@@ -672,16 +702,41 @@
 	cursor: pointer;
 }
 
-@container rvlocator (min-width: 680px) {
-	.rv-locator-card-grid {
-		grid-template-columns: repeat(2, minmax(0, 1fr));
-	}
+.rv-locator-availability {
+	display: grid;
+	grid-template-columns: auto repeat(4, minmax(4.5rem, 1fr));
+	gap: 4px 6px;
+	align-items: center;
+	margin: 4px 0 16px;
+	overflow-x: auto;
+	font-size: var(--font-ui-smaller);
 }
 
-@container rvlocator (min-width: 1040px) {
-	.rv-locator-card-grid {
-		grid-template-columns: repeat(3, minmax(0, 1fr));
-	}
+.rv-locator-availability select {
+	width: 100%;
+}
+
+.rv-locator-availability-head,
+.rv-locator-availability-day {
+	font-weight: var(--font-medium);
+}
+
+.rv-locator-graph {
+	margin: 0 0 12px;
+	padding: 8px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-primary);
+}
+
+.rv-locator-graph svg {
+	display: block;
+	width: 100%;
+	height: auto;
+}
+
+.rv-locator-plan-slot {
+	margin: 0 0 10px;
 }
 
 .rv-locator-dow,
@@ -788,9 +843,6 @@
 		padding: 8px;
 	}
 
-	.rv-locator-glancable .rv-locator-card {
-		padding: 8px 10px;
-	}
 }
 
 /* New RV dashboard. cssclasses: rv-dashboard. Keeps the callout inside the phone width. */

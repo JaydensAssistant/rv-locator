@@ -19,6 +19,7 @@ import {
 	type ExtrasSyncFile,
 } from './extras-sync';
 import type RVLocatorPlugin from './main';
+import { renderScoringSettings } from './settings-scoring';
 import { applyTemplateSettingChange, type TemplateRenameVault } from './template-rename';
 
 /** Pause so a half-typed file name does not rename the note on every keystroke. */
@@ -135,7 +136,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
-			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest, Met newest or oldest. The first tap uses nearest, high, longest-ago, or newest for Met, and tapping the selected chip flips direction; the last choice is remembered.',
+			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest, Met newest or oldest, and Urgency high or low. Ideality stays hidden until its chip is turned on. The first tap uses nearest, high, longest-ago, newest for Met, or highest urgency, and tapping the selected chip flips direction; the last choice is remembered.',
 		});
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
@@ -166,6 +167,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		renderScoringSettings(containerEl, this.plugin);
 
 		new Setting(containerEl).setName('Developer').setHeading();
 		containerEl.createEl('p', {
@@ -209,7 +212,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Default priority for a new RV')
-			.setDesc('Priority on a new RV. 0–5, default 3.')
+			.setDesc('Priority on a new RV. 0–5, default 4.')
 			.addDropdown((dropdown) => {
 				for (let rank = 0; rank <= 5; rank += 1) dropdown.addOption(String(rank), String(rank));
 				dropdown.setValue(String(this.plugin.settings.defaultNewRvPriority));

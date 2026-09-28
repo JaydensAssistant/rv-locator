@@ -1,11 +1,13 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
-import { SORT_PRESETS, nextPresetSort, sortPresetChipLabel, type NearbyScope } from './active-layout';
-import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, OSM_ATTRIBUTION } from './constants';
-import { formatDistance, haversineMeters, validLatLon } from './distance';
+import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, OSM_ATTRIBUTION } from './constants';
+import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
 import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
 import { buildViewModel, iconForColumn, type CellModel, type ColumnModel, type GroupModel, type RowModel } from './model';
 import type RVLocatorPlugin from './main';
+import { plannerActive } from './planner';
+import { annotateRowScores, rowPriority, rowSpokeDays } from './row-score';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
 import type { LatLon } from './types';
@@ -99,10 +101,30 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	protected sortedGroups(): GroupModel[] {
 		const sorts = this.effectiveSorts();
+		const fix = this.positionFix();
+		const now = new Date();
+		if (this.plugin.settings.homeLikelihoodEnabled) {
+			const paths = this.groups.flatMap((group) => group.rows.map((row) => row.path));
+			this.plugin.prefetchAttemptBuckets(paths);
+		}
 		return this.groups.map((group) => ({
 			label: group.label,
-			rows: sortRowsBy(group.rows, sorts, this.positionFix(), DISTANCE_COLUMN_ID),
+			rows: sortRowsBy(
+				group.rows.map((row) => this.withScores(row, now)),
+				sorts,
+				fix,
+				DISTANCE_COLUMN_ID,
+			),
 		}));
+	}
+
+	private withScores(row: RowModel, now: Date): RowModel {
+		const meters = this.metersFor(row);
+		const miles = meters == null ? null : milesFromMeters(meters);
+		const buckets = this.plugin.settings.homeLikelihoodEnabled
+			? this.plugin.cachedAttemptBuckets(row.path)
+			: null;
+		return annotateRowScores(row, miles, this.plugin.settings, buckets, now);
 	}
 
 	/** Last-used sort, persisted on the plugin. Nearest re-sorts in this view as the fix moves. */
@@ -326,7 +348,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private onGeoChanged(): void {
 		this.renderBanner();
 		if (!this.chromeReady) return;
-		if (this.effectiveSorts()[0]?.property === DISTANCE_COLUMN_ID) {
+		const sortedBy = this.effectiveSorts()[0]?.property;
+		if (sortedBy === DISTANCE_COLUMN_ID || sortedBy === IDEALITY_COLUMN_ID) {
 			const win = this.root.win ?? window;
 			if (this.geoTimer != null) return;
 			this.geoTimer = win.setTimeout(() => {
@@ -382,7 +405,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private paintSortPresets(): void {
 		this.sortEl.empty();
 		const current = this.localSort;
-		for (const preset of SORT_PRESETS) {
+		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
 			const active = current.property.toLowerCase() === preset.property.toLowerCase();
 			const button = this.sortEl.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
@@ -396,6 +419,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
 		}
+		this.paintSortExtras();
 		const create = this.sortEl.createEl('button', {
 			cls: 'rv-locator-new-rv',
 			attr: {
@@ -407,6 +431,27 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		setIcon(create, 'plus');
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
+		});
+	}
+
+	protected paintSortExtras(): void {
+		if (!plannerActive(this.plugin.settings)) return;
+		const button = this.sortEl.createEl('button', {
+			cls: 'rv-locator-sort-preset',
+			text: 'Planner',
+			attr: {
+				type: 'button',
+				title: 'Ideality if distance stayed at the territory span',
+			},
+		});
+		button.addEventListener('click', () => {
+			const people = this.groups.flatMap((group) => group.rows.map((row) => ({
+				path: row.path,
+				name: row.name,
+				priority: rowPriority(row),
+				days: rowSpokeDays(row),
+			})));
+			void this.plugin.openIdealityPlanner(people);
 		});
 	}
 

@@ -11,7 +11,7 @@
  *
  * After the householder and Address, it asks who they brought. One person.
  * That name is appended to Taken. Met With stays blank. Cancel leaves both blank.
- * Priority comes from RV Locator `defaultNewRvPriority` (0–5, default 3).
+ * Priority comes from RV Locator `defaultNewRvPriority` (0–5, default 4).
  *
  * Street short names and the visit stamp mirror src/note-name.ts and
  * src/dates.ts formatGlancableVisitStamp (`Wed, 2pm — Sep 9, 2026`).
@@ -386,7 +386,7 @@ function newRvPriority() {
   const settings = plugin && plugin.settings;
   const raw = settings ? settings.defaultNewRvPriority : undefined;
   const parsed = typeof raw === "number" ? raw : typeof raw === "string" && String(raw).trim() !== "" ? Number(raw) : NaN;
-  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 5) return 3;
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 5) return 4;
   return parsed;
 }
 

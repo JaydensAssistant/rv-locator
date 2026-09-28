@@ -528,7 +528,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('Log visit'), false);
 		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
 		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 2);
-		assert.equal(createdText.includes('Priority: 3\n'), true);
+		assert.equal(createdText.includes('Priority: 4\n'), true);
 		assert.equal(createdText.includes('\nMet With:\nTaken:\n'), true);
 		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Home.md'), true);
 		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Miss.md'), true);
@@ -971,7 +971,7 @@ describe('disk proof', () => {
 			system: { prompt: async () => '' },
 			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
 		});
-		assert.equal(skipped.priority, 3);
+		assert.equal(skipped.priority, 4);
 		assert.equal(skipped.companionYaml, 'Met With:\nTaken:');
 	});
 

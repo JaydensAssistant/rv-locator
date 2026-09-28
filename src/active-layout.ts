@@ -1,5 +1,6 @@
-import { DISTANCE_COLUMN_ID } from './constants';
+import { DISTANCE_COLUMN_ID, IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './constants';
 import type { ActiveSort } from './sort';
+import type { SortChipFlags, SortChipId } from './types';
 
 /**
  * Active RVs in Return Visits.base. Nearby views mirror this layout in memory.
@@ -45,33 +46,60 @@ export const NEARBY_COLUMN_ORDER = [
 /** Sort chips. First tap uses `defaultDirection`. A second tap on the same chip flips it. */
 export const SORT_PRESETS = [
 	{
+		id: 'distance',
 		property: DISTANCE_COLUMN_ID,
 		defaultDirection: 'ASC',
 		labels: { ASC: 'Nearest', DESC: 'Furthest' },
 	},
 	{
+		id: 'priority',
 		property: 'note.Priority',
 		defaultDirection: 'DESC',
 		labels: { ASC: 'Priority · low', DESC: 'Priority · high' },
 	},
 	{
+		id: 'spoke',
 		property: 'note.Last Spoke',
 		defaultDirection: 'ASC',
 		labels: { ASC: 'Spoke · oldest', DESC: 'Spoke · newest' },
 	},
 	{
+		id: 'attempted',
 		property: 'note.Last Attempted',
 		defaultDirection: 'ASC',
 		labels: { ASC: 'Attempted · oldest', DESC: 'Attempted · newest' },
 	},
 	{
+		id: 'met',
 		property: 'note.Met',
 		defaultDirection: 'DESC',
 		labels: { ASC: 'Met · oldest', DESC: 'Met · newest' },
 	},
-] as const;
+	{
+		id: 'urgency',
+		property: URGENCY_COLUMN_ID,
+		defaultDirection: 'DESC',
+		labels: { ASC: 'Urgency · low', DESC: 'Urgency · high' },
+	},
+	{
+		id: 'ideality',
+		property: IDEALITY_COLUMN_ID,
+		defaultDirection: 'DESC',
+		labels: { ASC: 'Ideality · low', DESC: 'Ideality · high' },
+	},
+] as const satisfies readonly {
+	id: SortChipId;
+	property: string;
+	defaultDirection: 'ASC' | 'DESC';
+	labels: { ASC: string; DESC: string };
+}[];
 
 export type SortPreset = (typeof SORT_PRESETS)[number];
+
+/** Chips the user left on. Ideality stays hidden until that chip is enabled. */
+export function visibleSortPresets(chips: SortChipFlags): SortPreset[] {
+	return SORT_PRESETS.filter((preset) => chips[preset.id] === true);
+}
 
 /**
  * Chip text. An idle chip shows the direction the next tap will apply.
