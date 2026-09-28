@@ -860,10 +860,15 @@ describe('visit log', () => {
 		assert.equal(formatVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
 		assert.equal(formatVisitStamp(now), formatGlancableVisitStamp(now));
 		assert.equal(formatFrontmatterDateTime(now), '2026-09-26T23:12:04');
-		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', Visits: 2, 'Successful Visits': 1 };
+		const frontmatter: Record<string, unknown> = {
+			Address: '142 Maple Street',
+			Visits: 2,
+			'Successful Visits': 1,
+			'Met With': 'Door',
+		};
 		applyVisitFrontmatter(frontmatter, 'home', now, 'Sam');
 		assert.equal(frontmatter.Address, '142 Maple Street');
-		assert.equal(frontmatter['Met With'], 'Sam');
+		assert.equal(frontmatter['Met With'], 'Door');
 		assert.deepEqual(frontmatter.Taken, ['Sam']);
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 2);
@@ -1077,18 +1082,18 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.1');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.2');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'unstable'));
 		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'main'));
-		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js'));
-		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js'));
 		assert.throws(() => assertExtrasDownloadUrl('https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/Scripts/newRv.js'));
 		assert.throws(() => extrasRedirectUrl(
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js',
-			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/Scripts/newRv.js',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js',
+			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js',
 		));
 		const configDir = '.obsidian';
 		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir), true);
@@ -1120,7 +1125,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.1/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1141,9 +1146,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.1');
+		assert.equal(plan.ref, 'v1.2.2');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.1/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.2/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1247,7 +1252,7 @@ describe('companions', () => {
 		assert.equal(formatStoredCompanion('Sam', true, notes), '[[People/Sam]]');
 		assert.equal(formatStoredCompanion('Ada', true, notes), 'Ada');
 		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
-		assert.equal(companionFrontmatterBlock('Pat'), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock('Pat'), 'Met With:\nTaken:\n  - "Pat"');
 	});
 
 	it('caps the suggester and keeps a skipped companion off the note', () => {
@@ -1265,11 +1270,11 @@ describe('companions', () => {
 		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada']);
 		applyVisitFrontmatter(frontmatter, 'home', now, '[[Pat]]');
-		assert.equal(frontmatter['Met With'], '[[Pat]]');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
 		applyVisitFrontmatter(frontmatter, 'home', now, 'Pat');
 		assert.equal(frontmatter.Address, '142 Maple Street');
-		assert.equal(frontmatter['Met With'], 'Pat');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', '[[Pat]]']);
 	});
 
@@ -1360,7 +1365,7 @@ describe('companion prompt', () => {
 		assert.deepEqual(escaped, [null]);
 	});
 
-	it('writes Met With and Taken for a chosen companion and leaves them on skip or a miss', async () => {
+	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {
 		const notes = [{ path: 'People/Pat Smith.md', basename: 'Pat Smith' }];
 		const now = new Date(2026, 8, 27, 12, 4, 0);
 		const stored = await storedFromPrompt(['close', { choose: 'TestCompanion' }], false, notes);
@@ -1368,17 +1373,18 @@ describe('companion prompt', () => {
 			Address: '200 S Orange Ave, Orlando, FL',
 			Visits: 1,
 			'Successful Visits': 1,
+			'Met With': 'Ada',
 			Taken: ['Ada'],
 		};
 		applyVisitFrontmatter(frontmatter, 'home', now, stored);
 		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Visits, 2);
 		assert.equal(frontmatter['Successful Visits'], 2);
 
 		applyVisitFrontmatter(frontmatter, 'home', now, stored);
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Visits, 3);
 
@@ -1389,14 +1395,14 @@ describe('companion prompt', () => {
 		const skipped = await storedFromPrompt(['close'], false, notes);
 		assert.equal(skipped, '');
 		applyVisitFrontmatter(frontmatter, 'home', now, skipped);
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
 		assert.equal(frontmatter.Visits, 4);
 		assert.equal(frontmatter['Successful Visits'], 4);
 
 		applyVisitFrontmatter(frontmatter, 'miss', now, 'Pat Smith');
-		assert.equal(frontmatter['Met With'], 'TestCompanion');
+		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
 		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
 		assert.equal(frontmatter.Visits, 5);

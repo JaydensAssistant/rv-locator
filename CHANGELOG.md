@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.2
+
+`main.js` SHA-256: `fe5e6e9faad2267212af3f130cb782af516e0176097558e9af95edb1e34a8012`
+
+`styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
+
+`manifest.json` SHA-256: `9dfbdfbf4c824e331ed3c1cc30c20de091bb249fd6e103b0a5bba88074264621`
+
+- A companion chosen after Home, or while creating a new RV, is appended to Taken only. Met With is the person at the door and is left unchanged. The same rule applies to the plugin Home button, Meta Bind / Templater `rvLog.js`, and New RV (`newRv.js` / `plugin.promptCompanion()`).
+- Skip and Esc still leave Met With and Taken unchanged. Not home still does not ask. A name already on Taken is not added again.
+- `linkCompanionsToNotes` still applies only to the Taken write: off stores plain text, and on stores `[[Note Name]]` when a note basename matches. It does not write Met With.
+- Extras sync is pinned to tag `v1.2.2` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.1
 
 `main.js` SHA-256: `ec450c11a15b2eafdb3591434a1faa6c8f9bb13b8495f68c58772364fa158fe9`

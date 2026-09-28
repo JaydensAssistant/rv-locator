@@ -28,7 +28,7 @@ export function formatVisitStamp(date: Date): string {
  * Frontmatter for one logged visit. Address is never assigned.
  * Home bumps Visits and Successful Visits and sets Last Spoke and Last Attempted.
  * A miss bumps Visits and sets Last Attempted only.
- * A non-empty home companion overwrites Met With and is appended to Taken.
+ * A non-empty home companion is appended to Taken. Met With is left unchanged.
  * A blank companion, and every miss, leaves Met With and Taken alone.
  */
 export function applyVisitFrontmatter(
@@ -47,7 +47,6 @@ export function applyVisitFrontmatter(
 		assignProperty(frontmatter, 'Last Spoke', stamp);
 		const stored = typeof companion === 'string' ? companion.trim() : '';
 		if (stored) {
-			assignProperty(frontmatter, 'Met With', stored);
 			assignProperty(frontmatter, 'Taken', appendCompanionTaken(readProperty(frontmatter, 'Taken'), stored));
 		}
 	}

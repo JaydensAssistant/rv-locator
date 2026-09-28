@@ -200,7 +200,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Link companions to notes')
-			.setDesc('When on, Met With and Taken store [[Note Name]] if a note’s basename matches the companion. Otherwise the name stays plain text. One toggle; there is no prefix or suffix.')
+			.setDesc('When on, a companion appended to Taken is stored as [[Note Name]] if a note’s basename matches. Otherwise the name stays plain text. Met With is not changed. One toggle; there is no prefix or suffix.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.linkCompanionsToNotes);
 				toggle.onChange(async (value) => {

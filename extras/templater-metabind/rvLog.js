@@ -9,9 +9,9 @@
  * that stamp and Attempt Log so there is room for notes. Counters and the
  * Attempt Log bullet still update.
  *
- * Home also asks who they brought (one person). That name overwrites Met With
- * and is appended to Taken. Not home does not ask, and a skipped name leaves
- * Met With and Taken unchanged.
+ * Home also asks who they brought (one person). That name is appended to
+ * Taken and does not change Met With. Not home does not ask, and a skipped
+ * name leaves Met With and Taken unchanged.
  *
  * Call: await tp.user.rvLog(tp, "home")  or  await tp.user.rvLog(tp, "miss")
  */
@@ -373,7 +373,6 @@ async function rvLog(tp, kind) {
       fm["Successful Visits"] = (asNumber(fm["Successful Visits"]) ?? 0) + 1;
       fm["Last Spoke"] = whenIso;
       if (companion) {
-        fm["Met With"] = companion;
         fm["Taken"] = appendTaken(fm["Taken"], companion);
       }
     }

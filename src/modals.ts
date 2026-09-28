@@ -453,7 +453,7 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	) {
 		super(app);
 		this.gate = createCompanionPromptGate(onDone);
-		this.emptyStateText = 'Type a name, or choose Skip. Met With and Taken stay unchanged if you skip.';
+		this.emptyStateText = 'Type a name, or choose Skip. Skip leaves Met With and Taken unchanged.';
 		this.limit = 30;
 	}
 
@@ -468,7 +468,7 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 		]);
 		this.modalEl.addClass('rv-locator-modal');
 		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
-		copy.setText('One person. Skip leaves Met With and Taken unchanged. The visit is still logged.');
+		copy.setText('One person, added to Taken. Met With stays as it is. Skip changes neither. The visit is still logged.');
 		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
 		const skip = bar.createEl('button', { text: 'Skip' });
 		skip.addEventListener('click', () => {

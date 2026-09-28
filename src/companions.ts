@@ -150,12 +150,15 @@ export function companionWikilink(name: string, notes: readonly CompanionNoteRef
 	return path ? `[[${path}]]` : null;
 }
 
-/** Frontmatter lines for a new note. Blank Met With and Taken when they skipped. */
+/**
+ * Frontmatter lines for a new note.
+ * Met With stays blank. Taken lists the companion, or stays blank when they skipped.
+ */
 export function companionFrontmatterBlock(stored: string): string {
 	const name = stored.trim();
 	if (!name) return 'Met With:\nTaken:';
 	const quoted = `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-	return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;
+	return `Met With:\nTaken:\n  - ${quoted}`;
 }
 
 function parseCompanionStamp(value: unknown): number | null {

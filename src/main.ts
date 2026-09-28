@@ -200,6 +200,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/**
 	 * One companion for a home visit or a new note. Empty when they skip.
+	 * Callers append the name to Taken only and leave Met With unchanged.
 	 * Wikilink form follows `linkCompanionsToNotes`.
 	 */
 	async promptCompanion(): Promise<string> {

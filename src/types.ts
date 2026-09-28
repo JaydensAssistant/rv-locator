@@ -29,7 +29,7 @@ export interface RVLocatorSettings {
 	testLongitude: number;
 	/** County names. Empty means geocode always opens the confirm picker. */
 	homeCounties: string[];
-	/** When true, a companion whose basename matches a note is stored as a wikilink. */
+	/** When true, a companion appended to Taken is stored as a wikilink when a note basename matches. */
 	linkCompanionsToNotes: boolean;
 	/** Priority written on a new RV note. Integer 0–5. */
 	defaultNewRvPriority: number;
