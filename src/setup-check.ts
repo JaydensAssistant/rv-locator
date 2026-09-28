@@ -101,3 +101,32 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 		},
 	];
 }
+
+/** Checklist rows that stay informational. Empty home counties are a valid Skip. */
+const OPTIONAL_SETUP_IDS = new Set(['home-counties', 'suggested']);
+
+/**
+ * Required gaps only. Home counties are omitted because the wizard lets you skip them.
+ * A blank Geoapify key is required even though the wizard checklist does not list it.
+ */
+export function requiredSetupGaps(snapshot: SetupSnapshot, geoapifyApiKey: string): string[] {
+	const gaps: string[] = [];
+	if (!geoapifyApiKey.trim()) gaps.push('geoapify');
+	for (const check of setupChecklist(snapshot)) {
+		if (OPTIONAL_SETUP_IDS.has(check.id) || check.ok) continue;
+		gaps.push(check.id);
+	}
+	return gaps;
+}
+
+/** Notice while the wizard was never closed, or a required step is still missing. */
+export function shouldShowSetupNudge(input: {
+	wizardCompleted: boolean;
+	nudgeDismissed: boolean;
+	geoapifyApiKey: string;
+	snapshot: SetupSnapshot;
+}): boolean {
+	if (input.nudgeDismissed) return false;
+	if (!input.wizardCompleted) return true;
+	return requiredSetupGaps(input.snapshot, input.geoapifyApiKey).length > 0;
+}

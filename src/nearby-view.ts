@@ -61,6 +61,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			else this.renderBody();
 		});
 		this.register(() => this.unsubSettings?.());
+		this.plugin.nudgeIncompleteSetup();
 	}
 
 	override onunload(): void {

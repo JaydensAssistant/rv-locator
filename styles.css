@@ -1,3 +1,26 @@
+.rv-locator-setup-nudge .rv-locator-setup-nudge-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.rv-locator-setup-nudge .rv-locator-setup-nudge-actions button {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	padding: 4px 8px;
+	font-size: var(--font-ui-small);
+	cursor: pointer;
+}
+
+.rv-locator-setup-nudge .rv-locator-setup-nudge-actions button.mod-cta {
+	color: var(--text-on-accent);
+	background-color: var(--interactive-accent);
+	border-color: var(--interactive-accent);
+}
+
 .rv-locator-view {
 	--rv-locator-name-color: var(--text-accent);
 	--rv-locator-visits-color: var(--text-accent);

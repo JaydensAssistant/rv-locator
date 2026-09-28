@@ -20,7 +20,7 @@ import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visi
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
-import { META_BIND_PLUGIN_ID } from './setup-check';
+import { META_BIND_PLUGIN_ID, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -48,6 +48,9 @@ interface NearbyLayout {
 	scope: NearbyScope;
 }
 
+/** Long enough to read the unfinished-setup notice and use its buttons. */
+const SETUP_NUDGE_MS = 12_000;
+
 const NEARBY_LAYOUTS: readonly NearbyLayout[] = [
 	{ id: VANILLA_VIEW_TYPE, name: 'Active (Vanilla)', icon: 'table', mode: 'vanilla', scope: 'active' },
 	{ id: VANILLA_ALL_VIEW_TYPE, name: 'All (Vanilla)', icon: 'table', mode: 'vanilla', scope: 'all' },
@@ -70,6 +73,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private creatingNewRv = false;
 	private wizardOpen = false;
 	private unloaded = false;
+	/** A setup notice is already on screen, so another view open does not stack a second one. */
+	private setupNudgeOpen = false;
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -265,6 +270,56 @@ export default class RVLocatorPlugin extends Plugin {
 	private loadSetupSnapshot() {
 		const templater = readTemplaterPlugin(this.app);
 		return readSetupSnapshot(this.app, this.settings, this.extrasPlacement(), templater?.settings ?? null);
+	}
+
+	/** One notice per Nearby or Glancable open, unless one is already visible. */
+	nudgeIncompleteSetup(): void {
+		if (this.setupNudgeOpen || this.unloaded || this.settings.setupIncompleteNudgeDismissed) return;
+		this.setupNudgeOpen = true;
+		void this.showSetupNudge();
+	}
+
+	private async showSetupNudge(): Promise<void> {
+		try {
+			const snapshot = await this.loadSetupSnapshot();
+			if (this.unloaded || !shouldShowSetupNudge({
+				wizardCompleted: this.settings.setupWizardCompleted,
+				nudgeDismissed: this.settings.setupIncompleteNudgeDismissed,
+				geoapifyApiKey: this.settings.geoapifyApiKey,
+				snapshot,
+			})) {
+				this.setupNudgeOpen = false;
+				return;
+			}
+			this.presentSetupNudge();
+		} catch {
+			this.setupNudgeOpen = false;
+		}
+	}
+
+	private presentSetupNudge(): void {
+		const notice = new Notice('RV Locator setup is not finished.', SETUP_NUDGE_MS);
+		notice.containerEl.addClass('rv-locator-setup-nudge');
+		const actions = notice.messageEl.createDiv({ cls: 'rv-locator-setup-nudge-actions' });
+		const open = actions.createEl('button', { text: 'Open setup wizard', cls: 'mod-cta' });
+		open.addEventListener('click', () => {
+			notice.hide();
+			this.openSetupWizard();
+		});
+		const dismiss = actions.createEl('button', { text: "Don't remind me again" });
+		dismiss.addEventListener('click', () => {
+			notice.hide();
+			void this.dismissSetupNudge();
+		});
+		window.setTimeout(() => {
+			this.setupNudgeOpen = false;
+		}, SETUP_NUDGE_MS);
+	}
+
+	private async dismissSetupNudge(): Promise<void> {
+		if (this.settings.setupIncompleteNudgeDismissed) return;
+		this.settings.setupIncompleteNudgeDismissed = true;
+		await this.saveSettings();
 	}
 
 	private async markSetupWizardSeen(): Promise<void> {

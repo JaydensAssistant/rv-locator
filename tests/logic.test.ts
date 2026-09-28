@@ -8,7 +8,7 @@ import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, comp
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
-import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
+import { requiredSetupGaps, setupChecklist, shouldShowSetupNudge, type SetupSnapshot } from '../src/setup-check';
 import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
 import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
@@ -688,6 +688,7 @@ describe('settings', () => {
 		assert.equal(merged.homeLogTemplateFile, '99 RV Log Home.md');
 		assert.equal(merged.missLogTemplateFile, '99 RV Log Miss.md');
 		assert.equal(merged.setupWizardCompleted, false);
+		assert.equal(merged.setupIncompleteNudgeDismissed, false);
 		const tuned = mergeSettings({
 			linkCompanionsToNotes: true,
 			defaultNewRvPriority: 0,
@@ -695,6 +696,7 @@ describe('settings', () => {
 			homeLogTemplateFile: 'Home.md',
 			missLogTemplateFile: 'Miss.md',
 			setupWizardCompleted: true,
+			setupIncompleteNudgeDismissed: true,
 		});
 		assert.equal(tuned.linkCompanionsToNotes, true);
 		assert.equal(tuned.defaultNewRvPriority, 0);
@@ -702,6 +704,10 @@ describe('settings', () => {
 		assert.equal(tuned.homeLogTemplateFile, 'Home.md');
 		assert.equal(tuned.missLogTemplateFile, 'Miss.md');
 		assert.equal(tuned.setupWizardCompleted, true);
+		assert.equal(tuned.setupIncompleteNudgeDismissed, true);
+		const ignored = mergeSettings({ setupIncompleteNudgeDismissed: true, setupWizardCompleted: false });
+		assert.equal(ignored.setupIncompleteNudgeDismissed, true);
+		assert.equal(ignored.setupWizardCompleted, false);
 		const rejected = mergeSettings({
 			linkCompanionsToNotes: false,
 			defaultNewRvPriority: 9,
@@ -1814,6 +1820,63 @@ describe('setup wizard', () => {
 		const afterSkip = collectText(skipped.contentEl as unknown as Clickable);
 		assert.equal(afterSkip.includes('Home counties: none'), true);
 		assert.equal(afterSkip.includes('asks you to confirm'), true);
+	});
+
+	it('nags when the wizard was never finished or a required step is missing', () => {
+		const ready = sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Templates',
+			scriptsFolder: 'Scripts',
+			files: [{ path: 'Templates/99 New RV.md', exists: true }],
+			homeCounties: [],
+		});
+		assert.deepEqual(requiredSetupGaps(ready, 'key'), []);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: ready,
+		}), false);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: ready,
+		}), true);
+		assert.deepEqual(requiredSetupGaps(ready, '  '), ['geoapify']);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: '',
+			snapshot: ready,
+		}), true);
+
+		const missing = sampleSetup({
+			files: [{ path: 'Templates/99 New RV.md', exists: false }],
+			homeCounties: [],
+		});
+		const gaps = requiredSetupGaps(missing, '');
+		assert.equal(gaps.includes('home-counties'), false);
+		assert.equal(gaps.includes('suggested'), false);
+		assert.equal(gaps.includes('geoapify'), true);
+		assert.equal(gaps.includes('templater'), true);
+		assert.equal(gaps.includes('meta-bind'), true);
+		assert.equal(gaps.includes('templates-folder'), true);
+		assert.equal(gaps.includes('scripts-folder'), true);
+		assert.equal(gaps.includes('extras'), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: missing,
+		}), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: true,
+			geoapifyApiKey: '',
+			snapshot: missing,
+		}), false);
 	});
 });
 
