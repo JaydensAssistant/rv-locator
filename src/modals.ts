@@ -440,6 +440,79 @@ export class VisitConfirmModal extends Modal {
 	}
 }
 
+interface CompanionChoice {
+	value: string;
+	label: string;
+}
+
+/** One companion. A typed name is offered beside recent Met With / Taken values. Skip stores nothing. */
+export class CompanionSuggestModal extends SuggestModal<CompanionChoice> {
+	private done = false;
+
+	constructor(
+		app: App,
+		private recent: readonly string[],
+		private onDone: (name: string | null) => void,
+	) {
+		super(app);
+		this.emptyStateText = 'Type a name, or choose Skip. Met With and Taken stay unchanged if you skip.';
+		this.limit = 30;
+	}
+
+	onOpen(): void {
+		void super.onOpen();
+		this.setTitle('Who did they bring?');
+		this.setPlaceholder('Recent companion, or a new name');
+		this.setInstructions([
+			{ command: '↑↓', purpose: 'to navigate' },
+			{ command: '↵', purpose: 'to choose one person' },
+			{ command: 'esc', purpose: 'to skip' },
+		]);
+		this.modalEl.addClass('rv-locator-modal');
+		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
+		copy.setText('One person. Skip leaves Met With and Taken unchanged. The visit is still logged.');
+		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
+		const skip = bar.createEl('button', { text: 'Skip' });
+		skip.addEventListener('click', () => {
+			this.finish(null);
+		});
+	}
+
+	onClose(): void {
+		super.onClose();
+		if (!this.done) {
+			this.done = true;
+			this.onDone(null);
+		}
+	}
+
+	getSuggestions(query: string): CompanionChoice[] {
+		const typed = query.trim();
+		const needle = typed.toLowerCase();
+		const recent = this.recent.filter((name) => !needle || name.toLowerCase().includes(needle));
+		const choices = recent.map((name) => ({ value: name, label: name }));
+		if (typed && !recent.some((name) => name.toLowerCase() === needle)) {
+			choices.unshift({ value: typed, label: `Use “${typed}”` });
+		}
+		return choices;
+	}
+
+	renderSuggestion(choice: CompanionChoice, el: HTMLElement): void {
+		el.setText(choice.label);
+	}
+
+	onChooseSuggestion(choice: CompanionChoice): void {
+		this.finish(choice.value);
+	}
+
+	private finish(name: string | null): void {
+		if (this.done) return;
+		this.done = true;
+		this.onDone(name);
+		this.close();
+	}
+}
+
 export function collectNotes(app: App, choice: Pick<BulkGeocodeChoice, 'scope' | 'folderPath'>): TFile[] {
 	if (choice.scope === 'vault') return app.vault.getMarkdownFiles();
 	const folder = choice.folderPath === '' || choice.folderPath === '/'

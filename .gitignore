@@ -1,4 +1,6 @@
 node_modules/
+tests-dist/
+.lock-assemble/
 data.json
 .env
 *.pem

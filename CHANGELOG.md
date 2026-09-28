@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+`main.js` SHA-256: `b4ce00b7ec35becce569b067cfd1740f076a68859a0c3d8228a9772b6901ac32`
+
+`styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
+
+`manifest.json` SHA-256: `093f36e876f0798394a59f21f8afc9846e35aa9185bdda69be347a0e626cbc25`
+
+- New RV asks for one companion after the householder and Address. The suggester lists recent companions and accepts a new name. That name is written to Met With and appended to Taken, deduped. Cancel or a blank answer leaves both blank. Home (Meta Bind → `rvLog.js`, and the Nearby / Glancable success tap) asks the same question. Not home does not ask.
+- Recent names come from markdown notes’ Met With, then Taken. Wikilinks use the alias, otherwise the note basename. Notes are ordered by the latest of Last Spoke, Last Attempted, Met, and the file modification time. The same person is listed once (case-insensitive). The list is capped at 24.
+- `linkCompanionsToNotes` (default off) stores `[[Note Name]]` when one vault note’s basename matches. Several matches use the path form. No match stays plain text. There is no prefix or suffix setting. The same form is used for Met With and the Taken append.
+- New notes default to Priority 3. `defaultNewRvPriority` is an integer 0–5 (default 3) and is what New RV writes.
+- Template file names are settings: `newRvTemplateFile` (`99 New RV.md`), `homeLogTemplateFile` (`99 RV Log Home.md`), `missLogTemplateFile` (`99 RV Log Miss.md`). Extras sync writes those names into Templater’s `templates_folder` and the scripts into `user_scripts_folder`. Empty Templater folders fall back to `Templates/` and `Scripts/`. The + button looks up the configured New RV name in the Templater folder, then `New RV.md`.
+- Syncing New RV rewrites the Meta Bind `templateFile:` paths only inside the fetched `extras/templater-metabind/New RV.md` body, and only when those paths stay inside the templates folder. A body that still points outside that folder is not written. Documentation files and `rv-dashboard.css` are not in the download list. The pin stays tag `v1.2.0` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.1.5`, `main`, or `unstable`. Update from GitHub works after the tag exists. Template names are basenames on an allowlist. Folder names are vault-relative allowlisted segments (`+/Templates` is accepted). `..`, backslash, and absolute paths fall back to `Templates/` and `Scripts/`.
+- The setup wizard checks that Templater and Meta Bind are enabled, shows the Templater folders, and can place extras after you confirm. It opens Settings. It does not install or enable community plugins, and it does not turn on the Meta Bind JS Engine or Templater system commands. It runs once until dismissed; Settings can open it again.
+- A new `###` visit stamp has two blank lines before Attempt Log, so there is a line of padding for notes.
+- The City property helper text matches the writer: geocode always writes `City`. An empty City-property setting only skips the optional alias.
+- `.lock-assemble/` is no longer in the tree. Address is still never overwritten. Map Link is still a Google Maps address search, and City is still appended to that query when Address has no city.
+
 ## 1.1.5
 
 `main.js` SHA-256: `e22722a439a316e9bfbabdb6319c2b95cb77c6d2352a9d11255b3e7775229652`

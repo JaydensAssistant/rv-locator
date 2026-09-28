@@ -116,6 +116,14 @@ function yamlQuote(value: string): string {
 	return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
+function frontmatterBlock(key: string, value: unknown): string[] {
+	if (Array.isArray(value)) {
+		return [key + ':', ...value.map((item) => `  - ${yamlQuote(String(item ?? ''))}`)];
+	}
+	const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
+	return [`${key}: ${rendered}`];
+}
+
 function replaceTopLevel(markdown: string, key: string, blockLines: string[]): string {
 	if (key.trim().toLowerCase() === 'address') throw new Error('refusing to rewrite Address');
 	const nl = markdown.startsWith('---\r\n') ? '\r\n' : '\n';
@@ -459,7 +467,7 @@ describe('disk proof', () => {
 			exports: unknown,
 			app: unknown,
 			Notice: new (message: string) => unknown,
-		) => (tp: unknown) => Promise<{ addressYaml: string; created: string; stamp: string; title: string; mapUrl: string }>;
+		) => (tp: unknown) => Promise<{ addressYaml: string; created: string; stamp: string; title: string; mapUrl: string; priority: number; companionYaml: string }>;
 		const module = { exports: {} as unknown };
 		const newRv = load(module, module.exports, app, class Notice { constructor(_message: string) {} });
 		let renamed = '';
@@ -487,7 +495,9 @@ describe('disk proof', () => {
 			.replaceAll('<% rv.addressYaml %>', rv.addressYaml)
 			.replaceAll('<% rv.created %>', rv.created)
 			.replaceAll('<% rv.stamp %>', rv.stamp)
-			.replaceAll('<% rv.mapUrl %>', rv.mapUrl);
+			.replaceAll('<% rv.mapUrl %>', rv.mapUrl)
+			.replaceAll('<% rv.priority %>', String(rv.priority))
+			.replaceAll('<% rv.companionYaml %>', rv.companionYaml);
 		assert.equal(rendered.includes('<%'), false);
 		writeFileSync(file, rendered);
 		const createdText = readFileSync(file, 'utf8');
@@ -507,8 +517,10 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('Log visit'), false);
 		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
 		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 2);
-		assert.equal(createdText.includes('templateFile: Templates/RV Log Home.md'), true);
-		assert.equal(createdText.includes('templateFile: Templates/RV Log Miss.md'), true);
+		assert.equal(createdText.includes('Priority: 3\n'), true);
+		assert.equal(createdText.includes('\nMet With:\nTaken:\n'), true);
+		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Miss.md'), true);
 		assert.equal(createdText.includes('INPUT[number:["Successful Visits"]]'), true);
 		assert.equal(createdText.includes('INPUT[dateTime:["Last Attempted"]]'), true);
 		assert.equal(createdText.includes('City'), false);
@@ -539,7 +551,8 @@ describe('disk proof', () => {
 		const createdLines = createdText.split('\n');
 		assert.equal(createdLines[stampLine - 1], '> `INPUT[inlineList:Taken]`');
 		assert.equal(createdLines[stampLine + 1], '');
-		assert.equal(createdLines[stampLine + 2], '> [!note]- Attempt Log');
+		assert.equal(createdLines[stampLine + 2], '');
+		assert.equal(createdLines[stampLine + 3], '> [!note]- Attempt Log');
 		assert.equal(createdText.includes('## Attempt Log'), false);
 		assert.equal(createdText.includes('> [!note]- Attempt Log'), true);
 		assert.equal(createdText.includes(`> - ${stamp} — success`), true);
@@ -602,7 +615,7 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('## Attempt Log'), false);
-		assert.match(disk, /### Sat, 11pm — Sep 26, 2026\n\n> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
+		assert.match(disk, /### Sat, 11pm — Sep 26, 2026\n\n\n> \[!note\]- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
 		assert.ok(disk.indexOf('\n### Sat, 11pm — Sep 26, 2026') < disk.indexOf('> [!note]- Attempt Log'));
 		assert.equal(bodyOf(disk).includes('Talked on the porch.'), true);
 
@@ -680,7 +693,8 @@ describe('disk proof', () => {
 		const homeLog = homeLines.findIndex((line) => line === '> [!note]- Attempt Log');
 		assert.ok(homeLog > 1);
 		assert.equal(homeLines[homeLog - 1], '');
-		assert.match(homeLines[homeLog - 2] ?? '', /^### /);
+		assert.equal(homeLines[homeLog - 2], '');
+		assert.match(homeLines[homeLog - 3] ?? '', /^### /);
 		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
 		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
 		assert.equal(notices.at(-1), 'Logged success');
@@ -759,6 +773,111 @@ describe('disk proof', () => {
 		assert.equal(laterHeadings[1]?.startsWith('### '), true);
 		assert.notEqual(laterHeadings[1], laterHeadings[0]);
 	});
+
+	it('home stores one recent companion and a miss does not ask', async () => {
+		const dir = join(ROOT, 'companion');
+		resetDir(dir);
+		const address = '142 Maple Street, Orlando';
+		const homeFile = join(dir, 'home.md');
+		writeFileSync(homeFile, [
+			'---',
+			`Address: ${yamlQuote(address)}`,
+			'Visits: 1',
+			'Successful Visits: 1',
+			'Taken:',
+			'  - "Ada"',
+			'---',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n'));
+		const files = [
+			{ path: 'People/Pat Smith.md', basename: 'Pat Smith', stat: { mtime: 1 } },
+			{ path: 'Notes/older.md', basename: 'older', stat: { mtime: 1 } },
+		];
+		const caches = new Map<string, Record<string, unknown>>([
+			['People/Pat Smith.md', { 'Met With': '[[Pat Smith]]', Taken: ['Pat Smith'], 'Last Spoke': '2026-09-20T15:00:00' }],
+			['Notes/older.md', { 'Met With': 'Jane', Taken: ['Jane', 'Sam'], 'Last Spoke': '2026-01-01T09:00:00' }],
+		]);
+		const notices: string[] = [];
+		let seen: string[] = [];
+		const rvLog = loadRvLog(notices, {
+			getMarkdownFiles: () => files,
+			getFileCache: (file: { path?: string }) => ({ frontmatter: caches.get(file.path ?? '') }),
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true } } } },
+		});
+		await rvLog({
+			config: { target_file: { path: homeFile } },
+			system: {
+				suggester: async (_label: unknown, choices: { kind?: string; name?: string }[]) => {
+					seen = choices.filter((item) => item.kind === 'recent').map((item) => item.name ?? '');
+					return choices.find((item) => item.name === 'Pat Smith') ?? null;
+				},
+				prompt: async () => { throw new Error('free text should not run when a recent name is chosen'); },
+			},
+		}, 'home');
+		assert.deepEqual(seen, ['Pat Smith', 'Jane', 'Sam']);
+		const disk = readFileSync(homeFile, 'utf8');
+		console.log(`\n----- RVLOG COMPANION ${homeFile} -----\n${disk}`);
+		assert.equal(addressLine(disk), `Address: ${yamlQuote(address)}`);
+		assert.equal(disk.includes('Met With: "[[Pat Smith]]"'), true);
+		assert.equal(disk.includes('  - "Ada"'), true);
+		assert.equal(disk.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(disk.includes('Visits: 2'), true);
+
+		const missFile = join(dir, 'miss.md');
+		writeFileSync(missFile, disk);
+		let missAsked = 0;
+		await rvLog({
+			config: { target_file: { path: missFile } },
+			system: {
+				suggester: async () => { missAsked += 1; return { kind: 'recent', name: 'Jane' }; },
+				prompt: async () => { missAsked += 1; return 'Jane'; },
+			},
+		}, 'miss');
+		assert.equal(missAsked, 0);
+		const missDisk = readFileSync(missFile, 'utf8');
+		assert.equal(addressLine(missDisk), `Address: ${yamlQuote(address)}`);
+		assert.equal(missDisk.includes('Met With: "[[Pat Smith]]"'), true);
+		assert.equal(missDisk.includes('— not home'), true);
+		assert.equal(notices.at(-1), 'Logged not home');
+	});
+
+	it('newRv asks for one companion after the address and seeds priority', async () => {
+		const prompts = ['Ada', '10 Oak Street', 'Sam'];
+		const app = {
+			vault: {
+				getMarkdownFiles: () => [{ path: 'People/Sam.md', basename: 'Sam', stat: { mtime: 1 } }],
+				getAbstractFileByPath: () => null,
+				read: async () => '',
+			},
+			metadataCache: { getFileCache: () => null },
+			plugins: { plugins: { 'rv-locator': { settings: { linkCompanionsToNotes: true, defaultNewRvPriority: 4 } } } },
+			workspace: { getActiveFile: () => null },
+			commands: { commands: {}, executeCommandById: () => {} },
+			fileManager: { processFrontMatter: async () => {} },
+		};
+		const rv = await loadNewRv(app)({
+			system: { prompt: async () => prompts.shift() ?? '' },
+			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
+		});
+		assert.equal(prompts.length, 0);
+		assert.equal(rv.priority, 4);
+		assert.equal(rv.companionYaml, 'Met With: "[[Sam]]"\nTaken:\n  - "[[Sam]]"');
+		assert.equal(rv.title, 'Ada on Oak');
+
+		const skipped = await loadNewRv({
+			...app,
+			plugins: { plugins: {} },
+			vault: { ...app.vault, getMarkdownFiles: () => [] },
+		})({
+			system: { prompt: async () => '' },
+			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
+		});
+		assert.equal(skipped.priority, 3);
+		assert.equal(skipped.companionYaml, 'Met With:\nTaken:');
+	});
 });
 
 function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string {
@@ -772,9 +891,7 @@ function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string
 	for (const key of keys) {
 		if (key.toLowerCase() === 'address') continue;
 		if (before[key] === frontmatter[key]) continue;
-		const value = frontmatter[key];
-		const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
-		next = replaceTopLevel(next, key, [`${key}: ${rendered}`]);
+		next = replaceTopLevel(next, key, frontmatterBlock(key, frontmatter[key]));
 	}
 	if (markdown.includes('\nAddress:')) assert.equal(addressLine(next), addressLine(markdown));
 	else assert.equal(next.includes('\nAddress:'), false);
@@ -787,7 +904,23 @@ function commitVisit(markdown: string, outcome: VisitOutcome, now: Date): string
 	return head + applyVisitBody(bodyOf(next), outcome, now);
 }
 
-function loadRvLog(notices: string[]): (tp: unknown, kind: string) => Promise<void> {
+function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; companionYaml: string; title: string }> {
+	const source = readFileSync('extras/templater-metabind/newRv.js', 'utf8');
+	const load = new Function('module', 'exports', 'app', 'Notice', `${source}\nreturn module.exports;`) as (
+		module: { exports: unknown },
+		exports: unknown,
+		app: unknown,
+		Notice: new (message: string) => unknown,
+	) => (tp: unknown) => Promise<{ priority: number; companionYaml: string; title: string }>;
+	const module = { exports: {} as unknown };
+	return load(module, module.exports, app, class Notice { constructor(_message: string) {} });
+}
+
+function loadRvLog(notices: string[], extra?: {
+	getMarkdownFiles?: () => unknown[];
+	getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
+	plugins?: unknown;
+}): (tp: unknown, kind: string) => Promise<void> {
 	const source = readFileSync('extras/templater-metabind/rvLog.js', 'utf8');
 	const load = new Function('module', 'exports', 'app', 'Notice', `${source}\nreturn module.exports;`) as (
 		module: { exports: unknown },
@@ -801,7 +934,10 @@ function loadRvLog(notices: string[]): (tp: unknown, kind: string) => Promise<vo
 			read: async (note: { path: string }) => readFileSync(note.path, 'utf8'),
 			modify: async (note: { path: string }, text: string) => { writeFileSync(note.path, text); },
 			getAbstractFileByPath: () => null,
+			getMarkdownFiles: extra?.getMarkdownFiles,
 		},
+		metadataCache: extra?.getFileCache ? { getFileCache: extra.getFileCache } : undefined,
+		plugins: extra?.plugins,
 		workspace: { getActiveFile: () => null },
 		fileManager: {
 			processFrontMatter: async (file: { path: string }, updater: (fm: Record<string, unknown>) => void) => {
@@ -822,9 +958,7 @@ function loadRvLog(notices: string[]): (tp: unknown, kind: string) => Promise<vo
 				for (const key of keys) {
 					if (key.toLowerCase() === 'address') continue;
 					if (snapshot[key] === fm[key]) continue;
-					const value = fm[key];
-					const rendered = typeof value === 'number' ? String(value) : yamlQuote(String(value ?? ''));
-					next = replaceTopLevel(next, key, [`${key}: ${rendered}`]);
+					next = replaceTopLevel(next, key, frontmatterBlock(key, fm[key]));
 				}
 				if (text.includes('\nAddress:')) assert.equal(addressLine(next), addressLine(text));
 				writeFileSync(file.path, next);

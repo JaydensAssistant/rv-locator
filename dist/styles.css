@@ -689,6 +689,30 @@
 	width: min(560px, calc(100vw - 24px));
 }
 
+.rv-locator-check-list {
+	margin: 0 0 12px;
+	padding-left: 0;
+	list-style: none;
+}
+
+.rv-locator-check-list li {
+	margin: 0 0 10px;
+}
+
+.rv-locator-check-title {
+	font-weight: var(--font-medium);
+}
+
+.rv-locator-check-miss .rv-locator-check-title {
+	color: var(--text-warning);
+}
+
+.rv-locator-check-detail {
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.4;
+}
+
 .rv-locator-about p {
 	margin: 0 0 8px;
 	color: var(--text-muted);

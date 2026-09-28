@@ -11,6 +11,7 @@ import {
 	isAllowlistedExtrasPath,
 	planExtrasWrite,
 	type ExtrasFetchResult,
+	type ExtrasPlacement,
 	type ExtrasSyncFailure,
 	type ExtrasSyncFile,
 } from './extras-sync';
@@ -88,9 +89,15 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Optional place properties')
-			.setDesc('City is always saved on the note as City. Leave another name empty to skip that part. A filled extra name is overwritten from the geocoder result.');
+			.setDesc('Geocode always writes City. The City property below is an optional alias; leave it empty to skip that alias. Leave County, State, ZIP, or Country empty to skip that part. A filled extra name is overwritten from the geocoder result.');
 
-		this.extraSetting('City property', 'City', () => this.plugin.settings.cityProperty, (value) => { this.plugin.settings.cityProperty = value; });
+		this.extraSetting(
+			'City property',
+			'City',
+			() => this.plugin.settings.cityProperty,
+			(value) => { this.plugin.settings.cityProperty = value; },
+			'Optional alias. Geocode always writes City. An empty name here only skips that alias.',
+		);
 		this.extraSetting('County property', 'County', () => this.plugin.settings.countyProperty, (value) => { this.plugin.settings.countyProperty = value; });
 		this.extraSetting('State property', 'State', () => this.plugin.settings.stateProperty, (value) => { this.plugin.settings.stateProperty = value; });
 		this.extraSetting('ZIP / postal property', 'ZIP', () => this.plugin.settings.postcodeProperty, (value) => { this.plugin.settings.postcodeProperty = value; });
@@ -173,15 +180,63 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		);
 
 		new Setting(containerEl).setName('Templater and Meta Bind').setHeading();
-		const extrasPaths = extrasDestinations(this.app.vault.configDir).map((file) => file.vault).join(', ');
+		new Setting(containerEl)
+			.setName('Setup wizard')
+			.setDesc('Checks that Templater and Meta Bind are enabled, shows the folders Templater is using, and places templates and scripts after you confirm. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands.')
+			.addButton((button) => {
+				button.setButtonText('Open setup wizard');
+				button.onClick(() => { this.plugin.openSetupWizard(); });
+			});
+		new Setting(containerEl)
+			.setName('Default priority for a new RV')
+			.setDesc('Written as Priority when a new return-visit note is created. 0 through 5. The default is 3.')
+			.addDropdown((dropdown) => {
+				for (let rank = 0; rank <= 5; rank += 1) dropdown.addOption(String(rank), String(rank));
+				dropdown.setValue(String(this.plugin.settings.defaultNewRvPriority));
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.defaultNewRvPriority = Number(value);
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Link companions to notes')
+			.setDesc('When on, Met With and Taken store [[Note Name]] if a note’s basename matches the companion. Otherwise the name stays plain text. One toggle; there is no prefix or suffix.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.linkCompanionsToNotes);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.linkCompanionsToNotes = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		this.propertySetting(
+			'New RV template file',
+			'File name inside Templater’s template folder. The + button looks for this name first, then New RV.md.',
+			'99 New RV.md',
+			() => this.plugin.settings.newRvTemplateFile,
+			(value) => { this.plugin.settings.newRvTemplateFile = value; },
+		);
+		this.propertySetting(
+			'Home log template file',
+			'File name for the Meta Bind Home button. Sync writes it into Templater’s template folder and points New RV at that path.',
+			'99 RV Log Home.md',
+			() => this.plugin.settings.homeLogTemplateFile,
+			(value) => { this.plugin.settings.homeLogTemplateFile = value; },
+		);
+		this.propertySetting(
+			'Not home log template file',
+			'File name for the Meta Bind Not home button. Sync writes it into Templater’s template folder and points New RV at that path.',
+			'99 RV Log Miss.md',
+			() => this.plugin.settings.missLogTemplateFile,
+			(value) => { this.plugin.settings.missLogTemplateFile = value; },
+		);
+		const placement = this.plugin.extrasPlacement();
+		const extrasPaths = extrasDestinations(this.app.vault.configDir, placement).map((file) => file.vault).join(', ');
 		new Setting(containerEl)
 			.setName('Update Templater / Meta Bind extras from GitHub')
-			.setDesc(`Downloads tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO} from raw.githubusercontent.com. Not the moving main or unstable branch. Asks before any write and lists each path as create or overwrite. Existing files are skipped unless overwrite is checked. Does not change notes, Address, or the Geoapify key. Paths: ${extrasPaths}.`)
+			.setDesc(`Downloads tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO} from raw.githubusercontent.com. Not the moving main or unstable branch. Templates go to ${placement.templatesFolder}/ (Templater templates_folder) and scripts go to ${placement.scriptsFolder}/ (Templater user_scripts_folder). Documentation and the CSS snippet are not downloaded. Asks before any write. Existing files are skipped unless overwrite is checked. Does not change notes, Address, or the Geoapify key. Paths: ${extrasPaths}.`)
 			.addButton((button) => {
 				button.setButtonText('Update from GitHub');
-				button.onClick(() => {
-					void this.previewExtras();
-				});
+				button.onClick(() => { startExtrasSync(this.app, this.plugin); });
 			});
 
 		new Setting(containerEl).setName('About').setHeading();
@@ -221,66 +276,14 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 	}
 
-	private extraSetting(name: string, placeholder: string, read: () => string, write: (value: string) => void): void {
-		this.propertySetting(name, 'Empty skips this output.', placeholder, read, write);
-	}
-
-	private async previewExtras(): Promise<void> {
-		const pending = new Notice(`Downloading extras at ${EXTRAS_SYNC_REF}…`, 0);
-		try {
-			const plan = await downloadExtras((url) => fetchPinnedExtras(url), this.app.vault.configDir);
-			pending.hide();
-			if (plan.files.length === 0) {
-				const failText = plan.failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ');
-				new Notice(`Extras download failed. Nothing was written. ${failText}`, 12_000);
-				return;
-			}
-			const rows: ExtrasPreviewRow[] = [];
-			for (const file of plan.files) {
-				rows.push({
-					...file,
-					exists: await extrasDestinationExists(this.app, file.vaultPath, this.app.vault.configDir),
-				});
-			}
-			const modal = new ExtrasSyncConfirmModal(this.app, rows, plan.failed, (overwriteExisting) => {
-				void this.applyExtras(rows, overwriteExisting);
-			});
-			modal.open();
-		} catch (error) {
-			pending.hide();
-			const reason = error instanceof Error && error.message ? error.message : 'download failed';
-			new Notice(`Extras download failed. Nothing was written. ${reason}`, 10_000);
-		}
-	}
-
-	private async applyExtras(rows: readonly ExtrasPreviewRow[], overwriteExisting: boolean): Promise<void> {
-		const created: ExtrasPreviewRow[] = [];
-		const overwritten: ExtrasPreviewRow[] = [];
-		const skipped: ExtrasPreviewRow[] = [];
-		const failed: ExtrasSyncFailure[] = [];
-		for (const row of rows) {
-			const action = planExtrasWrite(row.exists, overwriteExisting);
-			if (action === 'skip') {
-				skipped.push(row);
-				continue;
-			}
-			try {
-				await writeAllowlistedExtrasFile(this.app, row.vaultPath, row.contents, this.app.vault.configDir, action);
-				if (action === 'create') created.push(row);
-				else overwritten.push(row);
-			} catch (error) {
-				const reason = error instanceof Error && error.message ? error.message : 'write failed';
-				failed.push({ vaultPath: row.vaultPath, reason });
-			}
-		}
-		const parts = [
-			formatExtrasResult('Created', created),
-			formatExtrasResult('Overwrote', overwritten),
-			formatExtrasResult('Skipped', skipped),
-			failed.length ? `Failed: ${failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ')}` : '',
-		].filter(Boolean);
-		const summary = parts.join(' ') || 'Nothing was written.';
-		new Notice(`Extras ${EXTRAS_SYNC_REF}. ${summary}`, 14_000);
+	private extraSetting(
+		name: string,
+		placeholder: string,
+		read: () => string,
+		write: (value: string) => void,
+		desc = 'Empty skips this output.',
+	): void {
+		this.propertySetting(name, desc, placeholder, read, write);
 	}
 
 	private coordSetting(
@@ -309,6 +312,74 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 	}
 }
 
+export function startExtrasSync(app: App, plugin: RVLocatorPlugin): void {
+	void previewExtras(app, plugin);
+}
+
+async function previewExtras(app: App, plugin: RVLocatorPlugin): Promise<void> {
+	const placement = plugin.extrasPlacement();
+	const pending = new Notice(`Downloading extras at ${EXTRAS_SYNC_REF}…`, 0);
+	try {
+		const plan = await downloadExtras((url) => fetchPinnedExtras(url), app.vault.configDir, EXTRAS_SYNC_REF, placement);
+		pending.hide();
+		if (plan.files.length === 0) {
+			const failText = plan.failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ');
+			new Notice(`Extras download failed. Nothing was written. ${failText}`, 12_000);
+			return;
+		}
+		const rows: ExtrasPreviewRow[] = [];
+		for (const file of plan.files) {
+			rows.push({
+				...file,
+				exists: await extrasDestinationExists(app, file.vaultPath, app.vault.configDir, placement),
+			});
+		}
+		const modal = new ExtrasSyncConfirmModal(app, rows, plan.failed, (overwriteExisting) => {
+			void applyExtras(app, rows, overwriteExisting, placement);
+		});
+		modal.open();
+	} catch (error) {
+		pending.hide();
+		const reason = error instanceof Error && error.message ? error.message : 'download failed';
+		new Notice(`Extras download failed. Nothing was written. ${reason}`, 10_000);
+	}
+}
+
+async function applyExtras(
+	app: App,
+	rows: readonly ExtrasPreviewRow[],
+	overwriteExisting: boolean,
+	placement: ExtrasPlacement,
+): Promise<void> {
+		const created: ExtrasPreviewRow[] = [];
+		const overwritten: ExtrasPreviewRow[] = [];
+		const skipped: ExtrasPreviewRow[] = [];
+		const failed: ExtrasSyncFailure[] = [];
+		for (const row of rows) {
+			const action = planExtrasWrite(row.exists, overwriteExisting);
+			if (action === 'skip') {
+				skipped.push(row);
+				continue;
+			}
+			try {
+				await writeAllowlistedExtrasFile(app, row.vaultPath, row.contents, app.vault.configDir, action, placement);
+				if (action === 'create') created.push(row);
+				else overwritten.push(row);
+			} catch (error) {
+				const reason = error instanceof Error && error.message ? error.message : 'write failed';
+				failed.push({ vaultPath: row.vaultPath, reason });
+			}
+		}
+		const parts = [
+			formatExtrasResult('Created', created),
+			formatExtrasResult('Overwrote', overwritten),
+			formatExtrasResult('Skipped', skipped),
+			failed.length ? `Failed: ${failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ')}` : '',
+		].filter(Boolean);
+		const summary = parts.join(' ') || 'Nothing was written.';
+		new Notice(`Extras ${EXTRAS_SYNC_REF}. ${summary}`, 14_000);
+}
+
 interface ExtrasPreviewRow extends ExtrasSyncFile {
 	exists: boolean;
 }
@@ -328,7 +399,7 @@ class ExtrasSyncConfirmModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Update Templater / Meta Bind extras');
 		this.contentEl.createEl('p', {
-			text: `Pinned ref ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked. Templater system commands stay off. The Meta Bind JS Engine is not required. Notes, Address, and the Geoapify key are not touched.`,
+			text: `Pinned ref ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked. This update does not enable plugins, the Meta Bind JS Engine, or Templater system commands. Notes, Address, and the Geoapify key are not touched.`,
 		});
 		const list = this.contentEl.createEl('ul');
 		const actions: HTMLElement[] = [];
@@ -401,9 +472,14 @@ async function fetchPinnedExtras(url: string): Promise<ExtrasFetchResult> {
 	};
 }
 
-async function extrasDestinationExists(app: App, vaultPath: string, configDir: string): Promise<boolean> {
+async function extrasDestinationExists(
+	app: App,
+	vaultPath: string,
+	configDir: string,
+	placement: ExtrasPlacement,
+): Promise<boolean> {
 	const path = normalizePath(vaultPath);
-	if (!isAllowlistedExtrasPath(path, configDir)) return false;
+	if (!isAllowlistedExtrasPath(path, configDir, placement) && !isAllowlistedExtrasPath(vaultPath, configDir, placement)) return false;
 	const configPrefix = `${configDir.replace(/\\/g, '/').replace(/\/+$/, '')}/`;
 	if (path.startsWith(configPrefix)) return app.vault.adapter.exists(path);
 	return app.vault.getAbstractFileByPath(path) instanceof TFile;
@@ -415,13 +491,15 @@ async function writeAllowlistedExtrasFile(
 	contents: string,
 	configDir: string,
 	mode: 'create' | 'overwrite',
+	placement: ExtrasPlacement,
 ): Promise<void> {
 	const path = normalizePath(vaultPath);
-	if (path !== vaultPath || !isAllowlistedExtrasPath(path, configDir) || !isAllowlistedExtrasPath(vaultPath, configDir)) {
+	const allowed = isAllowlistedExtrasPath(path, configDir, placement) && isAllowlistedExtrasPath(vaultPath, configDir, placement);
+	if (path !== vaultPath || !allowed) {
 		throw new Error(`Refusing to write ${vaultPath}`);
 	}
 	const configPrefix = `${configDir.replace(/\\/g, '/').replace(/\/+$/, '')}/`;
-	const exists = await extrasDestinationExists(app, path, configDir);
+	const exists = await extrasDestinationExists(app, path, configDir, placement);
 	if (exists && mode !== 'overwrite') throw new Error('Refusing to overwrite');
 	if (path.startsWith(configPrefix)) {
 		if (path.includes('/plugins/')) throw new Error(`Refusing to write ${path}`);

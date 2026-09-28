@@ -14,15 +14,23 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { decideGeocodePick } from './home-base';
+import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, type CompanionNoteRef } from './companions';
+import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
-import { BulkGeocodeModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
+import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
+import { META_BIND_PLUGIN_ID } from './setup-check';
+import { SetupWizardModal, readSetupSnapshot } from './setup-wizard';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
-import { RVLocatorSettingTab } from './settings-tab';
+import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
 import { DEFAULT_SETTINGS, defaultNearbySort, mergeSettings, sanitizeNearbySort, type CacheEntry, type GeocodeHit, type NearbySortPreference, type RVLocatorSettings, type StoredPluginData } from './types';
 import { NearbyVanillaView } from './vanilla-view';
+
+function cacheValue(frontmatter: { [key: string]: unknown } | undefined, key: string): unknown {
+	return frontmatter?.[key];
+}
 
 function frontmatterFromMarkdown(text: string): Record<string, unknown> | null {
 	const info = getFrontMatterInfo(text);
@@ -60,6 +68,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private viewRefreshers = new Set<() => void>();
 	private persistQueued: Promise<void> = Promise.resolve();
 	private creatingNewRv = false;
+	private wizardOpen = false;
+	private unloaded = false;
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -108,6 +118,11 @@ export default class RVLocatorPlugin extends Plugin {
 		if (registered.some((ok) => !ok)) {
 			new Notice('Enable the Bases core plugin to use RV Locator nearby views.');
 		}
+
+		this.app.workspace.onLayoutReady(() => {
+			if (this.unloaded || this.settings.setupWizardCompleted) return;
+			this.openSetupWizard();
+		});
 	}
 
 	/**
@@ -122,7 +137,10 @@ export default class RVLocatorPlugin extends Plugin {
 			const templater = readTemplaterPlugin(this.app);
 			const create = templater?.templater?.create_new_note_from_template;
 			const pluginPresent = typeof create === 'function';
-			const looked = newRvTemplateCandidates(templater?.settings?.templates_folder);
+			const looked = newRvTemplateCandidates(
+				templater?.settings?.templates_folder,
+				this.settings.newRvTemplateFile,
+			);
 			const template = pluginPresent ? findTemplateFile(this.app, looked) : null;
 			const message = newRvLaunchError(pluginPresent, template != null, looked);
 			if (message || !template || !create || !templater?.templater) {
@@ -140,7 +158,105 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	onunload(): void {
+		this.unloaded = true;
 		this.bulkAborted = true;
+	}
+
+	/**
+	 * Templater folders (`templates_folder`, `user_scripts_folder`) plus the
+	 * configured template file names. Empty Templater folders fall back to
+	 * Templates/ and Scripts/.
+	 */
+	extrasPlacement(): ExtrasPlacement {
+		const templater = readTemplaterPlugin(this.app);
+		return resolveExtrasPlacement({
+			templatesFolder: typeof templater?.settings?.templates_folder === 'string' ? templater.settings.templates_folder : '',
+			scriptsFolder: typeof templater?.settings?.user_scripts_folder === 'string' ? templater.settings.user_scripts_folder : '',
+			newRvFileName: this.settings.newRvTemplateFile,
+			homeLogFileName: this.settings.homeLogTemplateFile,
+			missLogFileName: this.settings.missLogTemplateFile,
+		});
+	}
+
+	openSetupWizard(): void {
+		if (this.wizardOpen) return;
+		this.wizardOpen = true;
+		const modal = new SetupWizardModal(this.app, () => this.loadSetupSnapshot(), {
+			onDismiss: () => {
+				this.wizardOpen = false;
+				void this.markSetupWizardSeen();
+			},
+			onPlaceExtras: () => { this.syncExtrasFromGitHub(); },
+			openCommunityPlugins: () => { this.openObsidianSettings('community-plugins'); },
+			openTemplaterSettings: () => { this.openObsidianSettings(TEMPLATER_PLUGIN_ID); },
+			openMetaBindSettings: () => { this.openObsidianSettings(META_BIND_PLUGIN_ID); },
+		});
+		modal.open();
+	}
+
+	syncExtrasFromGitHub(): void {
+		startExtrasSync(this.app, this);
+	}
+
+	/**
+	 * One companion for a home visit or a new note. Empty when they skip.
+	 * Wikilink form follows `linkCompanionsToNotes`.
+	 */
+	async promptCompanion(): Promise<string> {
+		const picked = await new Promise<string | null>((resolve) => {
+			const modal = new CompanionSuggestModal(this.app, this.recentCompanionNames(), resolve);
+			modal.open();
+		});
+		const name = picked?.trim() ?? '';
+		if (!name) return '';
+		return formatStoredCompanion(name, this.settings.linkCompanionsToNotes, this.companionNoteRefs());
+	}
+
+	private recentCompanionNames(): string[] {
+		const notes = this.app.vault.getMarkdownFiles().map((file) => {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const record: Record<string, unknown> = {
+				'Last Spoke': cacheValue(frontmatter, 'Last Spoke'),
+				'Last Attempted': cacheValue(frontmatter, 'Last Attempted'),
+				Met: cacheValue(frontmatter, 'Met'),
+			};
+			return {
+				metWith: cacheValue(frontmatter, 'Met With'),
+				taken: cacheValue(frontmatter, 'Taken'),
+				recentAt: companionRecency(record, file.stat.mtime),
+			};
+		});
+		return collectRecentCompanionNames(notes);
+	}
+
+	private companionNoteRefs(): CompanionNoteRef[] {
+		return this.app.vault.getMarkdownFiles().map((file) => ({
+			path: file.path,
+			basename: file.basename,
+		}));
+	}
+
+	private loadSetupSnapshot() {
+		const templater = readTemplaterPlugin(this.app);
+		return readSetupSnapshot(this.app, this.settings, this.extrasPlacement(), templater?.settings ?? null);
+	}
+
+	private async markSetupWizardSeen(): Promise<void> {
+		if (this.settings.setupWizardCompleted) return;
+		this.settings.setupWizardCompleted = true;
+		await this.saveSettings();
+	}
+
+	private openObsidianSettings(tabId: string): void {
+		const setting = (this.app as App & {
+			setting?: { open: () => void; openTabById: (id: string) => void };
+		}).setting;
+		if (!setting) {
+			new Notice('Open Settings from the Obsidian menu.');
+			return;
+		}
+		setting.open();
+		setting.openTabById(tabId);
 	}
 
 	subscribeViewRefresh(callback: () => void): () => void {
@@ -359,13 +475,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
 		const now = new Date();
+		const companion = outcome === 'home' ? await this.promptCompanion() : '';
 		await this.app.vault.process(file, (data) => {
 			const info = getFrontMatterInfo(data);
 			const head = data.slice(0, info.contentStart);
 			return head + applyVisitBody(data.slice(info.contentStart), outcome, now);
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			applyVisitFrontmatter(frontmatter as Record<string, unknown>, outcome, now);
+			applyVisitFrontmatter(frontmatter as Record<string, unknown>, outcome, now, companion);
 		});
 		const label = outcome === 'home' ? 'Home' : 'Not home';
 		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
@@ -604,7 +721,8 @@ export default class RVLocatorPlugin extends Plugin {
 }
 
 interface TemplaterPluginHandle {
-	settings?: { templates_folder?: unknown };
+	/** Templater settings: `templates_folder` and `user_scripts_folder`. */
+	settings?: { templates_folder?: unknown; user_scripts_folder?: unknown };
 	templater?: {
 		create_new_note_from_template?: (template: TFile) => Promise<TFile | undefined>;
 	};
