@@ -15,6 +15,27 @@ export interface CompanionNoteRef {
 	basename: string;
 }
 
+export interface CompanionSuggestion {
+	/** Name stored on the note. A typed row uses the typed text, not the “Use …” label. */
+	value: string;
+	label: string;
+}
+
+/**
+ * Recent names that match the query, plus a leading “Use …” row when the
+ * typed text is not already one of those names.
+ */
+export function companionChoices(recent: readonly string[], query: string): CompanionSuggestion[] {
+	const typed = query.trim();
+	const needle = typed.toLowerCase();
+	const matches = recent.filter((name) => !needle || name.toLowerCase().includes(needle));
+	const choices = matches.map((name) => ({ value: name, label: name }));
+	if (typed && !matches.some((name) => name.toLowerCase() === needle)) {
+		choices.unshift({ value: typed, label: `Use “${typed}”` });
+	}
+	return choices;
+}
+
 /**
  * Display text for a Met With / Taken value.
  * A wikilink uses its alias, otherwise the note basename.

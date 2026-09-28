@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+`main.js` SHA-256: `ec450c11a15b2eafdb3591434a1faa6c8f9bb13b8495f68c58772364fa158fe9`
+
+`styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
+
+`manifest.json` SHA-256: `79d2acdeaefffa5d7e640c6ae1c88daddae8c59a725767b33bbf931087fc4c32`
+
+- Choosing a companion on Home or New RV now writes Met With and appends that name to Taken. Obsidian closes the suggest modal before it reports the chosen row, and the companion prompt treated that close as Skip, so the visit logged with Met With and Taken left empty. A suggestion or a typed “Use …” name is kept. Skip and Esc still leave both unchanged. Not home still does not ask. Address is still never overwritten.
+- `linkCompanionsToNotes` is unchanged: off stores plain text, and on stores `[[Note Name]]` when a note basename matches.
+- Extras sync stays pinned to tag `v1.2.1` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.0
 
 `main.js` SHA-256: `b4ce00b7ec35becce569b067cfd1740f076a68859a0c3d8228a9772b6901ac32`
