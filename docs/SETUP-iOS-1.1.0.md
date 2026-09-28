@@ -22,7 +22,7 @@ Or use `rv-locator-1.1.0.tar.gz` from Cody.
 5. Confirm Geoapify key is present under RV Locator settings (synced via `plugins/rv-locator/data.json`). Prefer a restricted key; treat synced `data.json` as sensitive.
 6. When Nearby asks for location, allow **While Using the App** (or Always if you want background-ish updates while the app is open). Distance is computed in memory and **not** written to notes.
 7. Open your Active / Return Visits base → pick an RV Locator Nearby view (Glancable is built for phone).
-8. First geocode: still safest from desktop or with **Home base counties empty** so you confirm every hit. Address is never overwritten; spot-check anyway.
+8. First geocode: still safest from desktop or with **Home counties empty** so you confirm every hit. Address is never overwritten; spot-check anyway.
 9. Visit log: tap the **priority** control on a card → Were they home?
 
 ## Alternate path: install files only on iOS

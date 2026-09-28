@@ -121,7 +121,7 @@ export default class RVLocatorPlugin extends Plugin {
 				: new NearbyGlancableView(controller, containerEl, this, layout.id, layout.scope),
 		}));
 		if (registered.some((ok) => !ok)) {
-			new Notice('Enable the Bases core plugin to use RV Locator nearby views.');
+			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
 
 		this.app.workspace.onLayoutReady(() => {
@@ -423,7 +423,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	async runSuccessfulVisitsFill(choice: Pick<BulkGeocodeChoice, 'scope' | 'folderPath'>, report: (message: string) => void): Promise<void> {
 		if (this.bulkRunning) {
-			new Notice('A bulk run is already going.');
+			new Notice('A bulk run is already running.');
 			return;
 		}
 		if (choice.scope === 'folder' && !this.folderExists(choice.folderPath)) {
@@ -500,7 +500,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private async geocodeCurrent(): Promise<void> {
 		const file = this.app.workspace.getActiveFile();
 		if (!file || file.extension !== 'md') {
-			new Notice('Open a Markdown note to geocode.');
+			new Notice('Open a note to look up its address.');
 			return;
 		}
 		if (!this.settingsReady()) return;
@@ -509,7 +509,7 @@ export default class RVLocatorPlugin extends Plugin {
 		// Address, and the cache can still show the previous frontmatter.
 		const address = readAddress(await this.freshFrontmatter(file), this.settings.addressProperty);
 		if (!address) {
-			new Notice(`This note has no “${this.settings.addressProperty}” text to geocode.`);
+			new Notice(`This note has no “${this.settings.addressProperty}” to look up.`);
 			return;
 		}
 

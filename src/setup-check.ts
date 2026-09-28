@@ -1,5 +1,3 @@
-import { TEMPLATER_PLUGIN_ID } from './new-rv-launch';
-
 /** Community plugin id for Meta Bind. RV Locator never installs it. */
 export const META_BIND_PLUGIN_ID = 'obsidian-meta-bind-plugin';
 
@@ -38,7 +36,7 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 	const files = snapshot.files;
 	const missing = files.filter((file) => !file.exists);
 	const fileDetail = files.length === 0
-		? 'No template or script destinations were resolved.'
+		? 'No template or script files were found.'
 		: files.map((file) => `${file.exists ? 'Present' : 'Missing'}: ${file.path}`).join(' ');
 	const templatesRaw = snapshot.templatesFolder.trim();
 	const scriptsRaw = snapshot.scriptsFolder.trim();
@@ -48,32 +46,32 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 			ok: snapshot.templaterEnabled,
 			title: snapshot.templaterEnabled ? 'Templater is enabled' : 'Templater is not enabled',
 			detail: snapshot.templaterEnabled
-				? `Templater (${TEMPLATER_PLUGIN_ID}) runs New RV and the Home / Not home templates.`
-				: 'Enable Templater from Community plugins. RV Locator does not install or enable it, and it does not turn on Templater system commands.',
+				? 'Templater runs New RV and the Home and Not home templates.'
+				: 'Enable Templater in Community plugins. RV Locator does not install it or turn on Templater system commands.',
 		},
 		{
 			id: 'meta-bind',
 			ok: snapshot.metaBindEnabled,
 			title: snapshot.metaBindEnabled ? 'Meta Bind is enabled' : 'Meta Bind is not enabled',
 			detail: snapshot.metaBindEnabled
-				? `Meta Bind (${META_BIND_PLUGIN_ID}) runs the Home and Not home buttons on the note.`
-				: 'Enable Meta Bind from Community plugins. RV Locator does not install or enable it, and it does not turn on the Meta Bind JS Engine.',
+				? 'Meta Bind runs the Home and Not home buttons on the note.'
+				: 'Enable Meta Bind in Community plugins. RV Locator does not install it or turn on the Meta Bind JS Engine.',
 		},
 		{
 			id: 'templates-folder',
 			ok: templatesRaw.length > 0,
 			title: templatesRaw ? `Templates folder: ${templatesRaw}` : 'Templater template folder is empty',
 			detail: templatesRaw
-				? `Extras write templates into ${snapshot.resolvedTemplatesFolder}/. Templater stores this as templates_folder.`
-				: `Set Template folder location in Templater settings (templates_folder). Until then, extras use ${snapshot.resolvedTemplatesFolder}/.`,
+				? `Templates go in ${snapshot.resolvedTemplatesFolder}/ (Templater templates_folder).`
+				: `Set the template folder in Templater (templates_folder). Until then, files go in ${snapshot.resolvedTemplatesFolder}/.`,
 		},
 		{
 			id: 'scripts-folder',
 			ok: scriptsRaw.length > 0,
 			title: scriptsRaw ? `User scripts folder: ${scriptsRaw}` : 'Templater user scripts folder is empty',
 			detail: scriptsRaw
-				? `Extras write scripts into ${snapshot.resolvedScriptsFolder}/. Templater stores this as user_scripts_folder.`
-				: `Set User script folder in Templater settings (user_scripts_folder). Until then, extras use ${snapshot.resolvedScriptsFolder}/.`,
+				? `Scripts go in ${snapshot.resolvedScriptsFolder}/ (Templater user_scripts_folder).`
+				: `Set the user scripts folder in Templater (user_scripts_folder). Until then, files go in ${snapshot.resolvedScriptsFolder}/.`,
 		},
 		{
 			id: 'extras',
@@ -90,14 +88,14 @@ export function setupChecklist(snapshot: SetupSnapshot): SetupCheck[] {
 				? `Home counties: ${snapshot.homeCounties.join(', ')}`
 				: 'Home counties: none',
 			detail: snapshot.homeCounties.length > 0
-				? 'These are the counties where you normally work return visits. A fully confident geocode hit in one of them can be saved without asking. A hit in another county still asks you to confirm, so a wrong city is less likely to be saved.'
-				: 'No home counties are saved, so every geocode match asks you to confirm. Add them in this wizard or under Home base counties in RV Locator settings.',
+				? 'A fully confident hit in one of these can be saved without asking. A hit in another county still asks you to confirm.'
+				: 'None saved, so every match asks you to confirm. Add them here or under Home counties in settings.',
 		},
 		{
 			id: 'suggested',
 			ok: true,
 			title: 'Suggested RV Locator settings',
-			detail: `defaultNewRvPriority is ${snapshot.defaultNewRvPriority} (0–5). New RV file “${snapshot.newRvTemplateFile}”, Home “${snapshot.homeLogTemplateFile}”, Not home “${snapshot.missLogTemplateFile}”. linkCompanionsToNotes is ${snapshot.linkCompanionsToNotes ? 'on' : 'off'}. Change these in RV Locator settings. Companion linking is a single toggle, with no prefix or suffix.`,
+			detail: `New RV priority is ${snapshot.defaultNewRvPriority} (0–5). New RV “${snapshot.newRvTemplateFile}”, Home “${snapshot.homeLogTemplateFile}”, Not home “${snapshot.missLogTemplateFile}”. Link companions to notes is ${snapshot.linkCompanionsToNotes ? 'on' : 'off'}.`,
 		},
 	];
 }

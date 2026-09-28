@@ -164,7 +164,15 @@ export class BulkGeocodeModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Notes with an address and no location are looked up. A folder includes its subfolders. Address is never written. A result is saved without this picker only when Geoapify rank.confidence is 1.00 and that hit is the only one in a home-base county. Otherwise this picker opens. Choosing a row saves Location as two quoted strings, plus City and a Map Link that searches the note’s Address. Closing the picker skips that note. Distance is not written. If Successful Visits is missing and Visits is a number, that number is copied. Notes that already have Address and Location get City filled from the address when City is missing. Last Attempted is left alone.',
+			text: 'Looks up notes that have an address and no location. A folder includes its subfolders, and Address is never written.',
+		});
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in a home county. Otherwise you pick a row, which saves Location as two quoted strings plus City and a Map Link of Address, and closing the picker skips that note.',
+		});
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'If Successful Visits is missing, Visits is copied into it. When Address and Location are already set and City is missing, City is filled from Address; Last Attempted is left alone, and distance is not written.',
 		});
 
 		new Setting(contentEl)
@@ -197,7 +205,8 @@ export class BulkGeocodeModal extends Modal {
 		}
 
 		new Setting(contentEl)
-			.setName('Re-geocode notes that already have a location')
+			.setName('Include notes that already have a location')
+			.setDesc('Looks them up again. Address is still never written.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.force);
 				toggle.onChange((value) => {
@@ -314,7 +323,11 @@ export class SuccessfulVisitsModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Copies Visits into Successful Visits when that property is missing. Notes that already have Successful Visits are left alone. This does not invent Last Attempted or change Visits. When City is missing and the note already has Address and Location, City is filled from the address. No geocode request is made.',
+			text: 'Copies Visits into Successful Visits only when it is missing. Does not change Visits or add Last Attempted.',
+		});
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'When City is missing on a note that already has Address and Location, City is filled from the address. No lookup is made.',
 		});
 
 		new Setting(contentEl)
@@ -406,7 +419,7 @@ export class VisitConfirmModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.setTitle('Were they home?');
+		this.setTitle('Log a visit');
 		this.modalEl.addClass('rv-locator-modal');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
@@ -415,12 +428,12 @@ export class VisitConfirmModal extends Modal {
 		});
 		new Setting(contentEl)
 			.addButton((button) => {
-				button.setButtonText('Yes');
+				button.setButtonText('Home');
 				button.setCta();
 				button.onClick(() => this.finish('home'));
 			})
 			.addButton((button) => {
-				button.setButtonText('No');
+				button.setButtonText('Not home');
 				button.onClick(() => this.finish('miss'));
 			})
 			.addButton((button) => {
@@ -468,7 +481,7 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 		]);
 		this.modalEl.addClass('rv-locator-modal');
 		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
-		copy.setText('One person, added to Taken. Met With stays as it is. Skip changes neither. The visit is still logged.');
+		copy.setText('Adds one person to Taken and leaves Met With as it is. Skip changes neither, and the visit is still logged.');
 		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
 		const skip = bar.createEl('button', { text: 'Skip' });
 		skip.addEventListener('click', () => {

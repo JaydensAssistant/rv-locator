@@ -284,7 +284,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			const lat = this.plugin.settings.testLatitude;
 			const lon = this.plugin.settings.testLongitude;
 			return {
-				text: `Desktop distance testing is on. Distances use the test coordinates ${lat}, ${lon} from settings, not this device. Distance is not written into notes.`,
+				text: `Desktop distance testing is on, using ${lat}, ${lon} instead of this device. Distance is not written into notes.`,
 				error: false,
 				test: true,
 			};
@@ -295,7 +295,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			return {
 				text: this.quietBanner
 					? 'Location access is denied, so distance shows a dash.'
-					: 'Location access is denied. Allow location for Obsidian to calculate distance. Distance is not written into your notes.',
+					: 'Location access is denied. Allow location for Obsidian to show distance. Distance is not written into notes.',
 				error: true,
 				test: false,
 			};
@@ -308,16 +308,16 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				return { text: where, error: false, test: false };
 			}
 			const where = Platform.isMobile || Platform.isMobileApp
-				? 'This device has no position fix, so distance shows a dash.'
-				: 'This desktop has no position fix, so distance shows a dash. Obsidian Mobile can use GPS.';
+				? 'This device has no position, so distance shows a dash.'
+				: 'This desktop has no position, so distance shows a dash. Obsidian Mobile can use GPS.';
 			return {
-				text: `${where} Distance is calculated live and is not written into notes.`,
+				text: `${where} Distance is not written into notes.`,
 				error: true,
 				test: false,
 			};
 		}
 		return {
-			text: 'Looking for your position… Distance stays in this view and is not written into notes.',
+			text: 'Looking for your position. Distance stays in this view and is not written into notes.',
 			error: false,
 			test: false,
 		};

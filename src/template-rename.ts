@@ -49,7 +49,7 @@ export function planTemplateRename(input: {
 		return {
 			action: 'refuse',
 			reason: 'outside-folder',
-			notice: 'That template name has to be a file name, so nothing was renamed.',
+			notice: 'That name is not a file name, so nothing was renamed.',
 		};
 	}
 	if (oldName === newName) return { action: 'noop', reason: 'unchanged' };
@@ -59,7 +59,7 @@ export function planTemplateRename(input: {
 		return {
 			action: 'refuse',
 			reason: 'outside-folder',
-			notice: 'That template stays inside Templater’s template folder, so nothing was renamed.',
+			notice: 'The file has to stay in Templater’s templates folder, so nothing was renamed.',
 		};
 	}
 	if (input.oldState === 'other') {

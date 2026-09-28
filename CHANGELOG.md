@@ -2,17 +2,18 @@
 
 ## 1.2.2
 
-`main.js` SHA-256: `d4658ab71a87c74379b1101d28ea741c3ad8e5350d4b41d6b8c7233b4168c8b1`
+`main.js` SHA-256: `0c1a8a07a1ee7cd11f124cff6f1f8860dc0cd097254891dbda5ef5188fd2a3b3`
 
 `styles.css` SHA-256: `297f4aea57459d6e94146f54b1f42fe2f6e9ce10eb26d3e156f797ecf5c2def4`
 
-`manifest.json` SHA-256: `9dfbdfbf4c824e331ed3c1cc30c20de091bb249fd6e103b0a5bba88074264621`
+`manifest.json` SHA-256: `bc4fe874c3fbcb4bcad74e9d9c5312bdc201c30e9eff7533ab81d0d536083c4f`
 
 - A companion chosen after Home, or while creating a new RV, is appended to Taken only. Met With is the person at the door and is left unchanged. The same rule applies to the plugin Home button, Meta Bind / Templater `rvLog.js`, and New RV (`newRv.js` / `plugin.promptCompanion()`).
 - Skip and Esc still leave Met With and Taken unchanged. Not home still does not ask. A name already on Taken is not added again.
 - `linkCompanionsToNotes` still applies only to the Taken write: off stores plain text, and on stores `[[Note Name]]` when a note name or alias matches. A missing note stays plain text. It does not write Met With. A wikilink Obsidian flattens into an unquoted `[[Name]]` or a nested list is written back as `"[[Name]]"` so the link stays on the note. The plugin Home button and Meta Bind / Templater `rvLog.js` use that same helper.
 - Home no longer skips a `###` stamp when that rounded-hour heading is already on the note. A second Home or Not home applies immediately: counts, timestamps, Attempt Log, and (for Home) another stamp. The plugin button and Meta Bind / Templater `rvLog.js` use the same rule. There is no setting that turns a time lock back on.
-- The setup wizard starts with a home region step: the counties where you normally work return visits. A fully confident geocode hit in one of them can be saved without asking, which avoids a wrong-city pick. You can enter one or more counties, the same list as Home base counties, or skip. Skip leaves the saved list unchanged. An empty list still always asks you to confirm. The wizard does not open again on its own after it has been closed. Settings → Open setup wizard includes the home-region step.
+- The setup wizard starts with a home region step: the counties where you normally work return visits. A fully confident geocode hit in one of them can be saved without asking, which avoids a wrong-city pick. You can enter one or more counties, the same list as Home counties, or skip. Skip leaves the saved list unchanged. An empty list still always asks you to confirm. The wizard does not open again on its own after it has been closed. Settings → Open setup wizard includes the home-region step.
+- Settings, the setup wizard, notices, and the bulk and visit prompts use shorter copy. The rules are the same: Address is never overwritten, empty home counties always ask you to confirm, and lookups use Geoapify’s EU endpoint.
 - Opening Glancable or a Nearby view shows one notice while setup is unfinished: the wizard has not been closed, or a required step is still missing (Geoapify key, Templater, Meta Bind, template folder, script folder, or the template and script files). Empty home counties do not keep that notice up after the wizard is closed. The notice stays up for 12 seconds and has Open setup wizard and Don't remind me again. Don't remind me again stores `setupIncompleteNudgeDismissed` for this vault and does not mark setup complete. The notice stops on its own once setup is complete.
 - The New RV quote strip puts exactly six spaces after `**Hubs:**` and before the Meta Bind input, so that box lines up with the Address input. The Address line is unchanged. Extras sync ships this in `99 New RV.md`.
 - Changing New RV, Home log, or Not home log file name renames that note inside Templater’s template folder. The + button uses the new New RV name. If the new name is already a file there, the old file stays and the setting stays on the old name. If the old file is missing and the new one is already there, the setting is kept. If neither file is there yet, the setting is saved and extras sync can create it later. A half-typed or unsafe name does not rename. Home and Not home renames also update Meta Bind `templateFile:` lines in the vault that still use the old path, including the New RV template and existing RV notes.

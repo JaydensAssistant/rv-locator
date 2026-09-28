@@ -61,7 +61,7 @@ export interface SetupWizardActions {
 	openCommunityPlugins: () => void;
 	openTemplaterSettings: () => void;
 	openMetaBindSettings: () => void;
-	/** Writes Home base counties, then saves settings. Skip does not call this. */
+	/** Writes home counties, then saves settings. Skip does not call this. */
 	onSaveHomeCounties: (counties: string[]) => Promise<void> | void;
 }
 
@@ -106,10 +106,10 @@ export class SetupWizardModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', { text: 'Step 1 of 2. Home region.' });
 		contentEl.createEl('p', {
-			text: 'Home region is where you normally work return visits. RV Locator uses these counties when it looks up an address. A geocode hit in one of them can be saved automatically when it is the only match and Geoapify is fully confident. Hits in a different county stay on the confirm screen, so a wrong-city pick is not saved for you.',
+			text: 'These counties are where you normally work return visits. A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in one of them, so a wrong-city pick is not saved.',
 		});
 		contentEl.createEl('p', {
-			text: 'Add one county per line, such as Orange or Orange County. This is the same Home base counties list as in RV Locator settings. Skip leaves the saved list unchanged. If none are saved, every geocode match asks you to confirm.',
+			text: 'One county per line, the same list as Home counties in settings. Skip leaves the list unchanged. Empty means every match asks you to confirm.',
 		});
 		const snapshot = await this.load();
 		if (this.closed || generation !== this.renderGeneration) return;
@@ -119,7 +119,7 @@ export class SetupWizardModal extends Modal {
 		}
 		new Setting(contentEl)
 			.setName('Home counties')
-			.setDesc('One county per line. Saving an empty list means every geocode match asks you to confirm.')
+			.setDesc('One county per line. Empty means every match asks you to confirm.')
 			.addTextArea((text) => {
 				text.inputEl.rows = 4;
 				text.setPlaceholder('Orange\nLake');
@@ -155,7 +155,7 @@ export class SetupWizardModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', { text: 'Step 2 of 2. Templates and scripts.' });
 		contentEl.createEl('p', {
-			text: 'Check Templater and Meta Bind, then place the New RV templates and scripts into the folders Templater is using. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands. Use the settings buttons and confirm those yourself.',
+			text: 'Check Templater and Meta Bind, then put the New RV templates and scripts in Templater’s folders. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.',
 		});
 		const snapshot = await this.load();
 		if (this.closed || generation !== this.renderGeneration) return;
@@ -183,7 +183,7 @@ export class SetupWizardModal extends Modal {
 			});
 		new Setting(contentEl)
 			.addButton((button) => {
-				button.setButtonText('Place extras');
+				button.setButtonText('Update from GitHub');
 				button.setCta();
 				button.onClick(() => { this.actions.onPlaceExtras(); });
 			})

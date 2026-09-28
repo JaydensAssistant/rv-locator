@@ -1759,7 +1759,7 @@ describe('setup wizard', () => {
 		assert.equal(missing.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
 		assert.equal(missing.find((check) => check.id === 'extras')?.ok, false);
 		assert.equal(missing.find((check) => check.id === 'suggested')?.ok, true);
-		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('linkCompanionsToNotes is off'), true);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('Link companions to notes is off'), true);
 		assert.equal(missing.find((check) => check.id === 'home-counties')?.ok, true);
 		assert.equal(missing.find((check) => check.id === 'home-counties')?.detail.includes('asks you to confirm'), true);
 		const named = setupChecklist(sampleSetup({ homeCounties: ['Orange', 'Lake'] }));

@@ -10,7 +10,6 @@ import {
 	EXTRAS_SYNC_REPO,
 	assertExtrasDownloadUrl,
 	downloadExtras,
-	extrasDestinations,
 	extrasRedirectUrl,
 	isAllowlistedExtrasPath,
 	planExtrasWrite,
@@ -42,12 +41,12 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Geocoding').setHeading();
 
 		const keyDesc = createFragment((fragment) => {
-			fragment.appendText('Create a free key at ');
+			fragment.appendText('Free key from ');
 			fragment.createEl('a', {
 				text: 'Geoapify MyProjects',
 				href: 'https://myprojects.geoapify.com/',
 			});
-			fragment.appendText('. The key stays in this vault’s plugin data and is never printed in logs. ');
+			fragment.appendText('. It stays in this vault and is never printed in logs. ');
 			fragment.appendText(PRIVACY_NOTICE);
 		});
 
@@ -80,21 +79,21 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		this.propertySetting(
 			'Address property',
-			'Read from this property. Only this text is sent to Geoapify. Geocode never writes it.',
+			'Read for the lookup. Only this text is sent to Geoapify, and geocode never writes it.',
 			'Address',
 			() => this.plugin.settings.addressProperty,
 			(value) => { this.plugin.settings.addressProperty = value; },
 		);
 		this.propertySetting(
 			'Location property',
-			'Stored as a YAML list of two quoted strings, latitude then longitude.',
+			'YAML list of two quoted strings: latitude, then longitude.',
 			'Location',
 			() => this.plugin.settings.locationProperty,
 			(value) => { this.plugin.settings.locationProperty = value; },
 		);
 		this.propertySetting(
 			'Map link property',
-			'Google Maps search of Address. A street with no city gets the note’s City appended in the link only. Address is never rewritten. Leave empty to skip.',
+			'Google Maps search of Address; leave empty to skip. A street with no city adds the note’s City in the link only, and Address is never rewritten.',
 			'Map Link',
 			() => this.plugin.settings.mapLinkProperty,
 			(value) => { this.plugin.settings.mapLinkProperty = value; },
@@ -102,14 +101,14 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Optional place properties')
-			.setDesc('Geocode always writes City. The City property below is an optional alias; leave it empty to skip that alias. Leave County, State, ZIP, or Country empty to skip that part. A filled extra name is overwritten from the geocoder result.');
+			.setDesc('Geocode always writes City. Names below are optional; a filled name is overwritten from the result, and an empty name is skipped.');
 
 		this.extraSetting(
 			'City property',
 			'City',
 			() => this.plugin.settings.cityProperty,
 			(value) => { this.plugin.settings.cityProperty = value; },
-			'Optional alias. Geocode always writes City. An empty name here only skips that alias.',
+			'Optional extra name. Geocode always writes City even when this is empty.',
 		);
 		this.extraSetting('County property', 'County', () => this.plugin.settings.countyProperty, (value) => { this.plugin.settings.countyProperty = value; });
 		this.extraSetting('State property', 'State', () => this.plugin.settings.stateProperty, (value) => { this.plugin.settings.stateProperty = value; });
@@ -117,8 +116,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		this.extraSetting('Country property', 'Country', () => this.plugin.settings.countryProperty, (value) => { this.plugin.settings.countryProperty = value; });
 
 		new Setting(containerEl)
-			.setName('Home base counties')
-			.setDesc('One county per line, such as Orange or Orange County. Leave this empty to always confirm the match. A result is saved without the picker only when Geoapify rank.confidence is 1.00 and it is the only result in one of these counties. A missing confidence, or two in-county results, opens the picker. Bulk geocode uses the same rule. Address is never written.')
+			.setName('Home counties')
+			.setDesc('One county per line; empty always asks you to confirm, and Address is never written. A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in one of these counties, including bulk geocode.')
 			.addTextArea((text) => {
 				text.inputEl.rows = 4;
 				text.setPlaceholder('Orange\nLake');
@@ -132,12 +131,20 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Nearby views').setHeading();
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
-			text: 'Nearby always shows file name, Distance, Priority, Last Spoke, Last Attempted, Met, Visits, Successful Visits, Address, Met With, and Map Link. Priority sits beside Distance. The stored City property is shown next to Distance; if City is missing, Nearby parses it from Address. The note still stores the full address. Sort chips are Nearest / Furthest, Priority · high / low, Spoke · oldest / newest, and Attempted · oldest / newest. The first tap uses nearest, high priority, or longest-ago. Tapping the selected chip flips direction. The last choice is remembered. Active layouts keep Hub links to Return Visits Hub with Priority above 0. All layouts keep that Hub link at any priority. Inactive layouts keep that Hub link with Priority 0. Every layout skips the +/Templates folder.',
+			text: 'Shows file name, Distance, Priority, Last Spoke, Last Attempted, Met, Visits, Successful Visits, Address, Met With, and Map Link, with Priority beside Distance. City is the stored City, or parsed from Address when City is missing, and the note still keeps the full address.',
+		});
+		containerEl.createEl('p', {
+			cls: 'setting-item-description',
+			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest. The first tap uses nearest, high, or longest-ago, and tapping the selected chip flips direction; the last choice is remembered.',
+		});
+		containerEl.createEl('p', {
+			cls: 'setting-item-description',
+			text: 'Active keeps a Hub link to Return Visits Hub when Priority is above 0. All keeps that link at any priority, Inactive only at Priority 0, and every layout skips +/Templates.',
 		});
 
 		new Setting(containerEl)
 			.setName('Distance unit')
-			.setDesc('Used by the nearby views. Distance is calculated on screen and is not written into notes.')
+			.setDesc('Miles or kilometers in Nearby and Glancable. Distance stays on screen and is not written into notes.')
 			.addDropdown((dropdown) => {
 				dropdown.addOption('miles', 'Miles');
 				dropdown.addOption('kilometers', 'Kilometers');
@@ -150,7 +157,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Weekday date properties')
-			.setDesc('Comma-separated property keys. Nearby shows Last Spoke, Last Attempted, and Met as a bold Wed, 2pm, a smaller Sep 9, 2026, and a days chip. An empty value is a muted em dash.')
+			.setDesc('Comma-separated property names, shown as Wed, 2pm, a smaller date, and a days chip. An empty value is a muted dash.')
 			.addText((text) => {
 				text.setPlaceholder('Last Spoke, Met, Last Attempted');
 				text.setValue(this.plugin.settings.datePropertiesForWeekday.join(', '));
@@ -163,11 +170,11 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Developer').setHeading();
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
-			text: 'Desktop distance testing checks Distance and the Nearest sort without GPS. It is off by default. While it is on, Nearby uses the test latitude and longitude instead of this device, and a banner says so. Distance stays in memory and is not written into notes.',
+			text: 'While on, Nearby and Glancable use the test coordinates instead of this device, and a banner says so. Distance is not written into notes.',
 		});
 		new Setting(containerEl)
 			.setName('Desktop distance testing')
-			.setDesc('Use the test coordinates as the position for Distance, Nearest, and the Glancable distance slot.')
+			.setDesc('Nearby and Glancable use the test coordinates instead of this device.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.distanceTest);
 				toggle.onChange(async (value) => {
@@ -177,7 +184,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		this.coordSetting(
 			'Test latitude',
-			'Used only while desktop distance testing is on. The default is an Orlando-area point.',
+			'Used only while desktop distance testing is on. Default is an Orlando-area point.',
 			'28.54',
 			90,
 			() => this.plugin.settings.testLatitude,
@@ -195,14 +202,14 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Templater and Meta Bind').setHeading();
 		new Setting(containerEl)
 			.setName('Setup wizard')
-			.setDesc('Starts with home counties, then checks that Templater and Meta Bind are enabled, shows the folders Templater is using, and places templates and scripts after you confirm. Home counties here are the same list as Home base counties. RV Locator does not install or enable community plugins. It does not turn on the Meta Bind JS Engine or Templater system commands.')
+			.setDesc('Starts with home counties, then Templater, Meta Bind, and the template files. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.')
 			.addButton((button) => {
 				button.setButtonText('Open setup wizard');
 				button.onClick(() => { this.plugin.openSetupWizard(); });
 			});
 		new Setting(containerEl)
 			.setName('Default priority for a new RV')
-			.setDesc('Written as Priority when a new return-visit note is created. 0 through 5. The default is 3.')
+			.setDesc('Priority on a new RV. 0–5, default 3.')
 			.addDropdown((dropdown) => {
 				for (let rank = 0; rank <= 5; rank += 1) dropdown.addOption(String(rank), String(rank));
 				dropdown.setValue(String(this.plugin.settings.defaultNewRvPriority));
@@ -213,7 +220,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Link companions to notes')
-			.setDesc('When on, a companion appended to Taken is stored as [[Note Name]] when a note’s name or alias matches. No match stays plain text. Off always stores plain text. Met With is not changed. One toggle; there is no prefix or suffix.')
+			.setDesc('On, Taken stores [[Note Name]] when a note name or alias matches; otherwise plain text. Off is always plain text, and Met With is not changed.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.linkCompanionsToNotes);
 				toggle.onChange(async (value) => {
@@ -224,7 +231,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		this.templateFileSetting(
 			templateGeneration,
 			'New RV template file',
-			'File name inside Templater’s template folder. The + button looks for this name first, then New RV.md. Changing it renames that file in the template folder. The + button uses the new name.',
+			'Name in Templater’s templates folder. The + button uses it, then New RV.md. Changing it renames the file.',
 			DEFAULT_NEW_RV_TEMPLATE_FILE,
 			() => this.plugin.settings.newRvTemplateFile,
 			(value) => { this.plugin.settings.newRvTemplateFile = value; },
@@ -233,7 +240,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		this.templateFileSetting(
 			templateGeneration,
 			'Home log template file',
-			'File name for the Meta Bind Home button. Sync writes it into Templater’s template folder and points New RV at that path. Changing it renames that file and updates templateFile paths that still use the old name.',
+			'Home button template in Templater’s templates folder. Changing the name renames the file and updates templateFile paths that still use the old name.',
 			DEFAULT_HOME_LOG_TEMPLATE_FILE,
 			() => this.plugin.settings.homeLogTemplateFile,
 			(value) => { this.plugin.settings.homeLogTemplateFile = value; },
@@ -242,17 +249,16 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		this.templateFileSetting(
 			templateGeneration,
 			'Not home log template file',
-			'File name for the Meta Bind Not home button. Sync writes it into Templater’s template folder and points New RV at that path. Changing it renames that file and updates templateFile paths that still use the old name.',
+			'Not home button template in Templater’s templates folder. Changing the name renames the file and updates templateFile paths that still use the old name.',
 			DEFAULT_MISS_LOG_TEMPLATE_FILE,
 			() => this.plugin.settings.missLogTemplateFile,
 			(value) => { this.plugin.settings.missLogTemplateFile = value; },
 			true,
 		);
 		const placement = this.plugin.extrasPlacement();
-		const extrasPaths = extrasDestinations(this.app.vault.configDir, placement).map((file) => file.vault).join(', ');
 		new Setting(containerEl)
-			.setName('Update Templater / Meta Bind extras from GitHub')
-			.setDesc(`Downloads tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO} from raw.githubusercontent.com. Not the moving main or unstable branch. Templates go to ${placement.templatesFolder}/ (Templater templates_folder) and scripts go to ${placement.scriptsFolder}/ (Templater user_scripts_folder). Documentation and the CSS snippet are not downloaded. Asks before any write. Existing files are skipped unless overwrite is checked. Does not change notes, Address, or the Geoapify key. Paths: ${extrasPaths}.`)
+			.setName('Update templates and scripts')
+			.setDesc(`Downloads tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO} into ${placement.templatesFolder}/ and ${placement.scriptsFolder}/ (not main or unstable; docs and the CSS snippet are not included). You confirm before anything is written; existing files stay unless overwrite is checked, and notes, Address, and the Geoapify key are not changed.`)
 			.addButton((button) => {
 				button.setButtonText('Update from GitHub');
 				button.onClick(() => { startExtrasSync(this.app, this.plugin); });
@@ -271,7 +277,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		osmLink.setAttr('rel', 'noopener');
 		about.createEl('p', {
-			text: 'Lookups use Geoapify’s EU endpoint (api-eu.geoapify.com). Google Maps is used only to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
+			text: 'Lookups use Geoapify’s EU endpoint (api-eu.geoapify.com). Google Maps is only used to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
 		});
 	}
 
@@ -367,7 +373,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		placeholder: string,
 		read: () => string,
 		write: (value: string) => void,
-		desc = 'Empty skips this output.',
+		desc = 'Leave empty to skip.',
 	): void {
 		this.propertySetting(name, desc, placeholder, read, write);
 	}
@@ -404,13 +410,13 @@ export function startExtrasSync(app: App, plugin: RVLocatorPlugin): void {
 
 async function previewExtras(app: App, plugin: RVLocatorPlugin): Promise<void> {
 	const placement = plugin.extrasPlacement();
-	const pending = new Notice(`Downloading extras at ${EXTRAS_SYNC_REF}…`, 0);
+	const pending = new Notice(`Downloading templates and scripts (${EXTRAS_SYNC_REF})…`, 0);
 	try {
 		const plan = await downloadExtras((url) => fetchPinnedExtras(url), app.vault.configDir, EXTRAS_SYNC_REF, placement);
 		pending.hide();
 		if (plan.files.length === 0) {
 			const failText = plan.failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ');
-			new Notice(`Extras download failed. Nothing was written. ${failText}`, 12_000);
+			new Notice(`Could not download templates. Nothing was written. ${failText}`, 12_000);
 			return;
 		}
 		const rows: ExtrasPreviewRow[] = [];
@@ -427,7 +433,7 @@ async function previewExtras(app: App, plugin: RVLocatorPlugin): Promise<void> {
 	} catch (error) {
 		pending.hide();
 		const reason = error instanceof Error && error.message ? error.message : 'download failed';
-		new Notice(`Extras download failed. Nothing was written. ${reason}`, 10_000);
+		new Notice(`Could not download templates. Nothing was written. ${reason}`, 10_000);
 	}
 }
 
@@ -463,7 +469,7 @@ async function applyExtras(
 			failed.length ? `Failed: ${failed.map((item) => `${item.vaultPath} (${item.reason})`).join('; ')}` : '',
 		].filter(Boolean);
 		const summary = parts.join(' ') || 'Nothing was written.';
-		new Notice(`Extras ${EXTRAS_SYNC_REF}. ${summary}`, 14_000);
+		new Notice(`Templates ${EXTRAS_SYNC_REF}. ${summary}`, 14_000);
 }
 
 interface ExtrasPreviewRow extends ExtrasSyncFile {
@@ -483,9 +489,12 @@ class ExtrasSyncConfirmModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.setTitle('Update Templater / Meta Bind extras');
+		this.setTitle('Update templates and scripts');
 		this.contentEl.createEl('p', {
-			text: `Pinned ref ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked. This update does not enable plugins, the Meta Bind JS Engine, or Templater system commands. Notes, Address, and the Geoapify key are not touched.`,
+			text: `Tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked.`,
+		});
+		this.contentEl.createEl('p', {
+			text: 'This does not enable plugins, the Meta Bind JS Engine, or Templater system commands. Notes, Address, and the Geoapify key are not changed.',
 		});
 		const list = this.contentEl.createEl('ul');
 		const actions: HTMLElement[] = [];
