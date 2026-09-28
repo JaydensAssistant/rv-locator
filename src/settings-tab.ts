@@ -1,8 +1,11 @@
-import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, type App } from 'obsidian';
+import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, type App, type TextComponent } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
 import { parseDatePropertyNames } from './dates';
 import { parseHomeCountyLines } from './home-base';
 import {
+	DEFAULT_HOME_LOG_TEMPLATE_FILE,
+	DEFAULT_MISS_LOG_TEMPLATE_FILE,
+	DEFAULT_NEW_RV_TEMPLATE_FILE,
 	EXTRAS_SYNC_REF,
 	EXTRAS_SYNC_REPO,
 	assertExtrasDownloadUrl,
@@ -17,13 +20,22 @@ import {
 	type ExtrasSyncFile,
 } from './extras-sync';
 import type RVLocatorPlugin from './main';
+import { applyTemplateSettingChange, type TemplateRenameVault } from './template-rename';
+
+/** Pause so a half-typed file name does not rename the note on every keystroke. */
+const TEMPLATE_RENAME_DELAY_MS = 400;
 
 export class RVLocatorSettingTab extends PluginSettingTab {
+	private templateFieldGeneration = 0;
+	private templateRenameChain: Promise<void> = Promise.resolve();
+
 	constructor(app: App, private plugin: RVLocatorPlugin) {
 		super(app, plugin);
 	}
 
 	display(): void {
+		this.templateFieldGeneration += 1;
+		const templateGeneration = this.templateFieldGeneration;
 		const { containerEl } = this;
 		containerEl.empty();
 
@@ -209,26 +221,32 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
-		this.propertySetting(
+		this.templateFileSetting(
+			templateGeneration,
 			'New RV template file',
-			'File name inside Templater’s template folder. The + button looks for this name first, then New RV.md.',
-			'99 New RV.md',
+			'File name inside Templater’s template folder. The + button looks for this name first, then New RV.md. Changing it renames that file in the template folder. The + button uses the new name.',
+			DEFAULT_NEW_RV_TEMPLATE_FILE,
 			() => this.plugin.settings.newRvTemplateFile,
 			(value) => { this.plugin.settings.newRvTemplateFile = value; },
+			false,
 		);
-		this.propertySetting(
+		this.templateFileSetting(
+			templateGeneration,
 			'Home log template file',
-			'File name for the Meta Bind Home button. Sync writes it into Templater’s template folder and points New RV at that path.',
-			'99 RV Log Home.md',
+			'File name for the Meta Bind Home button. Sync writes it into Templater’s template folder and points New RV at that path. Changing it renames that file and updates templateFile paths that still use the old name.',
+			DEFAULT_HOME_LOG_TEMPLATE_FILE,
 			() => this.plugin.settings.homeLogTemplateFile,
 			(value) => { this.plugin.settings.homeLogTemplateFile = value; },
+			true,
 		);
-		this.propertySetting(
+		this.templateFileSetting(
+			templateGeneration,
 			'Not home log template file',
-			'File name for the Meta Bind Not home button. Sync writes it into Templater’s template folder and points New RV at that path.',
-			'99 RV Log Miss.md',
+			'File name for the Meta Bind Not home button. Sync writes it into Templater’s template folder and points New RV at that path. Changing it renames that file and updates templateFile paths that still use the old name.',
+			DEFAULT_MISS_LOG_TEMPLATE_FILE,
 			() => this.plugin.settings.missLogTemplateFile,
 			(value) => { this.plugin.settings.missLogTemplateFile = value; },
+			true,
 		);
 		const placement = this.plugin.extrasPlacement();
 		const extrasPaths = extrasDestinations(this.app.vault.configDir, placement).map((file) => file.vault).join(', ');
@@ -255,6 +273,73 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		about.createEl('p', {
 			text: 'Lookups use Geoapify’s EU endpoint (api-eu.geoapify.com). Google Maps is used only to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
 		});
+	}
+
+	private templateFileSetting(
+		generation: number,
+		name: string,
+		desc: string,
+		fallbackName: string,
+		read: () => string,
+		write: (value: string) => void,
+		rewriteReferences: boolean,
+	): void {
+		let timer: number | undefined;
+		new Setting(this.containerEl)
+			.setName(name)
+			.setDesc(desc)
+			.addText((text) => {
+				text.setPlaceholder(fallbackName);
+				text.setValue(read());
+				const run = (fromBlur: boolean) => {
+					if (generation !== this.templateFieldGeneration) return;
+					this.templateRenameChain = this.templateRenameChain
+						.then(() => this.commitTemplateFileName(generation, text, read, write, fallbackName, rewriteReferences, fromBlur))
+						.catch(() => undefined);
+				};
+				text.onChange(() => {
+					if (timer) window.clearTimeout(timer);
+					timer = window.setTimeout(() => {
+						timer = undefined;
+						run(false);
+					}, TEMPLATE_RENAME_DELAY_MS);
+				});
+				text.inputEl.addEventListener('blur', () => {
+					if (timer) window.clearTimeout(timer);
+					timer = undefined;
+					run(true);
+				});
+			});
+	}
+
+	private async commitTemplateFileName(
+		generation: number,
+		text: TextComponent,
+		read: () => string,
+		write: (value: string) => void,
+		fallbackName: string,
+		rewriteReferences: boolean,
+		fromBlur: boolean,
+	): Promise<void> {
+		if (generation !== this.templateFieldGeneration) return;
+		const previous = read();
+		const result = await applyTemplateSettingChange(templateRenameVault(this.app), {
+			templatesFolder: this.plugin.extrasPlacement().templatesFolder,
+			previous,
+			typed: text.getValue(),
+			fallbackName,
+			rewriteReferences,
+			fromBlur,
+		});
+		if (result.name !== previous) {
+			write(result.name);
+			await this.plugin.saveSettings();
+		}
+		if (generation !== this.templateFieldGeneration) return;
+		if ((result.revertField || result.name !== previous) && text.getValue() !== result.name) {
+			text.setValue(result.name);
+		}
+		if (result.notice) new Notice(result.notice, 8_000);
 	}
 
 	private propertySetting(
@@ -470,6 +555,42 @@ async function fetchPinnedExtras(url: string): Promise<ExtrasFetchResult> {
 		status: response.status,
 		text: await response.text(),
 		finalUrl: response.url || url,
+	};
+}
+
+function templateRenameVault(app: App): TemplateRenameVault {
+	return {
+		fileState(path: string) {
+			const normalized = normalizePath(path);
+			if (normalized !== path) return 'missing';
+			const file = app.vault.getAbstractFileByPath(normalized);
+			if (!file) return 'missing';
+			return file instanceof TFile ? 'file' : 'other';
+		},
+		async renameFile(from: string, to: string) {
+			const source = normalizePath(from);
+			const dest = normalizePath(to);
+			if (source !== from || dest !== to) throw new Error('Refusing to rename outside the templates folder');
+			const file = app.vault.getAbstractFileByPath(source);
+			if (!(file instanceof TFile) || file.path !== source) throw new Error('Template file is missing');
+			if (app.vault.getAbstractFileByPath(dest)) throw new Error('destination-exists');
+			await app.fileManager.renameFile(file, dest);
+		},
+		markdownFiles() {
+			return app.vault.getMarkdownFiles().map((file) => ({ path: file.path }));
+		},
+		async read(path: string) {
+			const file = app.vault.getAbstractFileByPath(normalizePath(path));
+			if (!(file instanceof TFile)) throw new Error('Template note is missing');
+			return app.vault.read(file);
+		},
+		async modify(path: string, contents: string) {
+			const normalized = normalizePath(path);
+			if (normalized !== path) throw new Error('Refusing to rewrite outside the vault path');
+			const file = app.vault.getAbstractFileByPath(normalized);
+			if (!(file instanceof TFile) || file.path !== normalized) throw new Error('Template note is missing');
+			await app.vault.modify(file, contents);
+		},
 	};
 }
 

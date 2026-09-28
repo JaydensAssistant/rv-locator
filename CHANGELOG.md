@@ -2,7 +2,7 @@
 
 ## 1.2.2
 
-`main.js` SHA-256: `b4db5c20d4d23a1abc72816287768000443c05defcfe96333e5cc25301ac666c`
+`main.js` SHA-256: `5e32a7539dde195108a29df387d8b581da23bd96edcf10f1f2bab1f37f5bcfb3`
 
 `styles.css` SHA-256: `01b4eeb6d6ce8cd574f04addcce67588097a173f129482156ded49c33df852de`
 
@@ -13,6 +13,7 @@
 - `linkCompanionsToNotes` still applies only to the Taken write: off stores plain text, and on stores `[[Note Name]]` when a note basename matches. It does not write Met With.
 - Home no longer skips a `###` stamp when that rounded-hour heading is already on the note. A second Home or Not home applies immediately: counts, timestamps, Attempt Log, and (for Home) another stamp. The plugin button and Meta Bind / Templater `rvLog.js` use the same rule. There is no setting that turns a time lock back on.
 - The setup wizard starts with a home region step: the counties where you normally work return visits. A fully confident geocode hit in one of them can be saved without asking, which avoids a wrong-city pick. You can enter one or more counties, the same list as Home base counties, or skip. Skip leaves the saved list unchanged. An empty list still always asks you to confirm. The wizard does not open again on its own after it has been closed. Settings → Open setup wizard includes the home-region step.
+- Changing New RV, Home log, or Not home log file name renames that note inside Templater’s template folder. The + button uses the new New RV name. If the new name is already a file there, the old file stays and the setting stays on the old name. If the old file is missing and the new one is already there, the setting is kept. If neither file is there yet, the setting is saved and extras sync can create it later. A half-typed or unsafe name does not rename. Home and Not home renames also update Meta Bind `templateFile:` lines in the vault that still use the old path, including the New RV template and existing RV notes.
 - Extras sync is pinned to tag `v1.2.2` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
 
 ## 1.2.1

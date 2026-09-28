@@ -7,6 +7,7 @@ import { createCompanionPromptGate } from '../src/companion-prompt';
 import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT } from '../src/companions';
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
+import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
 import { setupChecklist, type SetupSnapshot } from '../src/setup-check';
 import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
 import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
@@ -1234,6 +1235,228 @@ describe('extras sync', () => {
 		assert.equal(plan.files.some((file) => file.vaultPath.endsWith('.js') && file.contents.includes('templateFile: Ministry/')), false);
 	});
 });
+
+describe('template file rename', () => {
+	const home = [
+		'    id: rv-log-home',
+		'    templateFile: Templates/99 RV Log Home.md',
+		'    id: rv-log-miss',
+		'    templateFile: Templates/99 RV Log Miss.md',
+		'See Templates/99 RV Log Home.md in the docs.',
+		'    templateFile: Templates/99 RV Log Home.md.bak',
+		'    templateFile: "Templates/99 RV Log Home.md"',
+	].join('\n');
+
+	it('renames a template inside the Templater folder and rewrites Home templateFile paths', async () => {
+		const store = memoryTemplates({
+			'Templates/99 RV Log Home.md': 'home button',
+			'Templates/99 New RV.md': home,
+			'RVs/Ada.md': `${home.replace(/\n/g, '\r\n')}\r\nAddress: 1 Main\r\n`,
+			'Notes/99 RV Log Home.md': 'not the template',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 RV Log Home.md',
+			typed: '03 RV Log Home.md',
+			fallbackName: '99 RV Log Home.md',
+			rewriteReferences: true,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '03 RV Log Home.md');
+		assert.equal(result.notice?.includes('Renamed Templates/99 RV Log Home.md to Templates/03 RV Log Home.md.'), true);
+		assert.equal(result.notice?.includes('Updated 2 notes'), true);
+		assert.equal(store.notes['Templates/99 RV Log Home.md'], undefined);
+		assert.equal(store.notes['Templates/03 RV Log Home.md'], 'home button');
+		assert.equal(store.notes['Notes/99 RV Log Home.md'], 'not the template');
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/03 RV Log Home.md'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/99 RV Log Miss.md'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('See Templates/99 RV Log Home.md in the docs.'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/99 RV Log Home.md.bak'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: "Templates/03 RV Log Home.md"'), true);
+		assert.equal(store.notes['RVs/Ada.md']?.includes('templateFile: Templates/03 RV Log Home.md\r\n'), true);
+		assert.equal(store.renames.length, 1);
+	});
+
+	it('refuses to clobber an existing destination and keeps the old name', async () => {
+		const store = memoryTemplates({
+			'Templates/99 RV Log Miss.md': 'miss',
+			'Templates/03 RV Log Miss.md': 'already here',
+			'RVs/Ada.md': 'templateFile: Templates/99 RV Log Miss.md\n',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 RV Log Miss.md',
+			typed: '03 RV Log Miss.md',
+			fallbackName: '99 RV Log Miss.md',
+			rewriteReferences: true,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '99 RV Log Miss.md');
+		assert.equal(result.revertField, true);
+		assert.equal(result.notice, 'Did not rename. Templates/03 RV Log Miss.md already exists.');
+		assert.equal(store.notes['Templates/99 RV Log Miss.md'], 'miss');
+		assert.equal(store.notes['Templates/03 RV Log Miss.md'], 'already here');
+		assert.equal(store.notes['RVs/Ada.md'], 'templateFile: Templates/99 RV Log Miss.md\n');
+		assert.equal(store.renames.length, 0);
+	});
+
+	it('keeps the setting when the files are already aligned or both missing', async () => {
+		const aligned = memoryTemplates({ 'Ministry/Templates/03 New RV.md': 'body' });
+		const kept = await applyTemplateSettingChange(aligned.vault, {
+			templatesFolder: 'Ministry/Templates',
+			previous: '99 New RV.md',
+			typed: '03 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(kept.name, '03 New RV.md');
+		assert.equal(kept.notice, null);
+		assert.equal(aligned.renames.length, 0);
+		assert.equal(aligned.notes['Ministry/Templates/03 New RV.md'], 'body');
+		const absent = memoryTemplates({});
+		const saved = await applyTemplateSettingChange(absent.vault, {
+			templatesFolder: '',
+			previous: '99 New RV.md',
+			typed: '03 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(saved.name, '03 New RV.md');
+		assert.equal(saved.notice, null);
+		assert.equal(absent.renames.length, 0);
+		assert.equal(planTemplateRename({
+			templatesFolder: 'Templates',
+			oldName: '99 New RV.md',
+			newName: '03 New RV.md',
+			oldState: 'missing',
+			newState: 'missing',
+		}).action, 'save-only');
+	});
+
+	it('does not rename while the name is unchanged, unfinished, or unsafe', async () => {
+		const store = memoryTemplates({ 'Templates/99 New RV.md': 'body' });
+		const same = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '99 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(same.name, '99 New RV.md');
+		assert.equal(same.notice, null);
+		assert.equal(store.lookups.length, 0);
+		const partial = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '03 New',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(partial.name, '99 New RV.md');
+		assert.equal(partial.revertField, false);
+		assert.equal(store.lookups.length, 0);
+		const blurred = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '../secret.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(blurred.name, '99 New RV.md');
+		assert.equal(blurred.revertField, true);
+		assert.equal(store.notes['Templates/99 New RV.md'], 'body');
+		assert.equal(store.renames.length, 0);
+		const outside = planTemplateRename({
+			templatesFolder: '../nope',
+			oldName: '99 New RV.md',
+			newName: '03 New RV.md',
+			oldState: 'file',
+			newState: 'missing',
+		});
+		assert.equal(outside.action, 'rename');
+		if (outside.action === 'rename') assert.equal(outside.from, 'Templates/99 New RV.md');
+	});
+
+	it('renames the New RV template without rewriting Home or Not home buttons', async () => {
+		const store = memoryTemplates({
+			'+/Templates/99 New RV.md': home,
+			'RVs/Ada.md': 'templateFile: +/Templates/99 New RV.md\n',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: '+/Templates',
+			previous: '99 New RV.md',
+			typed: '  03 New RV.md  ',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '03 New RV.md');
+		assert.equal(store.notes['+/Templates/03 New RV.md']?.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(store.notes['RVs/Ada.md'], 'templateFile: +/Templates/99 New RV.md\n');
+		assert.equal(store.notes['+/Templates/99 New RV.md'], undefined);
+	});
+
+	it('leaves a folder at the new path untouched', () => {
+		const blocked = planTemplateRename({
+			templatesFolder: 'Templates',
+			oldName: '99 RV Log Home.md',
+			newName: 'Taken.md',
+			oldState: 'file',
+			newState: 'other',
+		});
+		assert.equal(blocked.action, 'refuse');
+		if (blocked.action === 'refuse') assert.equal(blocked.reason, 'destination-exists');
+		const quoted = rewriteTemplateFilePaths(
+			"templateFile: 'Templates/99 RV Log Miss.md'\n",
+			'Templates/99 RV Log Miss.md',
+			'Templates/Miss.md',
+		);
+		assert.equal(quoted, "templateFile: 'Templates/Miss.md'\n");
+	});
+});
+
+function memoryTemplates(files: Record<string, string>): {
+	vault: TemplateRenameVault;
+	notes: Record<string, string>;
+	renames: [string, string][];
+	lookups: string[];
+} {
+	const notes = { ...files };
+	const renames: [string, string][] = [];
+	const lookups: string[] = [];
+	const vault: TemplateRenameVault = {
+		fileState(path) {
+			lookups.push(path);
+			return path in notes ? 'file' : 'missing';
+		},
+		async renameFile(from, to) {
+			if (to in notes) throw new Error('destination-exists');
+			const body = notes[from];
+			if (body === undefined) throw new Error('missing');
+			notes[to] = body;
+			delete notes[from];
+			renames.push([from, to]);
+		},
+		markdownFiles() {
+			return Object.keys(notes).filter((path) => path.endsWith('.md')).map((path) => ({ path }));
+		},
+		async read(path) {
+			const body = notes[path];
+			if (body === undefined) throw new Error('missing');
+			return body;
+		},
+		async modify(path, contents) {
+			if (!(path in notes)) throw new Error('missing');
+			notes[path] = contents;
+		},
+	};
+	return { vault, notes, renames, lookups };
+}
 
 describe('companions', () => {
 	it('orders recent names from the newest note, Met With before Taken', () => {
