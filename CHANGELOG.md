@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.2.12
+
+`main.js` SHA-256: `be1a3534cf6525ed5c618b4113e587d822b4419fb192be217d91ea15d0372641`
+
+`styles.css` SHA-256: `bfd29df9678802b039f73a2be133c9e8d563c385845cf8741c2aa900893c6cb9`
+
+`manifest.json` SHA-256: `4748980aa201eeb4a9bbcca1b1b3e52e0de2a6669cdd6f625f4c15cb58b7bfac`
+
+- The all-weekdays digest table (the default) shows `homes/trials` or `0/0` in every cell, including days that are not May go out. An em dash remains only when Show every weekday is off, and only for a daypart that is not May go out. Voice lines still name May-go-out slots only.
+- A new RV note matches the created-note layout. The outer callout is an expanded `> [!quote]+ RV Dashboard`. Hubs, Address, and the Home / Not home buttons sit in it. Quick Facts is a nested collapsed `> [!rv]-` callout. `### Visit Notes:` and a `#####` stamp follow, then Return Suggestions with Attempt Log nested inside it (table, then bullets). Meta Bind button blocks stay at the bottom. Home and Not home write `#####` stamps and nested bullets, and the first launch of 1.2.12 rewrites existing suggester / Attempt Log regions into that shape.
+- Return Suggestions color follows the theme accent by default (blue info, green success, yellow/orange warning, red failure, dark red danger, red/purple bug, purple example, grey quote). Everyday → Return Suggestions color is a list of those color names, plus Automatic. Changing it, or the accent while Automatic is on, rewrites `> [!TYPE] Return Suggestions` on every RV note.
+- The Not home button and the Address / Hub inputs inside the dashboard quote callout are darker than the quote background. Hub and Address inputs share a label column so they left-align. Callout icons are hidden on notes with `rv-dashboard`, and the titles shift left.
+- Live Preview still reveals callout source when the caret enters that block. Obsidian does not expose an API to keep a callout rendered while it is being edited, so this build does not pretend to lock it. Visit notes stay outside the callouts.
+- Extras sync is pinned to tag `v1.2.12` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.11`, `v1.2.10`, `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
+## 1.2.11
+
+`main.js` SHA-256: `710258228234998c4341b7b3e19eee69eb20e0b4543456b3bc4383a80e534435`
+
+`styles.css` SHA-256: `3d9383c34dabf50aa914e2b2150aabedbd8149ad12010a3fa9301f68287c71f8`
+
+`manifest.json` SHA-256: `e9f9549c2eaf03ebbc99b429f814f73a9fab3d1fd2d396885c3dcdf801d4cae1`
+
+- Attempt Log order is notes and the `###` stamp, then the suggester quote alone, then the collapsed Attempt Log. The daypart table is the first block inside the callout, above the bullets. It is not left outside the callout.
+- Visible digest markers are gone. `%% rv-locator-digest %%` still showed in Live Preview, and HTML comments made Obsidian treat the table as raw source. The callout is the rewrite boundary: the voice quote is the blockquote on the callout, and the table is the leading `|` rows inside it. The first launch of 1.2.11 strips old `%%` and HTML markers and rewrites existing notes into that shape. New notes, `newRv.js`, and `rvLog.js` match. An opened Attempt Log is collapsed once. A later Home or Not home leaves a `+` or `-` the note already has.
+- The digest table lists all seven weekdays by default. A day that is Off shows an em dash. Everyday → Show every weekday turns that off and lists only May-go-out days, which is the previous table. The suggester still names May-go-out slots only.
+- A new RV note matches the created-note layout. Home and Not home buttons sit above the collapsed `[!rv]-` dashboard. A rule, the `###` stamp, a blank notes line, and another rule follow. The suggester quote is under that second rule. The seven-day table starts inside the collapsed Attempt Log, above the first bullet. A later Home stamp stays above the notes rule. Existing notes are not rewritten just to add those rules.
+- Extras sync is pinned to tag `v1.2.11` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.10`, `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
+## 1.2.10
+
+`main.js` SHA-256: `ea9ee85d832e81fb918fc6239f129d7678d0debb79180f3d77b8a40a06d20ee9`
+
+`styles.css` SHA-256: `3d9383c34dabf50aa914e2b2150aabedbd8149ad12010a3fa9301f68287c71f8`
+
+`manifest.json` SHA-256: `9ed6a846b80f5dd66803bdbfc76c8a49ac7bc9fbb332354c9114c55e8a6a1a24`
+
+- Glancable urgency marks are heavy again, the same visual weight as the priority digit. `!`, `!!`, and `!!!` are thick stems with a round dot, sized from `--rv-control-size` (0.7 of the circle) so they scale with general density. The map pin uses the same stroke weight as that digit (`0.08` of the control size). Band 0 (urgency at least 0 and under 1, priority at least 1) is still the green circle, and it now draws an inner ring in place of the bangs. That ring uses the same stroke weight. Priority 0 stays a faint grey stack with no inner mark.
+- The Attempt Log digest renders as a live table and a blockquote. HTML comments were the problem: Obsidian treats `<!-- rv-locator-digest -->` … `<!-- /rv-locator-digest -->` as one HTML block and shows the table and the quote as raw source. Markers are now same-line `%% rv-locator-digest %%` comments, with a blank line before the table, so Live Preview and Reading view render the table and the suggester quote. The order is unchanged: table, then the quote, then the Attempt Log callout. The first launch of 1.2.10 rewrites old HTML-comment digests into that shape.
+- New Attempt Logs stay collapsed (`> [!note]-`). The Glancable priority pill and the note's Home / Not home buttons (`rvLog.js`) both create that `-` form. The 1.2.10 polish collapses an opened or unmarked Attempt Log once. A later Home or Not home leaves a `+` or `-` the note already has.
+- Each `###` visit stamp gets a small muted age, such as `54 days ago` or `0 days ago`, from calendar days since that stamp. It is plugin text in `<span class="rv-stamp-ago">`, not Dataview. Creating a note, logging Home, and the polish pass all write or refresh it. Not home refreshes ages already on the note.
+- The Glancable sort row scrolls horizontally while the Bases top bar is still on, both in a hub note that embeds the `.base` and when the `.base` file is open. The toolbar was widening the host past the visible width and clipping the chip scrollbar. The host is constrained so the chip row is the visible width. Hiding the whole bar is not required.
+- Extras sync is pinned to tag `v1.2.10` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.9
 
 `main.js` SHA-256: `4534c97700c56d7e9053759ea01ebb5051422d7e8efd8dcd6e2ee4e33e616e43`

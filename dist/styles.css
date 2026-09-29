@@ -268,13 +268,16 @@
 	top: 0;
 	z-index: 2;
 	min-width: 0;
+	max-width: 100%;
 	overflow: hidden;
 	padding: 8px 12px;
 	border-bottom: 1px solid var(--background-modifier-border);
 	background: var(--background-primary);
 }
 
-/* Only the chips scroll. The New button stays on this row. */
+/* Only the chips scroll. The New button stays on this row.
+   overflow-y: hidden clips the horizontal scrollbar in Chromium, so the
+   cross axis stays auto and the bar's height includes the bar. */
 .rv-locator-sort-scroll {
 	display: flex;
 	flex: 1 1 auto;
@@ -282,9 +285,15 @@
 	gap: 8px;
 	align-items: center;
 	min-width: 0;
+	max-width: 100%;
 	overflow-x: auto;
-	overflow-y: hidden;
+	overflow-y: auto;
 	scrollbar-width: thin;
+	scrollbar-color: var(--scrollbar-thumb-bg, var(--background-modifier-border)) transparent;
+}
+
+.rv-locator-sort-scroll::-webkit-scrollbar {
+	height: 8px;
 }
 
 .rv-locator-sort-label {
@@ -406,9 +415,13 @@
 }
 
 .rv-locator-glancable .rv-locator-sortbar {
+	flex: 0 0 auto;
 	flex-wrap: nowrap;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
 	margin: 0;
-	padding: 6px 10px 2px;
+	padding: 6px 10px 4px;
 	border: 0;
 	background: var(--background-primary);
 }
@@ -620,7 +633,9 @@
 .rv-locator-view .rv-locator-map-pin svg {
 	width: 100%;
 	height: 100%;
-	stroke-width: 1.5;
+	stroke-width: calc(var(--rv-control-size, 28px) * 0.08);
+	stroke-linecap: round;
+	stroke-linejoin: round;
 }
 
 .rv-locator-glancable .rv-locator-card-actions {
@@ -684,7 +699,7 @@
 	width: var(--rv-control-size, 28px);
 	height: var(--rv-control-size, 28px);
 	margin: 0;
-	padding: calc(var(--rv-control-size, 28px) * 0.16);
+	padding: 0;
 	border: calc(1.25px * var(--rv-font-scale, 1)) solid var(--rv-urgency-accent, var(--text-faint));
 	border-radius: 999px;
 	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 13%, transparent);
@@ -697,7 +712,7 @@
 	cursor: pointer;
 }
 
-/* Band 0 is this same ring. There is no second inner circle. */
+/* Band 0 keeps the outer circle and adds the inner ring drawn in the glyph. */
 .rv-locator-view .rv-locator-urgency[data-band="0"] {
 	border-width: calc(1.25px * var(--rv-font-scale, 1));
 }
@@ -705,14 +720,14 @@
 .rv-locator-view .rv-locator-priority-pill {
 	padding: 0;
 	font-size: calc(var(--rv-control-size, 28px) * 0.46);
-	font-weight: 650;
+	font-weight: 700;
 }
 
 .rv-locator-view .rv-locator-urgency .rv-urgency-glyph {
 	display: block;
 	flex: 0 0 auto;
-	width: calc(var(--rv-control-size, 28px) * 0.56);
-	height: calc(var(--rv-control-size, 28px) * 0.56);
+	width: calc(var(--rv-control-size, 28px) * 0.7);
+	height: calc(var(--rv-control-size, 28px) * 0.7);
 	overflow: visible;
 	color: inherit;
 	fill: currentColor;
@@ -722,6 +737,12 @@
 .rv-locator-view .rv-locator-urgency .rv-urgency-glyph circle {
 	fill: currentColor;
 	stroke: none;
+}
+
+.rv-locator-view .rv-locator-urgency .rv-urgency-glyph circle.is-ring {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: calc(var(--rv-control-size, 28px) * 0.08);
 }
 
 .rv-locator-view .rv-locator-card.is-priority-zero .rv-locator-urgency,
@@ -963,7 +984,54 @@ table.rv-locator-digest-table,
 /*
   Bases chrome, only while this leaf's Glancable view is active.
   The host class is removed when that view unloads.
+
+  The Bases toolbar is a nowrap row. Its min-content width was stretching
+  the embed and the .base leaf, and the note or leaf then clipped that
+  width, so the chip scrollbar sat outside the visible box. Hiding the
+  toolbar made the host shrink and the scrollbar work. Keep the toolbar.
+  Constrain the host so the chip row is the visible width in both places:
+  a hub note that embeds the .base, and the .base file opened on its own.
 */
+.bases-embed.rv-glancable-host,
+.block-language-base.rv-glancable-host,
+.view-content.rv-glancable-host,
+.workspace-leaf-content.rv-glancable-host .view-content {
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: hidden;
+}
+
+.rv-glancable-host .bases-toolbar {
+	box-sizing: border-box;
+	flex: 0 1 auto;
+	align-self: stretch;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+	overflow-y: hidden;
+}
+
+.rv-glancable-host .rv-locator-glancable {
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.markdown-rendered :is(h3, h5) .rv-stamp-ago,
+.markdown-preview-view :is(h3, h5) .rv-stamp-ago,
+.cm-header .rv-stamp-ago,
+.rv-stamp-ago {
+	margin-left: 0.45em;
+	color: var(--text-muted);
+	font-size: 0.62em;
+	font-weight: 400;
+	letter-spacing: 0;
+	vertical-align: baseline;
+}
 .rv-glancable-host[data-rv-hide-toolbar] .bases-toolbar {
 	display: none;
 }
@@ -1206,8 +1274,8 @@ table.rv-locator-digest-table,
         > button.mb-button-inner
   The class from the button block lands on the span, not the <button>.
   button.mb-button never matches, so these rules do not use it.
-  They also do not require cssclass rv-dashboard, because the buttons sit
-  outside the dashboard callout.
+  They also do not require cssclass rv-dashboard. The buttons sit inside
+  the RV Dashboard quote callout.
 */
 .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
 	display: inline-flex;
@@ -1248,4 +1316,63 @@ span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
 	background-color: var(--text-accent);
 	color: var(--text-on-accent);
 	border-color: var(--text-accent);
+}
+
+/*
+  Not home is the default Meta Bind button. The quote callout behind it is
+  already a grey strip, so the stock grey button disappears. Mix the page
+  background toward black so the button stays darker than that strip in
+  light and dark themes.
+*/
+span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
+	background-color: color-mix(in srgb, var(--background-primary) 68%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 55%, var(--text-muted));
+}
+
+/*
+  Hub and Address controls left-align with each other. The label is the
+  first <strong> ("Hubs:" / "Address:"). A later <strong> inside Return
+  Suggestions ("Try: **Tue**") is not the first child, so that line stays
+  a normal paragraph. Markdown spaces cannot move the Hub box inside a callout.
+*/
+.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) {
+	display: grid;
+	grid-template-columns: 5.6em minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 0.4em;
+}
+
+.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) > strong {
+	font-weight: var(--font-semibold);
+}
+
+/*
+  Address text input and Hub suggester, inside the dashboard quote callout.
+  Darken them against the quote background. Quick Facts stays on the nested
+  [!rv] callout and is not included here.
+*/
+.rv-dashboard .callout[data-callout="quote"] :is(input, textarea, select),
+.rv-dashboard .callout[data-callout="quote"] :is(.meta-bind-input, .mb-input, .mb-suggest-input, .mb-input-wrapper) {
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+}
+
+/*
+  Hide callout type icons on RV notes (quote mark, list, pencil). The title
+  shifts left because the icon is out of the flex row, not covered.
+  Scoped to cssclasses rv-dashboard.
+
+  Live Preview still reveals callout markdown when the caret enters that
+  block. Obsidian has no public API to keep a callout rendered while the
+  cursor is inside it. These rules do not change that. Visit notes stay
+  outside the callouts, so typing a note does not open the dashboard source.
+*/
+.rv-dashboard .callout-icon {
+	display: none;
+}
+
+.rv-dashboard .callout-title {
+	gap: 0;
 }

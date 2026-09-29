@@ -57,8 +57,8 @@ export interface UrgencyMark {
 }
 
 /**
- * Priority above 0 and urgency under 1 is band 0: the circle ring itself, with no inner mark.
- * Bands 1–3 are one to three marks. The glyph size does not shrink as marks are added.
+ * Priority above 0 and urgency under 1 is band 0: a green circle plus an inner ring.
+ * Bands 1–3 are one to three heavy marks. The glyph size does not shrink as marks are added.
  * Priority 0 has no urgency glyph.
  */
 export function urgencyMark(urgency: number | null, priority: number | null): UrgencyMark {
@@ -76,15 +76,30 @@ export interface UrgencyBangShape {
 }
 
 /**
- * Drawn bangs in a 28×28 viewBox. Stems stay narrower than the old 2.8 bars
- * and sit inset so one, two, or three marks have padding inside the circle.
- * Band 0 and priority 0 return nothing: the circle border is the ring.
+ * Heavy marks in a 28×28 viewBox, drawn large enough to match the priority digit.
+ * Stem width tracks that digit and the map pin. One, two, or three marks stay
+ * the same size and sit inset inside the circle.
+ * Band 0 draws an inner ring (stroke, not a fill). Priority 0 returns nothing.
  */
 export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
+	if (glyphs === '○') {
+		return [{
+			kind: 'circle',
+			attr: {
+				class: 'is-ring',
+				cx: '14',
+				cy: '14',
+				r: '8.6',
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-width': '2.9',
+			},
+		}];
+	}
 	const count = glyphs === '!' ? 1 : glyphs === '!!' ? 2 : glyphs === '!!!' ? 3 : 0;
 	if (count === 0) return [];
-	const stem = 1.7;
-	const gap = 2.05;
+	const stem = 3.2;
+	const gap = 1.7;
 	const group = count * stem + (count - 1) * gap;
 	const left = (28 - group) / 2;
 	const shapes: UrgencyBangShape[] = [];
@@ -95,10 +110,10 @@ export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
 			kind: 'rect',
 			attr: {
 				x: x.toFixed(2),
-				y: '8.1',
+				y: '4.8',
 				width: String(stem),
-				height: '7.2',
-				rx: '0.85',
+				height: '12.6',
+				rx: '1.15',
 				fill: 'currentColor',
 			},
 		});
@@ -106,8 +121,8 @@ export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
 			kind: 'circle',
 			attr: {
 				cx: cx.toFixed(2),
-				cy: '17.55',
-				r: '0.9',
+				cy: '20.7',
+				r: '1.75',
 				fill: 'currentColor',
 			},
 		});

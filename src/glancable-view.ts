@@ -328,12 +328,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
- * Bands 1–3. Built with createElementNS in the button's own document
+ * Bands 0–3. Built with createElementNS in the button's own document
  * (Obsidian's createSvg when that helper is on the node). DOMParser markup
  * never becomes a painted child here: a parsed SVG can fail to import, and a
- * viewBox-only svg inside this flex button can resolve to 0×0. Each mark sets
- * fill to currentColor in an inline style so an app or theme rule of
+ * viewBox-only svg inside this flex button can resolve to 0×0. Filled marks
+ * set fill to currentColor inline so an app or theme rule of
  * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
+ * Band 0's inner ring stays a stroke.
  */
 function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	const shapes = urgencyBangShapes(glyphs);
@@ -348,14 +349,20 @@ function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	}, 'rv-urgency-glyph');
 	svg.style.display = 'block';
 	svg.style.flex = '0 0 auto';
-	svg.style.width = 'calc(var(--rv-control-size, 28px) * 0.56)';
-	svg.style.height = 'calc(var(--rv-control-size, 28px) * 0.56)';
+	svg.style.width = 'calc(var(--rv-control-size, 28px) * 0.7)';
+	svg.style.height = 'calc(var(--rv-control-size, 28px) * 0.7)';
 	svg.style.overflow = 'visible';
 	svg.style.color = 'inherit';
 	svg.style.setProperty('fill', 'currentColor');
 	for (const shape of shapes) {
 		const node = makeSvg(svg, shape.kind, shape.attr);
-		node.style.setProperty('fill', 'currentColor');
+		if (shape.attr.fill === 'none') {
+			node.style.setProperty('fill', 'none');
+			node.style.setProperty('stroke', 'currentColor');
+			node.style.setProperty('stroke-width', 'calc(var(--rv-control-size, 28px) * 0.08)');
+		} else {
+			node.style.setProperty('fill', 'currentColor');
+		}
 	}
 }
 

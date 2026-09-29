@@ -19,6 +19,7 @@ import {
 	type ExtrasSyncFile,
 } from './extras-sync';
 import type RVLocatorPlugin from './main';
+import { SUGGESTION_COLOR_OPTIONS, sanitizeSuggestionColor } from './suggestion-callout';
 import {
 	explainMayGoOut,
 	paintMayGoOutGrid,
@@ -160,6 +161,30 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				button.onClick(() => {
 					this.plugin.settings.digestOrientation = this.plugin.settings.digestOrientation === 'columns' ? 'rows' : 'columns';
 					void this.plugin.saveSettings().then(() => this.display());
+				});
+			});
+		new Setting(containerEl)
+			.setName('Show every weekday')
+			.setDesc(this.plugin.settings.digestDays === 'may'
+				? 'Off. The table lists only days that have a May-go-out daypart. A daypart that is not May go out shows an em dash. Turn this on to list Sun through Sat as 0/0 or the real count.'
+				: 'On. The table lists Sun through Sat. A day that is not May go out shows 0/0, or the real count when that slot has attempts. Turn this off to list only May-go-out days.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.digestDays !== 'may');
+				toggle.onChange(async (value) => {
+					this.plugin.settings.digestDays = value ? 'all' : 'may';
+					await this.plugin.saveSettings();
+					this.display();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Return Suggestions color')
+			.setDesc('Colors the Return Suggestions callout. Automatic follows the theme accent. Changing this rewrites every RV note.')
+			.addDropdown((dropdown) => {
+				for (const option of SUGGESTION_COLOR_OPTIONS) dropdown.addOption(option.id, option.label);
+				dropdown.setValue(sanitizeSuggestionColor(this.plugin.settings.suggestionColor));
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.suggestionColor = sanitizeSuggestionColor(value);
+					await this.plugin.saveSettings();
 				});
 			});
 

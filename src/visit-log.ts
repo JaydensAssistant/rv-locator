@@ -1,6 +1,6 @@
 import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
-import { formatGlancableVisitStamp } from './dates';
+import { calendarDaysSinceStamp, formatDaysAgo, formatGlancableVisitStamp, stripStampAge } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
@@ -20,14 +20,15 @@ export function shouldNudgePriority(
 	return successfulVisits % every === 0;
 }
 
-/** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
-const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
+/** `> [!note]-`, `> [!note]+`, an unmarked title, and the nested `> > [!note]` form all count. */
+const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*Attempt Log[\t ]*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
+const VISIT_NOTES_HEADING = '### Visit Notes:';
 const ADDRESS_KEY = 'Address';
 /** Collapsed by default. An existing `+` or `-` on the note is left alone. */
 const CALLOUT_HEADER = '> [!note]- Attempt Log';
-const STAMP_LEVEL = '###';
-/** Empty lines between a new `###` stamp and Attempt Log. The extra line is note padding. */
+const STAMP_LEVEL = '#####';
+/** Empty lines between a new stamp and Attempt Log. The extra line is note padding. */
 const STAMP_NOTE_BLANKS = 2;
 
 /** Local date-time stored on Last Spoke / Last Attempted. No UTC shift. */
@@ -78,22 +79,79 @@ export function applyVisitFrontmatter(
 
 /**
  * Body text below the frontmatter.
- * A home visit inserts `### <stamp>` and two blank lines just above Attempt Log
+ * A home visit inserts `##### <stamp>` and two blank lines just above Attempt Log
  * (one extra line of padding for notes). A second Home in the same rounded
- * hour still inserts another stamp.
- * Both outcomes append `> - <stamp> — success|not home` inside the Attempt Log
- * callout. A missing log is created collapsed (`> [!note]-`). An existing `+`
- * or `-` stays. An old `## Attempt Log` heading is migrated to that collapsed
- * callout on write. A home stamp is inserted above the digest block when one
- * sits on the callout, so the table and quote stay next to the log.
- * Address is not part of the body edit.
+ * hour still inserts another stamp. `### Visit Notes:` is added once, above
+ * the first visit stamp.
+ * Both outcomes append a bullet inside the Attempt Log callout. A nested log
+ * (`> > [!note]`) gets a nested bullet (`> >-`). A missing log is created
+ * collapsed (`> [!note]-`). An existing `+` or `-` stays. An old `## Attempt Log`
+ * heading is migrated to that collapsed callout on write. A home stamp is
+ * inserted above Return Suggestions when that callout wraps the log, and
+ * above the suggester quote on an older note. A rule that sits on that block
+ * stays below the stamp, in the notes area.
+ * Each visit stamp gets a muted age (`54 days ago`). A `###` stamp is promoted
+ * to `#####`. Home and Not home refresh ages already on the note. Address is
+ * not part of the body edit.
  */
 export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): string {
 	const stamp = formatVisitStamp(now);
 	const phrase = outcome === 'home' ? 'success' : 'not home';
 	let next = ensureAttemptLog(body);
 	if (outcome === 'home') next = insertHomeHeading(next, stamp);
-	return appendLogLine(next, `> - ${stamp} — ${phrase}`);
+	next = appendLogLine(next, `> - ${stamp} — ${phrase}`);
+	next = refreshHomeStampAges(next, now);
+	return ensureVisitNotesHeading(next);
+}
+
+const STAMP_HEADING = /^(?:###|#####)\s+(.+?)\s*$/;
+
+/**
+ * Rewrite every Glancable visit stamp so the inline age matches `today`.
+ * `###` stamps are promoted to `#####`. `### Visit Notes:` is left alone.
+ * The age is calendar days, not a Dataview query.
+ */
+export function refreshHomeStampAges(body: string, today: Date): string {
+	const newline = body.includes('\r\n') ? '\r\n' : '\n';
+	const lines = body.split(/\r?\n/);
+	let changed = false;
+	const next = lines.map((line) => {
+		const updated = refreshStampLine(line, today);
+		if (updated !== line) changed = true;
+		return updated;
+	});
+	if (!changed) return body;
+	const joined = next.join(newline);
+	if (body.endsWith('\n') && !joined.endsWith('\n')) return `${joined}\n`;
+	return joined;
+}
+
+function refreshStampLine(line: string, today: Date): string {
+	const match = STAMP_HEADING.exec(line);
+	if (!match) return line;
+	const stamp = stripStampAge(match[1] ?? '');
+	const days = calendarDaysSinceStamp(stamp, today);
+	if (days == null) return line;
+	return `##### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
+}
+
+/** One `### Visit Notes:` above the first visit stamp. Notes with no stamp are left alone. */
+export function ensureVisitNotesHeading(body: string): string {
+	if (body.split(/\r?\n/).some((line) => line.trim() === VISIT_NOTES_HEADING)) return body;
+	const newline = body.includes('\r\n') ? '\r\n' : '\n';
+	const lines = body.split(/\r?\n/);
+	const stampAt = lines.findIndex((line) => isVisitStampLine(line));
+	if (stampAt < 0) return body;
+	const next = [...lines.slice(0, stampAt), VISIT_NOTES_HEADING, ...lines.slice(stampAt)];
+	const joined = next.join(newline);
+	if (body.endsWith('\n') && !joined.endsWith('\n')) return `${joined}\n`;
+	return joined;
+}
+
+function isVisitStampLine(line: string): boolean {
+	const match = STAMP_HEADING.exec(line);
+	if (!match) return false;
+	return calendarDaysSinceStamp(stripStampAge(match[1] ?? ''), new Date()) != null;
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {
@@ -188,8 +246,25 @@ function appendLogLine(body: string, line: string): string {
 	const section = lines.slice(found.index, end);
 	while (section.length > 1 && /^>\s*$/.test(section[section.length - 1] ?? '')) section.pop();
 	while (section.length > 0 && section[section.length - 1] === '') section.pop();
-	section.push(line.startsWith('>') ? line : `> ${line}`);
+	const depth = quoteDepth(section[0] ?? '');
+	if (section.length > 1 && /^(?:>\s*)+\|/.test(section[section.length - 1] ?? '')) {
+		section.push(depth >= 2 ? '> >' : '>');
+	}
+	section.push(formatLogBullet(section[0] ?? '', line));
 	const rest = lines.slice(end);
 	const gap = rest.length > 0 && rest[0] !== '' ? [''] : [];
 	return [...lines.slice(0, found.index), ...section, ...gap, ...rest].join('\n').replace(/\s*$/, '') + '\n';
+}
+
+function quoteDepth(line: string): number {
+	const lead = /^(?:>\s*)+/.exec(line)?.[0] ?? '>';
+	return Math.max(1, (lead.match(/>/g) ?? []).length);
+}
+
+function formatLogBullet(header: string, line: string): string {
+	const text = line.replace(/^(?:>\s*)+/, '').replace(/^[-*]\s+/, '').trim();
+	const depth = quoteDepth(header);
+	if (depth <= 1) return `> - ${text}`;
+	const marks = Array.from({ length: depth }, () => '>').join(' ');
+	return `${marks}- ${text}`;
 }

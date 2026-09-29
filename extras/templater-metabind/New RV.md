@@ -15,49 +15,64 @@ color: purple
 Hub:
   - "[[Return Visits Hub]]"
 cssclasses:
-  - "hide-props"
-  - "rv-dashboard"
+  - hide-props
+  - rv-dashboard
 ---
-> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-> **Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
-
-`BUTTON[rv-log-home, rv-log-miss]`
+> [!quote]+ RV Dashboard
+>**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+>**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
+> 
+> `BUTTON[rv-log-home, rv-log-miss]`
+>
+> > [!rv]- Quick Facts
+> >
+> >**Priority**
+> > `INPUT[slider(minValue(0), maxValue(5)):Priority]` `VIEW[{Priority}]`
+> >
+> >**Visits**
+> >
+> > `INPUT[number:Visits]`
+> >
+> > **Successful Visits**
+> > `INPUT[number:["Successful Visits"]]`
+> > 
+> > **Met**
+> >`INPUT[dateTime:["Met"]]`
+> >
+> >**Last Spoke**
+> >`INPUT[dateTime:["Last Spoke"]]`
+> >
+> >**Last Attempted**
+> >`INPUT[dateTime:["Last Attempted"]]`
+> >
+> >**Met With**
+> >`INPUT[text:["Met With"]]`
+> >
+> >**Taken**
+> >`INPUT[inlineList:Taken]`
 
 ---
-> [!rv]- 👤 RV Dashboard
->
-> **Priority**
-> `INPUT[slider(minValue(0), maxValue(5)):Priority]` `VIEW[{Priority}]`
->
-> **Visits**
-> `INPUT[number:Visits]`
->
-> **Successful Visits**
-> `INPUT[number:["Successful Visits"]]`
->
-> **Met**
-> `INPUT[dateTime:["Met"]]`
->
-> **Last Spoke**
-> `INPUT[dateTime:["Last Spoke"]]`
->
-> **Last Attempted**
-> `INPUT[dateTime:["Last Attempted"]]`
->
-> **Met With**
-> `INPUT[text:["Met With"]]`
->
-> **Taken**
-> `INPUT[inlineList:Taken]`
-### <% rv.stamp %>
+### Visit Notes:
+##### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
+Notes would go here, but template makes this a new line. Another new line also goes below.
 
-
-<!-- rv-locator-digest -->
+---
+> [!example] Return Suggestions
 > No May-go-out days
-<!-- /rv-locator-digest -->
-
-> [!note]- Attempt Log
-> - <% rv.stamp %> — success
+>
+> > [!note]- Attempt Log
+> >
+> >| | Morning | Afternoon | Evening |
+> >| --- | --- | --- | --- |
+> >| Sun | 0/0 | 0/0 | 0/0 |
+> >| Mon | 0/0 | 0/0 | 0/0 |
+> >| Tue | 0/0 | 0/0 | 0/0 |
+> >| Wed | 0/0 | 0/0 | 0/0 |
+> >| Thu | 0/0 | 0/0 | 0/0 |
+> >| Fri | 0/0 | 0/0 | 0/0 |
+> >| Sat | 0/0 | 0/0 | 0/0 |
+> >
+> >- <% rv.stamp %> — success
 
 ```meta-bind-button
 label: Home

@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
-import { decorateAttemptLog, DIGEST_POLISH_VERSION, formatDigestNote, upsertAttemptDigest } from './attempt-digest';
+import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
 	GLANCABLE_ALL_VIEW_TYPE,
@@ -18,7 +18,8 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, shouldNudgePriority, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority, type VisitOutcome } from './visit-log';
+import { calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
@@ -158,6 +159,12 @@ export default class RVLocatorPlugin extends Plugin {
 			void this.syncSetupCompletion();
 			void this.applyDigestPolish();
 		});
+		this.registerEvent(this.app.workspace.on('css-change', () => {
+			if (this.settings.suggestionColor !== 'auto') return;
+			if (this.digestKeyApplied !== '' && this.digestKey() !== this.digestKeyApplied) {
+				void this.saveSettings();
+			}
+		}));
 		this.digestKeyApplied = this.digestKey();
 	}
 
@@ -428,6 +435,7 @@ export default class RVLocatorPlugin extends Plugin {
 			buckets,
 			grid: this.settings.availabilityGrid,
 			orientation: this.settings.digestOrientation,
+			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
 			now: new Date(),
 		});
@@ -897,11 +905,18 @@ export default class RVLocatorPlugin extends Plugin {
 		this.geocodeCache = rememberResults(this.geocodeCache, addresses, results);
 	}
 
+	private suggestionCalloutType(): string {
+		const accent = this.settings.suggestionColor === 'auto' ? readAccentHsl() : null;
+		return calloutTypeForChoice(this.settings.suggestionColor, accent);
+	}
+
 	private digestKey(): string {
 		return JSON.stringify({
 			grid: this.settings.availabilityGrid,
 			orientation: this.settings.digestOrientation,
+			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
+			suggestion: this.suggestionCalloutType(),
 		});
 	}
 
@@ -921,15 +936,18 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * First launch of this digest shape rewrites every RV note: the daypart
-	 * table and the suggester quote move above Attempt Log. The callout fold
-	 * is left as written. A later collapse or expand stays.
+	 * First launch of this digest shape rewrites every RV note. Return
+	 * Suggestions wraps the voice lines, and Attempt Log is nested inside it
+	 * with the daypart table above the bullets. The suggestions callout type
+	 * follows the color setting. Visible `%%` and HTML digest markers are
+	 * removed. An opened Attempt Log is collapsed once. Later Home and Not
+	 * home writes leave a fold the person set after that.
 	 */
 	private applyDigestPolish(): Promise<void> {
 		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
 		const run = this.digestRewrite.then(async () => {
 			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
-			await this.rewriteVaultDigests();
+			await this.rewriteVaultDigests(true);
 			if (this.unloaded) return;
 			this.digestPolish = DIGEST_POLISH_VERSION;
 			await this.persist();
@@ -938,10 +956,10 @@ export default class RVLocatorPlugin extends Plugin {
 		return run;
 	}
 
-	private async rewriteVaultDigests(): Promise<void> {
+	private async rewriteVaultDigests(collapseLog = false): Promise<void> {
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			if (this.unloaded) return;
-			await this.rewriteDigestFile(file);
+			await this.rewriteDigestFile(file, collapseLog);
 		}
 	}
 
@@ -984,23 +1002,30 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async rewriteDigestFile(file: TFile): Promise<void> {
+	private async rewriteDigestFile(file: TFile, collapseLog = false): Promise<void> {
 		if (file.extension !== 'md') return;
 		if (this.isTemplateNote(file)) return;
 		const current = this.app.vault.getFileByPath(file.path);
 		if (!current) return;
 		try {
 			await this.app.vault.process(current, (data) => {
-				const log = readAttemptLog(data);
+				let next = refreshHomeStampAges(data, new Date());
+				next = ensureVisitNotesHeading(next);
+				if (collapseLog) next = collapseAttemptLog(next);
+				const log = readAttemptLog(next);
 				const digest = suggestReturnDigest({
 					buckets: log.buckets,
 					entries: log.entries,
 					grid: this.settings.availabilityGrid,
 					orientation: this.settings.digestOrientation,
+					days: this.settings.digestDays,
 					thresholds: this.digestThresholds(),
 				});
-				const next = upsertAttemptDigest(data, formatDigestNote(digest));
-				return next ?? data;
+				const rewritten = upsertAttemptDigest(next, digest, {
+					collapse: collapseLog,
+					suggestionType: this.suggestionCalloutType(),
+				});
+				return rewritten ?? next;
 			});
 		} catch {
 			return;
