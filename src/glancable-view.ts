@@ -6,7 +6,7 @@ import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
-import { rowUrgency } from './row-score';
+import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyMark } from './scoring';
 import type { GlancableLineId } from './types';
 
@@ -45,12 +45,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private paintCard(parent: HTMLElement, row: RowModel, key: string): void {
 		const card = parent.createDiv('rv-locator-card');
 		const rank = priorityRank(this.cellNamed(row, 'Priority'));
-		const urgency = rowUrgency(row, this.plugin.settings);
-		const band = urgencyBand(urgency);
+		const priority = rowPriority(row);
+		const urgency = rowUrgency(row, this.plugin.settings, new Date(), this.plugin.snoozeUntilFor(row.path));
+		const band = priority != null && priority > 0 ? urgencyBand(urgency) : 0;
 		card.setAttr('data-urgency-band', String(band));
-		if (urgency != null && urgency > 0) {
-			card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency));
-		}
+		if (priority === 0) card.addClass('is-priority-zero');
+		card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority));
 		const titleBits: string[] = [];
 		if (rank) {
 			card.setAttr('data-priority', rank);
@@ -131,43 +131,37 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		const suggest = foot.createEl('button', {
-			cls: 'rv-locator-suggest-times',
-			text: 'Suggest times',
-			attr: {
-				type: 'button',
-				title: 'Suggest return times',
-				'aria-label': `Suggest return times for ${row.name}`,
-			},
-		});
-		suggest.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			void this.plugin.suggestReturnFor(row.path, row.name);
-		});
-		this.paintActions(card, rank, row, urgency);
+		this.paintActions(card, rank, row, urgency, priority);
 	}
 
-	private paintActions(parent: HTMLElement, rank: string | null, row: RowModel, urgency: number | null): void {
+	private paintActions(
+		parent: HTMLElement,
+		rank: string | null,
+		row: RowModel,
+		urgency: number | null,
+		priority: number | null,
+	): void {
 		const showRank = rank != null;
 		const map = this.mapCell(row);
 		const showMap = map?.kind === 'url' && Boolean(map.text);
-		const marks = urgencyMark(urgencyBand(urgency));
-		const showMarks = marks.glyphs.length > 0;
-		if (!showRank && !showMap && !showMarks) return;
+		const marks = urgencyMark(urgency, priority);
 		parent.addClass('has-actions');
 		const actions = parent.createSpan('rv-locator-card-actions');
-		if (showMarks) {
-			const flags = `${marks.bold ? ' is-bold' : ''}${marks.underline ? ' is-peak' : ''}`;
-			actions.createSpan({
-				cls: `rv-locator-urgency${flags}`,
-				text: marks.glyphs,
-				attr: {
-					'data-band': String(urgencyBand(urgency)),
-					title: urgency == null ? 'Urgency' : `Urgency ${urgency.toFixed(2)}`,
-				},
-			});
-		}
+		const urgencyButton = actions.createEl('button', {
+			cls: 'rv-locator-urgency',
+			text: marks.glyphs,
+			attr: {
+				type: 'button',
+				'data-band': String(marks.band),
+				title: urgencyTitle(urgency, priority),
+				'aria-label': urgencyTitle(urgency, priority),
+			},
+		});
+		urgencyButton.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			this.plugin.promptUrgencySnooze(row.path, row.name);
+		});
 		if (showRank && rank) {
 			const pill = actions.createEl('button', {
 				cls: 'rv-locator-priority-pill',
@@ -257,6 +251,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.style.setProperty('--rv-pad-y', `${settings.glancablePaddingY}px`);
 		this.root.style.setProperty('--rv-pad-x', `${settings.glancablePaddingX}px`);
 		this.root.style.setProperty('--rv-font-scale', String(settings.glancableFontScale));
+		this.root.style.setProperty('--rv-control-size', `calc(28px * ${settings.glancableFontScale})`);
 		this.root.style.setProperty(
 			'--rv-line-max',
 			settings.glancableMaxLineChars > 0 ? `${settings.glancableMaxLineChars}ch` : '100%',
@@ -286,6 +281,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 		return this.columns.find((column) => column.name.trim().toLowerCase() === wanted);
 	}
 
+}
+
+function urgencyTitle(urgency: number | null, priority: number | null): string {
+	if (priority == null || priority <= 0) return 'Priority 0. No urgency color.';
+	if (urgency == null) return 'Urgency. Snooze for today, 7 days, or 14 days.';
+	if (urgency < 1) return `Urgency ${urgency.toFixed(2)}. Snooze for today, 7 days, or 14 days.`;
+	return `Urgency ${urgency.toFixed(2)}. Snooze for today, 7 days, or 14 days.`;
 }
 
 function priorityRank(cell: CellModel | undefined): string | null {

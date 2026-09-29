@@ -422,7 +422,11 @@
 }
 
 .rv-locator-glancable .rv-locator-card.has-actions {
-	padding-right: calc(var(--rv-pad-x, 10px) + 42px);
+	padding-right: calc(var(--rv-pad-x, 10px) + var(--rv-control-size, 28px) + 14px);
+}
+
+.rv-locator-glancable .rv-locator-card.is-priority-zero {
+	--rv-urgency-accent: var(--text-faint);
 }
 
 .rv-locator-glancable .rv-locator-place {
@@ -463,7 +467,7 @@
 .rv-locator-glancable .rv-locator-visits,
 .rv-locator-glancable .rv-locator-visits .rv-locator-slot-icon,
 .rv-locator-glancable .rv-locator-visits .rv-locator-slot-text {
-	color: var(--rv-locator-visits-color, var(--text-accent));
+	color: var(--rv-urgency-accent, var(--rv-locator-visits-color, var(--text-accent)));
 	font-weight: 700;
 }
 
@@ -472,10 +476,10 @@
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
-	color: var(--text-normal);
-	font-size: calc(13px * var(--rv-font-scale, 1));
-	font-weight: 600;
-	line-height: 1.25;
+	color: var(--text-muted);
+	font-size: calc(12px * var(--rv-font-scale, 1));
+	font-weight: 400;
+	line-height: 1.2;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
@@ -483,7 +487,7 @@
 
 .rv-locator-glancable .rv-locator-distance-lg {
 	flex: 0 0 auto;
-	color: var(--text-accent);
+	color: var(--rv-urgency-accent, var(--text-accent));
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
@@ -501,7 +505,7 @@
 	max-width: 100%;
 	margin: 0;
 	overflow: hidden;
-	color: var(--text-faint);
+	color: var(--text-muted);
 	font-size: calc(12px * var(--rv-font-scale, 1));
 	font-weight: 400;
 	line-height: 1.25;
@@ -575,27 +579,29 @@
 	flex: 0 0 auto;
 	align-items: center;
 	justify-content: center;
-	width: 28px;
-	height: 28px;
+	width: var(--rv-control-size, 28px);
+	height: var(--rv-control-size, 28px);
 	border-radius: 999px;
-	background: var(--interactive-accent);
+	background: var(--rv-urgency-accent, var(--interactive-accent));
 	color: var(--text-on-accent);
 	text-decoration: none;
 }
 
 .rv-locator-glancable .rv-locator-map-pin svg {
-	width: 15px;
-	height: 15px;
+	width: calc(15px * var(--rv-font-scale, 1));
+	height: calc(15px * var(--rv-font-scale, 1));
 }
 
 .rv-locator-glancable .rv-locator-card-actions {
 	position: absolute;
-	right: 14px;
-	bottom: 8px;
+	top: var(--rv-pad-y, 8px);
+	right: var(--rv-pad-x, 10px);
+	bottom: var(--rv-pad-y, 8px);
 	display: flex;
 	flex-direction: column;
 	align-items: center;
-	gap: 4px;
+	justify-content: space-evenly;
+	width: var(--rv-control-size, 28px);
 	margin: 0;
 }
 
@@ -629,7 +635,7 @@
 .rv-locator-days {
 	flex: 0 0 auto;
 	margin-left: 0.35em;
-	color: var(--rv-locator-days-color, var(--text-accent));
+	color: var(--rv-urgency-accent, var(--rv-locator-days-color, var(--text-accent)));
 	font-size: 1em;
 	font-weight: 700;
 	font-variant-numeric: tabular-nums;
@@ -637,57 +643,48 @@
 	white-space: nowrap;
 }
 
-.rv-locator-glancable .rv-locator-priority-pill {
+.rv-locator-glancable .rv-locator-priority-pill,
+.rv-locator-glancable .rv-locator-urgency {
 	display: inline-flex;
 	flex: 0 0 auto;
 	align-items: center;
 	justify-content: center;
-	width: 28px;
-	height: 28px;
+	width: var(--rv-control-size, 28px);
+	height: var(--rv-control-size, 28px);
 	margin: 0;
 	padding: 0;
 	border: 0;
 	border-radius: 999px;
-	background: var(--interactive-accent);
+	background: var(--rv-urgency-accent, var(--interactive-accent));
 	color: var(--text-on-accent);
 	font-family: inherit;
-	font-size: calc(13px * var(--rv-font-scale, 1));
-	font-weight: 700;
 	font-variant-numeric: tabular-nums;
 	line-height: 1;
 	cursor: pointer;
 }
 
+.rv-locator-glancable .rv-locator-priority-pill {
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 700;
+}
+
 .rv-locator-glancable .rv-locator-urgency {
-	color: var(--rv-urgency-accent, var(--text-normal));
-	font-size: calc(14px * var(--rv-font-scale, 1));
-	font-weight: 500;
-	letter-spacing: -0.04em;
-	line-height: 1;
-}
-
-.rv-locator-glancable .rv-locator-urgency.is-bold {
-	font-weight: 800;
-}
-
-.rv-locator-glancable .rv-locator-urgency.is-peak {
-	font-weight: 800;
-	text-decoration: underline;
-	text-underline-offset: 2px;
-}
-
-.rv-locator-suggest-times {
-	margin: 0;
-	padding: 0;
-	border: 0;
-	background: transparent;
-	color: var(--text-accent);
-	font: inherit;
 	font-size: calc(12px * var(--rv-font-scale, 1));
-	font-weight: 600;
-	cursor: pointer;
-	text-decoration: underline;
-	text-underline-offset: 2px;
+	font-weight: 500;
+	letter-spacing: -0.06em;
+}
+
+.rv-locator-glancable .rv-locator-urgency[data-band="0"] {
+	font-size: calc(15px * var(--rv-font-scale, 1));
+	font-weight: 500;
+	letter-spacing: 0;
+}
+
+.rv-locator-glancable .rv-locator-card.is-priority-zero .rv-locator-urgency,
+.rv-locator-glancable .rv-locator-card.is-priority-zero .rv-locator-priority-pill,
+.rv-locator-glancable .rv-locator-card.is-priority-zero .rv-locator-map-pin {
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
 }
 
 .rv-locator-priority-btn {
@@ -704,7 +701,7 @@
 
 .rv-locator-availability {
 	display: grid;
-	grid-template-columns: auto repeat(4, minmax(4.5rem, 1fr));
+	grid-template-columns: auto repeat(3, minmax(6.2rem, 1fr));
 	gap: 4px 6px;
 	align-items: center;
 	margin: 4px 0 16px;
@@ -712,8 +709,23 @@
 	font-size: var(--font-ui-smaller);
 }
 
-.rv-locator-availability select {
+.rv-may-cell {
 	width: 100%;
+	margin: 0;
+	padding: 6px 4px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: var(--background-modifier-border);
+	color: var(--text-muted);
+	font: inherit;
+	font-size: var(--font-ui-smaller);
+	cursor: pointer;
+}
+
+.rv-may-cell.is-may {
+	border-color: #1f8a4c;
+	background: #1f8a4c;
+	color: #fff;
 }
 
 .rv-locator-availability-head,
@@ -727,12 +739,51 @@
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	background: var(--background-primary);
+	color: var(--text-normal);
+	--rv-graph-axis: var(--text-muted);
+	--rv-graph-guide: var(--text-accent);
+	--rv-series-1: #1f4eae;
+	--rv-series-2: #187233;
+	--rv-series-3: #8a6800;
+	--rv-series-4: #c45e00;
+	--rv-series-5: #c23030;
+	--rv-series-urgency: #c23030;
+	--rv-series-home: #187233;
+	--rv-series-half: #8a6800;
+	--rv-series-none: #c23030;
+}
+
+.theme-dark .rv-locator-graph {
+	--rv-graph-axis: var(--text-normal);
+	--rv-graph-guide: var(--text-accent);
+	--rv-series-1: #9ec1ff;
+	--rv-series-2: #7ddea0;
+	--rv-series-3: #ffd56a;
+	--rv-series-4: #ffb067;
+	--rv-series-5: #ff8d8d;
+	--rv-series-urgency: #ff8d8d;
+	--rv-series-home: #7ddea0;
+	--rv-series-half: #ffd56a;
+	--rv-series-none: #ff8d8d;
 }
 
 .rv-locator-graph svg {
 	display: block;
 	width: 100%;
 	height: auto;
+	color: var(--text-normal);
+}
+
+.theme-dark .rv-locator-graph .rv-graph-label {
+	fill: var(--text-normal);
+}
+
+.rv-locator-graph .rv-graph-series {
+	stroke-width: 2.25;
+}
+
+.rv-locator-graph .rv-graph-guide {
+	stroke-width: 1.35;
 }
 
 .rv-locator-plan-slot {
@@ -743,6 +794,85 @@
 .rv-locator-time {
 	font-weight: 700;
 	color: var(--text-normal);
+}
+
+.rv-locator-settings-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: 0 0 16px;
+}
+
+.rv-locator-settings-tab {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	margin: 0;
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: transparent;
+	color: var(--text-muted);
+	font: inherit;
+	cursor: pointer;
+}
+
+.rv-locator-settings-tab.is-active {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.rv-locator-settings-tab-icon {
+	display: inline-flex;
+	width: 16px;
+	height: 16px;
+}
+
+.rv-locator-settings-tab-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.callout > .rv-locator-return-digest,
+.rv-locator-modal .rv-locator-return-digest {
+	display: block;
+	margin: 0 0.75rem 0.5rem 2.15rem;
+	color: var(--text-muted);
+	font-size: var(--font-ui-small);
+	line-height: 1.35;
+}
+
+.rv-locator-modal .rv-locator-return-digest {
+	margin: 0 0 12px;
+}
+
+.callout.is-collapsed > .rv-locator-return-digest {
+	display: block;
+	margin-bottom: 0.55rem;
+}
+
+.rv-locator-return-digest table {
+	width: auto;
+	margin: 0 0 0.35rem;
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-locator-return-digest .is-avoid,
+.rv-locator-return-line.is-avoid {
+	color: var(--text-normal);
+	font-weight: 650;
+}
+
+.rv-locator-return-digest .is-try,
+.rv-locator-return-line.is-try {
+	color: var(--text-normal);
+	font-weight: 650;
+}
+
+.rv-locator-return-line {
+	margin: 0;
+	white-space: pre-wrap;
 }
 
 .rv-locator-suggest-title {

@@ -2,10 +2,17 @@ import type { PriorityBand, PriorityDays } from './types';
 
 /**
  * Urgency is days since Last Spoke divided by the priority threshold.
- * One soft floor: under 3 days, any priority ramps from 0 at day 0 to the full ratio at day 3.
+ * Under 3 days the ratio is multiplied by (days / 3) squared, so a high priority
+ * stays well below 1 around 2 days. At day 3 the ramp is 1 and the score is the raw ratio.
  * There is no other urgency floor. The value keeps growing past 1.
+ *
+ * Ideality planner (the upcoming-slot ranking view, its toggle, and its command)
+ * was removed in 1.2.6. It may return later. Ideality as a score stays.
  */
 export const URGENCY_RAMP_DAYS = 3;
+
+/** Squares the under-3-day fade so priority 5 is not near urgency 1 by about 2 days. */
+export const URGENCY_RAMP_POWER = 2;
 
 /** Chosen so P5 at 4 days at the territory span, and P1 at 6 weeks at 1 mile, both land near 1. */
 export const IDEALITY_ALPHA = 0.555;
@@ -28,39 +35,49 @@ export function urgencyScore(days: number | null, priority: number | null, thres
 	const threshold = thresholds[priority];
 	if (!Number.isFinite(threshold) || threshold <= 0) return null;
 	const raw = days / threshold;
-	if (days < URGENCY_RAMP_DAYS) return raw * (days / URGENCY_RAMP_DAYS);
+	if (days < URGENCY_RAMP_DAYS) {
+		return raw * (days / URGENCY_RAMP_DAYS) ** URGENCY_RAMP_POWER;
+	}
 	return raw;
 }
 
 /**
- * `floor(urgency)` clamped to 0–5. Urgency 1 is one bang. Urgency 5 and above is the top band.
- * Color uses the same ceiling.
+ * Three bands. Below 1 is band 0 (a green circle). 1 is yellow, 2 is orange, 3 and above is red.
  */
-export function urgencyBand(urgency: number | null): number {
-	if (urgency == null || !Number.isFinite(urgency)) return 0;
-	return Math.min(5, Math.max(0, Math.floor(urgency)));
+export function urgencyBand(urgency: number | null): 0 | 1 | 2 | 3 {
+	if (urgency == null || !Number.isFinite(urgency) || urgency < 1) return 0;
+	if (urgency < 2) return 1;
+	if (urgency < 3) return 2;
+	return 3;
 }
 
 export interface UrgencyMark {
 	glyphs: string;
-	bold: boolean;
-	underline: boolean;
+	band: 0 | 1 | 2 | 3;
 }
 
-export function urgencyMark(band: number): UrgencyMark {
-	if (band <= 0) return { glyphs: '', bold: false, underline: false };
-	if (band === 1) return { glyphs: '!', bold: false, underline: false };
-	if (band === 2) return { glyphs: '!!', bold: false, underline: false };
-	if (band === 3) return { glyphs: '!!!', bold: false, underline: false };
-	if (band === 4) return { glyphs: '!!!', bold: true, underline: false };
-	return { glyphs: '!!!', bold: true, underline: true };
+/**
+ * Priority above 0 and urgency under 1 uses a circle. Bands 1–3 are one to three marks.
+ * The glyph size does not shrink as marks are added, and marks are not bold or underlined.
+ * Priority 0 has no urgency glyph.
+ */
+export function urgencyMark(urgency: number | null, priority: number | null): UrgencyMark {
+	const band = urgencyBand(urgency);
+	if (priority == null || priority <= 0) return { glyphs: '', band: 0 };
+	if (band === 0) return { glyphs: '○', band: 0 };
+	if (band === 1) return { glyphs: '!', band: 1 };
+	if (band === 2) return { glyphs: '!!', band: 2 };
+	return { glyphs: '!!!', band: 3 };
 }
 
-/** Green at just-above-zero, red once urgency reaches band 5. Higher urgency stays red. */
-export function urgencyAccentColor(urgency: number): string {
-	const t = Math.max(0, Math.min(1, urgency / 5));
-	const hue = Math.round(130 * (1 - t));
-	return `hsl(${hue} 72% 46%)`;
+/** Green below 1, then a distinct yellow, orange, and red. Priority 0 stays neutral grey. */
+export function urgencyAccentColor(urgency: number | null, priority: number | null = 1): string {
+	if (priority == null || priority <= 0) return 'var(--text-faint)';
+	const band = urgencyBand(urgency);
+	if (band === 0) return '#1f8a4c';
+	if (band === 1) return '#d6a100';
+	if (band === 2) return '#e06a00';
+	return '#d63c3c';
 }
 
 export function distanceWeight(miles: number, territorySpan: number, alpha = IDEALITY_ALPHA): number | null {

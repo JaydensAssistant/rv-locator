@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
-import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody } from '../src/address';
+import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, refreshBodyMapLink } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
 import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
 import { CompanionSuggestModal } from '../src/modals';
@@ -684,6 +684,48 @@ describe('successful visits', () => {
 		assert.equal('Successful Visits' in fromAddress, false);
 		assert.equal('Last Attempted' in fromAddress, false);
 
+		const stale: Record<string, unknown> = {
+			Address: '20 Oak St',
+			City: 'Orlando',
+			County: 'Orange County',
+			Location: ['28.5', '-81.3'],
+			'Map Link': googleMapsAddressLink('20 Oak St', 'Orlando'),
+		};
+		const countySettings = mergeSettings({ countyProperty: 'County' });
+		applyGeocodeHit(stale, {
+			lat: 28.69,
+			lon: -81.51,
+			formattedAddress: '20 Oak St, Apopka, FL',
+			city: 'Apopka',
+		}, countySettings);
+		assert.equal(stale.Address, '20 Oak St');
+		assert.equal(stale.City, 'Apopka');
+		assert.equal('County' in stale, false);
+		assert.deepEqual(stale.Location, locationPair({ lat: 28.69, lon: -81.51 }));
+		assert.equal(stale['Map Link'], googleMapsAddressLink('20 Oak St', 'Apopka'));
+		assert.equal(String(stale['Map Link']).includes('Orlando'), false);
+
+		const cleared: Record<string, unknown> = {
+			Address: '20 Oak St',
+			City: 'Orlando',
+			County: 'Orange County',
+			'Map Link': googleMapsAddressLink('20 Oak St', 'Orlando'),
+		};
+		applyGeocodeHit(cleared, {
+			lat: 28.1,
+			lon: -81.1,
+			formattedAddress: '20 Oak St',
+		}, countySettings);
+		assert.equal(cleared.Address, '20 Oak St');
+		assert.equal('City' in cleared, false);
+		assert.equal('County' in cleared, false);
+		assert.equal(String(cleared['Map Link']).includes('Orlando'), false);
+		const body = '> **Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=old)\n';
+		const refreshed = refreshBodyMapLink(body, String(stale['Map Link']));
+		assert.equal(refreshed.includes(`[🗺️](${String(stale['Map Link'])})`), true);
+		assert.equal(refreshed.includes('query=old'), false);
+		assert.equal(refreshed.includes('INPUT[text:Address]'), true);
+
 		const ready = {
 			Address: '1313 Broadway, Citrus Springs, FL 34434',
 			Location: [28.99, -82.45],
@@ -1136,7 +1178,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.4');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.6');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1179,7 +1221,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.4/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.6/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1200,9 +1242,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.4');
+		assert.equal(plan.ref, 'v1.2.6');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.4/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.6/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1821,6 +1863,8 @@ describe('setup wizard', () => {
 		assert.equal(firstCopy.includes('where you normally work return visits'), true);
 		assert.equal(firstCopy.includes('wrong-city pick'), true);
 		assert.equal(firstCopy.includes('asks you to confirm'), true);
+		assert.equal(firstCopy.includes('May go out'), true);
+		assert.equal(firstCopy.includes('before 12pm'), true);
 		const area = findTagged(opened.contentEl as unknown as Clickable, 'textarea');
 		assert.equal(area.text, 'Orange');
 		area.emit('change', 'Orange County\norange\nLake');
@@ -1833,14 +1877,17 @@ describe('setup wizard', () => {
 		assert.equal(afterSave.includes('Step 2 of 2'), true);
 
 		let skippedSaved = 0;
+		let skippedSchedule = 0;
 		const skipped = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: [] }), wizardActions({
 			onSaveHomeCounties: async () => { skippedSaved += 1; },
+			onSaveMayGoOut: async () => { skippedSchedule += 1; },
 		}));
 		skipped.open();
 		await waitTurn();
 		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
 		assert.equal(skippedSaved, 0);
+		assert.equal(skippedSchedule, 0);
 		const afterSkip = collectText(skipped.contentEl as unknown as Clickable);
 		assert.equal(afterSkip.includes('Home counties: none'), true);
 		assert.equal(afterSkip.includes('asks you to confirm'), true);
@@ -2006,6 +2053,7 @@ function wizardActions(partial: Partial<ConstructorParameters<typeof SetupWizard
 		openTemplaterSettings: () => {},
 		openMetaBindSettings: () => {},
 		onSaveHomeCounties: async () => {},
+		onSaveMayGoOut: async () => {},
 		...partial,
 	};
 }

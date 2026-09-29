@@ -53,6 +53,9 @@ cssclasses:
 
 
 > [!note]- Attempt Log
+> <!-- rv-locator-digest -->
+> No May-go-out days
+> <!-- /rv-locator-digest -->
 > - <% rv.stamp %> — success
 
 ```meta-bind-button

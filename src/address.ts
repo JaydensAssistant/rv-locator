@@ -117,6 +117,17 @@ export function googleMapsAddressLink(address: string, city?: string | null): st
 	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
+const BODY_MAP_LINK = /\[🗺️\]\(https?:\/\/[^)\s]+\)/g;
+
+/**
+ * Point the note's map icon at the current Map Link.
+ * Address text is left unchanged. Other links are left unchanged.
+ */
+export function refreshBodyMapLink(markdown: string, url: string): string {
+	if (!url.trim()) return markdown;
+	return markdown.replace(BODY_MAP_LINK, `[🗺️](${url})`);
+}
+
 function collapseAddress(value: string): string {
 	return value.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 }

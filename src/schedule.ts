@@ -1,19 +1,15 @@
 /**
  * Weekday × daypart buckets for Attempt Log history.
- * Wednesday late morning never shares a bucket with Saturday late morning.
+ * Wednesday morning never shares a bucket with Saturday morning.
  * Boundaries are local time. Evening starts at 4:30.
  */
 
-export const DAYPARTS = ['early-morning', 'late-morning', 'afternoon', 'evening'] as const;
+export const DAYPARTS = ['morning', 'afternoon', 'evening'] as const;
 
 export type Daypart = (typeof DAYPARTS)[number];
 
-export type AvailabilityLevel = 'off' | 'willing' | 'go-out';
-
-export interface AvailabilityMultipliers {
-	goOut: number;
-	willing: number;
-}
+/** Off, or the one on-state: the person may go out. */
+export type AvailabilityLevel = 'off' | 'may';
 
 export interface BucketCount {
 	homes: number;
@@ -24,26 +20,25 @@ export type AttemptBuckets = Record<string, BucketCount>;
 
 export type AvailabilityGrid = Record<string, AvailabilityLevel>;
 
-export const DEFAULT_GO_OUT_MULTIPLIER = 1;
-export const DEFAULT_WILLING_MULTIPLIER = 0.65;
+/** Days down the side, or dayparts down the side. */
+export type DigestOrientation = 'rows' | 'columns';
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
-const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
 /** Minutes from midnight, inclusive start. */
 const DAYPART_START: Record<Daypart, number> = {
-	'early-morning': 0,
-	'late-morning': 9 * 60 + 30,
+	morning: 0,
 	afternoon: 12 * 60,
 	evening: 16 * 60 + 30,
 };
 
 const DAYPART_END: Record<Daypart, number> = {
-	'early-morning': 9 * 60 + 30,
-	'late-morning': 12 * 60,
+	morning: 12 * 60,
 	afternoon: 16 * 60 + 30,
 	evening: 24 * 60,
 };
+
+const LEGACY_DAYPARTS = ['early-morning', 'late-morning', 'afternoon', 'evening'] as const;
 
 const MONTH_INDEX: Record<string, number> = {
 	jan: 0,
@@ -64,35 +59,66 @@ export function availabilityKey(weekday: number, daypart: Daypart): string {
 	return `${weekday}:${daypart}`;
 }
 
+/** Every cell starts Off. A click turns on May go out. */
 export function defaultAvailabilityGrid(): AvailabilityGrid {
 	const grid: AvailabilityGrid = {};
 	for (let weekday = 0; weekday < 7; weekday += 1) {
 		for (const daypart of DAYPARTS) {
-			grid[availabilityKey(weekday, daypart)] = 'willing';
+			grid[availabilityKey(weekday, daypart)] = 'off';
 		}
+	}
+	return grid;
+}
+
+/**
+ * Old grids used early morning, late morning, Willing, and Go out.
+ * An untouched all-Willing grid (the 1.2.4 default) becomes all Off.
+ * Any real choice maps Willing and Go out to May go out. Morning is May go out
+ * when either old morning cell was on.
+ */
+export function migrateAvailabilityGrid(value: unknown): AvailabilityGrid {
+	const grid = defaultAvailabilityGrid();
+	if (!value || typeof value !== 'object') return grid;
+	const raw = value as Record<string, unknown>;
+	if (isUntouchedWillingDefault(raw)) return grid;
+	for (let weekday = 0; weekday < 7; weekday += 1) {
+		grid[availabilityKey(weekday, 'morning')] = mergeMorning(raw, weekday);
+		grid[availabilityKey(weekday, 'afternoon')] = mapLevel(raw[`${weekday}:afternoon`]);
+		grid[availabilityKey(weekday, 'evening')] = mapLevel(raw[`${weekday}:evening`]);
 	}
 	return grid;
 }
 
 export function daypartAt(date: Date): Daypart {
 	const minutes = date.getHours() * 60 + date.getMinutes();
-	if (minutes < DAYPART_START['late-morning']) return 'early-morning';
-	if (minutes < DAYPART_START.afternoon) return 'late-morning';
+	if (minutes < DAYPART_START.afternoon) return 'morning';
 	if (minutes < DAYPART_START.evening) return 'afternoon';
 	return 'evening';
 }
 
+/** Short name used in the digest. Settings use {@link daypartSettingLabel}. */
 export function daypartLabel(daypart: Daypart): string {
 	switch (daypart) {
-		case 'early-morning': return 'early morning';
-		case 'late-morning': return 'late morning';
+		case 'morning': return 'morning';
 		case 'afternoon': return 'afternoon';
 		case 'evening': return 'evening';
 	}
 }
 
-export function weekdayName(weekday: number): string {
-	return WEEKDAY_NAMES[weekday] ?? 'that day';
+export function daypartTitle(daypart: Daypart): string {
+	switch (daypart) {
+		case 'morning': return 'Morning';
+		case 'afternoon': return 'Afternoon';
+		case 'evening': return 'Evening';
+	}
+}
+
+export function daypartSettingLabel(daypart: Daypart): string {
+	switch (daypart) {
+		case 'morning': return 'Morning (Before 12pm)';
+		case 'afternoon': return 'Afternoon (12pm–4:29pm)';
+		case 'evening': return 'Evening (After 4:30pm)';
+	}
 }
 
 export function weekdayShort(weekday: number): string {
@@ -112,29 +138,16 @@ export function sampleConfidence(trials: number): number {
 	return n / (n + 3);
 }
 
-export function slotScore(
-	homes: number,
-	trials: number,
-	availability: AvailabilityLevel,
-	multipliers: AvailabilityMultipliers,
-): number {
-	if (!slotOpen(availability, multipliers)) return 0;
+/** May-go-out slots score. Off slots score 0. There is no Willing multiplier. */
+export function slotScore(homes: number, trials: number, availability: AvailabilityLevel): number {
+	if (availability !== 'may') return 0;
 	const n = Math.max(0, trials);
 	const h = Math.min(Math.max(0, homes), n);
-	const mult = availability === 'go-out' ? multipliers.goOut : multipliers.willing;
-	return laplaceRate(h, n) * sampleConfidence(n) * mult;
-}
-
-export function slotOpen(availability: AvailabilityLevel, multipliers: AvailabilityMultipliers): boolean {
-	if (availability === 'off') return false;
-	const mult = availability === 'go-out' ? multipliers.goOut : multipliers.willing;
-	return Number.isFinite(mult) && mult > 0;
+	return laplaceRate(h, n) * sampleConfidence(n);
 }
 
 export function availabilityAt(grid: AvailabilityGrid, weekday: number, daypart: Daypart): AvailabilityLevel {
-	const level = grid[availabilityKey(weekday, daypart)];
-	if (level === 'off' || level === 'willing' || level === 'go-out') return level;
-	return 'willing';
+	return grid[availabilityKey(weekday, daypart)] === 'may' ? 'may' : 'off';
 }
 
 /**
@@ -174,207 +187,149 @@ export interface SlotFact {
 }
 
 export interface ReturnDigest {
+	/** Footer lines, or the empty-schedule line. */
 	text: string;
 	sentences: string[];
+	table: string;
+	/** Table plus accented footers, ready to store under Attempt Log. */
+	markdown: string;
 }
 
-const NOT_ENOUGH = 'Not enough data yet. The Attempt Log has no visits to score, so this cannot list times to avoid or a strongest return slot.';
+const NO_SCHEDULE = 'No May-go-out days';
 
 /**
- * Deterministic avoid-list. The strongest score is mentioned, and the copy leans on times to skip plus untried go-out slots.
+ * Compact table of May-go-out days, then two footer lines.
+ * Avoid and try name dayparts, never a whole weekday by itself.
  */
 export function suggestReturnDigest(args: {
 	buckets: AttemptBuckets;
 	grid: AvailabilityGrid;
-	multipliers: AvailabilityMultipliers;
+	orientation?: DigestOrientation;
 	now?: Date;
 }): ReturnDigest {
-	if (totalTrials(args.buckets) <= 0) {
-		return { text: NOT_ENOUGH, sentences: [NOT_ENOUGH] };
-	}
 	const now = args.now ?? new Date();
-	const facts = openSlotFacts(args.buckets, args.grid, args.multipliers);
-	const avoid = facts.filter((slot) => isAvoid(slot));
+	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
+	const days = mayGoOutDays(args.grid);
+	if (days.length === 0) {
+		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
+	}
+	const facts = daypartFacts(days, args.buckets, args.grid);
+	const table = orientation === 'columns'
+		? tableDaysAsColumns(days, facts)
+		: tableDaysAsRows(days, facts);
+	const avoid = facts.filter((slot) => isAvoid(slot))
+		.sort((a, b) => a.rate - b.rate || b.trials - a.trials || compareUpcoming(a, b, now))
+		.slice(0, 3);
 	const avoidKeys = new Set(avoid.map(slotKey));
-	const logged = facts.filter((slot) => slot.trials > 0);
-	const best = pickBest(logged, now);
+	const promising = facts
+		.filter((slot) => slot.trials > 0 && !avoidKeys.has(slotKey(slot)))
+		.sort((a, b) => b.rate - a.rate || b.trials - a.trials || compareUpcoming(a, b, now))[0] ?? null;
 	const untried = facts
 		.filter((slot) => slot.trials === 0)
-		.sort((a, b) => compareUntried(a, b, now));
-	const alternates = logged
-		.filter((slot) => best != null && slotKey(slot) !== slotKey(best) && !avoidKeys.has(slotKey(slot)))
-		.sort((a, b) => b.score - a.score || compareUpcoming(a, b, now))
+		.sort((a, b) => compareUpcoming(a, b, now))
 		.slice(0, 2);
-
-	const sentences: string[] = [];
-	if (avoid.length > 0) sentences.push(avoidSentence(avoid));
-	else sentences.push('Alright. No logged time stands out as one to avoid.');
-	const untriedLead = untriedSentence(untried);
-	if (untriedLead) sentences.push(untriedLead);
-	if (best) sentences.push(bestSentence(best, avoidKeys.has(slotKey(best))));
-	else sentences.push('Logged visits are not on a Willing or Go out time, so there is no strongest score there yet.');
-	if (alternates.length > 0) sentences.push(alternateSentence(alternates));
-	return { text: sentences.join(' '), sentences };
+	const sentences = [avoidLine(avoid), tryLine(promising, untried)];
+	const markdown = [table, '', ...sentences].join('\n');
+	return { text: sentences.join('\n'), sentences, table, markdown };
 }
 
-export interface UpcomingSlot {
-	weekday: number;
-	daypart: Daypart;
-	availability: AvailabilityLevel;
-	when: Date;
-}
-
-/** Go-out and willing dayparts from now through the next `horizonDays`, skipping dayparts already over today. */
-export function upcomingSlots(grid: AvailabilityGrid, now: Date, multipliers: AvailabilityMultipliers, horizonDays = 7): UpcomingSlot[] {
-	const slots: UpcomingSlot[] = [];
-	const todayMin = now.getHours() * 60 + now.getMinutes();
-	for (let offset = 0; offset < horizonDays; offset += 1) {
-		const when = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset, 12, 0, 0, 0);
-		const weekday = when.getDay();
-		for (const daypart of DAYPARTS) {
-			if (offset === 0 && todayMin >= DAYPART_END[daypart]) continue;
-			const availability = availabilityAt(grid, weekday, daypart);
-			if (!slotOpen(availability, multipliers)) continue;
-			slots.push({ weekday, daypart, availability, when });
-		}
-	}
-	return slots;
-}
-
-function openSlotFacts(
-	buckets: AttemptBuckets,
-	grid: AvailabilityGrid,
-	multipliers: AvailabilityMultipliers,
-): SlotFact[] {
-	const facts: SlotFact[] = [];
+function mayGoOutDays(grid: AvailabilityGrid): number[] {
+	const days: number[] = [];
 	for (let weekday = 0; weekday < 7; weekday += 1) {
+		if (DAYPARTS.some((daypart) => availabilityAt(grid, weekday, daypart) === 'may')) days.push(weekday);
+	}
+	return days;
+}
+
+function daypartFacts(days: readonly number[], buckets: AttemptBuckets, grid: AvailabilityGrid): SlotFact[] {
+	const facts: SlotFact[] = [];
+	for (const weekday of days) {
 		for (const daypart of DAYPARTS) {
 			const availability = availabilityAt(grid, weekday, daypart);
-			if (!slotOpen(availability, multipliers)) continue;
+			if (availability !== 'may') continue;
 			const count = buckets[availabilityKey(weekday, daypart)] ?? { homes: 0, trials: 0 };
-			const homes = Math.min(Math.max(0, count.homes), count.trials);
 			const trials = Math.max(0, count.trials);
+			const homes = Math.min(Math.max(0, count.homes), trials);
 			facts.push({
 				weekday,
 				daypart,
 				availability,
 				homes,
 				trials,
-				rate: laplaceRate(homes, trials),
+				rate: trials > 0 ? homes / trials : 0,
 				confidence: sampleConfidence(trials),
-				score: slotScore(homes, trials, availability, multipliers),
+				score: slotScore(homes, trials, availability),
 			});
 		}
 	}
 	return facts;
 }
 
+function tableDaysAsRows(days: readonly number[], facts: readonly SlotFact[]): string {
+	const columns = DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
+	const header = ['| |', ...columns.map((daypart) => ` ${daypartTitle(daypart)} |`)].join('');
+	const rule = ['| --- |', ...columns.map(() => ' --- |')].join('');
+	const body = days.map((weekday) => {
+		const cells = columns.map((daypart) => ` ${cellText(facts, weekday, daypart)} |`);
+		return `| ${weekdayShort(weekday)} |${cells.join('')}`;
+	});
+	return [header, rule, ...body].join('\n');
+}
+
+function tableDaysAsColumns(days: readonly number[], facts: readonly SlotFact[]): string {
+	const rows = DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
+	const header = ['| |', ...days.map((weekday) => ` ${weekdayShort(weekday)} |`)].join('');
+	const rule = ['| --- |', ...days.map(() => ' --- |')].join('');
+	const body = rows.map((daypart) => {
+		const cells = days.map((weekday) => ` ${cellText(facts, weekday, daypart)} |`);
+		return `| ${daypartTitle(daypart)} |${cells.join('')}`;
+	});
+	return [header, rule, ...body].join('\n');
+}
+
+function cellText(facts: readonly SlotFact[], weekday: number, daypart: Daypart): string {
+	const slot = facts.find((item) => item.weekday === weekday && item.daypart === daypart);
+	if (!slot) return '—';
+	return `${slot.homes}/${slot.trials}`;
+}
+
 function isAvoid(slot: SlotFact): boolean {
 	if (slot.trials < 3) return false;
-	if (slot.rate >= 0.4) return false;
-	return true;
+	return slot.rate < 0.4;
 }
 
-function avoidTone(slot: SlotFact): 'never' | 'rarely' {
-	if (slot.trials > 0 && slot.homes / slot.trials <= 0.25) return 'never';
-	return 'rarely';
+function avoidLine(slots: readonly SlotFact[]): string {
+	if (slots.length === 0) return '**Avoid** Nothing stands out';
+	return `**Avoid** ${joinDayparts(slots)}`;
 }
 
-function avoidSentence(slots: SlotFact[]): string {
-	const groups: Array<{ weekday: number; dayparts: Daypart[]; homes: number; trials: number; tone: 'never' | 'rarely'; rate: number }> = [];
-	for (const slot of slots) {
-		const tone = avoidTone(slot);
-		const last = groups[groups.length - 1];
-		if (
-			last
-			&& last.weekday === slot.weekday
-			&& last.homes === slot.homes
-			&& last.trials === slot.trials
-			&& last.tone === tone
-		) {
-			last.dayparts.push(slot.daypart);
-			continue;
-		}
-		groups.push({
-			weekday: slot.weekday,
-			dayparts: [slot.daypart],
-			homes: slot.homes,
-			trials: slot.trials,
-			tone,
-			rate: slot.rate,
-		});
+function tryLine(promising: SlotFact | null, untried: readonly SlotFact[]): string {
+	const parts: string[] = [];
+	if (promising) parts.push(daypartCount(promising));
+	if (untried.length === 1) {
+		const slot = untried[0];
+		if (slot) parts.push(`${daypartName(slot)} has not been tried`);
+	} else if (untried.length > 1) {
+		const names = untried.map((slot) => daypartName(slot));
+		parts.push(`${names[0]} and ${names[1]} have not been tried`);
 	}
-	const parts = groups.map((group) => {
-		const phrase = group.tone === 'never' ? 'practically never home' : 'rarely home';
-		return `${phrase} (${formatCount(group.homes, group.trials)}) on ${formatWeekdayDayparts(group.weekday, group.dayparts)}`;
-	});
-	return `Alright, they were ${joinClauses(parts)}.`;
+	if (parts.length === 0) return '**Try** No daypart stands out yet';
+	return `**Try** ${parts.join('; ')}`;
 }
 
-function untriedSentence(slots: SlotFact[]): string {
-	const shown = slots.slice(0, 3);
-	const first = shown[0];
-	if (!first) return '';
-	const lead = `You've never tried ${formatSlot(first)} (${formatCount(0, 0)}) — do that.`;
-	const rest = shown.slice(1);
-	if (rest.length === 0) return lead;
-	const more = rest.map((slot) => `${formatSlot(slot)} (${formatCount(0, 0)})`).join(' or ');
-	return `${lead} You also have not tried ${more}.`;
+function joinDayparts(slots: readonly SlotFact[]): string {
+	const bits = slots.map((slot) => daypartCount(slot));
+	if (bits.length <= 1) return bits[0] ?? '';
+	if (bits.length === 2) return `${bits[0]} and ${bits[1]}`;
+	return `${bits.slice(0, -1).join(', ')}, and ${bits[bits.length - 1]}`;
 }
 
-function bestSentence(slot: SlotFact, avoided: boolean): string {
-	const detail = `${formatSlot(slot)} (${formatCount(slot.homes, slot.trials)}, score ${slot.score.toFixed(2)})`;
-	if (avoided) {
-		return `The strongest logged score is ${detail}, and that time still belongs on the careful list.`;
-	}
-	return `The strongest score is ${detail}.`;
+function daypartCount(slot: SlotFact): string {
+	return `${daypartName(slot)} (${slot.homes}/${slot.trials})`;
 }
 
-function alternateSentence(slots: SlotFact[]): string {
-	const bits = slots.map((slot) => `${formatSlot(slot)} (${formatCount(slot.homes, slot.trials)})`);
-	if (bits.length === 1) return `Also consider ${bits[0]}.`;
-	return `Also consider ${bits[0]} or ${bits[1]}.`;
-}
-
-function formatCount(homes: number, trials: number): string {
-	return `${homes}/${trials}, soft rate ${laplaceRate(homes, trials).toFixed(2)}`;
-}
-
-function formatSlot(slot: SlotFact): string {
-	return `${weekdayName(slot.weekday)} ${daypartLabel(slot.daypart)}`;
-}
-
-function formatWeekdayDayparts(weekday: number, dayparts: Daypart[]): string {
-	const labels = dayparts.map((daypart) => daypartLabel(daypart));
-	const first = labels[0] ?? '';
-	if (labels.length <= 1) return `${weekdayName(weekday)} ${first}`;
-	if (labels.length === 2) return `${weekdayName(weekday)} ${first} or ${labels[1]}`;
-	const middle = labels.slice(1, -1).join(', ');
-	const last = labels[labels.length - 1];
-	return `${weekdayName(weekday)} ${first}, ${middle}, or ${last}`;
-}
-
-function joinClauses(parts: string[]): string {
-	if (parts.length <= 1) return parts[0] ?? '';
-	if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
-	return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
-}
-
-function pickBest(slots: SlotFact[], now: Date): SlotFact | null {
-	let best: SlotFact | null = null;
-	for (const slot of slots) {
-		if (!best || slot.score > best.score || (slot.score === best.score && compareUpcoming(slot, best, now) < 0)) {
-			best = slot;
-		}
-	}
-	return best;
-}
-
-function compareUntried(a: SlotFact, b: SlotFact, now: Date): number {
-	const rank = (slot: SlotFact) => (slot.availability === 'go-out' ? 0 : 1);
-	const byKind = rank(a) - rank(b);
-	if (byKind !== 0) return byKind;
-	return compareUpcoming(a, b, now);
+function daypartName(slot: Pick<SlotFact, 'weekday' | 'daypart'>): string {
+	return `${weekdayShort(slot.weekday)} ${daypartLabel(slot.daypart)}`;
 }
 
 function compareUpcoming(a: SlotFact, b: SlotFact, now: Date): number {
@@ -392,6 +347,33 @@ function minutesUntil(now: Date, weekday: number, daypart: Daypart): number {
 
 function slotKey(slot: SlotFact): string {
 	return availabilityKey(slot.weekday, slot.daypart);
+}
+
+function isUntouchedWillingDefault(raw: Record<string, unknown>): boolean {
+	let count = 0;
+	for (let weekday = 0; weekday < 7; weekday += 1) {
+		for (const daypart of LEGACY_DAYPARTS) {
+			const value = raw[`${weekday}:${daypart}`];
+			if (value === undefined) continue;
+			count += 1;
+			if (value !== 'willing') return false;
+		}
+	}
+	return count === 7 * LEGACY_DAYPARTS.length;
+}
+
+function mergeMorning(raw: Record<string, unknown>, weekday: number): AvailabilityLevel {
+	const keys = [`${weekday}:morning`, `${weekday}:early-morning`, `${weekday}:late-morning`];
+	let may = false;
+	for (const key of keys) {
+		if (mapLevel(raw[key]) === 'may') may = true;
+	}
+	return may ? 'may' : 'off';
+}
+
+function mapLevel(value: unknown): AvailabilityLevel {
+	if (value === 'may' || value === 'go-out' || value === 'willing') return 'may';
+	return 'off';
 }
 
 const LOG_LINE = /^>\s*-\s*(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s+[—–-]\s+(success|not home)\s*$/i;

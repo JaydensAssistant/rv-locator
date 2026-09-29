@@ -506,6 +506,15 @@ async function rvLog(tp, kind) {
   content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
 
   await app.vault.modify(file, fmBlock + content);
+  const plugin = rvPlugin();
+  const afterVisit = plugin && plugin.noteVisitLogged;
+  if (typeof afterVisit === "function") {
+    try {
+      await afterVisit.call(plugin, file);
+    } catch {
+      /* The visit is already on the note. */
+    }
+  }
   new Notice(`Logged ${outcome}`);
 }
 
