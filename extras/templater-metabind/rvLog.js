@@ -175,21 +175,32 @@ function isVoiceQuoteLine(line) {
   return /^(?:Avoid|Try|Unsure|Untried)\b/.test(text) || text === "No May-go-out days";
 }
 
+function isThematicBreak(line) {
+  return /^([-*_])\1{2,}\s*$/.test(String(line || "").trim());
+}
+
+function aboveThematicBreak(lines, index) {
+  let cursor = index;
+  while (cursor > 0 && (lines[cursor - 1] ?? "") === "") cursor -= 1;
+  if (cursor > 0 && isThematicBreak(lines[cursor - 1] ?? "")) return cursor - 1;
+  return index;
+}
+
 function attemptLogAnchor(lines, calloutIndex) {
   let index = calloutIndex;
   while (index > 0 && (lines[index - 1] ?? "") === "") index -= 1;
   const previous = lines[index - 1] ?? "";
+  let anchor = calloutIndex;
   if (index > 0 && isDigestEndLine(previous)) {
     let start = index - 1;
     while (start > 0 && !isDigestStartLine(lines[start] ?? "")) start -= 1;
-    if (isDigestStartLine(lines[start] ?? "")) return start;
-  }
-  if (index > 0 && isVoiceQuoteLine(previous)) {
+    if (isDigestStartLine(lines[start] ?? "")) anchor = start;
+  } else if (index > 0 && isVoiceQuoteLine(previous)) {
     let start = index;
     while (start > 0 && isVoiceQuoteLine(lines[start - 1] ?? "")) start -= 1;
-    return start;
+    anchor = start;
   }
-  return calloutIndex;
+  return aboveThematicBreak(lines, anchor);
 }
 
 function insertHomeHeading(body, whenLabel) {

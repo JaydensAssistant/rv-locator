@@ -98,22 +98,35 @@ export function upsertAttemptDigest(markdown: string, parts: DigestNoteParts, op
 /**
  * Where a new `###` stamp is inserted: above the suggester quote when one
  * sits on Attempt Log, above a legacy marker block, or at the callout.
+ * A thematic break that sits on that block stays with the quote, so the
+ * stamp lands in the notes area above the rule.
  */
 export function attemptLogAnchor(lines: readonly string[], calloutIndex: number): number {
 	let index = calloutIndex;
 	while (index > 0 && (lines[index - 1] ?? '') === '') index -= 1;
 	const previous = lines[index - 1] ?? '';
+	let anchor = calloutIndex;
 	if (index > 0 && isDigestEndLine(previous)) {
 		let start = index - 1;
 		while (start > 0 && !isDigestStartLine(lines[start] ?? '')) start -= 1;
-		if (isDigestStartLine(lines[start] ?? '')) return start;
-	}
-	if (index > 0 && isVoiceQuoteLine(previous)) {
+		if (isDigestStartLine(lines[start] ?? '')) anchor = start;
+	} else if (index > 0 && isVoiceQuoteLine(previous)) {
 		let start = index;
 		while (start > 0 && isVoiceQuoteLine(lines[start - 1] ?? '')) start -= 1;
-		return start;
+		anchor = start;
 	}
-	return calloutIndex;
+	return aboveThematicBreak(lines, anchor);
+}
+
+function aboveThematicBreak(lines: readonly string[], index: number): number {
+	let cursor = index;
+	while (cursor > 0 && (lines[cursor - 1] ?? '') === '') cursor -= 1;
+	if (cursor > 0 && isThematicBreak(lines[cursor - 1] ?? '')) return cursor - 1;
+	return index;
+}
+
+function isThematicBreak(line: string): boolean {
+	return /^([-*_])\1{2,}\s*$/.test(line.trim());
 }
 
 export function attemptLogCallouts(root: HTMLElement): HTMLElement[] {

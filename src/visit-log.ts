@@ -85,8 +85,8 @@ export function applyVisitFrontmatter(
  * callout. A missing log is created collapsed (`> [!note]-`). An existing `+`
  * or `-` stays. An old `## Attempt Log` heading is migrated to that collapsed
  * callout on write. A home stamp is inserted above the suggester quote when
- * one sits on the callout, so the quote stays next to the log. The daypart
- * table stays inside the callout.
+ * one sits on the callout. A rule that sits on that quote stays below the
+ * stamp, in the notes area. The daypart table stays inside the callout.
  * Each `###` visit stamp gets a muted age (`54 days ago`). Home and Not home
  * refresh ages already on the note. Address is not part of the body edit.
  */

@@ -29,7 +29,7 @@ The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, an
 
 (The `BUTTON[…]` line must be wrapped in backticks so Meta Bind renders real buttons instead of raw text.)
 
-The script creates `> [!note]- Attempt Log` at the bottom when the note has neither that callout nor a legacy `## Attempt Log` heading. A home stamp is inserted above the suggester quote when one already sits on the callout.
+The script creates `> [!note]- Attempt Log` at the bottom when the note has neither that callout nor a legacy `## Attempt Log` heading. A home stamp is inserted above the suggester quote when one already sits on the callout. A `---` that sits on that quote stays under the new stamp.
 
 ## Meta Bind buttons (`runTemplaterFile`)
 

@@ -2,7 +2,7 @@
 
 ## 1.2.11
 
-`main.js` SHA-256: `7e0ac6f958dc71e634dff7e4c8467ef3e6f39b0d8d511adecfe1520fc95dd6e9`
+`main.js` SHA-256: `710258228234998c4341b7b3e19eee69eb20e0b4543456b3bc4383a80e534435`
 
 `styles.css` SHA-256: `3d9383c34dabf50aa914e2b2150aabedbd8149ad12010a3fa9301f68287c71f8`
 
@@ -11,6 +11,7 @@
 - Attempt Log order is notes and the `###` stamp, then the suggester quote alone, then the collapsed Attempt Log. The daypart table is the first block inside the callout, above the bullets. It is not left outside the callout.
 - Visible digest markers are gone. `%% rv-locator-digest %%` still showed in Live Preview, and HTML comments made Obsidian treat the table as raw source. The callout is the rewrite boundary: the voice quote is the blockquote on the callout, and the table is the leading `|` rows inside it. The first launch of 1.2.11 strips old `%%` and HTML markers and rewrites existing notes into that shape. New notes, `newRv.js`, and `rvLog.js` match. An opened Attempt Log is collapsed once. A later Home or Not home leaves a `+` or `-` the note already has.
 - The digest table lists all seven weekdays by default. A day that is Off shows an em dash. Everyday → Show every weekday turns that off and lists only May-go-out days, which is the previous table. The suggester still names May-go-out slots only.
+- A new RV note matches the created-note layout. Home and Not home buttons sit above the collapsed `[!rv]-` dashboard. A rule, the `###` stamp, a blank notes line, and another rule follow. The suggester quote is under that second rule. The seven-day table starts inside the collapsed Attempt Log, above the first bullet. A later Home stamp stays above the notes rule. Existing notes are not rewritten just to add those rules.
 - Extras sync is pinned to tag `v1.2.11` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.10`, `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
 
 ## 1.2.10

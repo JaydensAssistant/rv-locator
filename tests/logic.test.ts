@@ -1149,6 +1149,24 @@ describe('visit log', () => {
 		const quotedLog = above.indexOf('> [!note]- Attempt Log');
 		assert.ok(quoteStamp >= 0 && quoteStamp < tryAt && tryAt < quotedLog);
 		assert.ok(above.indexOf('> | Mon | 1/1 |') > quotedLog);
+
+		const ruled = [
+			'### Mon, 9am — Sep 1, 2026 <span class="rv-stamp-ago">25 days ago</span>',
+			'',
+			'---',
+			'',
+			'> Try: **Mon morning (1/1)**',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const ruledNext = applyVisitBody(ruled, 'home', now);
+		const ruledLines = ruledNext.split('\n');
+		const newStamp = ruledLines.findIndex((line) => line.startsWith('### Sat, 11pm'));
+		const rule = ruledLines.findIndex((line) => line === '---');
+		assert.ok(newStamp >= 0 && newStamp < rule);
+		assert.ok(ruledNext.indexOf('> Try: **Mon morning (1/1)**') > ruledNext.indexOf('\n---\n'));
 	});
 
 	it('accepts unmarked and tight Attempt Log callout variants', () => {

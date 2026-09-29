@@ -23,7 +23,6 @@ cssclasses:
 
 `BUTTON[rv-log-home, rv-log-miss]`
 
----
 > [!rv]- 👤 RV Dashboard
 >
 > **Priority**
@@ -49,12 +48,26 @@ cssclasses:
 >
 > **Taken**
 > `INPUT[inlineList:Taken]`
+
+---
 ### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
 
+---
 
 > No May-go-out days
 
 > [!note]- Attempt Log
+>
+> | | Morning | Afternoon | Evening |
+> | --- | --- | --- | --- |
+> | Sun | — | — | — |
+> | Mon | — | — | — |
+> | Tue | — | — | — |
+> | Wed | — | — | — |
+> | Thu | — | — | — |
+> | Fri | — | — | — |
+> | Sat | — | — | — |
+>
 > - <% rv.stamp %> — success
 
 ```meta-bind-button
