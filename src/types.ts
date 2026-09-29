@@ -8,12 +8,10 @@ import {
 } from './extras-sync';
 import { normalizeCountyList } from './home-base';
 import {
-	DEFAULT_GO_OUT_MULTIPLIER,
-	DEFAULT_WILLING_MULTIPLIER,
 	defaultAvailabilityGrid,
+	migrateAvailabilityGrid,
 	type AvailabilityGrid,
-	type AvailabilityLevel,
-	type AvailabilityMultipliers,
+	type DigestOrientation,
 } from './schedule';
 
 export type DistanceUnit = 'miles' | 'kilometers';
@@ -59,10 +57,11 @@ export interface RVLocatorSettings {
 	sortChips: SortChipFlags;
 	/** Multiply ideality by the current weekday × daypart home rate. Off by default. */
 	homeLikelihoodEnabled: boolean;
-	/** Requires home likelihood. Distance weight stays 1 so the slot, not miles, ranks the RV. */
-	idealityPlannerEnabled: boolean;
-	availabilityMultipliers: AvailabilityMultipliers;
 	availabilityGrid: AvailabilityGrid;
+	/** Days as rows, or days as columns, in the Attempt Log digest table. */
+	digestOrientation: DigestOrientation;
+	/** Ask to adjust priority after this many visits. Default 3. */
+	priorityNudgeEvery: number;
 	glancablePaddingY: number;
 	glancablePaddingX: number;
 	/** 0 keeps the line as wide as the card. */
@@ -149,12 +148,7 @@ export function defaultGlancableLines(): GlancableLineFlags {
 	};
 }
 
-export function defaultAvailabilityMultipliers(): AvailabilityMultipliers {
-	return {
-		goOut: DEFAULT_GO_OUT_MULTIPLIER,
-		willing: DEFAULT_WILLING_MULTIPLIER,
-	};
-}
+export const DEFAULT_PRIORITY_NUDGE_EVERY = 3;
 
 export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	geoapifyApiKey: '',
@@ -184,9 +178,9 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	territorySpanMiles: DEFAULT_TERRITORY_SPAN_MILES,
 	sortChips: defaultSortChips(),
 	homeLikelihoodEnabled: false,
-	idealityPlannerEnabled: false,
-	availabilityMultipliers: defaultAvailabilityMultipliers(),
 	availabilityGrid: defaultAvailabilityGrid(),
+	digestOrientation: 'rows',
+	priorityNudgeEvery: DEFAULT_PRIORITY_NUDGE_EVERY,
 	glancablePaddingY: DEFAULT_GLANCABLE_PADDING_Y,
 	glancablePaddingX: DEFAULT_GLANCABLE_PADDING_X,
 	glancableMaxLineChars: 0,
@@ -282,9 +276,9 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		territorySpanMiles: positiveNumber(input.territorySpanMiles, DEFAULT_TERRITORY_SPAN_MILES, 500),
 		sortChips: sanitizeSortChips(input.sortChips),
 		homeLikelihoodEnabled: input.homeLikelihoodEnabled === true,
-		idealityPlannerEnabled: input.idealityPlannerEnabled === true,
-		availabilityMultipliers: sanitizeMultipliers(input.availabilityMultipliers),
-		availabilityGrid: sanitizeAvailabilityGrid(input.availabilityGrid),
+		availabilityGrid: migrateAvailabilityGrid(input.availabilityGrid),
+		digestOrientation: input.digestOrientation === 'columns' ? 'columns' : 'rows',
+		priorityNudgeEvery: nudgeEvery(input.priorityNudgeEvery),
 		glancablePaddingY: boundedNumber(input.glancablePaddingY, 0, 64, DEFAULT_GLANCABLE_PADDING_Y),
 		glancablePaddingX: boundedNumber(input.glancablePaddingX, 0, 64, DEFAULT_GLANCABLE_PADDING_X),
 		glancableMaxLineChars: lineChars(input.glancableMaxLineChars),
@@ -367,29 +361,14 @@ function sanitizeGlancableLines(value: unknown): GlancableLineFlags {
 	return next;
 }
 
-function sanitizeMultipliers(value: unknown): AvailabilityMultipliers {
-	const defaults = defaultAvailabilityMultipliers();
-	if (!value || typeof value !== 'object') return defaults;
-	const raw = value as { goOut?: unknown; willing?: unknown };
-	return {
-		goOut: boundedNumber(raw.goOut, 0, 10, defaults.goOut),
-		willing: boundedNumber(raw.willing, 0, 10, defaults.willing),
-	};
-}
-
-function sanitizeAvailabilityGrid(value: unknown): AvailabilityGrid {
-	const grid = defaultAvailabilityGrid();
-	if (!value || typeof value !== 'object') return grid;
-	const raw = value as Record<string, unknown>;
-	for (const key of Object.keys(grid)) {
-		const level = raw[key];
-		if (isAvailabilityLevel(level)) grid[key] = level;
-	}
-	return grid;
-}
-
-function isAvailabilityLevel(value: unknown): value is AvailabilityLevel {
-	return value === 'off' || value === 'willing' || value === 'go-out';
+function nudgeEvery(value: unknown): number {
+	const parsed = typeof value === 'number'
+		? value
+		: typeof value === 'string' && value.trim() !== ''
+			? Number(value)
+			: Number.NaN;
+	if (!Number.isInteger(parsed) || parsed < 1 || parsed > 30) return DEFAULT_PRIORITY_NUDGE_EVERY;
+	return parsed;
 }
 
 function positiveNumber(value: unknown, fallback: number, max: number): number {

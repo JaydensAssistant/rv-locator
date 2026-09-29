@@ -6,8 +6,7 @@ import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
 import { buildViewModel, iconForColumn, type CellModel, type ColumnModel, type GroupModel, type RowModel } from './model';
 import type RVLocatorPlugin from './main';
-import { plannerActive } from './planner';
-import { annotateRowScores, rowPriority, rowSpokeDays } from './row-score';
+import { annotateRowScores } from './row-score';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
 import type { LatLon } from './types';
@@ -124,7 +123,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const buckets = this.plugin.settings.homeLikelihoodEnabled
 			? this.plugin.cachedAttemptBuckets(row.path)
 			: null;
-		return annotateRowScores(row, miles, this.plugin.settings, buckets, now);
+		return annotateRowScores(row, miles, this.plugin.settings, buckets, now, this.plugin.snoozeUntilFor(row.path));
 	}
 
 	/** Last-used sort, persisted on the plugin. Nearest re-sorts in this view as the fix moves. */
@@ -435,24 +434,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	protected paintSortExtras(): void {
-		if (!plannerActive(this.plugin.settings)) return;
-		const button = this.sortEl.createEl('button', {
-			cls: 'rv-locator-sort-preset',
-			text: 'Planner',
-			attr: {
-				type: 'button',
-				title: 'Ideality if distance stayed at the territory span',
-			},
-		});
-		button.addEventListener('click', () => {
-			const people = this.groups.flatMap((group) => group.rows.map((row) => ({
-				path: row.path,
-				name: row.name,
-				priority: rowPriority(row),
-				days: rowSpokeDays(row),
-			})));
-			void this.plugin.openIdealityPlanner(people);
-		});
+		// Ideality planner was removed in 1.2.6. It may return later.
 	}
 
 	private syncPositionSource(): void {

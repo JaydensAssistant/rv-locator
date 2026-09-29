@@ -1,5 +1,6 @@
 import { IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './constants';
 import { idealityScore, likelihoodMultiplier, urgencyScore } from './scoring';
+import { snoozeActive } from './snooze';
 import { availabilityKey, daypartAt, type AttemptBuckets } from './schedule';
 import type { RowModel } from './model';
 import type { Sortable } from './sort';
@@ -11,8 +12,26 @@ export function rowSpokeDays(row: RowModel): number | null {
 	return cell.daysSince;
 }
 
-export function rowUrgency(row: RowModel, settings: RVLocatorSettings): number | null {
-	return urgencyScore(rowSpokeDays(row), rowPriority(row), settings.urgencyThresholdDays);
+export function rowUrgency(
+	row: RowModel,
+	settings: RVLocatorSettings,
+	now: Date = new Date(),
+	snoozeUntil: Date | null = null,
+): number | null {
+	return displayedUrgency(rowSpokeDays(row), rowPriority(row), settings, snoozeUntil, now);
+}
+
+/** Priority 0 has no urgency. An active snooze holds every other priority at 0. */
+export function displayedUrgency(
+	days: number | null,
+	priority: number | null,
+	settings: Pick<RVLocatorSettings, 'urgencyThresholdDays'>,
+	snoozeUntil: Date | null,
+	now: Date,
+): number | null {
+	if (priority == null || priority <= 0) return null;
+	if (snoozeActive(snoozeUntil, now)) return 0;
+	return urgencyScore(days, priority, settings.urgencyThresholdDays);
 }
 
 export function rowPriority(row: RowModel): number | null {
@@ -39,10 +58,11 @@ export function annotateRowScores(
 	settings: RVLocatorSettings,
 	buckets: AttemptBuckets | null,
 	now: Date,
+	snoozeUntil: Date | null = null,
 ): RowModel {
 	const days = rowSpokeDays(row);
 	const priority = rowPriority(row);
-	const urgency = urgencyScore(days, priority, settings.urgencyThresholdDays);
+	const urgency = displayedUrgency(days, priority, settings, snoozeUntil, now);
 	const base = idealityScore({
 		days,
 		priority,

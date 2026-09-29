@@ -2,7 +2,9 @@ import { Modal, Setting, TFile, normalizePath, type App } from 'obsidian';
 import { extrasDestinations, type ExtrasPlacement } from './extras-sync';
 import { parseHomeCountyLines } from './home-base';
 import { TEMPLATER_PLUGIN_ID } from './new-rv-launch';
+import { explainMayGoOut, paintMayGoOutGrid } from './settings-scoring';
 import { META_BIND_PLUGIN_ID, setupChecklist, type SetupSnapshot } from './setup-check';
+import type { AvailabilityGrid } from './schedule';
 import type { RVLocatorSettings } from './types';
 
 /** First launch opens the wizard. A finished wizard stays closed until Settings opens it. */
@@ -63,6 +65,8 @@ export interface SetupWizardActions {
 	openMetaBindSettings: () => void;
 	/** Writes home counties, then saves settings. Skip does not call this. */
 	onSaveHomeCounties: (counties: string[]) => Promise<void> | void;
+	/** Writes the may-go-out grid. Skip does not call this. */
+	onSaveMayGoOut: (grid: AvailabilityGrid) => Promise<void> | void;
 }
 
 export class SetupWizardModal extends Modal {
@@ -71,11 +75,13 @@ export class SetupWizardModal extends Modal {
 	private step: SetupWizardStep = 'home';
 	private homeDraft = '';
 	private homeDraftReady = false;
+	private scheduleDraft: AvailabilityGrid | null = null;
 
 	constructor(
 		app: App,
 		private load: () => Promise<SetupSnapshot>,
 		private actions: SetupWizardActions,
+		private initialSchedule: AvailabilityGrid = {},
 	) {
 		super(app);
 	}
@@ -112,10 +118,15 @@ export class SetupWizardModal extends Modal {
 		contentEl.createEl('p', {
 			text: 'One county per line, the same list as Home counties in settings. Skip leaves the list unchanged. Empty means every match asks you to confirm.',
 		});
+		contentEl.createEl('p', {
+			text: 'May go out is when you might visit. Grey is off and green is may go out. Click a daypart to switch. Skip leaves that schedule unchanged.',
+		});
+		explainMayGoOut(contentEl);
 		const snapshot = await this.load();
 		if (this.closed || generation !== this.renderGeneration) return;
 		if (!this.homeDraftReady) {
 			this.homeDraft = snapshot.homeCounties.join('\n');
+			this.scheduleDraft = { ...this.initialSchedule };
 			this.homeDraftReady = true;
 		}
 		new Setting(contentEl)
@@ -127,6 +138,14 @@ export class SetupWizardModal extends Modal {
 				text.setValue(this.homeDraft);
 				text.onChange((value) => { this.homeDraft = value; });
 			});
+		if (this.scheduleDraft) {
+			const draft = this.scheduleDraft;
+			paintMayGoOutGrid(
+				contentEl,
+				() => draft,
+				(key, level) => { draft[key] = level; },
+			);
+		}
 		new Setting(contentEl)
 			.addButton((button) => {
 				button.setButtonText('Save and continue');
@@ -141,6 +160,7 @@ export class SetupWizardModal extends Modal {
 
 	private async saveHomeAndContinue(): Promise<void> {
 		await this.actions.onSaveHomeCounties(parseHomeCountyLines(this.homeDraft));
+		if (this.scheduleDraft) await this.actions.onSaveMayGoOut({ ...this.scheduleDraft });
 		if (this.closed) return;
 		this.showPlugins();
 	}

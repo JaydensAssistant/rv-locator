@@ -1,8 +1,22 @@
 import { Setting } from 'obsidian';
-import { DAYPARTS, daypartLabel, weekdayShort, type AvailabilityLevel, type Daypart } from './schedule';
-import { settingsGraphs } from './settings-graphs';
+import {
+	DAYPARTS,
+	daypartSettingLabel,
+	daypartTitle,
+	weekdayShort,
+	type AvailabilityLevel,
+	type Daypart,
+} from './schedule';
+import {
+	idealityFloorSvg,
+	idealityMilesSvg,
+	likelihoodSvg,
+	urgencyLadderSvg,
+	urgencyRampSvg,
+} from './settings-graphs';
 import {
 	DEFAULT_IDEALITY_FLOOR_DAYS,
+	DEFAULT_PRIORITY_NUDGE_EVERY,
 	DEFAULT_TERRITORY_SPAN_MILES,
 	DEFAULT_URGENCY_THRESHOLD_DAYS,
 	GLANCABLE_LINE_IDS,
@@ -42,183 +56,31 @@ const CHIP_LABELS: Record<SortChipId, string> = {
 	ideality: 'Ideality',
 };
 
-const DAYPART_SHORT: Record<Daypart, string> = {
-	'early-morning': 'Early',
-	'late-morning': 'Late',
-	afternoon: 'Aft',
-	evening: 'Eve',
-};
-
-export function renderScoringSettings(containerEl: HTMLElement, plugin: ScoringHost): void {
-	new Setting(containerEl).setName('Urgency and ideality').setHeading();
+export function renderDensitySettings(containerEl: HTMLElement, plugin: ScoringHost): void {
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'Urgency is days since Last Spoke divided by the priority threshold, and it keeps growing past 1. Under 3 days it fades toward 0 for every priority. Ideality multiplies that by a distance weight. Territory span is not in the setup wizard.',
+		text: 'General scale changes the card text and the urgency, priority, and map circles together. Two columns turn on when the measured card fits twice.',
 	});
-
-	for (const band of PRIORITY_BANDS) {
-		numberSetting(
-			containerEl,
-			`Priority ${band} urgency (days)`,
-			`Default ${DEFAULT_URGENCY_THRESHOLD_DAYS[band]}.`,
-			plugin.settings.urgencyThresholdDays[band],
-			(value) => positive(value, 3650),
-			async (value) => {
-				plugin.settings.urgencyThresholdDays = { ...plugin.settings.urgencyThresholdDays, [band]: value };
-				await plugin.saveSettings();
-				redraw();
-			},
-		);
-	}
-
-	numberSetting(
-		containerEl,
-		'Territory span (miles)',
-		`Default ${DEFAULT_TERRITORY_SPAN_MILES}. Ideality’s distance weight is 1 at this many miles. Power-user setting, left out of the setup wizard.`,
-		plugin.settings.territorySpanMiles,
-		(value) => positive(value, 500),
-		async (value) => {
-			plugin.settings.territorySpanMiles = value;
-			await plugin.saveSettings();
-			redraw();
-		},
-	);
-
-	for (const band of PRIORITY_BANDS) {
-		numberSetting(
-			containerEl,
-			`Priority ${band} ideality floor (days)`,
-			`Default ${DEFAULT_IDEALITY_FLOOR_DAYS[band]}. Inside this window ideality fades instead of cutting off.`,
-			plugin.settings.idealityFloorDays[band],
-			(value) => positive(value, 3650),
-			async (value) => {
-				plugin.settings.idealityFloorDays = { ...plugin.settings.idealityFloorDays, [band]: value };
-				await plugin.saveSettings();
-				redraw();
-			},
-		);
-	}
-
-	new Setting(containerEl)
-		.setName('Ideality sort chip')
-		.setDesc('Off by default. Shows the Ideality chip with the other sort chips.')
-		.addToggle((toggle) => {
-			toggle.setValue(plugin.settings.sortChips.ideality);
-			toggle.onChange(async (value) => {
-				plugin.settings.sortChips = { ...plugin.settings.sortChips, ideality: value };
-				await plugin.saveSettings();
-			});
-		});
-
-	new Setting(containerEl)
-		.setName('Home likelihood')
-		.setDesc('Off by default. For the current weekday and daypart only, a 50% prior nudges ideality. A thin log barely moves it. Different weekdays are never merged.')
-		.addToggle((toggle) => {
-			toggle.setValue(plugin.settings.homeLikelihoodEnabled);
-			toggle.onChange(async (value) => {
-				plugin.settings.homeLikelihoodEnabled = value;
-				await plugin.saveSettings();
-				redraw();
-			});
-		});
-
-	new Setting(containerEl)
-		.setName('Ideality planner')
-		.setDesc('Needs home likelihood. Holds distance at the territory span and lists each RV across upcoming Willing and Go out times.')
-		.addToggle((toggle) => {
-			toggle.setValue(plugin.settings.idealityPlannerEnabled);
-			toggle.onChange(async (value) => {
-				plugin.settings.idealityPlannerEnabled = value;
-				await plugin.saveSettings();
-			});
-		});
-
-	new Setting(containerEl).setName('Live graphs').setHeading();
-	const graphs = containerEl.createDiv('rv-locator-graphs');
-	const redraw = () => paintGraphs(graphs, plugin.settings);
-
-	new Setting(containerEl).setName('When you can go').setHeading();
-	containerEl.createEl('p', {
-		cls: 'setting-item-description',
-		text: 'Each weekday and daypart is Off, Willing, or Go out. The return suggester skips Off. Defaults: go out 1.0, willing 0.65.',
+	sliderSetting(containerEl, 'General scale', 'Default 1. Text and the three circles grow together.', plugin.settings.glancableFontScale, 0.5, 2.5, 0.05, async (value) => {
+		plugin.settings.glancableFontScale = value;
+		await plugin.saveSettings();
 	});
-	numberSetting(
-		containerEl,
-		'Go out multiplier',
-		'Default 1.',
-		plugin.settings.availabilityMultipliers.goOut,
-		(value) => nonNegative(value, 10),
-		async (value) => {
-			plugin.settings.availabilityMultipliers = { ...plugin.settings.availabilityMultipliers, goOut: value };
-			await plugin.saveSettings();
-		},
-	);
-	numberSetting(
-		containerEl,
-		'Willing multiplier',
-		'Default 0.65.',
-		plugin.settings.availabilityMultipliers.willing,
-		(value) => nonNegative(value, 10),
-		async (value) => {
-			plugin.settings.availabilityMultipliers = { ...plugin.settings.availabilityMultipliers, willing: value };
-			await plugin.saveSettings();
-		},
-	);
-	paintAvailability(containerEl, plugin);
-
-	new Setting(containerEl).setName('Glancable density').setHeading();
-	containerEl.createEl('p', {
-		cls: 'setting-item-description',
-		text: 'Defaults match the current card. Two columns turn on when the measured card fits twice. A short line is allowed to feel cramped.',
+	sliderSetting(containerEl, 'Vertical padding', 'Space above and below the card text. Default 8.', plugin.settings.glancablePaddingY, 0, 32, 1, async (value) => {
+		plugin.settings.glancablePaddingY = value;
+		await plugin.saveSettings();
 	});
-	numberSetting(
-		containerEl,
-		'Vertical padding',
-		'Default 8.',
-		plugin.settings.glancablePaddingY,
-		(value) => nonNegative(value, 64),
-		async (value) => {
-			plugin.settings.glancablePaddingY = value;
-			await plugin.saveSettings();
-		},
-	);
-	numberSetting(
-		containerEl,
-		'Horizontal padding',
-		'Default 10.',
-		plugin.settings.glancablePaddingX,
-		(value) => nonNegative(value, 64),
-		async (value) => {
-			plugin.settings.glancablePaddingX = value;
-			await plugin.saveSettings();
-		},
-	);
-	numberSetting(
-		containerEl,
-		'Max line length',
-		'Characters. 0 uses the full card width.',
-		plugin.settings.glancableMaxLineChars,
-		(value) => lineChars(value),
-		async (value) => {
-			plugin.settings.glancableMaxLineChars = value;
-			await plugin.saveSettings();
-		},
-	);
-	numberSetting(
-		containerEl,
-		'Font size multiplier',
-		'Default 1. Title, street, and the date lines keep their relative sizes.',
-		plugin.settings.glancableFontScale,
-		(value) => fontScale(value),
-		async (value) => {
-			plugin.settings.glancableFontScale = value;
-			await plugin.saveSettings();
-		},
-	);
+	sliderSetting(containerEl, 'Horizontal padding', 'Space at the card edges. Default 10.', plugin.settings.glancablePaddingX, 0, 32, 1, async (value) => {
+		plugin.settings.glancablePaddingX = value;
+		await plugin.saveSettings();
+	});
+	sliderSetting(containerEl, 'Max line length', 'Characters. 0 uses the full card width.', plugin.settings.glancableMaxLineChars, 0, 80, 1, async (value) => {
+		plugin.settings.glancableMaxLineChars = value;
+		await plugin.saveSettings();
+	});
 	for (const id of GLANCABLE_LINE_IDS) {
 		new Setting(containerEl)
 			.setName(LINE_LABELS[id])
-			.setDesc('Show this Glancable line.')
+			.setDesc('Show this line on the card.')
 			.addToggle((toggle) => {
 				toggle.setValue(plugin.settings.glancableLines[id]);
 				toggle.onChange(async (value) => {
@@ -227,14 +89,130 @@ export function renderScoringSettings(containerEl: HTMLElement, plugin: ScoringH
 				});
 			});
 	}
+}
 
-	new Setting(containerEl).setName('Sort chips').setHeading();
+export function renderPriorityNudge(containerEl: HTMLElement, plugin: ScoringHost): void {
+	sliderSetting(
+		containerEl,
+		'Priority check',
+		`After every ${plugin.settings.priorityNudgeEvery} visits, ask whether to lower, keep, or raise priority. Default ${DEFAULT_PRIORITY_NUDGE_EVERY}.`,
+		plugin.settings.priorityNudgeEvery,
+		1,
+		20,
+		1,
+		async (value) => {
+			plugin.settings.priorityNudgeEvery = value;
+			await plugin.saveSettings();
+		},
+	);
+}
+
+export function renderUrgencySettings(containerEl: HTMLElement, plugin: ScoringHost): void {
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'Hide a chip without changing the last sort. Urgency starts on. Ideality stays off until Ideality sort chip is turned on.',
+		text: 'Urgency is days since Last Spoke divided by the priority threshold. It keeps growing past 1. Under 3 days it rises slowly, so priority 5 stays well below 1 around 2 days.',
 	});
-	for (const id of SORT_CHIP_IDS) {
-		if (id === 'ideality') continue;
+	const ladder = containerEl.createDiv();
+	const ramp = containerEl.createDiv();
+	const paint = () => {
+		mountSvg(ladder, urgencyLadderSvg(plugin.settings.urgencyThresholdDays));
+		mountSvg(ramp, urgencyRampSvg(plugin.settings.urgencyThresholdDays));
+	};
+	for (const band of PRIORITY_BANDS) {
+		sliderSetting(
+			containerEl,
+			`Priority ${band} reaches 1`,
+			`Days. Default ${DEFAULT_URGENCY_THRESHOLD_DAYS[band]}.`,
+			plugin.settings.urgencyThresholdDays[band],
+			1,
+			400,
+			1,
+			async (value) => {
+				plugin.settings.urgencyThresholdDays = { ...plugin.settings.urgencyThresholdDays, [band]: value };
+				await plugin.saveSettings();
+				paint();
+			},
+		);
+	}
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'Days until urgency is 1, by priority.',
+	});
+	containerEl.appendChild(ladder);
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'The first 3 days. Priority 5 should still be far from 1 at about 2 days.',
+	});
+	containerEl.appendChild(ramp);
+	paint();
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'Tap the urgency circle on a card to hold urgency at 0 for today, 7 days, or 14 days. Priority 0 stays grey.',
+	});
+}
+
+export function renderIdealitySettings(containerEl: HTMLElement, plugin: ScoringHost): void {
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'Ideality is urgency times a distance weight. The weight is 1 at the territory span.',
+	});
+	const miles = containerEl.createDiv();
+	const floors = containerEl.createDiv();
+	const likelihood = containerEl.createDiv();
+	const paint = () => {
+		mountSvg(miles, idealityMilesSvg(plugin.settings.territorySpanMiles));
+		mountSvg(floors, idealityFloorSvg(plugin.settings));
+		mountSvg(likelihood, plugin.settings.homeLikelihoodEnabled ? likelihoodSvg() : '');
+	};
+	sliderSetting(
+		containerEl,
+		'Territory span',
+		`Miles. Default ${DEFAULT_TERRITORY_SPAN_MILES}.`,
+		plugin.settings.territorySpanMiles,
+		1,
+		80,
+		1,
+		async (value) => {
+			plugin.settings.territorySpanMiles = value;
+			await plugin.saveSettings();
+			paint();
+		},
+	);
+	containerEl.appendChild(miles);
+	for (const band of PRIORITY_BANDS) {
+		sliderSetting(
+			containerEl,
+			`Priority ${band} floor`,
+			`Days. Default ${DEFAULT_IDEALITY_FLOOR_DAYS[band]}. Inside this window ideality fades.`,
+			plugin.settings.idealityFloorDays[band],
+			1,
+			180,
+			1,
+			async (value) => {
+				plugin.settings.idealityFloorDays = { ...plugin.settings.idealityFloorDays, [band]: value };
+				await plugin.saveSettings();
+				paint();
+			},
+		);
+	}
+	containerEl.appendChild(floors);
+	new Setting(containerEl)
+		.setName('Home likelihood')
+		.setDesc('For the current weekday and daypart only, a 50% prior nudges ideality. A thin log barely moves it.')
+		.addToggle((toggle) => {
+			toggle.setValue(plugin.settings.homeLikelihoodEnabled);
+			toggle.onChange(async (value) => {
+				plugin.settings.homeLikelihoodEnabled = value;
+				await plugin.saveSettings();
+				paint();
+			});
+		});
+	containerEl.appendChild(likelihood);
+	paint();
+}
+
+export function renderSortChips(containerEl: HTMLElement, plugin: ScoringHost, ids: readonly SortChipId[] = SORT_CHIP_IDS): void {
+	for (const id of ids) {
 		new Setting(containerEl)
 			.setName(CHIP_LABELS[id])
 			.setDesc('Show this chip on Nearby and Glancable.')
@@ -246,105 +224,90 @@ export function renderScoringSettings(containerEl: HTMLElement, plugin: ScoringH
 				});
 			});
 	}
-
-	redraw();
 }
 
-function paintGraphs(host: HTMLElement, settings: RVLocatorSettings): void {
-	host.empty();
-	const graphs = settingsGraphs(settings);
-	for (const svg of [graphs.ladder, graphs.ramp, graphs.ideality, graphs.floors, graphs.likelihood]) {
-		if (!svg) continue;
-		const frame = host.createDiv('rv-locator-graph');
-		const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-		const node = doc.documentElement;
-		if (node.localName !== 'svg') continue;
-		frame.appendChild(node);
-	}
-}
-
-function paintAvailability(containerEl: HTMLElement, plugin: ScoringHost): void {
+export function paintMayGoOutGrid(
+	containerEl: HTMLElement,
+	read: () => RVLocatorSettings['availabilityGrid'],
+	write: (key: string, level: AvailabilityLevel) => void,
+): void {
 	const grid = containerEl.createDiv('rv-locator-availability');
 	grid.createDiv({ text: '' });
 	for (const daypart of DAYPARTS) {
 		grid.createDiv({
 			cls: 'rv-locator-availability-head',
-			text: DAYPART_SHORT[daypart],
-			attr: { title: daypartLabel(daypart) },
+			text: daypartTitle(daypart),
+			attr: { title: daypartSettingLabel(daypart) },
 		});
 	}
 	for (let weekday = 0; weekday < 7; weekday += 1) {
 		grid.createDiv({ cls: 'rv-locator-availability-day', text: weekdayShort(weekday) });
-		for (const daypart of DAYPARTS) {
-			const key = `${weekday}:${daypart}`;
-			const select = grid.createEl('select', {
-				attr: { 'aria-label': `${weekdayShort(weekday)} ${daypartLabel(daypart)}` },
-			});
-			for (const level of ['off', 'willing', 'go-out'] as const) {
-				select.createEl('option', { text: levelLabel(level), attr: { value: level } });
-			}
-			select.value = plugin.settings.availabilityGrid[key] ?? 'willing';
-			select.addEventListener('change', () => {
-				const next = select.value;
-				if (next !== 'off' && next !== 'willing' && next !== 'go-out') return;
-				plugin.settings.availabilityGrid = { ...plugin.settings.availabilityGrid, [key]: next };
-				void plugin.saveSettings();
-			});
-		}
+		for (const daypart of DAYPARTS) paintCell(grid, weekday, daypart, read, write);
 	}
 }
 
-function levelLabel(level: AvailabilityLevel): string {
-	if (level === 'go-out') return 'Go out';
-	if (level === 'willing') return 'Willing';
-	return 'Off';
+export function explainMayGoOut(containerEl: HTMLElement): void {
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'Morning is before 12pm, afternoon is 12pm to 4:29pm, and evening is after 4:30pm. Grey is off. Green is may go out. Click a cell to switch. The Attempt Log table uses only these dayparts, never a whole day.',
+	});
 }
 
-function numberSetting(
+function paintCell(
+	grid: HTMLElement,
+	weekday: number,
+	daypart: Daypart,
+	read: () => RVLocatorSettings['availabilityGrid'],
+	write: (key: string, level: AvailabilityLevel) => void,
+): void {
+	const key = `${weekday}:${daypart}`;
+	const button = grid.createEl('button', { attr: { type: 'button' } });
+	const paint = () => {
+		const level: AvailabilityLevel = read()[key] === 'may' ? 'may' : 'off';
+		button.className = `rv-may-cell is-${level}`;
+		button.textContent = level === 'may' ? 'May go out' : 'Off';
+		button.setAttribute('aria-pressed', level === 'may' ? 'true' : 'false');
+		button.setAttribute('aria-label', `${weekdayShort(weekday)} ${daypartSettingLabel(daypart)}`);
+	};
+	paint();
+	button.addEventListener('click', () => {
+		const next: AvailabilityLevel = read()[key] === 'may' ? 'off' : 'may';
+		write(key, next);
+		paint();
+	});
+}
+
+export function mountSvg(host: HTMLElement, svg: string): void {
+	host.empty();
+	host.addClass('rv-locator-graph');
+	if (!svg) {
+		host.hide();
+		return;
+	}
+	host.show();
+	const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+	const node = doc.documentElement;
+	if (node.localName !== 'svg') return;
+	host.appendChild(node);
+}
+
+function sliderSetting(
 	containerEl: HTMLElement,
 	name: string,
 	desc: string,
 	current: number,
-	parse: (value: string) => number | null,
+	min: number,
+	max: number,
+	step: number,
 	write: (value: number) => Promise<void>,
 ): void {
 	new Setting(containerEl)
 		.setName(name)
 		.setDesc(desc)
-		.addText((text) => {
-			text.setValue(String(current));
-			text.onChange((value) => {
-				const next = parse(value);
-				if (next == null) return;
-				void write(next);
-			});
+		.addSlider((slider) => {
+			slider.setLimits(min, max, step);
+			slider.setValue(current);
+			slider.setDynamicTooltip();
+			slider.onChange((value) => { void write(value); });
 		});
-}
-
-function positive(value: string, max: number): number | null {
-	if (!/^\d+(?:\.\d+)?$/.test(value.trim())) return null;
-	const next = Number(value.trim());
-	if (!Number.isFinite(next) || next <= 0 || next > max) return null;
-	return next;
-}
-
-function nonNegative(value: string, max: number): number | null {
-	if (!/^\d+(?:\.\d+)?$/.test(value.trim())) return null;
-	const next = Number(value.trim());
-	if (!Number.isFinite(next) || next < 0 || next > max) return null;
-	return next;
-}
-
-function lineChars(value: string): number | null {
-	if (!/^\d+$/.test(value.trim())) return null;
-	const next = Number(value.trim());
-	if (!Number.isInteger(next) || next < 0 || next > 200) return null;
-	return next;
-}
-
-function fontScale(value: string): number | null {
-	if (!/^\d+(?:\.\d+)?$/.test(value.trim())) return null;
-	const next = Number(value.trim());
-	if (!Number.isFinite(next) || next < 0.5 || next > 2.5) return null;
-	return next;
 }

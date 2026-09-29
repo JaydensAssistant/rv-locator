@@ -1,4 +1,4 @@
-import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, type App, type TextComponent } from 'obsidian';
+import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, setIcon, type App, type TextComponent } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
 import { parseDatePropertyNames } from './dates';
 import { parseHomeCountyLines } from './home-base';
@@ -19,15 +19,35 @@ import {
 	type ExtrasSyncFile,
 } from './extras-sync';
 import type RVLocatorPlugin from './main';
-import { renderScoringSettings } from './settings-scoring';
+import {
+	explainMayGoOut,
+	paintMayGoOutGrid,
+	renderDensitySettings,
+	renderIdealitySettings,
+	renderPriorityNudge,
+	renderSortChips,
+	renderUrgencySettings,
+} from './settings-scoring';
 import { applyTemplateSettingChange, type TemplateRenameVault } from './template-rename';
 
 /** Pause so a half-typed file name does not rename the note on every keystroke. */
 const TEMPLATE_RENAME_DELAY_MS = 400;
 
+type SettingsSection = 'everyday' | 'urgency' | 'nearby' | 'templates' | 'advanced';
+
+const SETTINGS_SECTIONS: ReadonlyArray<{ id: SettingsSection; label: string; icon: string }> = [
+	{ id: 'everyday', label: 'Everyday', icon: 'star' },
+	{ id: 'urgency', label: 'Urgency', icon: 'alert-circle' },
+	{ id: 'nearby', label: 'Nearby', icon: 'map-pin' },
+	{ id: 'templates', label: 'Templates', icon: 'file-text' },
+	{ id: 'advanced', label: 'Advanced', icon: 'wrench' },
+];
+
 export class RVLocatorSettingTab extends PluginSettingTab {
 	private templateFieldGeneration = 0;
 	private templateRenameChain: Promise<void> = Promise.resolve();
+	private section: SettingsSection = 'everyday';
+	private mountEl: HTMLElement = this.containerEl;
 
 	constructor(app: App, private plugin: RVLocatorPlugin) {
 		super(app, plugin);
@@ -38,7 +58,36 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		const templateGeneration = this.templateFieldGeneration;
 		const { containerEl } = this;
 		containerEl.empty();
+		containerEl.addClass('rv-locator-settings');
+		this.paintSectionBar(containerEl);
+		const body = containerEl.createDiv('rv-locator-settings-body');
+		this.mountEl = body;
+		if (this.section === 'everyday') this.paintEveryday(body);
+		else if (this.section === 'urgency') this.paintUrgency(body);
+		else if (this.section === 'nearby') this.paintNearby(body);
+		else if (this.section === 'templates') this.paintTemplates(body, templateGeneration);
+		else this.paintAdvanced(body);
+	}
 
+	private paintSectionBar(containerEl: HTMLElement): void {
+		const bar = containerEl.createDiv('rv-locator-settings-tabs');
+		for (const section of SETTINGS_SECTIONS) {
+			const button = bar.createEl('button', {
+				cls: `rv-locator-settings-tab${this.section === section.id ? ' is-active' : ''}`,
+				attr: { type: 'button' },
+			});
+			const icon = button.createSpan('rv-locator-settings-tab-icon');
+			setIcon(icon, section.icon);
+			button.createSpan({ text: section.label });
+			button.addEventListener('click', () => {
+				if (this.section === section.id) return;
+				this.section = section.id;
+				this.display();
+			});
+		}
+	}
+
+	private paintEveryday(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Geocoding').setHeading();
 
 		const keyDesc = createFragment((fragment) => {
@@ -76,49 +125,9 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(containerEl).setName('Property names').setHeading();
-
-		this.propertySetting(
-			'Address property',
-			'Read for the lookup. Only this text is sent to Geoapify, and geocode never writes it.',
-			'Address',
-			() => this.plugin.settings.addressProperty,
-			(value) => { this.plugin.settings.addressProperty = value; },
-		);
-		this.propertySetting(
-			'Location property',
-			'YAML list of two quoted strings: latitude, then longitude.',
-			'Location',
-			() => this.plugin.settings.locationProperty,
-			(value) => { this.plugin.settings.locationProperty = value; },
-		);
-		this.propertySetting(
-			'Map link property',
-			'Google Maps search of Address; leave empty to skip. A street with no city adds the note’s City in the link only, and Address is never rewritten.',
-			'Map Link',
-			() => this.plugin.settings.mapLinkProperty,
-			(value) => { this.plugin.settings.mapLinkProperty = value; },
-		);
-
-		new Setting(containerEl)
-			.setName('Optional place properties')
-			.setDesc('Geocode always writes City. Names below are optional; a filled name is overwritten from the result, and an empty name is skipped.');
-
-		this.extraSetting(
-			'City property',
-			'City',
-			() => this.plugin.settings.cityProperty,
-			(value) => { this.plugin.settings.cityProperty = value; },
-			'Optional extra name. Geocode always writes City even when this is empty.',
-		);
-		this.extraSetting('County property', 'County', () => this.plugin.settings.countyProperty, (value) => { this.plugin.settings.countyProperty = value; });
-		this.extraSetting('State property', 'State', () => this.plugin.settings.stateProperty, (value) => { this.plugin.settings.stateProperty = value; });
-		this.extraSetting('ZIP / postal property', 'ZIP', () => this.plugin.settings.postcodeProperty, (value) => { this.plugin.settings.postcodeProperty = value; });
-		this.extraSetting('Country property', 'Country', () => this.plugin.settings.countryProperty, (value) => { this.plugin.settings.countryProperty = value; });
-
 		new Setting(containerEl)
 			.setName('Home counties')
-			.setDesc('One county per line; empty always asks you to confirm, and Address is never written. A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in one of these counties, including bulk geocode.')
+			.setDesc('One county per line. Empty means every match asks you to confirm. A fully confident hit is saved only when it is the only hit in one of these counties.')
 			.addTextArea((text) => {
 				text.inputEl.rows = 4;
 				text.setPlaceholder('Orange\nLake');
@@ -129,23 +138,62 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 
-		new Setting(containerEl).setName('Nearby views').setHeading();
-		containerEl.createEl('p', {
-			cls: 'setting-item-description',
-			text: 'Shows file name, Distance, Priority, Last Spoke, Last Attempted, Met, Visits, Successful Visits, Address, Met With, and Map Link, with Priority beside Distance. City is the stored City, or parsed from Address when City is missing, and the note still keeps the full address.',
-		});
-		containerEl.createEl('p', {
-			cls: 'setting-item-description',
-			text: 'Sort chips: Nearest / Furthest, Priority high or low, Spoke oldest or newest, Attempted oldest or newest, Met newest or oldest, and Urgency high or low. Ideality stays hidden until its chip is turned on. The first tap uses nearest, high, longest-ago, newest for Met, or highest urgency, and tapping the selected chip flips direction; the last choice is remembered.',
-		});
-		containerEl.createEl('p', {
-			cls: 'setting-item-description',
-			text: 'Active keeps a Hub link to Return Visits Hub when Priority is above 0. All keeps that link at any priority, Inactive only at Priority 0, and every layout skips +/Templates.',
-		});
+		new Setting(containerEl).setName('May-go-out schedule').setHeading();
+		explainMayGoOut(containerEl);
+		paintMayGoOutGrid(
+			containerEl,
+			() => this.plugin.settings.availabilityGrid,
+			(key, level) => {
+				this.plugin.settings.availabilityGrid = { ...this.plugin.settings.availabilityGrid, [key]: level };
+				void this.plugin.saveSettings();
+			},
+		);
+		new Setting(containerEl)
+			.setName('Digest table')
+			.setDesc(this.plugin.settings.digestOrientation === 'columns'
+				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note.'
+				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note.')
+			.addButton((button) => {
+				button.setButtonText('Swap rows and columns');
+				button.onClick(() => {
+					this.plugin.settings.digestOrientation = this.plugin.settings.digestOrientation === 'columns' ? 'rows' : 'columns';
+					void this.plugin.saveSettings().then(() => this.display());
+				});
+			});
 
+		new Setting(containerEl).setName('Glancable density').setHeading();
+		renderDensitySettings(containerEl, this.plugin);
+
+		new Setting(containerEl).setName('New notes').setHeading();
+		new Setting(containerEl)
+			.setName('Default priority')
+			.setDesc('Priority written on a new RV. 0 to 5, default 4.')
+			.addSlider((slider) => {
+				slider.setLimits(0, 5, 1);
+				slider.setValue(this.plugin.settings.defaultNewRvPriority);
+				slider.setDynamicTooltip();
+				slider.onChange(async (value) => {
+					this.plugin.settings.defaultNewRvPriority = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		renderPriorityNudge(containerEl, this.plugin);
+	}
+
+	private paintUrgency(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Urgency').setHeading();
+		renderUrgencySettings(containerEl, this.plugin);
+	}
+
+	private paintNearby(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Nearby').setHeading();
+		containerEl.createEl('p', {
+			cls: 'setting-item-description',
+			text: 'Active keeps a hub link when priority is above 0. All keeps it at any priority. Inactive keeps it only at 0. Templates are skipped.',
+		});
 		new Setting(containerEl)
 			.setName('Distance unit')
-			.setDesc('Miles or kilometers in Nearby and Glancable. Distance stays on screen and is not written into notes.')
+			.setDesc('Miles or kilometers. Distance stays on screen.')
 			.addDropdown((dropdown) => {
 				dropdown.addOption('miles', 'Miles');
 				dropdown.addOption('kilometers', 'Kilometers');
@@ -155,10 +203,9 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
-
 		new Setting(containerEl)
 			.setName('Weekday date properties')
-			.setDesc('Comma-separated property names, shown as Wed, 2pm, a smaller date, and a days chip. An empty value is a muted dash.')
+			.setDesc('Comma-separated names, shown as Wed, 2pm, a smaller date, and a days chip.')
 			.addText((text) => {
 				text.setPlaceholder('Last Spoke, Met, Last Attempted');
 				text.setValue(this.plugin.settings.datePropertiesForWeekday.join(', '));
@@ -167,59 +214,18 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+		new Setting(containerEl).setName('Sort chips').setHeading();
+		renderSortChips(containerEl, this.plugin, ['distance', 'priority', 'spoke', 'attempted', 'met', 'urgency']);
+	}
 
-		renderScoringSettings(containerEl, this.plugin);
-
-		new Setting(containerEl).setName('Developer').setHeading();
-		containerEl.createEl('p', {
-			cls: 'setting-item-description',
-			text: 'While on, Nearby and Glancable use the test coordinates instead of this device, and a banner says so. Distance is not written into notes.',
-		});
-		new Setting(containerEl)
-			.setName('Desktop distance testing')
-			.setDesc('Nearby and Glancable use the test coordinates instead of this device.')
-			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.distanceTest);
-				toggle.onChange(async (value) => {
-					this.plugin.settings.distanceTest = value;
-					await this.plugin.saveSettings();
-				});
-			});
-		this.coordSetting(
-			'Test latitude',
-			'Used only while desktop distance testing is on. Default is an Orlando-area point.',
-			'28.54',
-			90,
-			() => this.plugin.settings.testLatitude,
-			(value) => { this.plugin.settings.testLatitude = value; },
-		);
-		this.coordSetting(
-			'Test longitude',
-			'Used only while desktop distance testing is on.',
-			'-81.38',
-			180,
-			() => this.plugin.settings.testLongitude,
-			(value) => { this.plugin.settings.testLongitude = value; },
-		);
-
-		new Setting(containerEl).setName('Templater and Meta Bind').setHeading();
+	private paintTemplates(containerEl: HTMLElement, templateGeneration: number): void {
+		new Setting(containerEl).setName('Templates').setHeading();
 		new Setting(containerEl)
 			.setName('Setup wizard')
-			.setDesc('Starts with home counties, then Templater, Meta Bind, and the template files. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.')
+			.setDesc('Home counties, the may-go-out schedule, then Templater and Meta Bind. RV Locator does not install plugins.')
 			.addButton((button) => {
 				button.setButtonText('Open setup wizard');
 				button.onClick(() => { this.plugin.openSetupWizard(); });
-			});
-		new Setting(containerEl)
-			.setName('Default priority for a new RV')
-			.setDesc('Priority on a new RV. 0–5, default 4.')
-			.addDropdown((dropdown) => {
-				for (let rank = 0; rank <= 5; rank += 1) dropdown.addOption(String(rank), String(rank));
-				dropdown.setValue(String(this.plugin.settings.defaultNewRvPriority));
-				dropdown.onChange(async (value) => {
-					this.plugin.settings.defaultNewRvPriority = Number(value);
-					await this.plugin.saveSettings();
-				});
 			});
 		this.templateFileSetting(
 			templateGeneration,
@@ -256,6 +262,86 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				button.setButtonText('Update from GitHub');
 				button.onClick(() => { startExtrasSync(this.app, this.plugin); });
 			});
+	}
+
+	private paintAdvanced(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('Property names').setHeading();
+		this.propertySetting(
+			'Address property',
+			'Read for the lookup. Geocode never writes it.',
+			'Address',
+			() => this.plugin.settings.addressProperty,
+			(value) => { this.plugin.settings.addressProperty = value; },
+		);
+		this.propertySetting(
+			'Location property',
+			'Two quoted strings: latitude, then longitude.',
+			'Location',
+			() => this.plugin.settings.locationProperty,
+			(value) => { this.plugin.settings.locationProperty = value; },
+		);
+		this.propertySetting(
+			'Map link property',
+			'Google Maps search of Address. Leave empty to skip. Re-geocode refreshes this link.',
+			'Map Link',
+			() => this.plugin.settings.mapLinkProperty,
+			(value) => { this.plugin.settings.mapLinkProperty = value; },
+		);
+		new Setting(containerEl)
+			.setName('Optional place properties')
+			.setDesc('Geocode always writes City. A filled name below is replaced from the new result. An empty name is skipped.');
+		this.extraSetting(
+			'City property',
+			'City',
+			() => this.plugin.settings.cityProperty,
+			(value) => { this.plugin.settings.cityProperty = value; },
+			'Extra name besides City. Geocode still writes City when this is empty.',
+		);
+		this.extraSetting('County property', 'County', () => this.plugin.settings.countyProperty, (value) => { this.plugin.settings.countyProperty = value; });
+		this.extraSetting('State property', 'State', () => this.plugin.settings.stateProperty, (value) => { this.plugin.settings.stateProperty = value; });
+		this.extraSetting('ZIP / postal property', 'ZIP', () => this.plugin.settings.postcodeProperty, (value) => { this.plugin.settings.postcodeProperty = value; });
+		this.extraSetting('Country property', 'Country', () => this.plugin.settings.countryProperty, (value) => { this.plugin.settings.countryProperty = value; });
+
+		new Setting(containerEl).setName('Ideality').setHeading();
+		renderIdealitySettings(containerEl, this.plugin);
+		new Setting(containerEl)
+			.setName('Ideality sort chip')
+			.setDesc('Off until you turn it on.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.sortChips.ideality);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.sortChips = { ...this.plugin.settings.sortChips, ideality: value };
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl).setName('Distance testing').setHeading();
+		new Setting(containerEl)
+			.setName('Use test coordinates')
+			.setDesc('Nearby and Glancable use these coordinates instead of this device. A banner says so.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.distanceTest);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.distanceTest = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		this.coordSetting(
+			'Test latitude',
+			'Used only while test coordinates are on.',
+			'28.54',
+			90,
+			() => this.plugin.settings.testLatitude,
+			(value) => { this.plugin.settings.testLatitude = value; },
+		);
+		this.coordSetting(
+			'Test longitude',
+			'Used only while test coordinates are on.',
+			'-81.38',
+			180,
+			() => this.plugin.settings.testLongitude,
+			(value) => { this.plugin.settings.testLongitude = value; },
+		);
 
 		new Setting(containerEl).setName('About').setHeading();
 
@@ -284,7 +370,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		rewriteReferences: boolean,
 	): void {
 		let timer: number | undefined;
-		new Setting(this.containerEl)
+		new Setting(this.mountEl)
 			.setName(name)
 			.setDesc(desc)
 			.addText((text) => {
@@ -348,7 +434,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		read: () => string,
 		write: (value: string) => void,
 	): void {
-		new Setting(this.containerEl)
+		new Setting(this.mountEl)
 			.setName(name)
 			.setDesc(desc)
 			.addText((text) => {
@@ -379,7 +465,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		read: () => number,
 		write: (value: number) => void,
 	): void {
-		new Setting(this.containerEl)
+		new Setting(this.mountEl)
 			.setName(name)
 			.setDesc(desc)
 			.addText((text) => {

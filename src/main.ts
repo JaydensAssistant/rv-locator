@@ -1,5 +1,7 @@
 import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
+import { refreshBodyMapLink } from './address';
+import { attemptLogCallouts, hoistAttemptDigest, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
 	GLANCABLE_ALL_VIEW_TYPE,
@@ -12,7 +14,7 @@ import {
 	VANILLA_VIEW_TYPE,
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
-import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
+import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
@@ -20,9 +22,9 @@ import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visi
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
-import { buildIdealityPlan } from './planner';
-import { IdealityPlannerModal, ReturnSuggestModal } from './score-modals';
+import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
 import { parseAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
+import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { CancelledError, RequestPacer } from './pacer';
@@ -80,6 +82,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private unloaded = false;
 	/** A setup notice is already on screen, so another view open does not stack a second one. */
 	private setupNudgeOpen = false;
+	private digestKeyApplied = '';
+	private digestRewrite: Promise<void> = Promise.resolve();
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -140,9 +144,21 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
 
+		this.registerMarkdownPostProcessor((element) => {
+			for (const callout of attemptLogCallouts(element)) hoistAttemptDigest(callout);
+		});
+
+		this.registerEvent(this.app.vault.on('create', (file) => {
+			if (!(file instanceof TFile) || file.extension !== 'md') return;
+			window.setTimeout(() => {
+				if (!this.unloaded) void this.rewriteDigestFile(file);
+			}, 1500);
+		}));
+
 		this.app.workspace.onLayoutReady(() => {
 			void this.syncSetupCompletion();
 		});
+		this.digestKeyApplied = this.digestKey();
 	}
 
 	/**
@@ -214,7 +230,11 @@ export default class RVLocatorPlugin extends Plugin {
 				this.settings.homeCounties = counties;
 				await this.saveSettings();
 			},
-		});
+			onSaveMayGoOut: async (grid) => {
+				this.settings.availabilityGrid = grid;
+				await this.saveSettings();
+			},
+		}, this.settings.availabilityGrid);
 		modal.open();
 	}
 
@@ -372,8 +392,11 @@ export default class RVLocatorPlugin extends Plugin {
 
 	async saveSettings(): Promise<void> {
 		this.settings = mergeSettings(this.settings);
+		const digestChanged = this.digestKeyApplied !== '' && this.digestKey() !== this.digestKeyApplied;
 		await this.persist();
+		this.digestKeyApplied = this.digestKey();
 		for (const callback of this.viewRefreshers) callback();
+		if (digestChanged) await this.rewriteAllDigests();
 	}
 
 	cachedAttemptBuckets(path: string): AttemptBuckets | null {
@@ -403,21 +426,34 @@ export default class RVLocatorPlugin extends Plugin {
 		const digest = suggestReturnDigest({
 			buckets,
 			grid: this.settings.availabilityGrid,
-			multipliers: this.settings.availabilityMultipliers,
+			orientation: this.settings.digestOrientation,
 			now: new Date(),
 		});
-		new ReturnSuggestModal(this.app, displayName, digest.sentences).open();
+		new ReturnSuggestModal(this.app, displayName, digest.markdown).open();
 	}
 
-	async openIdealityPlanner(people: readonly { path: string; name: string; priority: number | null; days: number | null }[]): Promise<void> {
-		const loaded = [];
-		for (const person of people) {
-			const file = this.app.vault.getFileByPath(person.path);
-			const buckets = file ? await this.readAttemptBuckets(file) : {};
-			loaded.push({ name: person.name, days: person.days, priority: person.priority, buckets });
-		}
-		const slots = buildIdealityPlan({ people: loaded, settings: this.settings, now: new Date() });
-		new IdealityPlannerModal(this.app, this.settings.territorySpanMiles, slots).open();
+	snoozeUntilFor(path: string): Date | null {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return parseSnoozeUntil(readProperty(frontmatter, URGENCY_SNOOZE_PROPERTY));
+	}
+
+	promptUrgencySnooze(path: string, displayName: string): void {
+		const until = this.snoozeUntilFor(path);
+		const modal = new UrgencySnoozeModal(this.app, displayName, snoozeActive(until, new Date()), (choice) => {
+			void this.applySnooze(path, choice);
+		});
+		modal.open();
+	}
+
+	/**
+	 * Templater rvLog calls this after a visit is on disk.
+	 * Refreshes that note's digest and may ask about priority.
+	 */
+	async noteVisitLogged(file: TFile): Promise<void> {
+		await this.rewriteDigestFile(file);
+		await this.maybeNudgePriority(file);
 	}
 
 	private async loadAttemptBuckets(paths: readonly string[]): Promise<void> {
@@ -658,6 +694,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (linked !== current) await this.app.vault.modify(file, linked);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
 		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
+		await this.noteVisitLogged(file);
 	}
 
 	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): void {
@@ -750,17 +787,21 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async writeHit(file: TFile, queriedAddress: string, hit: GeocodeHit, results: GeocodeHit[], notify = true): Promise<void> {
 		const pair = locationPair(hit);
+		let mapLink = '';
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			applyGeocodeHit(frontmatter as Record<string, unknown>, hit, this.settings);
+			const data = frontmatter as Record<string, unknown>;
+			applyGeocodeHit(data, hit, this.settings);
+			const link = readProperty(data, this.settings.mapLinkProperty);
+			mapLink = typeof link === 'string' ? link : '';
 		});
-		if (!isLockedAddressName(this.settings.locationProperty, this.settings.addressProperty)) {
-			await this.app.vault.process(file, (data) => ensureQuotedLocationList(
-				data,
-				this.settings.locationProperty,
-				pair,
-				this.settings.addressProperty,
-			));
-		}
+		await this.app.vault.process(file, (data) => {
+			let next = data;
+			if (!isLockedAddressName(this.settings.locationProperty, this.settings.addressProperty)) {
+				next = ensureQuotedLocationList(next, this.settings.locationProperty, pair, this.settings.addressProperty);
+			}
+			if (mapLink) next = refreshBodyMapLink(next, mapLink);
+			return next;
+		});
 		this.remember([queriedAddress], results);
 		await this.persist();
 		if (notify) new Notice(`Saved coordinates on “${file.basename}”. Address was not changed.`);
@@ -847,6 +888,86 @@ export default class RVLocatorPlugin extends Plugin {
 		this.geocodeCache = rememberResults(this.geocodeCache, addresses, results);
 	}
 
+	private digestKey(): string {
+		return JSON.stringify({
+			grid: this.settings.availabilityGrid,
+			orientation: this.settings.digestOrientation,
+		});
+	}
+
+	private rewriteAllDigests(): Promise<void> {
+		const run = this.digestRewrite.then(async () => {
+			for (const file of this.app.vault.getMarkdownFiles()) {
+				if (this.unloaded) return;
+				if (this.isTemplateNote(file)) continue;
+				await this.rewriteDigestFile(file);
+			}
+		});
+		this.digestRewrite = run.catch(() => undefined);
+		return run;
+	}
+
+	private isTemplateNote(file: TFile): boolean {
+		const folder = this.extrasPlacement().templatesFolder.replace(/\/+$/, '');
+		return folder.length > 0 && (file.path === folder || file.path.startsWith(`${folder}/`));
+	}
+
+	private async rewriteDigestFile(file: TFile): Promise<void> {
+		if (file.extension !== 'md' || this.isTemplateNote(file)) return;
+		let text: string;
+		try {
+			text = await this.app.vault.read(file);
+		} catch {
+			return;
+		}
+		const digest = suggestReturnDigest({
+			buckets: parseAttemptLog(text),
+			grid: this.settings.availabilityGrid,
+			orientation: this.settings.digestOrientation,
+			now: new Date(),
+		});
+		const next = upsertAttemptDigest(text, digest.markdown);
+		if (next == null || next === text) return;
+		await this.app.vault.modify(file, next);
+	}
+
+	private async applySnooze(path: string, choice: SnoozeChoice | 'clear'): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			if (choice === 'clear') {
+				removeProperty(data, URGENCY_SNOOZE_PROPERTY);
+				return;
+			}
+			assignProperty(data, URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil(choice, new Date()));
+		});
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async maybeNudgePriority(file: TFile): Promise<void> {
+		const every = this.settings.priorityNudgeEvery;
+		if (!Number.isInteger(every) || every < 1) return;
+		const frontmatter = frontmatterFromMarkdown(await this.app.vault.read(file));
+		const visits = finiteVisitCount(readProperty(frontmatter, 'Visits'));
+		if (visits == null || visits < every || visits % every !== 0) return;
+		const current = finiteVisitCount(readProperty(frontmatter, 'Priority'));
+		const priority = current == null ? this.settings.defaultNewRvPriority : Math.max(0, Math.min(5, Math.round(current)));
+		const next = await new Promise<number | null>((resolve) => {
+			const modal = new PriorityNudgeModal(this.app, priority, (value) => resolve(value));
+			const previous = modal.onClose.bind(modal);
+			modal.onClose = () => {
+				previous();
+				resolve(null);
+			};
+			modal.open();
+		});
+		if (next == null || next === priority) return;
+		await this.app.fileManager.processFrontMatter(file, (data) => {
+			assignProperty(data as Record<string, unknown>, 'Priority', next);
+		});
+	}
+
 	private async loadPluginData(): Promise<void> {
 		const data = await this.loadData() as StoredPluginData | null;
 		this.settings = mergeSettings(data?.settings);
@@ -918,4 +1039,11 @@ function findTemplateFile(app: App, paths: readonly string[]): TFile | null {
 		if (file?.extension === 'md') return file;
 	}
 	return null;
+}
+
+function finiteVisitCount(value: unknown): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return null;
+	const parsed = Number(value.trim());
+	return Number.isFinite(parsed) ? parsed : null;
 }
