@@ -2,8 +2,10 @@
  * RV Locator visit-log parity for Templater (plugin 1.1.3).
  * Never writes Address.
  *
- * Attempt Log is an open callout. An old `## Attempt Log` heading is
- * migrated to that callout on the next Home / Not home write.
+ * Attempt Log is a collapsed callout. An existing + or - is left alone.
+ * An old `## Attempt Log` heading is migrated to the collapsed callout on
+ * the next Home / Not home write. A home stamp is inserted above the digest
+ * block when one sits on the callout.
  * Home inserts a Glancable `###` stamp above the log, including a second
  * Home in the same rounded hour. Two blank lines sit between that stamp and
  * Attempt Log so there is room for notes. Counters and the Attempt Log
@@ -63,7 +65,9 @@ function asNumber(v) {
 /** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
-const CALLOUT_HEADER = "> [!note]+ Attempt Log";
+const CALLOUT_HEADER = "> [!note]- Attempt Log";
+const DIGEST_START = "<!-- rv-locator-digest -->";
+const DIGEST_END = "<!-- /rv-locator-digest -->";
 const ADDRESS_KEY = "Address";
 
 function findAttemptLog(lines) {
@@ -113,13 +117,26 @@ function ensureAttemptLog(body) {
   return normalized;
 }
 
+function attemptLogAnchor(lines, calloutIndex) {
+  let index = calloutIndex;
+  while (index > 0 && (lines[index - 1] ?? "") === "") index -= 1;
+  const previous = lines[index - 1] ?? "";
+  if (index > 0 && previous.includes(DIGEST_END)) {
+    let start = index - 1;
+    while (start > 0 && !(lines[start] ?? "").includes(DIGEST_START)) start -= 1;
+    if ((lines[start] ?? "").includes(DIGEST_START)) return start;
+  }
+  return calloutIndex;
+}
+
 function insertHomeHeading(body, whenLabel) {
   const lines = body.split("\n");
   const found = findAttemptLog(lines);
   if (!found || found.kind !== "callout") return body;
-  const before = lines.slice(0, found.index);
+  const anchor = attemptLogAnchor(lines, found.index);
+  const before = lines.slice(0, anchor);
   while (before.length > 0 && before[before.length - 1] === "") before.pop();
-  const after = lines.slice(found.index);
+  const after = lines.slice(anchor);
   const heading = `### ${whenLabel}`;
   const padding = ["", ""];
   const mid = before.length > 0 ? ["", heading, ...padding, ...after] : [heading, ...padding, ...after];

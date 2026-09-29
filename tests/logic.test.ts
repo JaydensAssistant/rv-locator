@@ -395,13 +395,22 @@ describe('distance and dates', () => {
 		assert.equal(scrambled[scrambled.indexOf('note.Last Spoke') + 1], 'note.Last Attempted');
 		assert.equal(scrambled[scrambled.indexOf('note.Last Attempted') + 1], 'note.Met');
 		assert.equal(scrambled[scrambled.length - 1], 'note.Taken');
+		assert.deepEqual(SORT_PRESETS.map((preset) => preset.id), [
+			'ideality',
+			'urgency',
+			'distance',
+			'priority',
+			'spoke',
+			'attempted',
+			'met',
+		]);
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, null)),
-			['Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest', 'Urgency · high', 'Ideality · high'],
+			['Ideality (beta) · high', 'Urgency · high', 'Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest'],
 		);
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
-			['Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest', 'Urgency · low', 'Ideality · low'],
+			['Ideality (beta) · low', 'Urgency · low', 'Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest'],
 		);
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
@@ -416,9 +425,9 @@ describe('distance and dates', () => {
 		assert.equal(preferredSortDirection('note.Last Attempted'), 'ASC');
 		assert.equal(preferredSortDirection('note.Met'), 'DESC');
 		assert.equal(preferredSortDirection(DISTANCE_COLUMN_ID), 'ASC');
-		const nearest = SORT_PRESETS[0];
-		const spoke = SORT_PRESETS[2];
-		const attempted = SORT_PRESETS[3];
+		const nearest = SORT_PRESETS.find((preset) => preset.id === 'distance');
+		const spoke = SORT_PRESETS.find((preset) => preset.id === 'spoke');
+		const attempted = SORT_PRESETS.find((preset) => preset.id === 'attempted');
 		assert.ok(nearest && spoke && attempted);
 		assert.deepEqual(nextPresetSort(null, nearest), { property: nearest.property, direction: 'ASC' });
 		assert.deepEqual(
@@ -971,13 +980,13 @@ describe('visit log', () => {
 			'### Sat, 11pm — Sep 26, 2026',
 			'',
 			'',
-			'> [!note]+ Attempt Log',
+			'> [!note]- Attempt Log',
 			'> - Sat, 11pm — Sep 26, 2026 — success',
 			'',
 		].join('\n'));
 		assert.equal(body.includes('## Attempt Log'), false);
 		const stampAt = body.indexOf('### Sat, 11pm — Sep 26, 2026');
-		const logAt = body.indexOf('> [!note]+ Attempt Log');
+		const logAt = body.indexOf('> [!note]- Attempt Log');
 		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
 
@@ -999,13 +1008,13 @@ describe('visit log', () => {
 		const body = applyVisitBody('', 'miss', now);
 		assert.equal(body.includes('## Sat, 11pm — Sep 26, 2026'), false);
 		assert.equal(body, [
-			'> [!note]+ Attempt Log',
+			'> [!note]- Attempt Log',
 			'> - Sat, 11pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 		const again = applyVisitBody(body, 'miss', now);
 		assert.equal(again, [
-			'> [!note]+ Attempt Log',
+			'> [!note]- Attempt Log',
 			'> - Sat, 11pm — Sep 26, 2026 — not home',
 			'> - Sat, 11pm — Sep 26, 2026 — not home',
 			'',
@@ -1069,7 +1078,7 @@ describe('visit log', () => {
 		assert.equal(missedAgain.split('\n').filter((line) => line.endsWith('— not home')).length, 2);
 	});
 
-	it('migrates a legacy ## Attempt Log heading into an open callout', () => {
+	it('migrates a legacy ## Attempt Log heading into a collapsed callout', () => {
 		const legacy = [
 			'Notes.',
 			'',
@@ -1085,7 +1094,7 @@ describe('visit log', () => {
 		assert.equal(next, [
 			'Notes.',
 			'',
-			'> [!note]+ Attempt Log',
+			'> [!note]- Attempt Log',
 			'> - Mon, 9am — Sep 1, 2026 — success',
 			'> - Sat, 11pm — Sep 26, 2026 — not home',
 			'',
@@ -1093,6 +1102,32 @@ describe('visit log', () => {
 			'keep',
 			'',
 		].join('\n'));
+	});
+
+	it('inserts a home stamp above the digest and keeps the callout fold', () => {
+		const note = [
+			'Notes.',
+			'',
+			'<!-- rv-locator-digest -->',
+			'| | Morning |',
+			'| --- | --- |',
+			'| Mon | 1/1 |',
+			'',
+			'> Try: **Mon morning (1/1)**',
+			'<!-- /rv-locator-digest -->',
+			'',
+			'> [!note]+ Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const next = applyVisitBody(note, 'home', now);
+		const stampAt = next.indexOf('### Sat, 11pm — Sep 26, 2026');
+		const digestAt = next.indexOf('<!-- rv-locator-digest -->');
+		const logAt = next.indexOf('> [!note]+ Attempt Log');
+		assert.ok(stampAt >= 0 && stampAt < digestAt && digestAt < logAt);
+		assert.equal(next.includes('> [!note]- Attempt Log'), false);
+		assert.ok(next.indexOf('> - Sat, 11pm — Sep 26, 2026 — success') > logAt);
+		assert.equal(next.split('<!-- rv-locator-digest -->').length, 2);
 	});
 
 	it('accepts unmarked and tight Attempt Log callout variants', () => {
@@ -1178,7 +1213,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.8');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.9');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1221,7 +1256,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.8/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.9/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1242,9 +1277,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.8');
+		assert.equal(plan.ref, 'v1.2.9');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.8/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.9/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

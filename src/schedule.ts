@@ -237,15 +237,31 @@ export interface ReturnDigest {
 	text: string;
 	sentences: string[];
 	table: string;
-	/** Table and the four voice lines, ready to store under Attempt Log. */
+	/** Table and the four voice lines, without blockquote markers. */
 	markdown: string;
 }
 
 const NO_SCHEDULE = 'No May-go-out days';
 
-/** Soft home rate. Empty history is 0.5. */
-const TRY_SOFT_MIN = 0.42;
-const AVOID_SOFT_MAX = 0.30;
+/** Soft home rate. Empty history is 0.5. These are the shipped baseline. */
+export const DEFAULT_TRY_SOFT_MIN = 0.42;
+export const DEFAULT_AVOID_SOFT_MAX = 0.30;
+export const DEFAULT_AVOID_MIN_TRIALS = 3;
+export const DEFAULT_TRY_MIN_HOMES = 1;
+
+export interface DigestThresholds {
+	trySoftMin: number;
+	avoidSoftMax: number;
+	avoidMinTrials: number;
+	tryMinHomes: number;
+}
+
+export const DEFAULT_DIGEST_THRESHOLDS: DigestThresholds = {
+	trySoftMin: DEFAULT_TRY_SOFT_MIN,
+	avoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
+	avoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
+	tryMinHomes: DEFAULT_TRY_MIN_HOMES,
+};
 
 /**
  * Compact table of May-go-out days, then Avoid, Try, Unsure, and Untried.
@@ -257,9 +273,11 @@ export function suggestReturnDigest(args: {
 	entries?: readonly AttemptEntry[];
 	grid: AvailabilityGrid;
 	orientation?: DigestOrientation;
+	thresholds?: Partial<DigestThresholds>;
 	now?: Date;
 }): ReturnDigest {
 	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
+	const thresholds = resolveThresholds(args.thresholds);
 	const days = mayGoOutDays(args.grid);
 	if (days.length === 0) {
 		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
@@ -268,7 +286,7 @@ export function suggestReturnDigest(args: {
 	const table = orientation === 'columns'
 		? tableDaysAsColumns(days, facts)
 		: tableDaysAsRows(days, facts);
-	const sentences = voiceLines(facts);
+	const sentences = voiceLines(facts, thresholds);
 	const blocks = [table];
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
 	return {
@@ -341,9 +359,23 @@ function cellText(facts: readonly SlotFact[], weekday: number, daypart: Daypart)
 
 type VoiceBucket = 'try' | 'untried' | 'unsure' | 'avoid';
 
-function voiceLines(facts: readonly SlotFact[]): string[] {
+function resolveThresholds(value: Partial<DigestThresholds> | undefined): DigestThresholds {
+	const raw = value ?? {};
+	return {
+		trySoftMin: numberOr(raw.trySoftMin, DEFAULT_TRY_SOFT_MIN),
+		avoidSoftMax: numberOr(raw.avoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
+		avoidMinTrials: numberOr(raw.avoidMinTrials, DEFAULT_AVOID_MIN_TRIALS),
+		tryMinHomes: numberOr(raw.tryMinHomes, DEFAULT_TRY_MIN_HOMES),
+	};
+}
+
+function numberOr(value: number | undefined, fallback: number): number {
+	return value != null && Number.isFinite(value) ? value : fallback;
+}
+
+function voiceLines(facts: readonly SlotFact[], thresholds: DigestThresholds): string[] {
 	const grouped: Record<VoiceBucket, SlotFact[]> = { try: [], untried: [], unsure: [], avoid: [] };
-	for (const slot of facts) grouped[classifySlot(slot)].push(slot);
+	for (const slot of facts) grouped[classifySlot(slot, thresholds)].push(slot);
 	const lines = [
 		avoidLine(grouped.avoid),
 		tryLine(grouped.try),
@@ -357,11 +389,11 @@ function voiceLines(facts: readonly SlotFact[]): string[] {
  * Try wins when a thin sample is already a real home (1/1).
  * Avoid needs a long cold streak. Everything else with a trial is Unsure.
  */
-function classifySlot(slot: SlotFact): VoiceBucket {
+function classifySlot(slot: SlotFact, thresholds: DigestThresholds): VoiceBucket {
 	if (slot.trials <= 0) return 'untried';
 	const soft = laplaceRate(slot.homes, slot.trials);
-	if (slot.homes >= 1 && soft >= TRY_SOFT_MIN) return 'try';
-	if (slot.trials >= 3 && soft <= AVOID_SOFT_MAX) return 'avoid';
+	if (slot.homes >= thresholds.tryMinHomes && soft >= thresholds.trySoftMin) return 'try';
+	if (slot.trials >= thresholds.avoidMinTrials && soft <= thresholds.avoidSoftMax) return 'avoid';
 	return 'unsure';
 }
 

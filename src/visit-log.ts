@@ -1,3 +1,4 @@
+import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
 import { formatGlancableVisitStamp } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
@@ -23,8 +24,8 @@ export function shouldNudgePriority(
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const ADDRESS_KEY = 'Address';
-/** Open by default. `+` is expanded. A later `-` from the reader stays collapsed. */
-const CALLOUT_HEADER = '> [!note]+ Attempt Log';
+/** Collapsed by default. An existing `+` or `-` on the note is left alone. */
+const CALLOUT_HEADER = '> [!note]- Attempt Log';
 const STAMP_LEVEL = '###';
 /** Empty lines between a new `###` stamp and Attempt Log. The extra line is note padding. */
 const STAMP_NOTE_BLANKS = 2;
@@ -80,9 +81,12 @@ export function applyVisitFrontmatter(
  * A home visit inserts `### <stamp>` and two blank lines just above Attempt Log
  * (one extra line of padding for notes). A second Home in the same rounded
  * hour still inserts another stamp.
- * Both outcomes append `> - <stamp> — success|not home` inside an open
- * `> [!note]+ Attempt Log` callout. An old `## Attempt Log` heading is migrated
- * to that callout on write. Address is not part of the body edit.
+ * Both outcomes append `> - <stamp> — success|not home` inside the Attempt Log
+ * callout. A missing log is created collapsed (`> [!note]-`). An existing `+`
+ * or `-` stays. An old `## Attempt Log` heading is migrated to that collapsed
+ * callout on write. A home stamp is inserted above the digest block when one
+ * sits on the callout, so the table and quote stay next to the log.
+ * Address is not part of the body edit.
  */
 export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): string {
 	const stamp = formatVisitStamp(now);
@@ -159,9 +163,10 @@ function insertHomeHeading(body: string, stamp: string): string {
 	const lines = body.split('\n');
 	const found = findAttemptLog(lines);
 	if (!found || found.kind !== 'callout') return body;
-	const before = lines.slice(0, found.index);
+	const anchor = attemptLogAnchor(lines, found.index);
+	const before = lines.slice(0, anchor);
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
-	const after = lines.slice(found.index);
+	const after = lines.slice(anchor);
 	const heading = `${STAMP_LEVEL} ${stamp}`;
 	const padding = Array.from({ length: STAMP_NOTE_BLANKS }, () => '');
 	const block = before.length > 0
