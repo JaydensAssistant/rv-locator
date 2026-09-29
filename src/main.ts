@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
-import { attemptLogCallouts, containAttemptDigest, DIGEST_POLISH_VERSION, openAttemptLogCallout, upsertAttemptDigest } from './attempt-digest';
+import { decorateAttemptLog, DIGEST_POLISH_VERSION, formatDigestNote, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
 	GLANCABLE_ALL_VIEW_TYPE,
@@ -146,7 +146,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 
 		this.registerMarkdownPostProcessor((element) => {
-			for (const callout of attemptLogCallouts(element)) containAttemptDigest(callout);
+			decorateAttemptLog(element);
 		});
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
@@ -428,6 +428,7 @@ export default class RVLocatorPlugin extends Plugin {
 			buckets,
 			grid: this.settings.availabilityGrid,
 			orientation: this.settings.digestOrientation,
+			thresholds: this.digestThresholds(),
 			now: new Date(),
 		});
 		new ReturnSuggestModal(this.app, displayName, digest.markdown).open();
@@ -900,25 +901,35 @@ export default class RVLocatorPlugin extends Plugin {
 		return JSON.stringify({
 			grid: this.settings.availabilityGrid,
 			orientation: this.settings.digestOrientation,
+			thresholds: this.digestThresholds(),
 		});
 	}
 
+	private digestThresholds() {
+		return {
+			trySoftMin: this.settings.digestTrySoftMin,
+			avoidSoftMax: this.settings.digestAvoidSoftMax,
+			avoidMinTrials: this.settings.digestAvoidMinTrials,
+			tryMinHomes: this.settings.digestTryMinHomes,
+		};
+	}
+
 	private rewriteAllDigests(): Promise<void> {
-		const run = this.digestRewrite.then(() => this.rewriteVaultDigests(false));
+		const run = this.digestRewrite.then(() => this.rewriteVaultDigests());
 		this.digestRewrite = run.catch(() => undefined);
 		return run;
 	}
 
 	/**
-	 * First launch of this digest shape rewrites every RV note and opens
-	 * Attempt Log headers that still use the collapsed default. A header the
-	 * reader later sets back to collapsed is not opened again.
+	 * First launch of this digest shape rewrites every RV note: the daypart
+	 * table and the suggester quote move above Attempt Log. The callout fold
+	 * is left as written. A later collapse or expand stays.
 	 */
 	private applyDigestPolish(): Promise<void> {
 		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
 		const run = this.digestRewrite.then(async () => {
 			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
-			await this.rewriteVaultDigests(true);
+			await this.rewriteVaultDigests();
 			if (this.unloaded) return;
 			this.digestPolish = DIGEST_POLISH_VERSION;
 			await this.persist();
@@ -927,10 +938,10 @@ export default class RVLocatorPlugin extends Plugin {
 		return run;
 	}
 
-	private async rewriteVaultDigests(openCallout: boolean): Promise<void> {
+	private async rewriteVaultDigests(): Promise<void> {
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			if (this.unloaded) return;
-			await this.rewriteDigestFile(file, openCallout);
+			await this.rewriteDigestFile(file);
 		}
 	}
 
@@ -973,25 +984,23 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async rewriteDigestFile(file: TFile, openCallout = false): Promise<void> {
+	private async rewriteDigestFile(file: TFile): Promise<void> {
 		if (file.extension !== 'md') return;
-		const template = this.isTemplateNote(file);
-		if (template && !openCallout) return;
+		if (this.isTemplateNote(file)) return;
 		const current = this.app.vault.getFileByPath(file.path);
 		if (!current) return;
 		try {
 			await this.app.vault.process(current, (data) => {
-				const source = openCallout ? openAttemptLogCallout(data) : data;
-				if (template) return source;
-				const log = readAttemptLog(source);
+				const log = readAttemptLog(data);
 				const digest = suggestReturnDigest({
 					buckets: log.buckets,
 					entries: log.entries,
 					grid: this.settings.availabilityGrid,
 					orientation: this.settings.digestOrientation,
+					thresholds: this.digestThresholds(),
 				});
-				const next = upsertAttemptDigest(source, digest.markdown);
-				return next ?? source;
+				const next = upsertAttemptDigest(data, formatDigestNote(digest));
+				return next ?? data;
 			});
 		} catch {
 			return;

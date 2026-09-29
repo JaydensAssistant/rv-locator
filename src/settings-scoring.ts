@@ -1,6 +1,10 @@
 import { Setting } from 'obsidian';
 import {
 	DAYPARTS,
+	DEFAULT_AVOID_MIN_TRIALS,
+	DEFAULT_AVOID_SOFT_MAX,
+	DEFAULT_TRY_MIN_HOMES,
+	DEFAULT_TRY_SOFT_MIN,
 	daypartSettingLabel,
 	daypartTitle,
 	weekdayShort,
@@ -53,7 +57,7 @@ const CHIP_LABELS: Record<SortChipId, string> = {
 	attempted: 'Attempted',
 	met: 'Met',
 	urgency: 'Urgency',
-	ideality: 'Ideality',
+	ideality: 'Ideality (beta)',
 };
 
 export function renderDensitySettings(containerEl: HTMLElement, plugin: ScoringHost): void {
@@ -151,10 +155,107 @@ export function renderUrgencySettings(containerEl: HTMLElement, plugin: ScoringH
 	});
 }
 
+export function renderDigestThresholds(containerEl: HTMLElement, plugin: ScoringHost): void {
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'The Attempt Log suggester sorts May-go-out dayparts into Avoid, Try, Unsure, and Untried.',
+	});
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'These defaults are a baseline you can adapt to your own return style, not a perfect method.',
+	});
+	sliderSetting(
+		containerEl,
+		'Try soft rate',
+		`At or above this, with at least the Try homes below. Default ${DEFAULT_TRY_SOFT_MIN}.`,
+		plugin.settings.digestTrySoftMin,
+		0,
+		1,
+		0.01,
+		async (value) => {
+			plugin.settings.digestTrySoftMin = value;
+			await plugin.saveSettings();
+		},
+	);
+	sliderSetting(
+		containerEl,
+		'Try homes',
+		`Homes required before Try. Default ${DEFAULT_TRY_MIN_HOMES}.`,
+		plugin.settings.digestTryMinHomes,
+		1,
+		10,
+		1,
+		async (value) => {
+			plugin.settings.digestTryMinHomes = value;
+			await plugin.saveSettings();
+		},
+	);
+	sliderSetting(
+		containerEl,
+		'Avoid soft rate',
+		`At or below this, once Avoid trials is met. Default ${DEFAULT_AVOID_SOFT_MAX}.`,
+		plugin.settings.digestAvoidSoftMax,
+		0,
+		1,
+		0.01,
+		async (value) => {
+			plugin.settings.digestAvoidSoftMax = value;
+			await plugin.saveSettings();
+		},
+	);
+	sliderSetting(
+		containerEl,
+		'Avoid trials',
+		`Trials required before Avoid. Default ${DEFAULT_AVOID_MIN_TRIALS}.`,
+		plugin.settings.digestAvoidMinTrials,
+		1,
+		12,
+		1,
+		async (value) => {
+			plugin.settings.digestAvoidMinTrials = value;
+			await plugin.saveSettings();
+		},
+	);
+}
+
+export function renderGlancableChrome(containerEl: HTMLElement, plugin: ScoringHost): void {
+	containerEl.createEl('p', {
+		cls: 'setting-item-description',
+		text: 'These apply only while Glancable is the view on screen. Other Bases views keep the full bar.',
+	});
+	chromeToggle(containerEl, plugin, 'hideToolbar', 'Hide the Bases bar', 'Hides the whole top bar. Off by default.');
+	chromeToggle(containerEl, plugin, 'hideViews', 'Hide view switcher', 'Hides the view name menu.');
+	chromeToggle(containerEl, plugin, 'hideSort', 'Hide Bases sort', 'Hides the Bases sort menu. The chip row under it stays.');
+	chromeToggle(containerEl, plugin, 'hideFilter', 'Hide filter', 'Hides the Bases filter menu.');
+	chromeToggle(containerEl, plugin, 'hideProperties', 'Hide properties', 'Hides the properties menu when Bases shows one.');
+	chromeToggle(containerEl, plugin, 'hideSearch', 'Hide search', 'Hides the Bases search field.');
+	chromeToggle(containerEl, plugin, 'hideNew', 'Hide Bases New', 'On by default, so it does not compete with the plugin New button.');
+	chromeToggle(containerEl, plugin, 'hideCode', 'Hide code', 'Hides the code button (`</>`).');
+}
+
+function chromeToggle(
+	containerEl: HTMLElement,
+	plugin: ScoringHost,
+	key: keyof ScoringHost['settings']['glancableChrome'],
+	name: string,
+	desc: string,
+): void {
+	new Setting(containerEl)
+		.setName(name)
+		.setDesc(desc)
+		.addToggle((toggle) => {
+			toggle.setValue(plugin.settings.glancableChrome[key]);
+			toggle.onChange(async (value) => {
+				plugin.settings.glancableChrome = { ...plugin.settings.glancableChrome, [key]: value };
+				await plugin.saveSettings();
+			});
+		});
+}
+
 export function renderIdealitySettings(containerEl: HTMLElement, plugin: ScoringHost): void {
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'Ideality is urgency times a distance weight. The weight is 1 at the territory span.',
+		text: 'Ideality (beta) is urgency times a distance weight. The weight is 1 at the territory span.',
 	});
 	const miles = containerEl.createDiv();
 	const floors = containerEl.createDiv();

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.9
+
+`main.js` SHA-256: `4534c97700c56d7e9053759ea01ebb5051422d7e8efd8dcd6e2ee4e33e616e43`
+
+`styles.css` SHA-256: `02eea5dbbd5f0fbc3bce1c647fb258a8a4a8306a4bc54725f1c8b004800bad9a`
+
+`manifest.json` SHA-256: `9e0b1a269fdf7579fef7fcc5694df24beff9e73d7c8372fcfe543820ca215466`
+
+- Glancable urgency marks render again. Bands 1–3 are real SVG nodes in the card's document (`createSvg`, or `createElementNS` on that document). Each bar and dot sets `fill: currentColor` inline, and the glyph has a definite size from `--rv-control-size` (not a percentage of a viewBox-only flex item). Band 0 stays the circle border. The same DOM checks accept either `instanceof` or Obsidian's cross-window `instanceOf`.
+- Urgency, priority, and map circles use a thin stroke (`1.25px` times the card scale) and a light same-hue tint. `!`, `!!`, `!!!`, the priority digit, and the map pin sit inset inside the ring. Band 0 is that same ring, with no second inner circle. Priority 0 stays a faint grey stack. Circle size, glyph, pin, slot icons, and the Glancable New button follow the general scale.
+- The Attempt Log note order is the daypart table, then the suggester as a blockquote (`Avoid`, `Try`, `Unsure`, `Untried`), then the callout. The callout holds only the dated bullets and starts collapsed (`> [!note]-`). A rewrite leaves an existing `+` or `-` alone. Home and Not home still update the table and the buckets and append the bullet inside the callout. A home stamp is inserted above the digest block. The first launch of 1.2.9 moves an older in-callout digest out. The Attempt Log callout is styled with the same muted surfaces as the RV Dashboard.
+- Bucket math is unchanged at the defaults (Try at soft rate 0.42 with at least one home, Avoid at soft rate 0.30 with at least 3 trials, empty Try omitted, worst Avoid and best Try bold). Those four knobs are sliders under Advanced → Attempt Log suggester. The copy says the defaults are a baseline for an individual return style, not a perfect method. Changing them rewrites RV digests.
+- Sort chips stay on one row. Only the chip row scrolls; the plugin New button stays put. Enabled chips show in this order: Ideality (beta), Urgency, Nearest, Priority, Spoke, Attempted, Met. Ideality's sort label and settings heading carry a beta tag. Ideality still starts off.
+- Advanced → Glancable Bases bar can hide the Bases top bar, and separately the view switcher, sort, filter, properties, search, New, and code (`</>`). The master bar toggle is off. Bases New is hidden while Glancable is the active view. The rules apply only on that leaf or embed, and they come off when Glancable unloads.
+- Extras sync is pinned to tag `v1.2.9` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.8
 
 `main.js` SHA-256: `2052fd682d2922669088feab2ca2dfa8e438e47c4927fda795037b702644b4e1`

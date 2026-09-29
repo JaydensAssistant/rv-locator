@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { visibleSortPresets } from '../src/active-layout';
-import { containedAttemptLog, digestVoiceClass, openAttemptLogCallout, upsertAttemptDigest } from '../src/attempt-digest';
-import { IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from '../src/constants';
+import { digestVoiceClass, formatDigestNote, upsertAttemptDigest } from '../src/attempt-digest';
+import { classifyChromeControl } from '../src/glancable-chrome';
+import { IDEALITY_COLUMN_ID } from '../src/constants';
 import { glancableColumns } from '../src/glancable-density';
 import { displayedUrgency, likelihoodForNow } from '../src/row-score';
 import {
@@ -16,6 +17,7 @@ import {
 	likelihoodMultiplier,
 	urgencyAccentColor,
 	urgencyBand,
+	urgencyBangShapes,
 	urgencyGlyphMarkup,
 	urgencyMark,
 	urgencyScore,
@@ -517,64 +519,96 @@ describe('dayparts and return suggester', () => {
 		assert.equal(/^\| Morning \|/m.test(digest.table), false);
 	});
 
-	it('keeps the digest inside the collapsible body and opens the old collapsed header once', () => {
-		const parked = containedAttemptLog([
-			{ key: 'title', role: 'title', text: 'Attempt Log' },
-			{ key: 'table', role: 'hoisted', text: '| Sun | 0/0 |' },
-			{ key: 'avoid', role: 'hoisted', text: 'Avoid: Sun morning (0/3)' },
-			{ key: 'list', role: 'visit-list', text: 'Mon, 9am — Home' },
-		]);
-		assert.deepEqual(parked.map((piece) => piece.role), ['title', 'body', 'body', 'visit-list']);
-		assert.deepEqual(parked.map((piece) => piece.key), ['title', 'table', 'avoid', 'list']);
-		assert.equal(parked.some((piece) => piece.role === 'hoisted'), false);
-		const inside = containedAttemptLog([
-			{ key: 'title', role: 'title', text: 'Attempt Log' },
-			{ key: 'table', role: 'body', text: '| Sun |' },
-			{ key: 'avoid', role: 'body', text: 'Avoid: Sun morning (0/3)' },
-			{ key: 'try', role: 'body', text: 'Try: Sat evening (1/1)' },
-			{ key: 'list', role: 'visit-list', text: 'visit' },
-		]);
-		assert.deepEqual(inside.map((piece) => piece.key), ['title', 'table', 'avoid', 'try', 'list']);
-		const closed = '> [!note]- Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n';
-		const opened = openAttemptLogCallout(closed);
-		assert.equal(opened, '> [!note]+ Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n');
-		assert.equal(openAttemptLogCallout(opened), opened);
-		assert.equal(openAttemptLogCallout('>[!note]- Attempt Log'), '>[!note]+ Attempt Log');
-		assert.equal(openAttemptLogCallout('> [!note]+ Other'), '> [!note]+ Other');
-		assert.equal(openAttemptLogCallout('> [!note]- Not the log'), '> [!note]- Not the log');
-	});
-
-	it('draws short heavy bangs instead of a thin exclamation glyph', () => {
-		const triple = urgencyGlyphMarkup('!!!');
-		assert.equal(triple.split('<rect ').length - 1, 3);
-		assert.equal(triple.includes('width="2.8"'), true);
-		assert.equal(triple.includes('!'), false);
-		assert.equal(urgencyGlyphMarkup('!!').split('<rect ').length - 1, 2);
-		assert.equal(urgencyGlyphMarkup('!').split('<rect ').length - 1, 1);
-		const ring = urgencyGlyphMarkup('○');
-		assert.equal(ring.includes('stroke-width="2.8"'), true);
-		assert.equal(ring.includes('<rect '), false);
-		assert.equal(urgencyGlyphMarkup(''), '');
-		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
-		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
-		assert.equal(urgencyMark(4, 0).glyphs, '');
-	});
-
-	it('stores the digest under the Attempt Log title', () => {
-		const note = ['> [!note]- Attempt Log', '> - Mon, 9am — Sep 1, 2026 — success', ''].join('\n');
-		const next = upsertAttemptDigest(note, 'No May-go-out days');
-		assert.equal(next, [
-			'> [!note]- Attempt Log',
+	it('places the table and the suggester quote above a collapsed Attempt Log', () => {
+		const grid = defaultAvailabilityGrid();
+		grid['1:morning'] = 'may';
+		grid['1:evening'] = 'may';
+		const digest = suggestReturnDigest({
+			buckets: {
+				'1:morning': { homes: 0, trials: 4 },
+				'1:evening': { homes: 2, trials: 2 },
+			},
+			grid,
+		});
+		const body = formatDigestNote(digest);
+		assert.equal(body.startsWith(digest.table), true);
+		assert.ok(body.indexOf(digest.table) < body.indexOf('> Avoid:'));
+		assert.ok(body.indexOf('> Avoid:') < body.indexOf('> Try:'));
+		assert.equal(body.includes('> [!note]'), false);
+		const note = [
+			'### Mon, 9am — Sep 1, 2026',
+			'',
+			'> [!note]+ Attempt Log',
 			'> <!-- rv-locator-digest -->',
-			'> No May-go-out days',
+			'> | Mon | 0/0 |',
 			'> <!-- /rv-locator-digest -->',
 			'> - Mon, 9am — Sep 1, 2026 — success',
 			'',
+		].join('\n');
+		const next = upsertAttemptDigest(note, body);
+		assert.ok(next);
+		const lines = (next ?? '').split('\n');
+		const tableAt = lines.findIndex((line) => line.startsWith('| |'));
+		const avoidAt = lines.findIndex((line) => line.startsWith('> Avoid:'));
+		const tryAt = lines.findIndex((line) => line.startsWith('> Try:'));
+		const logAt = lines.findIndex((line) => line === '> [!note]+ Attempt Log');
+		const bulletAt = lines.findIndex((line) => line.startsWith('> - Mon, 9am'));
+		assert.ok(tableAt >= 0 && tableAt < avoidAt && avoidAt < tryAt && tryAt < logAt && logAt < bulletAt);
+		assert.equal(lines[logAt - 1], '');
+		assert.equal(lines.includes('> <!-- rv-locator-digest -->'), false);
+		assert.equal(lines.filter((line) => line === '<!-- rv-locator-digest -->').length, 1);
+		const callout = lines.slice(logAt + 1).filter((line) => line.startsWith('>'));
+		assert.deepEqual(callout, ['> - Mon, 9am — Sep 1, 2026 — success']);
+		const closed = upsertAttemptDigest('> [!note]- Attempt Log\n> - old — success\n', '> No May-go-out days');
+		assert.equal(closed, [
+			'<!-- rv-locator-digest -->',
+			'> No May-go-out days',
+			'<!-- /rv-locator-digest -->',
+			'',
+			'> [!note]- Attempt Log',
+			'> - old — success',
+			'',
 		].join('\n'));
-		const again = upsertAttemptDigest(next ?? '', '| | Morning |\n| --- | --- |\n| Mon | 1/1 |');
-		assert.match(again ?? '', /Mon \| 1\/1/);
-		assert.equal((again ?? '').includes('No May-go-out days'), false);
 		assert.equal(upsertAttemptDigest('no log', 'x'), null);
+	});
+
+	it('draws breathable bangs and leaves band 0 as the circle ring', () => {
+		const triple = urgencyGlyphMarkup('!!!');
+		assert.equal(triple.split('<rect ').length - 1, 3);
+		assert.equal(triple.includes('width="1.7"'), true);
+		assert.equal(triple.includes('fill="currentColor"'), true);
+		assert.equal(triple.includes('width="2.8"'), false);
+		assert.equal(triple.includes('!'), false);
+		assert.equal(urgencyBangShapes('!!!').filter((shape) => shape.kind === 'rect').length, 3);
+		assert.equal(urgencyBangShapes('○').length, 0);
+		assert.equal(urgencyGlyphMarkup('!!').split('<rect ').length - 1, 2);
+		assert.equal(urgencyGlyphMarkup('!').split('<rect ').length - 1, 1);
+		assert.equal(urgencyGlyphMarkup('○'), '');
+		assert.equal(urgencyGlyphMarkup(''), '');
+		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
+		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
+		assert.equal(urgencyMark(0.2, 4).band, 0);
+		assert.equal(urgencyMark(4, 0).glyphs, '');
+	});
+
+	it('moves a raised Try threshold into Unsure and keeps the Avoid baseline', () => {
+		const grid = defaultAvailabilityGrid();
+		grid['5:morning'] = 'may';
+		const buckets = { '5:morning': { homes: 1, trials: 1 } };
+		const baseline = suggestReturnDigest({ buckets, grid });
+		assert.equal(baseline.sentences[0]?.startsWith('Try:'), true);
+		const raised = suggestReturnDigest({
+			buckets,
+			grid,
+			thresholds: { trySoftMin: 0.9 },
+		});
+		assert.equal(raised.sentences[0]?.startsWith('Unsure:'), true);
+		const cold = suggestReturnDigest({
+			buckets: { '5:morning': { homes: 0, trials: 3 } },
+			grid,
+			thresholds: { avoidMinTrials: 5 },
+		});
+		assert.equal(cold.sentences[0]?.startsWith('Unsure:'), true);
 	});
 });
 
@@ -617,19 +651,34 @@ describe('settings defaults', () => {
 		assert.equal(settings.glancableLines.distance, true);
 		assert.equal(settings.glancableLines.visits, true);
 		assert.deepEqual(
-			visibleSortPresets(settings.sortChips).map((preset) => preset.property),
-			[
-				'rv-locator.distance',
-				'note.Priority',
-				'note.Last Spoke',
-				'note.Last Attempted',
-				'note.Met',
-				URGENCY_COLUMN_ID,
-			],
+			visibleSortPresets(settings.sortChips).map((preset) => preset.id),
+			['urgency', 'distance', 'priority', 'spoke', 'attempted', 'met'],
 		);
 		assert.equal(visibleSortPresets(settings.sortChips).some((preset) => preset.property === IDEALITY_COLUMN_ID), false);
 		const shown = visibleSortPresets(mergeSettings({ sortChips: { ...settings.sortChips, ideality: true } }).sortChips);
-		assert.equal(shown.some((preset) => preset.property === IDEALITY_COLUMN_ID), true);
+		assert.deepEqual(
+			shown.map((preset) => preset.id),
+			['ideality', 'urgency', 'distance', 'priority', 'spoke', 'attempted', 'met'],
+		);
+		assert.equal(settings.digestTrySoftMin, 0.42);
+		assert.equal(settings.digestAvoidSoftMax, 0.3);
+		assert.equal(settings.digestAvoidMinTrials, 3);
+		assert.equal(settings.digestTryMinHomes, 1);
+		assert.equal(settings.glancableChrome.hideToolbar, false);
+		assert.equal(settings.glancableChrome.hideNew, true);
+		assert.equal(settings.glancableChrome.hideSort, false);
+		assert.equal(mergeSettings({ digestTrySoftMin: 0.5 }).digestTrySoftMin, 0.5);
+		assert.equal(mergeSettings({ digestTrySoftMin: 2 }).digestTrySoftMin, 0.42);
+		assert.equal(mergeSettings({ glancableChrome: { hideToolbar: true, hideNew: false } }).glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({ glancableChrome: { hideToolbar: true, hideNew: false } }).glancableChrome.hideNew, false);
+		assert.equal(mergeSettings({ glancableChrome: { hideToolbar: true, hideNew: false } }).glancableChrome.hideCode, false);
+		assert.equal(classifyChromeControl({ className: 'bases-toolbar-item bases-toolbar-views-menu', label: 'Glancable', icon: '' }), 'views');
+		assert.equal(classifyChromeControl({ className: 'bases-toolbar-item bases-toolbar-sort-menu', label: '', icon: '' }), 'sort');
+		assert.equal(classifyChromeControl({ className: 'bases-toolbar-item bases-toolbar-filter-menu', label: '', icon: '' }), 'filter');
+		assert.equal(classifyChromeControl({ className: 'bases-toolbar-item bases-toolbar-properties-menu', label: '', icon: '' }), 'properties');
+		assert.equal(classifyChromeControl({ className: 'bases-toolbar-item bases-toolbar-new-item-menu', label: 'New', icon: '' }), 'new');
+		assert.equal(classifyChromeControl({ className: 'search-input-container', label: 'Search', icon: '' }), 'search');
+		assert.equal(classifyChromeControl({ className: 'clickable-icon', label: '</>', icon: 'svg-icon lucide-code' }), 'code');
 
 		assert.equal(glancableColumns(360, settings), 1);
 		assert.equal(glancableColumns(679, settings), 1);

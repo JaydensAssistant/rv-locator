@@ -1,6 +1,7 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, OSM_ATTRIBUTION } from './constants';
+import { domInstanceOf } from './dom';
 import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
 import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
@@ -18,6 +19,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected bannerText!: HTMLElement;
 	protected scrollEl!: HTMLElement;
 	protected sortEl!: HTMLElement;
+	/** Sort chips live here so they can scroll without moving the New button. */
+	protected sortButtonsEl!: HTMLElement;
 	protected groups: GroupModel[] = [];
 	protected columns: ColumnModel[] = [];
 	protected localSort: ActiveSort;
@@ -96,7 +99,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.scrollEl.scrollLeft = left;
 		this.syncResultCount();
 		this.armResultFollowUps();
+		this.afterRender();
 	}
+
+	/** Glancable retags the Bases toolbar after each paint. */
+	protected afterRender(): void {}
 
 	protected sortedGroups(): GroupModel[] {
 		const sorts = this.effectiveSorts();
@@ -403,10 +410,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	private paintSortPresets(): void {
 		this.sortEl.empty();
+		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
 			const active = current.property.toLowerCase() === preset.property.toLowerCase();
-			const button = this.sortEl.createEl('button', {
+			const button = this.sortButtonsEl.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
 				text: sortPresetChipLabel(preset, active ? current.direction : null),
 				attr: {
@@ -525,6 +533,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			this.resultQueued = false;
 			if (!this.root.isConnected) return;
 			this.paintResultCount();
+			this.afterRender();
 		});
 	}
 
@@ -604,7 +613,7 @@ function toolbarForHost(host: HTMLElement): HTMLElement | null {
 	let found: HTMLElement | null = null;
 	host.querySelectorAll('.bases-toolbar').forEach((toolbar) => {
 		if (found) return;
-		if (!toolbar.instanceOf(HTMLElement)) return;
+		if (!domInstanceOf(toolbar, HTMLElement)) return;
 		if (toolbar.closest('.bases-embed, .block-language-base, .view-content') !== host) return;
 		found = toolbar;
 	});
@@ -614,7 +623,7 @@ function toolbarForHost(host: HTMLElement): HTMLElement | null {
 function deepestResultLabels(scope: HTMLElement, viewRoot: HTMLElement): HTMLElement[] {
 	const matches: HTMLElement[] = [];
 	scope.querySelectorAll('*').forEach((node) => {
-		if (!node.instanceOf(HTMLElement)) return;
+		if (!domInstanceOf(node, HTMLElement)) return;
 		if (viewRoot.contains(node)) return;
 		if (!isResultCountText(node.textContent ?? '')) return;
 		matches.push(node);
@@ -648,7 +657,7 @@ function writeResultText(el: HTMLElement, text: string): void {
 	const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
 	let current = walker.nextNode();
 	while (current) {
-		if (current.instanceOf(Text)) texts.push(current);
+		if (domInstanceOf(current, Text)) texts.push(current);
 		current = walker.nextNode();
 	}
 	const numeric = texts.find((node) => /^\s*\d+\s*$/.test(node.textContent ?? ''));

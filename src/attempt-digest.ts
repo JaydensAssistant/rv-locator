@@ -1,42 +1,82 @@
 /**
- * The Attempt Log digest is stored in the note, inside the callout, directly
- * under the title. Reading view leaves that block in the collapsible body.
+ * The daypart table and the suggester quote sit above the Attempt Log
+ * callout. The callout itself keeps only the dated bullets. Fold (`+` / `-`)
+ * is left as the note already has it.
  */
+
+import { domInstanceOf } from './dom';
 
 export const DIGEST_START = '<!-- rv-locator-digest -->';
 export const DIGEST_END = '<!-- /rv-locator-digest -->';
 
 /**
- * Bump when 1.2.8-style polish should run once per vault: drop the dated
- * visit list from the digest, and open Attempt Log headers that still use
- * the old collapsed default. A later manual collapse is left alone.
+ * Bump when a one-time vault rewrite should run again.
+ * 1 moved the dated visit list out of the digest and opened collapsed logs.
+ * 2 moves the table and the suggester quote above Attempt Log and leaves
+ * the callout fold alone. New logs start collapsed.
  */
-export const DIGEST_POLISH_VERSION = 1;
+export const DIGEST_POLISH_VERSION = 2;
 
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 
-/** Insert or replace the digest block. Null when the note has no Attempt Log. */
+export interface DigestNoteParts {
+	table: string;
+	sentences: readonly string[];
+	text: string;
+}
+
+/**
+ * Table, then a blockquote of the voice lines. An empty schedule is one
+ * quoted line. HTML comment markers are added by {@link upsertAttemptDigest}.
+ */
+export function formatDigestNote(parts: DigestNoteParts): string {
+	const lines = parts.sentences.length > 0
+		? parts.sentences
+		: (!parts.table && parts.text ? [parts.text] : []);
+	const quote = lines.map((line) => `> ${line}`).join('\n');
+	return [parts.table, quote].filter((part) => part.length > 0).join('\n\n');
+}
+
+/**
+ * Insert or replace the digest above Attempt Log.
+ * A digest that an older build stored inside the callout is removed.
+ * Null when the note has no Attempt Log. The callout header is not rewritten.
+ */
 export function upsertAttemptDigest(markdown: string, inner: string): string | null {
 	const newline = markdown.includes('\r\n') ? '\r\n' : '\n';
 	const lines = markdown.split(/\r?\n/);
-	const start = lines.findIndex((line) => ATTEMPT_LOG_CALLOUT.test(line));
+	if (!lines.some((line) => ATTEMPT_LOG_CALLOUT.test(line))) return null;
+	const cleaned = removeDigestRegions(lines);
+	const start = cleaned.findIndex((line) => ATTEMPT_LOG_CALLOUT.test(line));
 	if (start < 0) return null;
-	let end = start + 1;
-	while (end < lines.length && /^>/.test(lines[end] ?? '')) end += 1;
-	const section = lines.slice(start + 1, end);
-	const block = digestLines(inner);
-	const markerStart = section.findIndex((line) => line.includes(DIGEST_START));
-	const markerEnd = section.findIndex((line) => line.includes(DIGEST_END));
-	const nextSection = markerStart >= 0 && markerEnd >= markerStart
-		? [...section.slice(0, markerStart), ...block, ...section.slice(markerEnd + 1)]
-		: [...block, ...section];
-	return [...lines.slice(0, start + 1), ...nextSection, ...lines.slice(end)].join(newline);
+	const end = calloutEnd(cleaned, start);
+	const before = cleaned.slice(0, start);
+	while (before.length > 0 && (before[before.length - 1] ?? '').trim() === '') before.pop();
+	const header = cleaned[start] ?? '';
+	const section = cleaned.slice(start + 1, end);
+	const rest = cleaned.slice(end);
+	const lead = before.length > 0 ? [''] : [];
+	const block = digestBlockLines(inner);
+	return [...before, ...lead, ...block, '', header, ...section, ...rest].join(newline);
+}
+
+/** Index of the digest block that sits on Attempt Log, or the callout itself. */
+export function attemptLogAnchor(lines: readonly string[], calloutIndex: number): number {
+	let index = calloutIndex;
+	while (index > 0 && (lines[index - 1] ?? '') === '') index -= 1;
+	const previous = lines[index - 1] ?? '';
+	if (index > 0 && previous.includes(DIGEST_END)) {
+		let start = index - 1;
+		while (start > 0 && !(lines[start] ?? '').includes(DIGEST_START)) start -= 1;
+		if ((lines[start] ?? '').includes(DIGEST_START)) return start;
+	}
+	return calloutIndex;
 }
 
 export function attemptLogCallouts(root: HTMLElement): HTMLElement[] {
 	const nodes: HTMLElement[] = [];
 	const consider = (node: Element): void => {
-		if (!node.instanceOf(HTMLElement)) return;
+		if (!domInstanceOf(node, HTMLElement)) return;
 		if (node.classList.contains('callout') && isAttemptLogCallout(node)) nodes.push(node);
 	};
 	consider(root);
@@ -44,96 +84,27 @@ export function attemptLogCallouts(root: HTMLElement): HTMLElement[] {
 	return nodes;
 }
 
-export type AttemptLogRole = 'title' | 'hoisted' | 'body' | 'visit-list';
-
-export interface AttemptLogPiece {
-	key: string;
-	role: AttemptLogRole;
-	text: string;
-}
-
 /**
- * Table and bucket lines stay in the collapsible body, before the visit list.
- * A block that an older build parked outside the body is moved back in.
- * Nothing is left in the hoisted slot.
+ * Grey the Attempt Log callout and mark the table and quote that sit above it.
+ * Voice lines inside an older in-callout digest are tagged until the rewrite
+ * moves them out.
  */
-export function containedAttemptLog(pieces: readonly AttemptLogPiece[]): AttemptLogPiece[] {
-	const title = pieces.filter((piece) => piece.role === 'title');
-	const hoisted = pieces
-		.filter((piece) => piece.role === 'hoisted')
-		.map((piece) => ({ ...piece, role: 'body' as const }));
-	const body = pieces.filter((piece) => piece.role === 'body' || piece.role === 'visit-list');
-	const listAt = body.findIndex((piece) => piece.role === 'visit-list');
-	const head = listAt < 0 ? body : body.slice(0, listAt);
-	const tail = listAt < 0 ? [] : body.slice(listAt);
-	return [...title, ...hoisted, ...head, ...tail];
-}
-
-/**
- * One-time open for the old collapsed default (`> [!note]- Attempt Log`).
- * An already open `+` header, and any other callout, stays as written.
- */
-export function openAttemptLogCallout(markdown: string): string {
-	const newline = markdown.includes('\r\n') ? '\r\n' : '\n';
-	let changed = false;
-	const lines = markdown.split(/\r?\n/).map((line) => {
-		const match = /^(>\s*\[!note\])-(\s+Attempt Log\s*)$/i.exec(line);
-		if (!match) return line;
-		changed = true;
-		return `${match[1]}+${match[2]}`;
-	});
-	return changed ? lines.join(newline) : markdown;
-}
-
-/**
- * Keep the digest inside the collapsible body and tag bucket lines.
- * Does not park a copy under the title where a collapsed callout would still show it.
- */
-export function containAttemptDigest(callout: HTMLElement): void {
-	const content = directChild(callout, 'callout-content');
-	const title = directChild(callout, 'callout-title');
-	if (!content || !title) return;
-	const host = directChild(callout, 'rv-locator-return-digest');
-	const pieces: AttemptLogPiece[] = [];
-	const nodes = new Map<string, HTMLElement>();
-	let serial = 0;
-	const push = (role: AttemptLogRole, node: HTMLElement): void => {
-		const key = String(serial);
-		serial += 1;
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		nodes.set(key, node);
-		pieces.push({ key, role, text });
-	};
-	push('title', title);
-	if (host) {
-		for (const child of Array.from(host.children)) {
-			if (!child.instanceOf(HTMLElement)) continue;
-			push('hoisted', child);
+export function decorateAttemptLog(root: HTMLElement): void {
+	for (const callout of attemptLogCallouts(root)) {
+		callout.classList.add('rv-locator-attempt-log');
+		tagInsideLegacy(callout);
+		const origin = blockHost(callout);
+		const quote = nearestPrevious(origin, 'blockquote');
+		if (quote) {
+			quote.classList.add('rv-locator-digest-voice');
+			tagQuote(quote);
 		}
-	}
-	for (const child of Array.from(content.children)) {
-		if (!child.instanceOf(HTMLElement)) continue;
-		push(isVisitList(child) ? 'visit-list' : 'body', child);
-	}
-	if (host) host.remove();
-	let seenList = false;
-	for (const piece of containedAttemptLog(pieces)) {
-		if (piece.role === 'title') continue;
-		const node = nodes.get(piece.key);
-		if (!node) continue;
-		content.appendChild(node);
-		if (piece.role === 'visit-list') {
-			seenList = true;
-			continue;
-		}
-		if (seenList) continue;
-		node.classList.add('rv-locator-digest-block');
-		const voice = digestVoiceClass(piece.text);
-		if (voice) node.classList.add(voice);
+		const table = nearestPrevious(quote ? blockHost(quote) : origin, 'table');
+		if (table) table.classList.add('rv-locator-digest-table');
 	}
 }
 
-/** Class for one hoisted digest line. Untried is checked before Try. */
+/** Class for one suggester line. Untried is checked before Try. */
 export function digestVoiceClass(text: string): string | null {
 	if (/^Avoid\b/.test(text)) return 'is-avoid';
 	if (/^Untried\b/.test(text)) return 'is-untried';
@@ -143,15 +114,33 @@ export function digestVoiceClass(text: string): string | null {
 	return null;
 }
 
-function digestLines(inner: string): string[] {
-	const body = inner.replace(/\s+$/g, '').split('\n').map((line) => (line.trim() === '' ? '>' : `> ${line}`));
-	return [`> ${DIGEST_START}`, ...body, `> ${DIGEST_END}`];
+function digestBlockLines(inner: string): string[] {
+	const body = inner.replace(/\s+$/g, '');
+	const lines = body.length > 0 ? body.split('\n') : [];
+	return [DIGEST_START, ...lines, DIGEST_END];
 }
 
-function isVisitList(node: HTMLElement): boolean {
-	if (node.matches('ul, ol')) return true;
-	if (node.classList.contains('list-item') || node.querySelector(':scope > ul, :scope > ol, .list-bullet')) return true;
-	return false;
+function removeDigestRegions(lines: readonly string[]): string[] {
+	const next: string[] = [];
+	let skipping = false;
+	for (const line of lines) {
+		if (!skipping && line.includes(DIGEST_START)) {
+			skipping = !line.includes(DIGEST_END);
+			continue;
+		}
+		if (skipping) {
+			if (line.includes(DIGEST_END)) skipping = false;
+			continue;
+		}
+		next.push(line);
+	}
+	return next;
+}
+
+function calloutEnd(lines: readonly string[], start: number): number {
+	let end = start + 1;
+	while (end < lines.length && /^>/.test(lines[end] ?? '')) end += 1;
+	return end;
 }
 
 function isAttemptLogCallout(callout: HTMLElement): boolean {
@@ -164,7 +153,62 @@ function isAttemptLogCallout(callout: HTMLElement): boolean {
 
 function directChild(parent: HTMLElement, className: string): HTMLElement | null {
 	for (const child of Array.from(parent.children)) {
-		if (child.instanceOf(HTMLElement) && child.classList.contains(className)) return child;
+		if (domInstanceOf(child, HTMLElement) && child.classList.contains(className)) return child;
 	}
 	return null;
+}
+
+function tagInsideLegacy(callout: HTMLElement): void {
+	const content = directChild(callout, 'callout-content');
+	if (!content) return;
+	for (const child of Array.from(content.children)) {
+		if (!domInstanceOf(child, HTMLElement)) continue;
+		if (child.matches('table') || child.querySelector(':scope > table, table')) {
+			child.classList.add('rv-locator-digest-block');
+		}
+		const text = (child.textContent ?? '').replace(/\s+/g, ' ').trim();
+		const voice = digestVoiceClass(text);
+		if (!voice) continue;
+		child.classList.add('rv-locator-digest-block', voice);
+	}
+}
+
+function tagQuote(quote: HTMLElement): void {
+	const paras = Array.from(quote.querySelectorAll('p')).filter((node) => domInstanceOf(node, HTMLElement));
+	const targets = paras.length > 0 ? paras : [quote];
+	for (const node of targets) {
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		const voice = digestVoiceClass(text);
+		if (voice) node.classList.add('rv-locator-digest-line', voice);
+	}
+}
+
+function blockHost(node: HTMLElement): HTMLElement {
+	const parent = node.parentElement;
+	if (!parent || parent.childElementCount !== 1) return node;
+	if (parent.classList.contains('callout') || parent.classList.contains('callout-content')) return node;
+	if (parent.classList.contains('markdown-preview-section') || parent.classList.contains('markdown-rendered')) return node;
+	return parent;
+}
+
+function nearestPrevious(start: HTMLElement, selector: string): HTMLElement | null {
+	let node: Element | null = start.previousElementSibling;
+	while (node) {
+		if (domInstanceOf(node, HTMLElement)) {
+			const found = matchBlock(node, selector);
+			if (found) return found;
+			const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+			if (text.length > 0) return null;
+		}
+		node = node.previousElementSibling;
+	}
+	return null;
+}
+
+function matchBlock(node: HTMLElement, selector: string): HTMLElement | null {
+	if (node.matches(selector)) return node;
+	const found = node.querySelector(selector);
+	if (!domInstanceOf(found, HTMLElement)) return null;
+	if (node.querySelectorAll(selector).length !== 1) return null;
+	return found;
 }

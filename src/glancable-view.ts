@@ -1,18 +1,21 @@
 import { setIcon, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
+import { domInstanceOf } from './dom';
 import { glancableColumns } from './glancable-density';
+import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
-import { urgencyAccentColor, urgencyBand, urgencyGlyphMarkup, urgencyMark } from './scoring';
-import type { GlancableLineId } from './types';
+import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
+import type { GlancableChromeFlags, GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
 	readonly type: string;
 	private layoutObserver: ResizeObserver | null = null;
+	private chromeHost: HTMLElement | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -24,6 +27,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 		super(controller, parentEl, plugin, 'glancable', scope);
 		this.type = viewType;
 		this.quietBanner = true;
+	}
+
+	override onunload(): void {
+		this.clearBasesChrome();
+		super.onunload();
+	}
+
+	protected override afterRender(): void {
+		this.syncBasesChrome();
 	}
 
 	protected paint(): void {
@@ -281,16 +293,126 @@ export class NearbyGlancableView extends NearbyBasesView {
 		return this.columns.find((column) => column.name.trim().toLowerCase() === wanted);
 	}
 
+	/**
+	 * Tag the Bases toolbar that owns this view. The class stays off every
+	 * other leaf, and onunload removes it when Glancable is no longer showing.
+	 */
+	private syncBasesChrome(): void {
+		const host = basesChromeHost(this.root);
+		if (this.chromeHost && this.chromeHost !== host) this.clearBasesChrome();
+		this.chromeHost = host;
+		if (!host) return;
+		host.classList.add('rv-glancable-host');
+		const flags = this.plugin.settings.glancableChrome;
+		for (const piece of CHROME_PIECES) {
+			host.toggleAttribute(hideAttr(piece), hidePiece(flags, piece));
+		}
+		host.toggleAttribute('data-rv-hide-toolbar', flags.hideToolbar);
+		tagChromeControls(host);
+	}
+
+	private clearBasesChrome(): void {
+		const host = this.chromeHost;
+		this.chromeHost = null;
+		if (!host) return;
+		host.classList.remove('rv-glancable-host');
+		host.removeAttribute('data-rv-hide-toolbar');
+		for (const piece of CHROME_PIECES) host.removeAttribute(hideAttr(piece));
+		host.querySelectorAll('[data-rv-chrome]').forEach((node) => {
+			node.removeAttribute('data-rv-chrome');
+		});
+	}
+
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Bands 1–3. Built with createElementNS in the button's own document
+ * (Obsidian's createSvg when that helper is on the node). DOMParser markup
+ * never becomes a painted child here: a parsed SVG can fail to import, and a
+ * viewBox-only svg inside this flex button can resolve to 0×0. Each mark sets
+ * fill to currentColor in an inline style so an app or theme rule of
+ * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
+ */
 function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
-	const markup = urgencyGlyphMarkup(glyphs);
-	if (!markup) return;
-	const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
-	const svg = parsed.documentElement;
-	if (!svg.instanceOf(SVGElement) || svg.tagName.toLowerCase() !== 'svg') return;
-	svg.classList.add('rv-urgency-glyph');
-	host.appendChild(svg);
+	const shapes = urgencyBangShapes(glyphs);
+	if (shapes.length === 0) return;
+	const svg = makeSvg(host, 'svg', {
+		viewBox: '0 0 28 28',
+		width: '28',
+		height: '28',
+		fill: 'currentColor',
+		'aria-hidden': 'true',
+		focusable: 'false',
+	}, 'rv-urgency-glyph');
+	svg.style.display = 'block';
+	svg.style.flex = '0 0 auto';
+	svg.style.width = 'calc(var(--rv-control-size, 28px) * 0.56)';
+	svg.style.height = 'calc(var(--rv-control-size, 28px) * 0.56)';
+	svg.style.overflow = 'visible';
+	svg.style.color = 'inherit';
+	svg.style.setProperty('fill', 'currentColor');
+	for (const shape of shapes) {
+		const node = makeSvg(svg, shape.kind, shape.attr);
+		node.style.setProperty('fill', 'currentColor');
+	}
+}
+
+function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle', attr: Record<string, string>, cls?: string): SVGElement {
+	const creator = parent as Element & {
+		createSvg?: (name: 'svg' | 'rect' | 'circle', info?: { cls?: string; attr?: Record<string, string> }) => SVGElement;
+	};
+	if (typeof creator.createSvg === 'function') {
+		return creator.createSvg(tag, { cls, attr });
+	}
+	const doc = parent.ownerDocument;
+	const node = doc.createElementNS(SVG_NS, tag);
+	if (cls) node.setAttribute('class', cls);
+	for (const [key, value] of Object.entries(attr)) node.setAttribute(key, value);
+	parent.appendChild(node);
+	return node;
+}
+
+function basesChromeHost(root: HTMLElement): HTMLElement | null {
+	const marked = root.closest('.bases-embed, .block-language-base, .workspace-leaf-content');
+	if (domInstanceOf(marked, HTMLElement) && marked.querySelector('.bases-toolbar, .view-header')) return marked;
+	const viewContent = root.closest('.view-content');
+	const parent = viewContent?.parentElement ?? null;
+	if (parent?.querySelector('.bases-toolbar, .view-header')) return parent;
+	if (domInstanceOf(viewContent, HTMLElement) && viewContent.querySelector('.bases-toolbar')) return viewContent;
+	return root.parentElement;
+}
+
+function tagChromeControls(host: HTMLElement): void {
+	const scopes = [host.querySelector('.bases-toolbar'), host.querySelector('.view-header')];
+	for (const scope of scopes) {
+		if (!domInstanceOf(scope, HTMLElement)) continue;
+		const nodes = scope.querySelectorAll('.bases-toolbar-item, button, a, .search-input-container, .edit-block-button, .view-action');
+		nodes.forEach((node) => {
+			if (!domInstanceOf(node, HTMLElement)) return;
+			if (node.closest('.rv-locator-view')) return;
+			const piece = classifyChromeControl(chromeControlHint(node));
+			if (piece) node.setAttribute('data-rv-chrome', piece);
+			else node.removeAttribute('data-rv-chrome');
+		});
+	}
+}
+
+function hideAttr(piece: ChromePiece): string {
+	return `data-rv-hide-${piece}`;
+}
+
+function hidePiece(flags: GlancableChromeFlags, piece: ChromePiece): boolean {
+	switch (piece) {
+		case 'views': return flags.hideViews;
+		case 'sort': return flags.hideSort;
+		case 'filter': return flags.hideFilter;
+		case 'properties': return flags.hideProperties;
+		case 'search': return flags.hideSearch;
+		case 'new': return flags.hideNew;
+		case 'code': return flags.hideCode;
+	}
 }
 
 function urgencyTitle(urgency: number | null, priority: number | null): string {

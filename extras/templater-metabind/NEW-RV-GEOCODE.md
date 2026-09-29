@@ -22,12 +22,16 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
 4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
 5. Writes one Glancable drive date for that visit as a `###` heading: `### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A blank line under that heading is the place to type visit notes. A date-only value omits the hour.
-6. Adds an open Attempt Log with one success bullet for that same stamp:
+6. Adds a collapsed Attempt Log with one success bullet for that same stamp. The daypart table and the suggester quote sit above the callout, between `<!-- rv-locator-digest -->` markers. The plugin fills that block from the May-go-out schedule after the note exists. The template starts it as `> No May-go-out days` until then.
 
 ```markdown
 ### Wed, 2pm — Sep 9, 2026
 
-> [!note]+ Attempt Log
+<!-- rv-locator-digest -->
+> No May-go-out days
+<!-- /rv-locator-digest -->
+
+> [!note]- Attempt Log
 > - Wed, 2pm — Sep 9, 2026 — success
 ```
 
@@ -74,7 +78,7 @@ Those files in the repo live at `extras/templater-metabind/RV Log Home.md` and `
 
 ## Layout
 
-Reading order is the bold quote strip, then the two buttons, then the divider, then the collapsed dashboard with no blank line under `---`, then the `###` stamp on the next line after Taken, one blank notes line, and Attempt Log. The phone shows Hubs and Address first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. Home and Not home are the same size. Home uses `--text-accent`, the same accent as the Glancable visits chip.
+Reading order is the bold quote strip, then the two buttons, then the divider, then the collapsed dashboard with no blank line under `---`, then the `###` stamp on the next line after Taken, one blank notes line, the Attempt Log table, the suggester quote, and the collapsed Attempt Log. The phone shows Hubs and Address first. There is no 4-column pipe table and no new multi-column CSS. `rv-dashboard` clips the note width so Meta Bind inputs cannot force horizontal scroll. Collapsed callouts stay within the note width. Callouts are modestly rounded. Home and Not home are the same size. Home uses `--text-accent`, the same accent as the Glancable visits chip.
 
 ## Address-only helper
 

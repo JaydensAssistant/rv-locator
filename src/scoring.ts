@@ -57,8 +57,8 @@ export interface UrgencyMark {
 }
 
 /**
- * Priority above 0 and urgency under 1 uses a circle. Bands 1–3 are one to three marks.
- * The glyph size does not shrink as marks are added, and marks are not bold or underlined.
+ * Priority above 0 and urgency under 1 is band 0: the circle ring itself, with no inner mark.
+ * Bands 1–3 are one to three marks. The glyph size does not shrink as marks are added.
  * Priority 0 has no urgency glyph.
  */
 export function urgencyMark(urgency: number | null, priority: number | null): UrgencyMark {
@@ -70,23 +70,64 @@ export function urgencyMark(urgency: number | null, priority: number | null): Ur
 	return { glyphs: '!!!', band: 3 };
 }
 
+export interface UrgencyBangShape {
+	kind: 'rect' | 'circle';
+	attr: Record<string, string>;
+}
+
 /**
- * Drawn bangs and the low-urgency ring. Bar width matches the card-circle stroke
- * so the marks stay short and heavy instead of a thin system-font exclamation.
- * Priority 0 has no glyph.
+ * Drawn bangs in a 28×28 viewBox. Stems stay narrower than the old 2.8 bars
+ * and sit inset so one, two, or three marks have padding inside the circle.
+ * Band 0 and priority 0 return nothing: the circle border is the ring.
  */
-export function urgencyGlyphMarkup(glyphs: string): string {
-	if (glyphs === '○') {
-		return '<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><circle cx="14" cy="14" r="5.1" fill="none" stroke="currentColor" stroke-width="2.8"/></svg>';
-	}
+export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
 	const count = glyphs === '!' ? 1 : glyphs === '!!' ? 2 : glyphs === '!!!' ? 3 : 0;
-	if (count === 0) return '';
-	const centers = count === 1 ? [14] : count === 2 ? [10.6, 17.4] : [7.4, 14, 20.6];
-	const marks = centers.map((cx) => {
-		const x = (cx - 1.4).toFixed(2);
-		return `<rect x="${x}" y="6.4" width="2.8" height="8.4" rx="1.4"/><circle cx="${cx}" cy="18.5" r="1.5"/>`;
-	}).join('');
-	return `<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false" fill="currentColor">${marks}</svg>`;
+	if (count === 0) return [];
+	const stem = 1.7;
+	const gap = 2.05;
+	const group = count * stem + (count - 1) * gap;
+	const left = (28 - group) / 2;
+	const shapes: UrgencyBangShape[] = [];
+	for (let index = 0; index < count; index += 1) {
+		const x = left + index * (stem + gap);
+		const cx = x + stem / 2;
+		shapes.push({
+			kind: 'rect',
+			attr: {
+				x: x.toFixed(2),
+				y: '8.1',
+				width: String(stem),
+				height: '7.2',
+				rx: '0.85',
+				fill: 'currentColor',
+			},
+		});
+		shapes.push({
+			kind: 'circle',
+			attr: {
+				cx: cx.toFixed(2),
+				cy: '17.55',
+				r: '0.9',
+				fill: 'currentColor',
+			},
+		});
+	}
+	return shapes;
+}
+
+/** Markup form of {@link urgencyBangShapes}. The card mounts real SVG nodes instead of parsing this. */
+export function urgencyGlyphMarkup(glyphs: string): string {
+	const shapes = urgencyBangShapes(glyphs);
+	if (shapes.length === 0) return '';
+	const body = shapes
+		.map((shape) => {
+			const attrs = Object.entries(shape.attr)
+				.map(([key, value]) => `${key}="${value}"`)
+				.join(' ');
+			return `<${shape.kind} ${attrs}/>`;
+		})
+		.join('');
+	return `<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false" fill="currentColor">${body}</svg>`;
 }
 
 /** Green below 1, then a distinct yellow, orange, and red. Priority 0 stays neutral grey. */

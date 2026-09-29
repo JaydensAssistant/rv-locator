@@ -43,8 +43,24 @@ export const NEARBY_COLUMN_ORDER = [
 	'note.Map Link',
 ] as const;
 
-/** Sort chips. First tap uses `defaultDirection`. A second tap on the same chip flips it. */
+/**
+ * Sort chips, in bar order. First tap uses `defaultDirection`.
+ * A second tap on the same chip flips it. Hidden chips stay out of this list
+ * via {@link visibleSortPresets}; the relative order does not change.
+ */
 export const SORT_PRESETS = [
+	{
+		id: 'ideality',
+		property: IDEALITY_COLUMN_ID,
+		defaultDirection: 'DESC',
+		labels: { ASC: 'Ideality (beta) · low', DESC: 'Ideality (beta) · high' },
+	},
+	{
+		id: 'urgency',
+		property: URGENCY_COLUMN_ID,
+		defaultDirection: 'DESC',
+		labels: { ASC: 'Urgency · low', DESC: 'Urgency · high' },
+	},
 	{
 		id: 'distance',
 		property: DISTANCE_COLUMN_ID,
@@ -74,18 +90,6 @@ export const SORT_PRESETS = [
 		property: 'note.Met',
 		defaultDirection: 'DESC',
 		labels: { ASC: 'Met · oldest', DESC: 'Met · newest' },
-	},
-	{
-		id: 'urgency',
-		property: URGENCY_COLUMN_ID,
-		defaultDirection: 'DESC',
-		labels: { ASC: 'Urgency · low', DESC: 'Urgency · high' },
-	},
-	{
-		id: 'ideality',
-		property: IDEALITY_COLUMN_ID,
-		defaultDirection: 'DESC',
-		labels: { ASC: 'Ideality · low', DESC: 'Ideality · high' },
 	},
 ] as const satisfies readonly {
 	id: SortChipId;

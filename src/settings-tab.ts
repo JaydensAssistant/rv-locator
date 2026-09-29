@@ -23,6 +23,8 @@ import {
 	explainMayGoOut,
 	paintMayGoOutGrid,
 	renderDensitySettings,
+	renderDigestThresholds,
+	renderGlancableChrome,
 	renderIdealitySettings,
 	renderPriorityNudge,
 	renderSortChips,
@@ -302,10 +304,13 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		this.extraSetting('ZIP / postal property', 'ZIP', () => this.plugin.settings.postcodeProperty, (value) => { this.plugin.settings.postcodeProperty = value; });
 		this.extraSetting('Country property', 'Country', () => this.plugin.settings.countryProperty, (value) => { this.plugin.settings.countryProperty = value; });
 
-		new Setting(containerEl).setName('Ideality').setHeading();
+		new Setting(containerEl).setName('Attempt Log suggester').setHeading();
+		renderDigestThresholds(containerEl, this.plugin);
+
+		new Setting(containerEl).setName('Ideality (beta)').setHeading();
 		renderIdealitySettings(containerEl, this.plugin);
 		new Setting(containerEl)
-			.setName('Ideality sort chip')
+			.setName('Ideality (beta) sort chip')
 			.setDesc('Off until you turn it on.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.sortChips.ideality);
@@ -314,6 +319,9 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					await this.plugin.saveSettings();
 				});
 			});
+
+		new Setting(containerEl).setName('Glancable Bases bar').setHeading();
+		renderGlancableChrome(containerEl, this.plugin);
 
 		new Setting(containerEl).setName('Distance testing').setHeading();
 		new Setting(containerEl)

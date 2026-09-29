@@ -8,6 +8,10 @@ import {
 } from './extras-sync';
 import { normalizeCountyList } from './home-base';
 import {
+	DEFAULT_AVOID_MIN_TRIALS,
+	DEFAULT_AVOID_SOFT_MAX,
+	DEFAULT_TRY_MIN_HOMES,
+	DEFAULT_TRY_SOFT_MIN,
 	defaultAvailabilityGrid,
 	migrateAvailabilityGrid,
 	type AvailabilityGrid,
@@ -60,8 +64,18 @@ export interface RVLocatorSettings {
 	availabilityGrid: AvailabilityGrid;
 	/** Days as rows, or days as columns, in the Attempt Log digest table. */
 	digestOrientation: DigestOrientation;
+	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
+	digestTrySoftMin: number;
+	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
+	digestAvoidSoftMax: number;
+	/** Trials required before a cold slot can be Avoid. */
+	digestAvoidMinTrials: number;
+	/** Homes required before a soft slot can be Try. */
+	digestTryMinHomes: number;
 	/** Ask to adjust priority after this many visits. Default 3. */
 	priorityNudgeEvery: number;
+	/** Bases toolbar pieces hidden while a Glancable view is on screen. */
+	glancableChrome: GlancableChromeFlags;
 	glancablePaddingY: number;
 	glancablePaddingX: number;
 	/** 0 keeps the line as wide as the card. */
@@ -95,6 +109,19 @@ export const GLANCABLE_LINE_IDS = [
 export type GlancableLineId = (typeof GLANCABLE_LINE_IDS)[number];
 
 export type GlancableLineFlags = Record<GlancableLineId, boolean>;
+
+export interface GlancableChromeFlags {
+	/** Hide the whole Bases top bar. Off by default. */
+	hideToolbar: boolean;
+	hideViews: boolean;
+	hideSort: boolean;
+	hideFilter: boolean;
+	hideProperties: boolean;
+	hideSearch: boolean;
+	/** Bases New. On by default so it does not compete with the plugin New button. */
+	hideNew: boolean;
+	hideCode: boolean;
+}
 
 /** P5 → 4d, P4 → 7d, P3 → 21d, P2 → 63d, P1 → 189d. */
 export const DEFAULT_URGENCY_THRESHOLD_DAYS: PriorityDays = {
@@ -131,6 +158,19 @@ export function defaultSortChips(): SortChipFlags {
 		met: true,
 		urgency: true,
 		ideality: false,
+	};
+}
+
+export function defaultGlancableChrome(): GlancableChromeFlags {
+	return {
+		hideToolbar: false,
+		hideViews: false,
+		hideSort: false,
+		hideFilter: false,
+		hideProperties: false,
+		hideSearch: false,
+		hideNew: true,
+		hideCode: false,
 	};
 }
 
@@ -180,7 +220,12 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	homeLikelihoodEnabled: false,
 	availabilityGrid: defaultAvailabilityGrid(),
 	digestOrientation: 'rows',
+	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
+	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
+	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
+	digestTryMinHomes: DEFAULT_TRY_MIN_HOMES,
 	priorityNudgeEvery: DEFAULT_PRIORITY_NUDGE_EVERY,
+	glancableChrome: defaultGlancableChrome(),
 	glancablePaddingY: DEFAULT_GLANCABLE_PADDING_Y,
 	glancablePaddingX: DEFAULT_GLANCABLE_PADDING_X,
 	glancableMaxLineChars: 0,
@@ -236,8 +281,9 @@ export interface StoredPluginData {
 	/** Last Nearby sort. Missing data opens on Nearest. */
 	nearbySort?: NearbySortPreference;
 	/**
-	 * Set after the 1.2.8 digest rewrite and Attempt Log open pass.
-	 * Missing means that pass still needs to run.
+	 * Set after the latest Attempt Log layout pass.
+	 * 1 was the 1.2.8 open-the-callout rewrite. 2 moves the table and quote
+	 * above the callout. Missing, or an older number, means that pass still needs to run.
 	 */
 	digestPolish?: number;
 }
@@ -283,7 +329,12 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		homeLikelihoodEnabled: input.homeLikelihoodEnabled === true,
 		availabilityGrid: migrateAvailabilityGrid(input.availabilityGrid),
 		digestOrientation: input.digestOrientation === 'columns' ? 'columns' : 'rows',
+		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
+		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
+		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),
+		digestTryMinHomes: wholeInRange(input.digestTryMinHomes, 1, 30, DEFAULT_TRY_MIN_HOMES),
 		priorityNudgeEvery: nudgeEvery(input.priorityNudgeEvery),
+		glancableChrome: sanitizeGlancableChrome(input.glancableChrome),
 		glancablePaddingY: boundedNumber(input.glancablePaddingY, 0, 64, DEFAULT_GLANCABLE_PADDING_Y),
 		glancablePaddingX: boundedNumber(input.glancablePaddingX, 0, 64, DEFAULT_GLANCABLE_PADDING_X),
 		glancableMaxLineChars: lineChars(input.glancableMaxLineChars),
@@ -355,6 +406,17 @@ function sanitizeSortChips(value: unknown): SortChipFlags {
 	return next;
 }
 
+function sanitizeGlancableChrome(value: unknown): GlancableChromeFlags {
+	const defaults = defaultGlancableChrome();
+	if (!value || typeof value !== 'object') return defaults;
+	const raw = value as Record<string, unknown>;
+	const next = { ...defaults };
+	for (const key of Object.keys(defaults) as (keyof GlancableChromeFlags)[]) {
+		if (typeof raw[key] === 'boolean') next[key] = raw[key];
+	}
+	return next;
+}
+
 function sanitizeGlancableLines(value: unknown): GlancableLineFlags {
 	const defaults = defaultGlancableLines();
 	if (!value || typeof value !== 'object') return defaults;
@@ -364,6 +426,18 @@ function sanitizeGlancableLines(value: unknown): GlancableLineFlags {
 		if (typeof raw[id] === 'boolean') next[id] = raw[id];
 	}
 	return next;
+}
+
+function unitRate(value: unknown, fallback: number): number {
+	const parsed = typeof value === 'number' ? value : Number.NaN;
+	if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1) return fallback;
+	return Math.round(parsed * 1000) / 1000;
+}
+
+function wholeInRange(value: unknown, min: number, max: number, fallback: number): number {
+	const parsed = typeof value === 'number' ? value : Number.NaN;
+	if (!Number.isInteger(parsed) || parsed < min || parsed > max) return fallback;
+	return parsed;
 }
 
 function nudgeEvery(value: unknown): number {
