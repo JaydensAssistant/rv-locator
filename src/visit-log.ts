@@ -4,6 +4,21 @@ import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
 
+/**
+ * Ask only on a Home, and only when Successful Visits is a positive multiple of N.
+ * A miss never asks, even when the home count is already on a multiple of N.
+ */
+export function shouldNudgePriority(
+	outcome: VisitOutcome | 'unknown',
+	successfulVisits: number | null,
+	every: number,
+): boolean {
+	if (outcome !== 'home') return false;
+	if (!Number.isInteger(every) || every < 1) return false;
+	if (successfulVisits == null || !Number.isInteger(successfulVisits) || successfulVisits < every) return false;
+	return successfulVisits % every === 0;
+}
+
 /** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;

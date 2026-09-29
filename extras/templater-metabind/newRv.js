@@ -215,36 +215,47 @@ async function focusNote(file) {
   await app.workspace.getLeaf(false).openFile(file);
 }
 
+function refreshCreatedDigest(file) {
+  const plugin = rvPlugin();
+  const refresh = plugin && plugin.refreshAttemptDigest;
+  if (!file || typeof refresh !== "function") return Promise.resolve();
+  try {
+    const result = refresh.call(plugin, file);
+    return result && typeof result.then === "function" ? result : Promise.resolve();
+  } catch {
+    return Promise.resolve();
+  }
+}
+
 function scheduleGeocode(tp, address) {
   const run = async () => {
     const file = resolveFile(tp) || app.workspace.getActiveFile();
-    if (!file) {
+    if (address && !file) {
       new Notice("RV Locator: no note to geocode.");
       return;
     }
-    let stored = await readAddress(file, "Address");
-    if (!stored && address) {
-      await app.fileManager.processFrontMatter(file, (fm) => {
-        assignIfEmpty(fm, "Address", address);
-      });
-      stored = await readAddress(file, "Address");
+    if (address && file) {
+      let stored = await readAddress(file, "Address");
+      if (!stored && address) {
+        await app.fileManager.processFrontMatter(file, (fm) => {
+          assignIfEmpty(fm, "Address", address);
+        });
+        stored = await readAddress(file, "Address");
+      }
+      if (!stored) {
+        new Notice("RV Locator: no address, geocode skipped.");
+      } else if (!app.commands.commands[COMMAND_ID]) {
+        new Notice("Enable RV Locator, then run Geocode current note on this note.");
+      } else {
+        await focusNote(file);
+        app.commands.executeCommandById(COMMAND_ID);
+      }
     }
-    if (!stored) {
-      new Notice("RV Locator: no address, geocode skipped.");
-      return;
-    }
-    if (!app.commands.commands[COMMAND_ID]) {
-      new Notice("Enable RV Locator, then run Geocode current note on this note.");
-      return;
-    }
-    await focusNote(file);
-    app.commands.executeCommandById(COMMAND_ID);
+    await refreshCreatedDigest(file);
   };
 
   if (tp?.hooks && typeof tp.hooks.on_all_templates_executed === "function") {
-    tp.hooks.on_all_templates_executed(() => {
-      void run();
-    });
+    tp.hooks.on_all_templates_executed(() => run());
     return;
   }
   void run();
@@ -450,7 +461,7 @@ async function newRv(tp) {
     }
   }
 
-  if (address) scheduleGeocode(tp, address);
+  scheduleGeocode(tp, address);
 
   return {
     addressYaml: yamlQuoted(address),

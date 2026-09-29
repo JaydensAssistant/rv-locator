@@ -95,7 +95,7 @@ export function renderPriorityNudge(containerEl: HTMLElement, plugin: ScoringHos
 	sliderSetting(
 		containerEl,
 		'Priority check',
-		`After every ${plugin.settings.priorityNudgeEvery} visits, ask whether to lower, keep, or raise priority. Default ${DEFAULT_PRIORITY_NUDGE_EVERY}.`,
+		`After every ${plugin.settings.priorityNudgeEvery} home visits, ask whether to lower, keep, or raise priority. Not home does not count. Default ${DEFAULT_PRIORITY_NUDGE_EVERY}.`,
 		plugin.settings.priorityNudgeEvery,
 		1,
 		20,
@@ -249,7 +249,7 @@ export function paintMayGoOutGrid(
 export function explainMayGoOut(containerEl: HTMLElement): void {
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'Morning is before 12pm, afternoon is 12pm to 4:29pm, and evening is after 4:30pm. Grey is off. Green is may go out. Click a cell to switch. The Attempt Log table uses only these dayparts, never a whole day.',
+		text: 'Morning is before 12pm, afternoon is 12pm to 4:29pm, and evening is after 4:30pm. Grey is off. Green is may go out. Click a cell to switch. The Attempt Log table counts homes and trials for these dayparts only.',
 	});
 }
 

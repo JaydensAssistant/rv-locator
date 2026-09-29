@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.7
+
+`main.js` SHA-256: `8ce28f6b8358e3bf7e8674d02eaf3281929a6cf2be85334a6bc10f40565f5ff1`
+
+`styles.css` SHA-256: `86a371ea59d1c17b519c485572b1e452b34509c4356cb57330bce5a845596a24`
+
+`manifest.json` SHA-256: `6e978085c3d8df3478d849323689392ad127c146f6915f7ea8383be9a0ad82a2`
+
+- Glancable urgency, priority, and map controls are thin outlined circles. The stroke and the glyph use the same urgency color. Priority 0 stays a grey outline. The left accent stripe is unchanged.
+- The street on a card uses the small muted date type. The city is white and bold again. Distance stays urgency-tinted.
+- Creating a New RV writes the May-go-out digest between `<!-- rv-locator-digest -->` markers from the current Everyday schedule, including its row/column orientation. The New RV template already carries those markers under Attempt Log. `newRv.js` asks the plugin to fill them after Templater finishes the note. Changing the schedule or the orientation still rewrites every RV note and still skips the templates folder.
+- The digest counts Home and Not home from Attempt Log timestamps (weekday and daypart). A `###` stamp counts as Home only when its bullet is missing. Dated Home / Not home lines are listed under the table. A stale `0/0` table inside the markers is not treated as attempt history.
+- Priority check asks on every Nth Home only (`priorityNudgeEvery`, default 3). Not home never asks. The first ask is Home number N, then every N Homes after that.
+- The digest footer is four lines, and empty ones are left out: Try (soft rate at least 0.42 and at least one home, best ties in bold), Untried (trials 0, a whole weekday when every May-go-out daypart is still open), Unsure (1–2 trials, or 3+ trials with soft rate between 0.30 and 0.42), Avoid (3+ trials and soft rate at most 0.30). Soft rate is `(homes + 1) / (trials + 2)`.
+- Extras sync is pinned to tag `v1.2.7` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.6
 
 `main.js` SHA-256: `34dde78319a01bbf620a5a6380f18a2cc03886c1d1dd7d35def7327e159eae07`

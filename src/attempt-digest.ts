@@ -61,10 +61,20 @@ export function hoistAttemptDigest(callout: HTMLElement): void {
 	host.empty();
 	for (const node of moving) {
 		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		if (text.startsWith('Avoid')) node.classList.add('is-avoid');
-		if (text.startsWith('Try')) node.classList.add('is-try');
+		const voice = digestVoiceClass(text);
+		if (voice) node.classList.add(voice);
 		host.appendChild(node);
 	}
+}
+
+/** Class for one hoisted digest line. Untried is checked before Try. */
+export function digestVoiceClass(text: string): string | null {
+	if (/^Avoid\b/.test(text)) return 'is-avoid';
+	if (/^Untried\b/.test(text)) return 'is-untried';
+	if (/^Unsure\b/.test(text)) return 'is-unsure';
+	if (/^Try\b/.test(text)) return 'is-try';
+	if (/— (?:Home|Not home)$/.test(text)) return 'is-history';
+	return null;
 }
 
 function digestLines(inner: string): string[] {

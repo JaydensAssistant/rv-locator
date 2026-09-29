@@ -1,4 +1,5 @@
 import { Modal, Setting, type App } from 'obsidian';
+import { digestVoiceClass } from './attempt-digest';
 import type { SnoozeChoice } from './snooze';
 
 export class ReturnSuggestModal extends Modal {
@@ -15,10 +16,10 @@ export class ReturnSuggestModal extends Modal {
 		for (const line of this.markdown.split('\n')) {
 			if (!line.trim()) continue;
 			const row = host.createDiv({ cls: 'rv-locator-return-line' });
-			if (line.startsWith('**Avoid**')) row.addClass('is-avoid');
-			if (line.startsWith('**Try**')) row.addClass('is-try');
+			const voice = digestVoiceClass(line.replaceAll('**', ''));
+			if (voice) row.addClass(voice);
 			if (line.startsWith('|')) row.addClass('is-table');
-			row.setText(line.replaceAll('**', ''));
+			appendDigestText(row, line);
 		}
 		new Setting(contentEl).addButton((button) => {
 			button.setButtonText('Close');
@@ -28,6 +29,17 @@ export class ReturnSuggestModal extends Modal {
 
 	onClose(): void {
 		this.contentEl.empty();
+	}
+}
+
+function appendDigestText(row: HTMLElement, line: string): void {
+	const parts = line.split(/(\*\*[^*]+\*\*)/g);
+	for (const part of parts) {
+		if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+			row.createEl('strong', { text: part.slice(2, -2) });
+			continue;
+		}
+		if (part) row.appendText(part);
 	}
 }
 

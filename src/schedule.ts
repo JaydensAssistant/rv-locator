@@ -3,6 +3,7 @@
  * Wednesday morning never shares a bucket with Saturday morning.
  * Boundaries are local time. Evening starts at 4:30.
  */
+import { DIGEST_END, DIGEST_START } from './attempt-digest';
 
 export const DAYPARTS = ['morning', 'afternoon', 'evening'] as const;
 
@@ -30,12 +31,6 @@ const DAYPART_START: Record<Daypart, number> = {
 	morning: 0,
 	afternoon: 12 * 60,
 	evening: 16 * 60 + 30,
-};
-
-const DAYPART_END: Record<Daypart, number> = {
-	morning: 12 * 60,
-	afternoon: 16 * 60 + 30,
-	evening: 24 * 60,
 };
 
 const LEGACY_DAYPARTS = ['early-morning', 'late-morning', 'afternoon', 'evening'] as const;
@@ -150,23 +145,74 @@ export function availabilityAt(grid: AvailabilityGrid, weekday: number, daypart:
 	return grid[availabilityKey(weekday, daypart)] === 'may' ? 'may' : 'off';
 }
 
+export interface AttemptEntry {
+	weekday: number;
+	daypart: Daypart;
+	home: boolean;
+	/** Written stamp, such as `Wed, 2pm — Sep 9, 2026`. */
+	stamp: string;
+}
+
 /**
- * Attempt Log lines only. `###` stamps are the same home visit and are not counted twice.
+ * Attempt Log bullets are the source of truth. `success` and `Home` count as home.
+ * `not home` and `miss` count as a miss. A `###` stamp is the same home visit as its
+ * bullet and is counted only when that bullet is missing.
  * The written hour is the rounded local hour. 4:30 in the raw clock is evening; a rounded `4pm` stamp is afternoon.
+ * Lines inside the digest markers are not attempts.
  */
-export function parseAttemptLog(body: string): AttemptBuckets {
+export function readAttemptLog(body: string): { buckets: AttemptBuckets; entries: AttemptEntry[] } {
+	const bullets: AttemptEntry[] = [];
+	const headings: AttemptEntry[] = [];
+	let inDigest = false;
+	for (const raw of body.split('\n')) {
+		const line = raw.trim();
+		if (line.includes(DIGEST_START)) {
+			inDigest = true;
+			continue;
+		}
+		if (line.includes(DIGEST_END)) {
+			inDigest = false;
+			continue;
+		}
+		if (inDigest) continue;
+		const bullet = parseBulletLine(line);
+		if (bullet) {
+			bullets.push(bullet);
+			continue;
+		}
+		const heading = parseHeadingLine(line);
+		if (heading) headings.push(heading);
+	}
+	const entries = [...bullets];
+	const homesByStamp = new Map<string, number>();
+	for (const entry of bullets) {
+		if (!entry.home) continue;
+		homesByStamp.set(entry.stamp, (homesByStamp.get(entry.stamp) ?? 0) + 1);
+	}
+	const headingsByStamp = new Map<string, { count: number; entry: AttemptEntry }>();
+	for (const entry of headings) {
+		const current = headingsByStamp.get(entry.stamp);
+		if (current) current.count += 1;
+		else headingsByStamp.set(entry.stamp, { count: 1, entry });
+	}
+	for (const [stamp, info] of headingsByStamp) {
+		const have = homesByStamp.get(stamp) ?? 0;
+		for (let extra = have; extra < info.count; extra += 1) entries.push(info.entry);
+	}
 	const buckets: AttemptBuckets = {};
-	for (const line of body.split('\n')) {
-		const visit = parseAttemptLine(line);
-		if (!visit) continue;
-		const key = availabilityKey(visit.weekday, visit.daypart);
+	for (const entry of entries) {
+		const key = availabilityKey(entry.weekday, entry.daypart);
 		const current = buckets[key] ?? { homes: 0, trials: 0 };
 		buckets[key] = {
-			homes: current.homes + (visit.home ? 1 : 0),
+			homes: current.homes + (entry.home ? 1 : 0),
 			trials: current.trials + 1,
 		};
 	}
-	return buckets;
+	return { buckets, entries };
+}
+
+export function parseAttemptLog(body: string): AttemptBuckets {
+	return readAttemptLog(body).buckets;
 }
 
 export function totalTrials(buckets: AttemptBuckets): number {
@@ -187,50 +233,52 @@ export interface SlotFact {
 }
 
 export interface ReturnDigest {
-	/** Footer lines, or the empty-schedule line. */
+	/** Voice lines, or the empty-schedule line. History is only in markdown. */
 	text: string;
 	sentences: string[];
 	table: string;
-	/** Table plus accented footers, ready to store under Attempt Log. */
+	/** Table, dated history, and the four voice lines, ready to store under Attempt Log. */
 	markdown: string;
 }
 
 const NO_SCHEDULE = 'No May-go-out days';
 
+/** Soft home rate. Empty history is 0.5. */
+const TRY_SOFT_MIN = 0.42;
+const AVOID_SOFT_MAX = 0.30;
+
 /**
- * Compact table of May-go-out days, then two footer lines.
- * Avoid and try name dayparts, never a whole weekday by itself.
+ * Compact table of May-go-out days, then dated Home / Not home lines,
+ * then Try / Untried / Unsure / Avoid. Empty voice lines are omitted.
  */
 export function suggestReturnDigest(args: {
 	buckets: AttemptBuckets;
+	entries?: readonly AttemptEntry[];
 	grid: AvailabilityGrid;
 	orientation?: DigestOrientation;
 	now?: Date;
 }): ReturnDigest {
-	const now = args.now ?? new Date();
 	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
 	const days = mayGoOutDays(args.grid);
+	const history = historyLines(args.entries ?? []);
 	if (days.length === 0) {
-		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
+		const markdown = history.length > 0 ? [NO_SCHEDULE, '', ...history].join('\n') : NO_SCHEDULE;
+		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown };
 	}
 	const facts = daypartFacts(days, args.buckets, args.grid);
 	const table = orientation === 'columns'
 		? tableDaysAsColumns(days, facts)
 		: tableDaysAsRows(days, facts);
-	const avoid = facts.filter((slot) => isAvoid(slot))
-		.sort((a, b) => a.rate - b.rate || b.trials - a.trials || compareUpcoming(a, b, now))
-		.slice(0, 3);
-	const avoidKeys = new Set(avoid.map(slotKey));
-	const promising = facts
-		.filter((slot) => slot.trials > 0 && !avoidKeys.has(slotKey(slot)))
-		.sort((a, b) => b.rate - a.rate || b.trials - a.trials || compareUpcoming(a, b, now))[0] ?? null;
-	const untried = facts
-		.filter((slot) => slot.trials === 0)
-		.sort((a, b) => compareUpcoming(a, b, now))
-		.slice(0, 2);
-	const sentences = [avoidLine(avoid), tryLine(promising, untried)];
-	const markdown = [table, '', ...sentences].join('\n');
-	return { text: sentences.join('\n'), sentences, table, markdown };
+	const sentences = voiceLines(facts);
+	const blocks = [table];
+	if (history.length > 0) blocks.push(history.join('\n'));
+	if (sentences.length > 0) blocks.push(sentences.join('\n'));
+	return {
+		text: sentences.join('\n'),
+		sentences,
+		table,
+		markdown: blocks.join('\n\n'),
+	};
 }
 
 function mayGoOutDays(grid: AvailabilityGrid): number[] {
@@ -293,60 +341,106 @@ function cellText(facts: readonly SlotFact[], weekday: number, daypart: Daypart)
 	return `${slot.homes}/${slot.trials}`;
 }
 
-function isAvoid(slot: SlotFact): boolean {
-	if (slot.trials < 3) return false;
-	return slot.rate < 0.4;
+type VoiceBucket = 'try' | 'untried' | 'unsure' | 'avoid';
+
+function voiceLines(facts: readonly SlotFact[]): string[] {
+	const grouped: Record<VoiceBucket, SlotFact[]> = { try: [], untried: [], unsure: [], avoid: [] };
+	for (const slot of facts) grouped[classifySlot(slot)].push(slot);
+	const lines = [
+		tryLine(grouped.try),
+		untriedLine(facts),
+		countedLine('Unsure', grouped.unsure),
+		countedLine('Avoid', grouped.avoid),
+	];
+	return lines.filter((line): line is string => line != null);
 }
 
-function avoidLine(slots: readonly SlotFact[]): string {
-	if (slots.length === 0) return '**Avoid** Nothing stands out';
-	return `**Avoid** ${joinDayparts(slots)}`;
+/**
+ * Try wins when a thin sample is already a real home (1/1).
+ * Avoid needs a long cold streak. Everything else with a trial is Unsure.
+ */
+function classifySlot(slot: SlotFact): VoiceBucket {
+	if (slot.trials <= 0) return 'untried';
+	const soft = laplaceRate(slot.homes, slot.trials);
+	if (slot.homes >= 1 && soft >= TRY_SOFT_MIN) return 'try';
+	if (slot.trials >= 3 && soft <= AVOID_SOFT_MAX) return 'avoid';
+	return 'unsure';
 }
 
-function tryLine(promising: SlotFact | null, untried: readonly SlotFact[]): string {
-	const parts: string[] = [];
-	if (promising) parts.push(daypartCount(promising));
-	if (untried.length === 1) {
-		const slot = untried[0];
-		if (slot) parts.push(`${daypartName(slot)} has not been tried`);
-	} else if (untried.length > 1) {
-		const names = untried.map((slot) => daypartName(slot));
-		parts.push(`${names[0]} and ${names[1]} have not been tried`);
+function tryLine(slots: readonly SlotFact[]): string | null {
+	if (slots.length === 0) return null;
+	const ranked = [...slots].sort(compareTry);
+	const best = laplaceRate(ranked[0]?.homes ?? 0, ranked[0]?.trials ?? 0);
+	const bits = ranked.map((slot) => {
+		const text = `${slotName(slot)} (${slot.homes}/${slot.trials})`;
+		return Math.abs(laplaceRate(slot.homes, slot.trials) - best) < 1e-9 ? `**${text}**` : text;
+	});
+	return `Try: ${bits.join(' · ')}`;
+}
+
+function compareTry(a: SlotFact, b: SlotFact): number {
+	const soft = laplaceRate(b.homes, b.trials) - laplaceRate(a.homes, a.trials);
+	if (Math.abs(soft) > 1e-9) return soft;
+	return b.trials - a.trials || a.weekday - b.weekday || daypartIndex(a.daypart) - daypartIndex(b.daypart);
+}
+
+function untriedLine(facts: readonly SlotFact[]): string | null {
+	const weekdays = [...new Set(facts.filter((slot) => slot.trials === 0).map((slot) => slot.weekday))]
+		.sort((a, b) => a - b);
+	if (weekdays.length === 0) return null;
+	const bits = weekdays.map((weekday) => {
+		const may = facts.filter((slot) => slot.weekday === weekday).sort(byDaypart);
+		const open = may.filter((slot) => slot.trials === 0);
+		if (open.length === may.length) return weekdayShort(weekday);
+		return condenseDayparts(weekday, open);
+	});
+	return `Untried: ${bits.join(' · ')}`;
+}
+
+function countedLine(label: 'Unsure' | 'Avoid', slots: readonly SlotFact[]): string | null {
+	if (slots.length === 0) return null;
+	const bits: string[] = [];
+	for (const weekday of [...new Set(slots.map((slot) => slot.weekday))].sort((a, b) => a - b)) {
+		const daySlots = slots.filter((slot) => slot.weekday === weekday).sort(byDaypart);
+		let cluster: SlotFact[] = [];
+		const flush = () => {
+			if (cluster.length === 0) return;
+			const names = cluster.map((slot) => daypartLabel(slot.daypart));
+			const head = cluster[0];
+			const daypartText = names.length === 1 ? names[0] ?? '' : names.join('/');
+			bits.push(`${weekdayShort(weekday)} ${daypartText} (${head?.homes ?? 0}/${head?.trials ?? 0})`);
+			cluster = [];
+		};
+		for (const slot of daySlots) {
+			const prev = cluster[cluster.length - 1];
+			if (prev && (prev.homes !== slot.homes || prev.trials !== slot.trials)) flush();
+			cluster.push(slot);
+		}
+		flush();
 	}
-	if (parts.length === 0) return '**Try** No daypart stands out yet';
-	return `**Try** ${parts.join('; ')}`;
+	return `${label}: ${bits.join(' · ')}`;
 }
 
-function joinDayparts(slots: readonly SlotFact[]): string {
-	const bits = slots.map((slot) => daypartCount(slot));
-	if (bits.length <= 1) return bits[0] ?? '';
-	if (bits.length === 2) return `${bits[0]} and ${bits[1]}`;
-	return `${bits.slice(0, -1).join(', ')}, and ${bits[bits.length - 1]}`;
+function condenseDayparts(weekday: number, slots: readonly SlotFact[]): string {
+	const labels = [...slots].sort(byDaypart).map((slot) => daypartLabel(slot.daypart));
+	if (labels.length <= 1) return `${weekdayShort(weekday)} ${labels[0] ?? ''}`.trim();
+	return `${weekdayShort(weekday)} ${labels.join('/')}`;
 }
 
-function daypartCount(slot: SlotFact): string {
-	return `${daypartName(slot)} (${slot.homes}/${slot.trials})`;
+function historyLines(entries: readonly AttemptEntry[]): string[] {
+	return entries.map((entry) => `${entry.stamp} — ${entry.home ? 'Home' : 'Not home'}`);
 }
 
-function daypartName(slot: Pick<SlotFact, 'weekday' | 'daypart'>): string {
+function slotName(slot: Pick<SlotFact, 'weekday' | 'daypart'>): string {
 	return `${weekdayShort(slot.weekday)} ${daypartLabel(slot.daypart)}`;
 }
 
-function compareUpcoming(a: SlotFact, b: SlotFact, now: Date): number {
-	return minutesUntil(now, a.weekday, a.daypart) - minutesUntil(now, b.weekday, b.daypart);
+function byDaypart(a: SlotFact, b: SlotFact): number {
+	return daypartIndex(a.daypart) - daypartIndex(b.daypart);
 }
 
-function minutesUntil(now: Date, weekday: number, daypart: Daypart): number {
-	const start = DAYPART_START[daypart];
-	const end = DAYPART_END[daypart];
-	const nowMin = now.getHours() * 60 + now.getMinutes();
-	let dayDelta = (weekday - now.getDay() + 7) % 7;
-	if (dayDelta === 0 && nowMin >= end) dayDelta = 7;
-	return dayDelta * 1440 + start - nowMin;
-}
-
-function slotKey(slot: SlotFact): string {
-	return availabilityKey(slot.weekday, slot.daypart);
+function daypartIndex(daypart: Daypart): number {
+	return DAYPARTS.indexOf(daypart);
 }
 
 function isUntouchedWillingDefault(raw: Record<string, unknown>): boolean {
@@ -376,25 +470,54 @@ function mapLevel(value: unknown): AvailabilityLevel {
 	return 'off';
 }
 
-const LOG_LINE = /^>\s*-\s*(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s+[—–-]\s+(success|not home)\s*$/i;
+const STAMP_BODY = /^(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})$/i;
+const BULLET_LINE = /^(?:>\s*)?[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\*\*)?\s*$/i;
+const HEADING_LINE = /^###\s+(.+?)\s*$/;
 
-function parseAttemptLine(line: string): { weekday: number; daypart: Daypart; home: boolean } | null {
-	const match = LOG_LINE.exec(line.trim());
+function parseBulletLine(line: string): AttemptEntry | null {
+	const match = BULLET_LINE.exec(line.trim());
+	if (!match) return null;
+	const parsed = parseStamp(match[1] ?? '');
+	if (!parsed) return null;
+	return { ...parsed, home: isHomeOutcome(match[2] ?? '') };
+}
+
+function parseHeadingLine(line: string): AttemptEntry | null {
+	const match = HEADING_LINE.exec(line.trim());
+	if (!match) return null;
+	const parsed = parseStamp(match[1] ?? '');
+	if (!parsed) return null;
+	return { ...parsed, home: true };
+}
+
+function parseStamp(raw: string): Omit<AttemptEntry, 'home'> | null {
+	const text = raw.trim();
+	const match = STAMP_BODY.exec(text);
 	if (!match) return null;
 	const hour12 = Number(match[2]);
 	const minute = match[3] ? Number(match[3]) : 0;
 	const ampm = (match[4] ?? '').toLowerCase();
 	const dateText = match[5] ?? '';
-	const outcome = (match[6] ?? '').toLowerCase();
 	const clock = clock24(hour12, minute, ampm);
 	const date = parseStampDate(dateText);
 	if (!clock || !date) return null;
 	const when = new Date(date.year, date.month, date.day, clock.hour, clock.minute, 0, 0);
+	const weekday = when.getDay();
+	const writtenDow = (match[1] ?? '').trim();
+	const dow = writtenDow || weekdayShort(weekday);
+	const clockLabel = minute > 0
+		? `${hour12}:${String(minute).padStart(2, '0')}${ampm}`
+		: `${hour12}${ampm}`;
 	return {
-		weekday: when.getDay(),
+		weekday,
 		daypart: daypartAt(when),
-		home: outcome === 'success',
+		stamp: `${dow}, ${clockLabel} — ${dateText.trim()}`,
 	};
+}
+
+function isHomeOutcome(word: string): boolean {
+	const text = word.toLowerCase().replace(/[\s-]+/g, '');
+	return text === 'success' || text === 'home';
 }
 
 function clock24(hour12: number, minute: number, ampm: string): { hour: number; minute: number } | null {

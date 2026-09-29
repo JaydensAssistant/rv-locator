@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { visibleSortPresets } from '../src/active-layout';
-import { upsertAttemptDigest } from '../src/attempt-digest';
+import { digestVoiceClass, upsertAttemptDigest } from '../src/attempt-digest';
 import { IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from '../src/constants';
 import { glancableColumns } from '../src/glancable-density';
 import { displayedUrgency, likelihoodForNow } from '../src/row-score';
@@ -25,6 +25,7 @@ import {
 	laplaceRate,
 	migrateAvailabilityGrid,
 	parseAttemptLog,
+	readAttemptLog,
 	sampleConfidence,
 	slotScore,
 	suggestReturnDigest,
@@ -32,7 +33,7 @@ import {
 } from '../src/schedule';
 import { formatSnoozeUntil, parseSnoozeUntil, snoozeActive, URGENCY_SNOOZE_PROPERTY } from '../src/snooze';
 import { settingsGraphs } from '../src/settings-graphs';
-import { applyVisitBody } from '../src/visit-log';
+import { applyVisitBody, shouldNudgePriority } from '../src/visit-log';
 import {
 	DEFAULT_IDEALITY_FLOOR_DAYS,
 	DEFAULT_TERRITORY_SPAN_MILES,
@@ -314,8 +315,13 @@ describe('dayparts and return suggester', () => {
 			'| Fri | 1/5 | 1/5 | 1/5 |',
 			'| Sat | 0/0 | — | — |',
 		].join('\n'));
-		assert.equal(digest.sentences[0], '**Avoid** Fri morning (1/5), Fri afternoon (1/5), and Fri evening (1/5)');
-		assert.equal(digest.sentences[1], '**Try** Sat morning has not been tried');
+		assert.deepEqual(digest.sentences, [
+			'Untried: Sat',
+			'Avoid: Fri morning/afternoon/evening (1/5)',
+		]);
+		assert.equal(digest.markdown.includes('Try:'), false);
+		assert.equal(digest.markdown.includes('Nothing stands out'), false);
+		assert.equal(digest.markdown.includes('has not been tried'), false);
 		assert.equal(digest.markdown.startsWith(digest.table), true);
 		assert.equal(/\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/.test(digest.markdown), false);
 		assert.equal(/\b(Alright|You've|always|never|do that)\b/i.test(digest.markdown), false);
@@ -343,8 +349,104 @@ describe('dayparts and return suggester', () => {
 			grid: halfGrid,
 			now: new Date(2026, 8, 24, 12, 0, 0),
 		});
-		assert.equal(half.sentences[0], '**Avoid** Nothing stands out');
-		assert.equal(half.sentences[1], '**Try** Wed evening (5/10)');
+		assert.deepEqual(half.sentences, ['Try: **Wed evening (5/10)**']);
+		assert.equal(half.markdown.includes('Avoid:'), false);
+		assert.equal(half.markdown.includes('Untried:'), false);
+	});
+
+	it('buckets may-go-out cells by soft rate and omits empty lines', () => {
+		const one = voiceFor({ '5:morning': { homes: 1, trials: 1 } }, ['5:morning']);
+		assert.deepEqual(one, ['Try: **Fri morning (1/1)**']);
+		const miss = voiceFor({ '5:morning': { homes: 0, trials: 1 } }, ['5:morning']);
+		assert.deepEqual(miss, ['Unsure: Fri morning (0/1)']);
+		const strong = voiceFor({ '5:morning': { homes: 2, trials: 5 } }, ['5:morning']);
+		assert.deepEqual(strong, ['Try: **Fri morning (2/5)**']);
+		const cold = voiceFor({ '5:morning': { homes: 1, trials: 5 } }, ['5:morning']);
+		assert.deepEqual(cold, ['Avoid: Fri morning (1/5)']);
+		const thin = voiceFor({ '5:morning': { homes: 1, trials: 4 } }, ['5:morning']);
+		assert.deepEqual(thin, ['Unsure: Fri morning (1/4)']);
+		const empty = voiceFor({ '5:morning': { homes: 0, trials: 3 } }, ['5:morning']);
+		assert.deepEqual(empty, ['Avoid: Fri morning (0/3)']);
+		assert.equal(empty.some((line) => line.startsWith('Try:')), false);
+
+		const tied = voiceFor({
+			'6:afternoon': { homes: 1, trials: 1 },
+			'6:evening': { homes: 2, trials: 2 },
+			'6:morning': { homes: 1, trials: 1 },
+		}, ['6:morning', '6:afternoon', '6:evening']);
+		assert.equal(tied[0], 'Try: **Sat evening (2/2)** · Sat morning (1/1) · Sat afternoon (1/1)');
+		const same = voiceFor({
+			'6:afternoon': { homes: 1, trials: 1 },
+			'6:evening': { homes: 1, trials: 1 },
+		}, ['6:afternoon', '6:evening']);
+		assert.equal(same[0], 'Try: **Sat afternoon (1/1)** · **Sat evening (1/1)**');
+
+		const collapsed = voiceFor({}, ['3:morning', '3:afternoon', '3:evening', '5:morning', '5:afternoon']);
+		assert.deepEqual(collapsed, ['Untried: Wed · Fri']);
+		const partialDay = voiceFor(
+			{ '5:evening': { homes: 1, trials: 1 } },
+			['5:morning', '5:afternoon', '5:evening'],
+		);
+		assert.equal(partialDay[0], 'Try: **Fri evening (1/1)**');
+		assert.equal(partialDay[1], 'Untried: Fri morning/afternoon');
+		const mixed = voiceFor({
+			'5:morning': { homes: 0, trials: 1 },
+			'5:afternoon': { homes: 0, trials: 1 },
+		}, ['5:morning', '5:afternoon', '5:evening']);
+		assert.deepEqual(mixed, [
+			'Untried: Fri evening',
+			'Unsure: Fri morning/afternoon (0/1)',
+		]);
+	});
+
+	it('counts Home and Not home from Attempt Log stamps, not a stale 0/0 table', () => {
+		const note = [
+			'> [!note]- Attempt Log',
+			'> <!-- rv-locator-digest -->',
+			'> | Wed | 0/0 | 0/0 | — |',
+			'> <!-- /rv-locator-digest -->',
+			'> - Wed, 2pm — Sep 9, 2026 — success',
+			'> - Wed, 10am — Sep 16, 2026 — not home',
+			'### Wed, 2pm — Sep 9, 2026',
+		].join('\n');
+		const log = readAttemptLog(note);
+		assert.deepEqual(log.buckets['3:afternoon'], { homes: 1, trials: 1 });
+		assert.deepEqual(log.buckets['3:morning'], { homes: 0, trials: 1 });
+		assert.equal(log.entries.length, 2);
+		const grid = defaultAvailabilityGrid();
+		grid['3:morning'] = 'may';
+		grid['3:afternoon'] = 'may';
+		const digest = suggestReturnDigest({
+			buckets: log.buckets,
+			entries: log.entries,
+			grid,
+			now: new Date(2026, 8, 24, 12, 0, 0),
+		});
+		assert.equal(digest.table.includes('| Wed | 0/1 | 1/1 |'), true);
+		assert.equal(digest.markdown.includes('Wed, 2pm — Sep 9, 2026 — Home'), true);
+		assert.equal(digest.markdown.includes('Wed, 10am — Sep 16, 2026 — Not home'), true);
+		assert.equal(digest.markdown.includes('0/0'), false);
+		const homeWord = readAttemptLog('> - Fri, 1pm — Sep 18, 2026 — Home');
+		assert.deepEqual(homeWord.buckets['5:afternoon'], { homes: 1, trials: 1 });
+		const headingsOnly = readAttemptLog('### Wed, 2pm — Sep 9, 2026');
+		assert.deepEqual(headingsOnly.buckets['3:afternoon'], { homes: 1, trials: 1 });
+		assert.equal(digestVoiceClass('Try: **Sat evening (2/2)**'.replaceAll('**', '')), 'is-try');
+		assert.equal(digestVoiceClass('Untried: Wed'), 'is-untried');
+		assert.equal(digestVoiceClass('Unsure: Fri morning (0/1)'), 'is-unsure');
+		assert.equal(digestVoiceClass('Avoid: Wed evening (0/4)'), 'is-avoid');
+		assert.equal(digestVoiceClass('Wed, 2pm — Sep 9, 2026 — Home'), 'is-history');
+	});
+
+	it('asks for priority only on every Nth home', () => {
+		assert.equal(shouldNudgePriority('home', 1, 3), false);
+		assert.equal(shouldNudgePriority('home', 2, 3), false);
+		assert.equal(shouldNudgePriority('home', 3, 3), true);
+		assert.equal(shouldNudgePriority('home', 6, 3), true);
+		assert.equal(shouldNudgePriority('miss', 3, 3), false);
+		assert.equal(shouldNudgePriority('miss', 2, 3), false);
+		assert.equal(shouldNudgePriority('unknown', 3, 3), false);
+		assert.equal(shouldNudgePriority('home', 2, 2), true);
+		assert.equal(shouldNudgePriority('miss', 2, 2), false);
 	});
 
 	it('resets an untouched willing grid and keeps a real choice as may go out', () => {
@@ -482,3 +584,16 @@ describe('settings defaults', () => {
 		assert.match(shifted.likelihood, /Home-likelihood multiplier/);
 	});
 });
+
+function voiceFor(
+	counts: AttemptBuckets,
+	mayKeys: readonly string[],
+): string[] {
+	const grid = defaultAvailabilityGrid();
+	for (const key of mayKeys) grid[key] = 'may';
+	return suggestReturnDigest({
+		buckets: counts,
+		grid,
+		now: new Date(2026, 8, 24, 12, 0, 0),
+	}).sentences;
+}

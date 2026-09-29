@@ -510,7 +510,7 @@ async function rvLog(tp, kind) {
   const afterVisit = plugin && plugin.noteVisitLogged;
   if (typeof afterVisit === "function") {
     try {
-      await afterVisit.call(plugin, file);
+      await afterVisit.call(plugin, file, mode);
     } catch {
       /* The visit is already on the note. */
     }
