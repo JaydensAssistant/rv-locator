@@ -17,6 +17,7 @@ import {
 	likelihoodMultiplier,
 	urgencyAccentColor,
 	urgencyBand,
+	urgencyBangShapes,
 	urgencyGlyphMarkup,
 	urgencyMark,
 	urgencyScore,
@@ -575,8 +576,11 @@ describe('dayparts and return suggester', () => {
 		const triple = urgencyGlyphMarkup('!!!');
 		assert.equal(triple.split('<rect ').length - 1, 3);
 		assert.equal(triple.includes('width="1.7"'), true);
+		assert.equal(triple.includes('fill="currentColor"'), true);
 		assert.equal(triple.includes('width="2.8"'), false);
 		assert.equal(triple.includes('!'), false);
+		assert.equal(urgencyBangShapes('!!!').filter((shape) => shape.kind === 'rect').length, 3);
+		assert.equal(urgencyBangShapes('○').length, 0);
 		assert.equal(urgencyGlyphMarkup('!!').split('<rect ').length - 1, 2);
 		assert.equal(urgencyGlyphMarkup('!').split('<rect ').length - 1, 1);
 		assert.equal(urgencyGlyphMarkup('○'), '');

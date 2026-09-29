@@ -693,6 +693,7 @@
 	font-family: inherit;
 	font-variant-numeric: tabular-nums;
 	line-height: 1;
+	overflow: visible;
 	cursor: pointer;
 }
 
@@ -707,10 +708,20 @@
 	font-weight: 650;
 }
 
-.rv-locator-view .rv-locator-urgency svg {
+.rv-locator-view .rv-locator-urgency .rv-urgency-glyph {
 	display: block;
-	width: 100%;
-	height: 100%;
+	flex: 0 0 auto;
+	width: calc(var(--rv-control-size, 28px) * 0.56);
+	height: calc(var(--rv-control-size, 28px) * 0.56);
+	overflow: visible;
+	color: inherit;
+	fill: currentColor;
+}
+
+.rv-locator-view .rv-locator-urgency .rv-urgency-glyph rect,
+.rv-locator-view .rv-locator-urgency .rv-urgency-glyph circle {
+	fill: currentColor;
+	stroke: none;
 }
 
 .rv-locator-view .rv-locator-card.is-priority-zero .rv-locator-urgency,

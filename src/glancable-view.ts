@@ -9,7 +9,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
-import { urgencyAccentColor, urgencyBand, urgencyGlyphMarkup, urgencyMark } from './scoring';
+import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -325,18 +325,53 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/**
+ * Bands 1–3. Built with createElementNS in the button's own document
+ * (Obsidian's createSvg when that helper is on the node). DOMParser markup
+ * never becomes a painted child here: a parsed SVG can fail to import, and a
+ * viewBox-only svg inside this flex button can resolve to 0×0. Each mark sets
+ * fill to currentColor in an inline style so an app or theme rule of
+ * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
+ */
 function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
-	const markup = urgencyGlyphMarkup(glyphs);
-	if (!markup) return;
-	const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
-	const svg = parsed.documentElement;
-	// DOMParser SVG nodes fail Element.instanceOf(SVGElement) because that
-	// document has no defaultView. localName plus importNode is the mount.
-	if (svg.localName !== 'svg') return;
-	const node = host.ownerDocument.importNode(svg, true);
-	if (!domInstanceOf(node, Element)) return;
-	node.classList.add('rv-urgency-glyph');
-	host.appendChild(node);
+	const shapes = urgencyBangShapes(glyphs);
+	if (shapes.length === 0) return;
+	const svg = makeSvg(host, 'svg', {
+		viewBox: '0 0 28 28',
+		width: '28',
+		height: '28',
+		fill: 'currentColor',
+		'aria-hidden': 'true',
+		focusable: 'false',
+	}, 'rv-urgency-glyph');
+	svg.style.display = 'block';
+	svg.style.flex = '0 0 auto';
+	svg.style.width = 'calc(var(--rv-control-size, 28px) * 0.56)';
+	svg.style.height = 'calc(var(--rv-control-size, 28px) * 0.56)';
+	svg.style.overflow = 'visible';
+	svg.style.color = 'inherit';
+	svg.style.setProperty('fill', 'currentColor');
+	for (const shape of shapes) {
+		const node = makeSvg(svg, shape.kind, shape.attr);
+		node.style.setProperty('fill', 'currentColor');
+	}
+}
+
+function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle', attr: Record<string, string>, cls?: string): SVGElement {
+	const creator = parent as Element & {
+		createSvg?: (name: 'svg' | 'rect' | 'circle', info?: { cls?: string; attr?: Record<string, string> }) => SVGElement;
+	};
+	if (typeof creator.createSvg === 'function') {
+		return creator.createSvg(tag, { cls, attr });
+	}
+	const doc = parent.ownerDocument;
+	const node = doc.createElementNS(SVG_NS, tag);
+	if (cls) node.setAttribute('class', cls);
+	for (const [key, value] of Object.entries(attr)) node.setAttribute(key, value);
+	parent.appendChild(node);
+	return node;
 }
 
 function basesChromeHost(root: HTMLElement): HTMLElement | null {
