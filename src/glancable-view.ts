@@ -7,7 +7,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
-import { urgencyAccentColor, urgencyBand, urgencyMark } from './scoring';
+import { urgencyAccentColor, urgencyBand, urgencyGlyphMarkup, urgencyMark } from './scoring';
 import type { GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -149,7 +149,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const actions = parent.createSpan('rv-locator-card-actions');
 		const urgencyButton = actions.createEl('button', {
 			cls: 'rv-locator-urgency',
-			text: marks.glyphs,
 			attr: {
 				type: 'button',
 				'data-band': String(marks.band),
@@ -157,6 +156,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				'aria-label': urgencyTitle(urgency, priority),
 			},
 		});
+		mountUrgencyGlyph(urgencyButton, marks.glyphs);
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -281,6 +281,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 		return this.columns.find((column) => column.name.trim().toLowerCase() === wanted);
 	}
 
+}
+
+function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
+	const markup = urgencyGlyphMarkup(glyphs);
+	if (!markup) return;
+	const parsed = new DOMParser().parseFromString(markup, 'image/svg+xml');
+	const svg = parsed.documentElement;
+	if (!svg.instanceOf(SVGElement) || svg.tagName.toLowerCase() !== 'svg') return;
+	svg.classList.add('rv-urgency-glyph');
+	host.appendChild(svg);
 }
 
 function urgencyTitle(urgency: number | null, priority: number | null): string {

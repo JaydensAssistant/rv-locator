@@ -233,11 +233,11 @@ export interface SlotFact {
 }
 
 export interface ReturnDigest {
-	/** Voice lines, or the empty-schedule line. History is only in markdown. */
+	/** Voice lines, or the empty-schedule line. */
 	text: string;
 	sentences: string[];
 	table: string;
-	/** Table, dated history, and the four voice lines, ready to store under Attempt Log. */
+	/** Table and the four voice lines, ready to store under Attempt Log. */
 	markdown: string;
 }
 
@@ -248,8 +248,9 @@ const TRY_SOFT_MIN = 0.42;
 const AVOID_SOFT_MAX = 0.30;
 
 /**
- * Compact table of May-go-out days, then dated Home / Not home lines,
- * then Try / Untried / Unsure / Avoid. Empty voice lines are omitted.
+ * Compact table of May-go-out days, then Avoid, Try, Unsure, and Untried.
+ * Empty voice lines are omitted. The dated Home / Not home list is not repeated here.
+ * Default orientation is days down the side and dayparts across.
  */
 export function suggestReturnDigest(args: {
 	buckets: AttemptBuckets;
@@ -260,10 +261,8 @@ export function suggestReturnDigest(args: {
 }): ReturnDigest {
 	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
 	const days = mayGoOutDays(args.grid);
-	const history = historyLines(args.entries ?? []);
 	if (days.length === 0) {
-		const markdown = history.length > 0 ? [NO_SCHEDULE, '', ...history].join('\n') : NO_SCHEDULE;
-		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown };
+		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
 	}
 	const facts = daypartFacts(days, args.buckets, args.grid);
 	const table = orientation === 'columns'
@@ -271,7 +270,6 @@ export function suggestReturnDigest(args: {
 		: tableDaysAsRows(days, facts);
 	const sentences = voiceLines(facts);
 	const blocks = [table];
-	if (history.length > 0) blocks.push(history.join('\n'));
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
 	return {
 		text: sentences.join('\n'),
@@ -347,10 +345,10 @@ function voiceLines(facts: readonly SlotFact[]): string[] {
 	const grouped: Record<VoiceBucket, SlotFact[]> = { try: [], untried: [], unsure: [], avoid: [] };
 	for (const slot of facts) grouped[classifySlot(slot)].push(slot);
 	const lines = [
+		avoidLine(grouped.avoid),
 		tryLine(grouped.try),
-		untriedLine(facts),
 		countedLine('Unsure', grouped.unsure),
-		countedLine('Avoid', grouped.avoid),
+		untriedLine(facts),
 	];
 	return lines.filter((line): line is string => line != null);
 }
@@ -397,7 +395,22 @@ function untriedLine(facts: readonly SlotFact[]): string | null {
 	return `Untried: ${bits.join(' · ')}`;
 }
 
-function countedLine(label: 'Unsure' | 'Avoid', slots: readonly SlotFact[]): string | null {
+/** Lowest soft rate, and every Avoid slot tied with it, is bold. */
+function avoidLine(slots: readonly SlotFact[]): string | null {
+	if (slots.length === 0) return null;
+	let worst = Number.POSITIVE_INFINITY;
+	for (const slot of slots) {
+		const soft = laplaceRate(slot.homes, slot.trials);
+		if (soft < worst) worst = soft;
+	}
+	return countedLine('Avoid', slots, (slot) => Math.abs(laplaceRate(slot.homes, slot.trials) - worst) < 1e-9);
+}
+
+function countedLine(
+	label: 'Unsure' | 'Avoid',
+	slots: readonly SlotFact[],
+	emphasize?: (slot: SlotFact) => boolean,
+): string | null {
 	if (slots.length === 0) return null;
 	const bits: string[] = [];
 	for (const weekday of [...new Set(slots.map((slot) => slot.weekday))].sort((a, b) => a - b)) {
@@ -408,7 +421,8 @@ function countedLine(label: 'Unsure' | 'Avoid', slots: readonly SlotFact[]): str
 			const names = cluster.map((slot) => daypartLabel(slot.daypart));
 			const head = cluster[0];
 			const daypartText = names.length === 1 ? names[0] ?? '' : names.join('/');
-			bits.push(`${weekdayShort(weekday)} ${daypartText} (${head?.homes ?? 0}/${head?.trials ?? 0})`);
+			const text = `${weekdayShort(weekday)} ${daypartText} (${head?.homes ?? 0}/${head?.trials ?? 0})`;
+			bits.push(head && emphasize?.(head) ? `**${text}**` : text);
 			cluster = [];
 		};
 		for (const slot of daySlots) {
@@ -425,10 +439,6 @@ function condenseDayparts(weekday: number, slots: readonly SlotFact[]): string {
 	const labels = [...slots].sort(byDaypart).map((slot) => daypartLabel(slot.daypart));
 	if (labels.length <= 1) return `${weekdayShort(weekday)} ${labels[0] ?? ''}`.trim();
 	return `${weekdayShort(weekday)} ${labels.join('/')}`;
-}
-
-function historyLines(entries: readonly AttemptEntry[]): string[] {
-	return entries.map((entry) => `${entry.stamp} — ${entry.home ? 'Home' : 'Not home'}`);
 }
 
 function slotName(slot: Pick<SlotFact, 'weekday' | 'daypart'>): string {

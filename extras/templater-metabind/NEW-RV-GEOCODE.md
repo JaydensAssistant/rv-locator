@@ -22,12 +22,12 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
 4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
 5. Writes one Glancable drive date for that visit as a `###` heading: `### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date). A blank line under that heading is the place to type visit notes. A date-only value omits the hour.
-6. Adds a collapsed Attempt Log with one success bullet for that same stamp:
+6. Adds an open Attempt Log with one success bullet for that same stamp:
 
 ```markdown
 ### Wed, 2pm — Sep 9, 2026
 
-> [!note]- Attempt Log
+> [!note]+ Attempt Log
 > - Wed, 2pm — Sep 9, 2026 — success
 ```
 

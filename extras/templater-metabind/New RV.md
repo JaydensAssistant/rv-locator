@@ -52,7 +52,7 @@ cssclasses:
 ### <% rv.stamp %>
 
 
-> [!note]- Attempt Log
+> [!note]+ Attempt Log
 > <!-- rv-locator-digest -->
 > No May-go-out days
 > <!-- /rv-locator-digest -->

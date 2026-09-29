@@ -235,6 +235,11 @@ export interface StoredPluginData {
 	geocodeCache?: Record<string, CacheEntry>;
 	/** Last Nearby sort. Missing data opens on Nearest. */
 	nearbySort?: NearbySortPreference;
+	/**
+	 * Set after the 1.2.8 digest rewrite and Attempt Log open pass.
+	 * Missing means that pass still needs to run.
+	 */
+	digestPolish?: number;
 }
 
 export interface LatLon {

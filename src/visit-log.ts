@@ -23,7 +23,8 @@ export function shouldNudgePriority(
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const ADDRESS_KEY = 'Address';
-const CALLOUT_HEADER = '> [!note]- Attempt Log';
+/** Open by default. `+` is expanded. A later `-` from the reader stays collapsed. */
+const CALLOUT_HEADER = '> [!note]+ Attempt Log';
 const STAMP_LEVEL = '###';
 /** Empty lines between a new `###` stamp and Attempt Log. The extra line is note padding. */
 const STAMP_NOTE_BLANKS = 2;
@@ -79,8 +80,8 @@ export function applyVisitFrontmatter(
  * A home visit inserts `### <stamp>` and two blank lines just above Attempt Log
  * (one extra line of padding for notes). A second Home in the same rounded
  * hour still inserts another stamp.
- * Both outcomes append `> - <stamp> — success|not home` inside a collapsed
- * `> [!note]- Attempt Log` callout. An old `## Attempt Log` heading is migrated
+ * Both outcomes append `> - <stamp> — success|not home` inside an open
+ * `> [!note]+ Attempt Log` callout. An old `## Attempt Log` heading is migrated
  * to that callout on write. Address is not part of the body edit.
  */
 export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): string {

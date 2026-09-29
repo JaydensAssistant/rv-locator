@@ -1,10 +1,17 @@
 /**
- * The Attempt Log digest is stored in the note, directly under the callout title,
- * and hoisted in reading view so a collapsed log still shows it.
+ * The Attempt Log digest is stored in the note, inside the callout, directly
+ * under the title. Reading view leaves that block in the collapsible body.
  */
 
 export const DIGEST_START = '<!-- rv-locator-digest -->';
 export const DIGEST_END = '<!-- /rv-locator-digest -->';
+
+/**
+ * Bump when 1.2.8-style polish should run once per vault: drop the dated
+ * visit list from the digest, and open Attempt Log headers that still use
+ * the old collapsed default. A later manual collapse is left alone.
+ */
+export const DIGEST_POLISH_VERSION = 1;
 
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 
@@ -37,33 +44,92 @@ export function attemptLogCallouts(root: HTMLElement): HTMLElement[] {
 	return nodes;
 }
 
+export type AttemptLogRole = 'title' | 'hoisted' | 'body' | 'visit-list';
+
+export interface AttemptLogPiece {
+	key: string;
+	role: AttemptLogRole;
+	text: string;
+}
+
 /**
- * Move the digest (everything in the callout before the visit list) to sit
- * under the title, outside the collapsible body.
+ * Table and bucket lines stay in the collapsible body, before the visit list.
+ * A block that an older build parked outside the body is moved back in.
+ * Nothing is left in the hoisted slot.
  */
-export function hoistAttemptDigest(callout: HTMLElement): void {
+export function containedAttemptLog(pieces: readonly AttemptLogPiece[]): AttemptLogPiece[] {
+	const title = pieces.filter((piece) => piece.role === 'title');
+	const hoisted = pieces
+		.filter((piece) => piece.role === 'hoisted')
+		.map((piece) => ({ ...piece, role: 'body' as const }));
+	const body = pieces.filter((piece) => piece.role === 'body' || piece.role === 'visit-list');
+	const listAt = body.findIndex((piece) => piece.role === 'visit-list');
+	const head = listAt < 0 ? body : body.slice(0, listAt);
+	const tail = listAt < 0 ? [] : body.slice(listAt);
+	return [...title, ...hoisted, ...head, ...tail];
+}
+
+/**
+ * One-time open for the old collapsed default (`> [!note]- Attempt Log`).
+ * An already open `+` header, and any other callout, stays as written.
+ */
+export function openAttemptLogCallout(markdown: string): string {
+	const newline = markdown.includes('\r\n') ? '\r\n' : '\n';
+	let changed = false;
+	const lines = markdown.split(/\r?\n/).map((line) => {
+		const match = /^(>\s*\[!note\])-(\s+Attempt Log\s*)$/i.exec(line);
+		if (!match) return line;
+		changed = true;
+		return `${match[1]}+${match[2]}`;
+	});
+	return changed ? lines.join(newline) : markdown;
+}
+
+/**
+ * Keep the digest inside the collapsible body and tag bucket lines.
+ * Does not park a copy under the title where a collapsed callout would still show it.
+ */
+export function containAttemptDigest(callout: HTMLElement): void {
 	const content = directChild(callout, 'callout-content');
 	const title = directChild(callout, 'callout-title');
 	if (!content || !title) return;
-	let host = directChild(callout, 'rv-locator-return-digest');
-	const moving = digestNodes(content);
-	if (moving.length === 0) {
-		if (host && host.childElementCount === 0) host.remove();
-		return;
-	}
-	if (!host) {
-		host = callout.createDiv({
-			cls: 'rv-locator-return-digest',
-			attr: { 'aria-label': 'Attempt log digest' },
-		});
-		callout.insertBefore(host, title.nextSibling);
-	}
-	host.empty();
-	for (const node of moving) {
+	const host = directChild(callout, 'rv-locator-return-digest');
+	const pieces: AttemptLogPiece[] = [];
+	const nodes = new Map<string, HTMLElement>();
+	let serial = 0;
+	const push = (role: AttemptLogRole, node: HTMLElement): void => {
+		const key = String(serial);
+		serial += 1;
 		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		const voice = digestVoiceClass(text);
+		nodes.set(key, node);
+		pieces.push({ key, role, text });
+	};
+	push('title', title);
+	if (host) {
+		for (const child of Array.from(host.children)) {
+			if (!child.instanceOf(HTMLElement)) continue;
+			push('hoisted', child);
+		}
+	}
+	for (const child of Array.from(content.children)) {
+		if (!child.instanceOf(HTMLElement)) continue;
+		push(isVisitList(child) ? 'visit-list' : 'body', child);
+	}
+	if (host) host.remove();
+	let seenList = false;
+	for (const piece of containedAttemptLog(pieces)) {
+		if (piece.role === 'title') continue;
+		const node = nodes.get(piece.key);
+		if (!node) continue;
+		content.appendChild(node);
+		if (piece.role === 'visit-list') {
+			seenList = true;
+			continue;
+		}
+		if (seenList) continue;
+		node.classList.add('rv-locator-digest-block');
+		const voice = digestVoiceClass(piece.text);
 		if (voice) node.classList.add(voice);
-		host.appendChild(node);
 	}
 }
 
@@ -80,16 +146,6 @@ export function digestVoiceClass(text: string): string | null {
 function digestLines(inner: string): string[] {
 	const body = inner.replace(/\s+$/g, '').split('\n').map((line) => (line.trim() === '' ? '>' : `> ${line}`));
 	return [`> ${DIGEST_START}`, ...body, `> ${DIGEST_END}`];
-}
-
-function digestNodes(content: HTMLElement): HTMLElement[] {
-	const moving: HTMLElement[] = [];
-	for (const child of Array.from(content.children)) {
-		if (!child.instanceOf(HTMLElement)) continue;
-		if (isVisitList(child)) break;
-		moving.push(child);
-	}
-	return moving;
 }
 
 function isVisitList(node: HTMLElement): boolean {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { visibleSortPresets } from '../src/active-layout';
-import { digestVoiceClass, upsertAttemptDigest } from '../src/attempt-digest';
+import { containedAttemptLog, digestVoiceClass, openAttemptLogCallout, upsertAttemptDigest } from '../src/attempt-digest';
 import { IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from '../src/constants';
 import { glancableColumns } from '../src/glancable-density';
 import { displayedUrgency, likelihoodForNow } from '../src/row-score';
@@ -16,6 +16,7 @@ import {
 	likelihoodMultiplier,
 	urgencyAccentColor,
 	urgencyBand,
+	urgencyGlyphMarkup,
 	urgencyMark,
 	urgencyScore,
 } from '../src/scoring';
@@ -316,9 +317,12 @@ describe('dayparts and return suggester', () => {
 			'| Sat | 0/0 | — | — |',
 		].join('\n'));
 		assert.deepEqual(digest.sentences, [
+			'Avoid: **Fri morning/afternoon/evening (1/5)**',
 			'Untried: Sat',
-			'Avoid: Fri morning/afternoon/evening (1/5)',
 		]);
+		assert.match(digest.table, /^\| \| Morning \|/);
+		assert.equal(digest.markdown.includes('— Home'), false);
+		assert.equal(digest.markdown.includes('— Not home'), false);
 		assert.equal(digest.markdown.includes('Try:'), false);
 		assert.equal(digest.markdown.includes('Nothing stands out'), false);
 		assert.equal(digest.markdown.includes('has not been tried'), false);
@@ -362,11 +366,11 @@ describe('dayparts and return suggester', () => {
 		const strong = voiceFor({ '5:morning': { homes: 2, trials: 5 } }, ['5:morning']);
 		assert.deepEqual(strong, ['Try: **Fri morning (2/5)**']);
 		const cold = voiceFor({ '5:morning': { homes: 1, trials: 5 } }, ['5:morning']);
-		assert.deepEqual(cold, ['Avoid: Fri morning (1/5)']);
+		assert.deepEqual(cold, ['Avoid: **Fri morning (1/5)**']);
 		const thin = voiceFor({ '5:morning': { homes: 1, trials: 4 } }, ['5:morning']);
 		assert.deepEqual(thin, ['Unsure: Fri morning (1/4)']);
 		const empty = voiceFor({ '5:morning': { homes: 0, trials: 3 } }, ['5:morning']);
-		assert.deepEqual(empty, ['Avoid: Fri morning (0/3)']);
+		assert.deepEqual(empty, ['Avoid: **Fri morning (0/3)**']);
 		assert.equal(empty.some((line) => line.startsWith('Try:')), false);
 
 		const tied = voiceFor({
@@ -394,9 +398,31 @@ describe('dayparts and return suggester', () => {
 			'5:afternoon': { homes: 0, trials: 1 },
 		}, ['5:morning', '5:afternoon', '5:evening']);
 		assert.deepEqual(mixed, [
-			'Untried: Fri evening',
 			'Unsure: Fri morning/afternoon (0/1)',
+			'Untried: Fri evening',
 		]);
+	});
+
+	it('lists Avoid, Try, Unsure, then Untried and bolds every worst Avoid tie', () => {
+		const lines = voiceFor({
+			'1:morning': { homes: 0, trials: 1 },
+			'2:evening': { homes: 0, trials: 0 },
+			'3:afternoon': { homes: 1, trials: 1 },
+			'5:morning': { homes: 0, trials: 3 },
+			'6:evening': { homes: 0, trials: 3 },
+			'6:afternoon': { homes: 1, trials: 5 },
+		}, ['1:morning', '2:evening', '3:afternoon', '5:morning', '6:afternoon', '6:evening']);
+		assert.deepEqual(lines, [
+			'Avoid: **Fri morning (0/3)** · Sat afternoon (1/5) · **Sat evening (0/3)**',
+			'Try: **Wed afternoon (1/1)**',
+			'Unsure: Mon morning (0/1)',
+			'Untried: Tue',
+		]);
+		assert.equal(lines.some((line) => line.startsWith('Try:')) , true);
+		const noTry = voiceFor({
+			'5:morning': { homes: 0, trials: 3 },
+		}, ['5:morning']);
+		assert.equal(noTry.some((line) => line.startsWith('Try:')), false);
 	});
 
 	it('counts Home and Not home from Attempt Log stamps, not a stale 0/0 table', () => {
@@ -423,9 +449,10 @@ describe('dayparts and return suggester', () => {
 			now: new Date(2026, 8, 24, 12, 0, 0),
 		});
 		assert.equal(digest.table.includes('| Wed | 0/1 | 1/1 |'), true);
-		assert.equal(digest.markdown.includes('Wed, 2pm — Sep 9, 2026 — Home'), true);
-		assert.equal(digest.markdown.includes('Wed, 10am — Sep 16, 2026 — Not home'), true);
+		assert.equal(digest.markdown.includes('Wed, 2pm — Sep 9, 2026 — Home'), false);
+		assert.equal(digest.markdown.includes('Wed, 10am — Sep 16, 2026 — Not home'), false);
 		assert.equal(digest.markdown.includes('0/0'), false);
+		assert.equal(digest.sentences[0]?.startsWith('Try:'), true);
 		const homeWord = readAttemptLog('> - Fri, 1pm — Sep 18, 2026 — Home');
 		assert.deepEqual(homeWord.buckets['5:afternoon'], { homes: 1, trials: 1 });
 		const headingsOnly = readAttemptLog('### Wed, 2pm — Sep 9, 2026');
@@ -474,6 +501,63 @@ describe('dayparts and return suggester', () => {
 		const fresh = defaultAvailabilityGrid();
 		fresh['0:evening'] = 'may';
 		assert.equal(migrateAvailabilityGrid(fresh)['0:evening'], 'may');
+	});
+
+	it('keeps days as rows unless the user swapped to columns', () => {
+		const settings = mergeSettings(undefined);
+		assert.equal(settings.digestOrientation, 'rows');
+		assert.equal(mergeSettings({ digestOrientation: 'columns' }).digestOrientation, 'columns');
+		assert.equal(mergeSettings({ digestOrientation: 'rows' }).digestOrientation, 'rows');
+		const grid = defaultAvailabilityGrid();
+		grid['0:morning'] = 'may';
+		grid['0:afternoon'] = 'may';
+		const digest = suggestReturnDigest({ buckets: {}, grid });
+		assert.match(digest.table, /^\| \| Morning \| Afternoon \|/);
+		assert.match(digest.table, /\| Sun \| 0\/0 \| 0\/0 \|/);
+		assert.equal(/^\| Morning \|/m.test(digest.table), false);
+	});
+
+	it('keeps the digest inside the collapsible body and opens the old collapsed header once', () => {
+		const parked = containedAttemptLog([
+			{ key: 'title', role: 'title', text: 'Attempt Log' },
+			{ key: 'table', role: 'hoisted', text: '| Sun | 0/0 |' },
+			{ key: 'avoid', role: 'hoisted', text: 'Avoid: Sun morning (0/3)' },
+			{ key: 'list', role: 'visit-list', text: 'Mon, 9am — Home' },
+		]);
+		assert.deepEqual(parked.map((piece) => piece.role), ['title', 'body', 'body', 'visit-list']);
+		assert.deepEqual(parked.map((piece) => piece.key), ['title', 'table', 'avoid', 'list']);
+		assert.equal(parked.some((piece) => piece.role === 'hoisted'), false);
+		const inside = containedAttemptLog([
+			{ key: 'title', role: 'title', text: 'Attempt Log' },
+			{ key: 'table', role: 'body', text: '| Sun |' },
+			{ key: 'avoid', role: 'body', text: 'Avoid: Sun morning (0/3)' },
+			{ key: 'try', role: 'body', text: 'Try: Sat evening (1/1)' },
+			{ key: 'list', role: 'visit-list', text: 'visit' },
+		]);
+		assert.deepEqual(inside.map((piece) => piece.key), ['title', 'table', 'avoid', 'try', 'list']);
+		const closed = '> [!note]- Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n';
+		const opened = openAttemptLogCallout(closed);
+		assert.equal(opened, '> [!note]+ Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n');
+		assert.equal(openAttemptLogCallout(opened), opened);
+		assert.equal(openAttemptLogCallout('>[!note]- Attempt Log'), '>[!note]+ Attempt Log');
+		assert.equal(openAttemptLogCallout('> [!note]+ Other'), '> [!note]+ Other');
+		assert.equal(openAttemptLogCallout('> [!note]- Not the log'), '> [!note]- Not the log');
+	});
+
+	it('draws short heavy bangs instead of a thin exclamation glyph', () => {
+		const triple = urgencyGlyphMarkup('!!!');
+		assert.equal(triple.split('<rect ').length - 1, 3);
+		assert.equal(triple.includes('width="2.8"'), true);
+		assert.equal(triple.includes('!'), false);
+		assert.equal(urgencyGlyphMarkup('!!').split('<rect ').length - 1, 2);
+		assert.equal(urgencyGlyphMarkup('!').split('<rect ').length - 1, 1);
+		const ring = urgencyGlyphMarkup('○');
+		assert.equal(ring.includes('stroke-width="2.8"'), true);
+		assert.equal(ring.includes('<rect '), false);
+		assert.equal(urgencyGlyphMarkup(''), '');
+		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
+		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
+		assert.equal(urgencyMark(4, 0).glyphs, '');
 	});
 
 	it('stores the digest under the Attempt Log title', () => {
