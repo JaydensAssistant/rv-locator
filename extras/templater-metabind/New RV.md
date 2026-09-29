@@ -18,6 +18,7 @@ cssclasses:
   - hide-props
   - rv-dashboard
 ---
+
 > [!quote]+ RV Dashboard
 >**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 >**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
@@ -54,7 +55,7 @@ cssclasses:
 ---
 ### Visit Notes:
 ##### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
-Notes would go here, but template makes this a new line. Another new line also goes below.
+`INPUT[textArea:sVisit1Notes]`
 
 ---
 > [!example] Return Suggestions

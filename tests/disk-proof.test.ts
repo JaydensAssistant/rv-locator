@@ -558,7 +558,8 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
 		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss\]`\n>\n> > \[!rv\]- Quick Facts/);
-		assert.equal(createdText.includes('Notes would go here, but template makes this a new line. Another new line also goes below.'), true);
+		assert.equal(createdText.includes('Notes would go here'), false);
+		assert.match(createdText, /\n---\n\n> \[!quote\]\+ RV Dashboard\n/);
 		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
 		assert.equal(createdText.includes(`##### ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`).length, 1);
@@ -566,7 +567,7 @@ describe('disk proof', () => {
 		const createdLines = createdText.split('\n');
 		assert.equal(createdLines[stampLine - 1], '### Visit Notes:');
 		assert.equal(createdLines[stampLine - 2], '---');
-		assert.equal(createdLines[stampLine + 1], 'Notes would go here, but template makes this a new line. Another new line also goes below.');
+		assert.equal(createdLines[stampLine + 1], '`INPUT[textArea:sVisit1Notes]`');
 		assert.equal(createdLines[stampLine + 2], '');
 		assert.equal(createdLines[stampLine + 3], '---');
 		assert.equal(createdLines[stampLine + 4], '> [!example] Return Suggestions');
@@ -646,7 +647,7 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('## Attempt Log'), false);
-		assert.match(disk, /##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago<\/span>\n\n\n> \[!note\]\- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
+		assert.match(disk, /##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today<\/span>\n`INPUT\[textArea:sVisit1Notes\]`\n\n> \[!note\]\- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
 		assert.ok(disk.indexOf('\n##### Sat, 11pm — Sep 26, 2026') < disk.indexOf('> [!note]- Attempt Log'));
 		assert.equal(bodyOf(disk).includes('Talked on the porch.'), true);
 
@@ -691,7 +692,7 @@ describe('disk proof', () => {
 		console.log(`\n----- VISIT COMPANION ${file} -----\n${disk}`);
 		assert.equal(addressLine(disk), addressLine(before));
 		assert.equal(disk.includes('---###'), false);
-		assert.equal(disk.includes('\n##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>\n'), true);
+		assert.equal(disk.includes('\n##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>\n'), true);
 		assert.equal(disk.includes('Met With: "Door"'), true);
 		assert.equal(disk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(disk.includes('  - "Ada"'), true);
@@ -707,7 +708,7 @@ describe('disk proof', () => {
 		assert.equal(againDisk.split('  - "TestCompanion"').length, 2);
 		assert.equal(againDisk.includes('Visits: 3'), true);
 		assert.equal(againDisk.includes('Successful Visits: 3'), true);
-		assert.equal(againDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>').length, 2);
+		assert.equal(againDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>').length, 2);
 		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 3);
 
 		const skipped = commitVisit(againDisk, 'home', now, '  ');
@@ -729,7 +730,7 @@ describe('disk proof', () => {
 		assert.equal(missDisk.includes('Visits: 5'), true);
 		assert.equal(missDisk.includes('Successful Visits: 4'), true);
 		assert.equal(missDisk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
-		assert.equal(missDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>').length, 3);
+		assert.equal(missDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>').length, 3);
 	});
 
 	it('migrates a legacy Attempt Log heading on disk and does not invent Address', () => {
@@ -792,8 +793,8 @@ describe('disk proof', () => {
 		const homeLog = homeLines.findIndex((line) => line === '> [!note]- Attempt Log');
 		assert.ok(homeLog > 1);
 		assert.equal(homeLines[homeLog - 1], '');
-		assert.equal(homeLines[homeLog - 2], '');
-		assert.match(homeLines[homeLog - 3] ?? '', /^##### /);
+		assert.equal(homeLines[homeLog - 2], '`INPUT[textArea:sVisit1Notes]`');
+		assert.match(homeLines[homeLog - 3] ?? '', /^##### .+<span class="rv-stamp-ago">Today<\/span>$/);
 		assert.equal(homeLines.includes('### Visit Notes:'), true);
 		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
 		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
@@ -846,6 +847,10 @@ describe('disk proof', () => {
 		assert.equal(secondHome.includes('Successful Visits: 3'), true);
 		const secondHeadings = secondHome.split('\n').filter((line) => line.startsWith('##### '));
 		assert.deepEqual(secondHeadings, [firstHeadings[0], firstHeadings[0]]);
+		const secondLines = secondHome.split('\n');
+		const secondStamps = secondLines.flatMap((line, index) => line.startsWith('##### ') ? [index] : []);
+		assert.deepEqual(secondStamps.map((index) => secondLines[index + 1]), ['`INPUT[textArea:sVisit1Notes]`', '`INPUT[textArea:sVisit2Notes]`']);
+		assert.equal(secondLines[(secondStamps[1] ?? 0) - 1], '');
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
 		assert.equal(notices.at(-1), 'Logged success');
 

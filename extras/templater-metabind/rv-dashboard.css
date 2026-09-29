@@ -148,29 +148,60 @@ span.mb-button.rv-visit-btn {
 span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
 	background-color: var(--text-accent);
 	color: var(--text-on-accent);
-	border-color: var(--text-accent);
+	border: 1px solid var(--text-accent);
+	box-shadow: none;
 }
 
+/*
+  Not home is the default Meta Bind button. It takes the theme accent at about
+  a third of its lightness, so a blue accent gives dark navy. Same border and
+  box as Home so both buttons are the same size.
+*/
 span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
-	background-color: color-mix(in srgb, var(--background-primary) 68%, #000);
-	color: var(--text-normal);
-	border-color: color-mix(in srgb, var(--background-modifier-border) 55%, var(--text-muted));
+	background-color: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) * 0.34));
+	color: hsl(var(--accent-h), 70%, 92%);
+	border: 1px solid hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) * 0.55));
+	box-shadow: none;
 }
 
-.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) {
-	display: grid;
-	grid-template-columns: 5.6em minmax(0, 1fr) auto;
-	align-items: center;
-	column-gap: 0.4em;
+/*
+  Hubs and Address are soft-wrapped lines of one paragraph, each starting
+  with a <strong> label. A fixed label width lines up the two controls just
+  after the longer label. The map link stays next to the Address box.
+  Return Suggestions can also be a quote callout, so it is excluded.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
+	display: inline-block;
+	min-width: 4.3em;
+	font-weight: var(--font-semibold);
 }
 
-.rv-dashboard .callout[data-callout="quote"] :is(input, textarea, select),
-.rv-dashboard .callout[data-callout="quote"] :is(.meta-bind-input, .mb-input, .mb-suggest-input, .mb-input-wrapper) {
+/*
+  Only the Address text box, the Hub list items, and the Hub plus button are
+  darkened. Their wrappers keep the callout background. Quick Facts sits in
+  a nested callout, not a direct paragraph, and is not matched.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type]), textarea, .mb-inline-list-item, button:not(.mb-button-inner)) {
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
 	color: var(--text-normal);
 	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 }
 
+/* Visit notes under each stamp are Meta Bind textAreas. Full width, room for a few lines. */
+.rv-dashboard textarea {
+	width: 100%;
+	min-height: 4.5em;
+	resize: vertical;
+}
+
+/*
+  Hide callout type icons on RV notes (quote mark, list, pencil). The title
+  shifts left because the icon is out of the flex row, not covered.
+  Scoped to cssclasses rv-dashboard.
+
+  RV notes open in Reading view, and visit notes are Meta Bind textAreas,
+  so the callout source is not revealed while typing a note.
+*/
 .rv-dashboard .callout-icon {
 	display: none;
 }

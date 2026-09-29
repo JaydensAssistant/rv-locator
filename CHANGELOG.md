@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.0
+
+`main.js` SHA-256: `e52cb49955626de282e1d89cbcc8b328279bc2b09a9bc6264412880020253874`
+
+`styles.css` SHA-256: `5aee4419910777bc813da0cfc5faa5a48db7d48aba2788fbcbe34bce77734b16`
+
+`manifest.json` SHA-256: `07aba24956d964737ffd532d3b6243e26b8373a871ee9634171c55535ba8ab45`
+
+- The `x days ago` label beside each visit stamp is recomputed on screen whenever a note is opened, when the active pane changes, and every few seconds while a note is open, in Reading view and Live Preview. The file is not rewritten for it. Home and Not home still write the current age into the file.
+- An age of zero days reads `Today`, in the plugin, `newRv.js`, and `rvLog.js`.
+- With Return Suggestions color on Automatic, an accent change recolors Return Suggestions on every RV note to the nearest callout type. Open notes change at once. The vault rewrite waits until the accent reads the same twice in a row, a few seconds apart, so a half-loaded theme does not trigger it. The last type written is saved, so an accent changed while Obsidian was closed is caught on the next launch.
+- Visit notes are Meta Bind textAreas. The new RV template puts `INPUT[textArea:sVisit1Notes]` under the first `#####` stamp, and each Home adds the next `sVisitNNotes` box under its stamp (one past the highest number already on the note). Plain-text notes under older stamps are left alone.
+- RV notes (cssclass `rv-dashboard`) open in Reading view. Everyday → Open RV notes in Reading view turns that off. Only the first open of a file in a pane is switched, so choosing editing afterwards is kept until the note is opened again. A new note switches once Templater has finished writing it. Because notes are typed into Meta Bind boxes in Reading view, tapping a callout no longer reveals its source.
+- One empty line sits between the frontmatter and RV Dashboard. The first launch of 1.3.0 adds it to existing RV notes, and later writes keep it.
+- The dark box around Hubs and Address is gone. Only the Address text box, the Hub list items, and the Hub plus button are darkened. The map link sits next to the Address box again.
+- Hubs and Address still line up, closer to their labels (a 4.3em label width instead of a 5.6em column).
+- Not home is a dark shade of the theme accent (about a third of its lightness; a blue accent gives dark navy) with light text. Home and Not home share the same border and box so they are the same size.
+- Extras sync is pinned to tag `v1.3.0` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.12`, `v1.2.11`, `v1.2.10`, `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.12
 
 `main.js` SHA-256: `be1a3534cf6525ed5c618b4113e587d822b4419fb192be217d91ea15d0372641`

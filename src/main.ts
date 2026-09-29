@@ -1,4 +1,4 @@
-import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
+import { MarkdownView, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
@@ -18,8 +18,9 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority, type VisitOutcome } from './visit-log';
-import { calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
+import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority, type VisitOutcome } from './visit-log';
+import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
+import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
@@ -56,6 +57,10 @@ interface NearbyLayout {
 
 /** Long enough to read the unfinished-setup notice and use its buttons. */
 const SETUP_NUDGE_MS = 12_000;
+/** How often the theme accent is re-read, and open notes' ages re-checked. */
+const ACCENT_CHECK_MS = 5_000;
+/** Reading view renders after file-open, so ages are refreshed again a little later. */
+const AGE_REFRESH_DELAYS_MS = [0, 250, 1_000] as const;
 
 const NEARBY_LAYOUTS: readonly NearbyLayout[] = [
 	{ id: VANILLA_VIEW_TYPE, name: 'Active (Vanilla)', icon: 'table', mode: 'vanilla', scope: 'active' },
@@ -86,6 +91,9 @@ export default class RVLocatorPlugin extends Plugin {
 	private digestKeyApplied = '';
 	private digestPolish = 0;
 	private digestRewrite: Promise<void> = Promise.resolve();
+	private accentGate = new AccentDriftGate();
+	/** Last file each leaf was switched for, so a later switch to editing is kept. */
+	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -147,7 +155,9 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 
 		this.registerMarkdownPostProcessor((element) => {
-			decorateAttemptLog(element);
+			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
+			decorateAttemptLog(element, hasCallout ? this.suggestionCalloutType() : undefined);
+			refreshStampAgeLabels(element);
 		});
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
@@ -158,14 +168,87 @@ export default class RVLocatorPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			void this.syncSetupCompletion();
 			void this.applyDigestPolish();
+			this.checkAccent();
+			this.onNoteOpened(this.app.workspace.getActiveFile());
 		});
+		this.registerEvent(this.app.workspace.on('file-open', (file) => this.onNoteOpened(file)));
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.scheduleAgeRefresh()));
+		this.registerEvent(this.app.workspace.on('layout-change', () => this.scheduleAgeRefresh()));
 		this.registerEvent(this.app.workspace.on('css-change', () => {
-			if (this.settings.suggestionColor !== 'auto') return;
-			if (this.digestKeyApplied !== '' && this.digestKey() !== this.digestKeyApplied) {
-				void this.saveSettings();
-			}
+			this.recolorOpenSuggestions();
+			this.checkAccent();
 		}));
+		this.registerInterval(window.setInterval(() => {
+			this.checkAccent();
+			this.refreshOpenAges();
+		}, ACCENT_CHECK_MS));
 		this.digestKeyApplied = this.digestKey();
+	}
+
+	private onNoteOpened(file: TFile | null): void {
+		this.scheduleAgeRefresh();
+		if (!file) return;
+		window.setTimeout(() => this.openInReadingView(file, false), 0);
+	}
+
+	/**
+	 * Show an RV note in Reading view. Only the first open of a file in a leaf
+	 * is switched, so choosing editing afterwards is kept until the next open.
+	 * `force` is for a new note whose template finished after it was opened.
+	 */
+	private openInReadingView(file: TFile, force: boolean): void {
+		if (this.unloaded) return;
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) continue;
+			const previous = this.readingViewFor.get(leaf);
+			this.readingViewFor.set(leaf, file.path);
+			if (!force && previous === file.path) continue;
+			if (!this.settings.openRvInReadingView || this.isTemplateNote(file)) continue;
+			if (!isRvDashboardNote(this.app.metadataCache.getFileCache(file)?.frontmatter)) continue;
+			if (view.getMode() === 'preview') continue;
+			const state = leaf.getViewState();
+			void leaf.setViewState({ ...state, state: { ...state.state, mode: 'preview' } });
+		}
+	}
+
+	private scheduleAgeRefresh(): void {
+		for (const delay of AGE_REFRESH_DELAYS_MS) {
+			window.setTimeout(() => this.refreshOpenAges(), delay);
+		}
+	}
+
+	/** Recompute the `x days ago` labels shown in every open note. Files are not written. */
+	private refreshOpenAges(): void {
+		if (this.unloaded) return;
+		const today = new Date();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			if (leaf.view instanceof MarkdownView) refreshStampAgeLabels(leaf.view.containerEl, today);
+		}
+	}
+
+	private recolorOpenSuggestions(): void {
+		if (this.unloaded) return;
+		const type = this.suggestionCalloutType();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			if (leaf.view instanceof MarkdownView) decorateAttemptLog(leaf.view.containerEl, type);
+		}
+	}
+
+	/**
+	 * With Automatic color, a settled accent change rewrites Return
+	 * Suggestions on every RV note to the nearest callout type. Also catches
+	 * an accent changed while Obsidian was closed.
+	 */
+	private checkAccent(): void {
+		if (this.unloaded || this.settings.suggestionColor !== 'auto') return;
+		const type = this.suggestionCalloutType();
+		if (!this.accentGate.observe(type)) return;
+		this.accentGate.markApplied(type);
+		this.digestKeyApplied = this.digestKey();
+		this.recolorOpenSuggestions();
+		void this.persist();
+		void this.rewriteAllDigests();
 	}
 
 	/**
@@ -401,10 +484,14 @@ export default class RVLocatorPlugin extends Plugin {
 	async saveSettings(): Promise<void> {
 		this.settings = mergeSettings(this.settings);
 		const digestChanged = this.digestKeyApplied !== '' && this.digestKey() !== this.digestKeyApplied;
+		if (digestChanged) this.accentGate.markApplied(this.suggestionCalloutType());
 		await this.persist();
 		this.digestKeyApplied = this.digestKey();
 		for (const callback of this.viewRefreshers) callback();
-		if (digestChanged) await this.rewriteAllDigests();
+		if (digestChanged) {
+			this.recolorOpenSuggestions();
+			await this.rewriteAllDigests();
+		}
 	}
 
 	cachedAttemptBuckets(path: string): AttemptBuckets | null {
@@ -947,9 +1034,11 @@ export default class RVLocatorPlugin extends Plugin {
 		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
 		const run = this.digestRewrite.then(async () => {
 			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
+			const type = this.suggestionCalloutType();
 			await this.rewriteVaultDigests(true);
 			if (this.unloaded) return;
 			this.digestPolish = DIGEST_POLISH_VERSION;
+			this.accentGate.markApplied(type);
 			await this.persist();
 		});
 		this.digestRewrite = run.catch(() => undefined);
@@ -996,6 +1085,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const hasVisit = /(?:success|\bhome\b|not home|\bmiss\b)/i.test(text);
 			if (hasLog && hasVisit) {
 				await this.refreshAttemptDigest(current);
+				this.openInReadingView(current, true);
 				return;
 			}
 			if (attempt >= 2) return;
@@ -1009,7 +1099,9 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!current) return;
 		try {
 			await this.app.vault.process(current, (data) => {
-				let next = refreshHomeStampAges(data, new Date());
+				const info = getFrontMatterInfo(data);
+				let next = data.slice(0, info.contentStart) + ensureDashboardLeadBlank(data.slice(info.contentStart));
+				next = refreshHomeStampAges(next, new Date());
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);
 				const log = readAttemptLog(next);
@@ -1075,6 +1167,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.nearbySort = sanitizeNearbySort(data?.nearbySort);
 		this.geocodeCache = sanitizeCache(data?.geocodeCache);
 		this.digestPolish = data?.digestPolish === DIGEST_POLISH_VERSION ? DIGEST_POLISH_VERSION : 0;
+		this.accentGate.markApplied(typeof data?.suggestionTypeApplied === 'string' ? data.suggestionTypeApplied : '');
 	}
 
 	private async writeMigrations(snapshots: readonly NoteSnapshot[]): Promise<{ visits: number; cities: number }> {
@@ -1107,6 +1200,7 @@ export default class RVLocatorPlugin extends Plugin {
 				geocodeCache: this.geocodeCache,
 				nearbySort: this.nearbySort,
 				digestPolish: this.digestPolish,
+				suggestionTypeApplied: this.accentGate.applied,
 			});
 		}).catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : 'Could not save plugin data.';

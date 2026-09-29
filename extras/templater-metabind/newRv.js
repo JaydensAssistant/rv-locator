@@ -122,17 +122,18 @@ const MONTH_INDEX = {
 /** Calendar days for a Glancable stamp. Mirrors src/dates.ts calendarDaysSinceStamp. */
 function stampAgeLabel(stamp, today) {
   const match = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/.exec(String(stamp || "").trim());
-  if (!match) return "0 days ago";
+  if (!match) return "Today";
   const dateMatch = /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/.exec(String(match[1] || "").trim());
-  if (!dateMatch) return "0 days ago";
+  if (!dateMatch) return "Today";
   const month = MONTH_INDEX[String(dateMatch[1] || "").toLowerCase().slice(0, 3)];
   const day = Number(dateMatch[2]);
   const year = Number(dateMatch[3]);
-  if (!month) return "0 days ago";
+  if (!month) return "Today";
   const then = Date.UTC(year, month - 1, day);
   const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
   const days = Math.round((now - then) / 86400000);
   const whole = Number.isFinite(days) ? Math.max(0, days) : 0;
+  if (whole === 0) return "Today";
   if (whole === 1) return "1 day ago";
   return `${whole} days ago`;
 }

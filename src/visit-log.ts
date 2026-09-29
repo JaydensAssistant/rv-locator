@@ -28,8 +28,8 @@ const ADDRESS_KEY = 'Address';
 /** Collapsed by default. An existing `+` or `-` on the note is left alone. */
 const CALLOUT_HEADER = '> [!note]- Attempt Log';
 const STAMP_LEVEL = '#####';
-/** Empty lines between a new stamp and Attempt Log. The extra line is note padding. */
-const STAMP_NOTE_BLANKS = 2;
+const VISIT_NOTES_FIELD = /\bsVisit(\d+)Notes\b/g;
+const DASHBOARD_CALLOUT = /^>[\t ]*\[!quote\][+-]?[\t ]*RV Dashboard\b/i;
 
 /** Local date-time stored on Last Spoke / Last Attempted. No UTC shift. */
 export function formatFrontmatterDateTime(date: Date): string {
@@ -79,10 +79,11 @@ export function applyVisitFrontmatter(
 
 /**
  * Body text below the frontmatter.
- * A home visit inserts `##### <stamp>` and two blank lines just above Attempt Log
- * (one extra line of padding for notes). A second Home in the same rounded
- * hour still inserts another stamp. `### Visit Notes:` is added once, above
- * the first visit stamp.
+ * A home visit inserts `##### <stamp>` just above Attempt Log, with a Meta Bind
+ * textArea bound to the next `sVisitNNotes` property on the line below it.
+ * A second Home in the same rounded hour still inserts another stamp.
+ * `### Visit Notes:` is added once, above the first visit stamp. Notes
+ * already written as plain text are left alone.
  * Both outcomes append a bullet inside the Attempt Log callout. A nested log
  * (`> > [!note]`) gets a nested bullet (`> >-`). A missing log is created
  * collapsed (`> [!note]-`). An existing `+` or `-` stays. An old `## Attempt Log`
@@ -101,7 +102,30 @@ export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): 
 	if (outcome === 'home') next = insertHomeHeading(next, stamp);
 	next = appendLogLine(next, `> - ${stamp} — ${phrase}`);
 	next = refreshHomeStampAges(next, now);
-	return ensureVisitNotesHeading(next);
+	next = ensureVisitNotesHeading(next);
+	return ensureDashboardLeadBlank(next);
+}
+
+/** `sVisit1Notes` on a note with none, otherwise one past the highest number already used. */
+export function nextVisitNotesProperty(body: string): string {
+	let highest = 0;
+	for (const match of body.matchAll(VISIT_NOTES_FIELD)) {
+		const index = Number(match[1]);
+		if (Number.isInteger(index) && index > highest) highest = index;
+	}
+	return `sVisit${highest + 1}Notes`;
+}
+
+/**
+ * One empty line between the frontmatter and the RV Dashboard callout, so
+ * Reading view leaves a line of space under the title. `body` is the text
+ * after the closing `---`. Other notes are unchanged.
+ */
+export function ensureDashboardLeadBlank(body: string): string {
+	const first = /^[^\r\n]*/.exec(body)?.[0] ?? '';
+	if (!DASHBOARD_CALLOUT.test(first)) return body;
+	const newline = body.includes('\r\n') ? '\r\n' : '\n';
+	return `${newline}${body}`;
 }
 
 const STAMP_HEADING = /^(?:###|#####)\s+(.+?)\s*$/;
@@ -226,11 +250,10 @@ function insertHomeHeading(body: string, stamp: string): string {
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
 	const after = lines.slice(anchor);
 	const heading = `${STAMP_LEVEL} ${stamp}`;
-	const padding = Array.from({ length: STAMP_NOTE_BLANKS }, () => '');
-	const block = before.length > 0
-		? ['', heading, ...padding, ...after]
-		: [heading, ...padding, ...after];
-	return [...before, ...block].join('\n');
+	const field = `\`INPUT[textArea:${nextVisitNotesProperty(body)}]\``;
+	const last = before[before.length - 1]?.trim() ?? '';
+	const lead = before.length === 0 || last === VISIT_NOTES_HEADING ? [] : [''];
+	return [...before, ...lead, heading, field, '', ...after].join('\n');
 }
 
 function appendLogLine(body: string, line: string): string {

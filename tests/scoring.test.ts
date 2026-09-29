@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { visibleSortPresets } from '../src/active-layout';
 import { digestVoiceClass, formatDigestNote, upsertAttemptDigest } from '../src/attempt-digest';
-import { calloutTypeForAccent, calloutTypeForChoice } from '../src/suggestion-callout';
+import { AccentDriftGate, calloutTypeForAccent, calloutTypeForChoice } from '../src/suggestion-callout';
+import { isRvDashboardNote, refreshStampAgeLabels } from '../src/rv-note-view';
+import { formatDaysAgo, stampAgeFromHeadingText } from '../src/dates';
 import { classifyChromeControl } from '../src/glancable-chrome';
 import { IDEALITY_COLUMN_ID } from '../src/constants';
 import { glancableColumns } from '../src/glancable-density';
@@ -37,7 +39,7 @@ import {
 } from '../src/schedule';
 import { formatSnoozeUntil, parseSnoozeUntil, snoozeActive, URGENCY_SNOOZE_PROPERTY } from '../src/snooze';
 import { settingsGraphs } from '../src/settings-graphs';
-import { applyVisitBody, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority } from '../src/visit-log';
+import { applyVisitBody, ensureDashboardLeadBlank, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority } from '../src/visit-log';
 import {
 	DEFAULT_IDEALITY_FLOOR_DAYS,
 	DEFAULT_TERRITORY_SPAN_MILES,
@@ -541,6 +543,8 @@ describe('dayparts and return suggester', () => {
 		assert.equal(mergeSettings({}).suggestionColor, 'auto');
 		assert.equal(mergeSettings({ suggestionColor: 'grey' }).suggestionColor, 'grey');
 		assert.equal(mergeSettings({ suggestionColor: 'example' }).suggestionColor, 'auto');
+		assert.equal(mergeSettings({}).openRvInReadingView, true);
+		assert.equal(mergeSettings({ openRvInReadingView: false }).openRvInReadingView, false);
 		const grid = defaultAvailabilityGrid();
 		grid['0:morning'] = 'may';
 		grid['0:afternoon'] = 'may';
@@ -697,7 +701,7 @@ describe('dayparts and return suggester', () => {
 			'',
 			'## Not a visit',
 		].join('\n'), new Date(2026, 8, 29, 12, 0, 0));
-		assert.equal(aged.includes('##### Tue, 10am — Sep 29, 2026 <span class="rv-stamp-ago">0 days ago</span>'), true);
+		assert.equal(aged.includes('##### Tue, 10am — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>'), true);
 		assert.equal(aged.includes('##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>'), true);
 		assert.equal(aged.includes('### Visit Notes:'), true);
 		assert.equal(aged.includes('## Not a visit'), true);
@@ -752,6 +756,92 @@ describe('dayparts and return suggester', () => {
 			thresholds: { avoidMinTrials: 5 },
 		});
 		assert.equal(cold.sentences[0]?.startsWith('Unsure:'), true);
+	});
+});
+
+describe('RV note view', () => {
+	it('says Today for a zero age and recomputes a rendered label from its stamp', () => {
+		assert.equal(formatDaysAgo(0), 'Today');
+		assert.equal(formatDaysAgo(1), '1 day ago');
+		assert.equal(formatDaysAgo(54), '54 days ago');
+		const today = new Date(2026, 8, 29, 16, 0, 0);
+		assert.equal(stampAgeFromHeadingText('Tue, 4pm — Sep 29, 2026 20 days ago', today), 'Today');
+		assert.equal(stampAgeFromHeadingText('Wed, 2pm — Sep 9, 2026 Today', today), '20 days ago');
+		assert.equal(stampAgeFromHeadingText('Mon — Sep 28, 2026', today), '1 day ago');
+		assert.equal(stampAgeFromHeadingText('Visit Notes:', today), null);
+
+		const heading = { textContent: 'Wed, 2pm — Sep 9, 2026 Today' };
+		const label = { textContent: 'Today', parentElement: heading, closest: () => heading };
+		const stale = { textContent: '3 days ago', parentElement: null, closest: () => ({ textContent: 'Tue, 4pm — Sep 29, 2026 3 days ago' }) };
+		const root = { querySelectorAll: () => [label, stale] } as unknown as ParentNode;
+		assert.equal(refreshStampAgeLabels(root, today), 2);
+		assert.equal(label.textContent, '20 days ago');
+		assert.equal(stale.textContent, 'Today');
+		assert.equal(refreshStampAgeLabels(root, today), 0);
+	});
+
+	it('numbers visit note textAreas and puts one blank line above RV Dashboard', () => {
+		assert.equal(nextVisitNotesProperty(''), 'sVisit1Notes');
+		assert.equal(nextVisitNotesProperty('`INPUT[textArea:sVisit1Notes]`\n`INPUT[textArea:sVisit3Notes]`'), 'sVisit4Notes');
+		const now = new Date(2026, 8, 29, 16, 0, 0);
+		const note = [
+			'> [!quote]+ RV Dashboard',
+			'> body',
+			'',
+			'---',
+			'### Visit Notes:',
+			'##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'---',
+			'> [!example] Return Suggestions',
+			'> No May-go-out days',
+			'>',
+			'> > [!note]- Attempt Log',
+			'> >- Wed, 2pm — Sep 9, 2026 — success',
+			'',
+		].join('\n');
+		const next = applyVisitBody(note, 'home', now);
+		const lines = next.split('\n');
+		assert.equal(lines[0], '');
+		assert.equal(lines[1], '> [!quote]+ RV Dashboard');
+		const at = lines.indexOf('##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>');
+		assert.ok(at > 0);
+		assert.deepEqual(lines.slice(at - 3, at + 4), [
+			'##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>',
+			'`INPUT[textArea:sVisit2Notes]`',
+			'',
+			'---',
+		]);
+		assert.equal(applyVisitBody(next, 'miss', now).startsWith('\n> [!quote]+ RV Dashboard'), true);
+		assert.equal(ensureDashboardLeadBlank('\n> [!quote]+ RV Dashboard\n'), '\n> [!quote]+ RV Dashboard\n');
+		assert.equal(ensureDashboardLeadBlank('Plain note.\n'), 'Plain note.\n');
+		assert.equal(ensureDashboardLeadBlank('> [!quote]+ RV Dashboard\r\n'), '\r\n> [!quote]+ RV Dashboard\r\n');
+	});
+
+	it('recolors the vault only after the accent settles on a new callout type', () => {
+		const gate = new AccentDriftGate();
+		assert.equal(gate.observe('info'), false);
+		assert.equal(gate.observe('info'), false);
+		gate.markApplied('example');
+		assert.equal(gate.observe('example'), false);
+		assert.equal(gate.observe('info'), false);
+		assert.equal(gate.observe('example'), false);
+		assert.equal(gate.observe('info'), false);
+		assert.equal(gate.observe('info'), true);
+		gate.markApplied('info');
+		assert.equal(gate.observe('info'), false);
+	});
+
+	it('recognizes RV notes by the rv-dashboard cssclass', () => {
+		assert.equal(isRvDashboardNote({ cssclasses: ['hide-props', 'rv-dashboard'] }), true);
+		assert.equal(isRvDashboardNote({ cssclasses: 'rv-dashboard' }), true);
+		assert.equal(isRvDashboardNote({ cssclass: 'hide-props, rv-dashboard' }), true);
+		assert.equal(isRvDashboardNote({ cssclasses: ['hide-props'] }), false);
+		assert.equal(isRvDashboardNote(null), false);
 	});
 });
 

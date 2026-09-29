@@ -21,19 +21,23 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 2. Renames the note to `{Name} on {Street}` when both are present. Examples: `Alex on Maple`, `Riley on Cypress`. The street is the first address line with the house number, a leading directional (`N`, `SW`), a trailing suffix (`St`, `Lane`), and an apartment tail removed. `10 Oak Hammock Lane` becomes `Oak Hammock`.
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
 4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
-5. Writes one Glancable drive date for that visit as a `#####` heading: `##### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date), with a muted `<span class="rv-stamp-ago">` such as `20 days ago`. It sits under `### Visit Notes:`. The expanded `> [!quote]+ RV Dashboard` callout comes before that, with Hubs, Address, the buttons, and a nested collapsed `> [!rv]- Quick Facts`. A rule separates the dashboard from Visit Notes. The line under the stamp is the place to type visit notes, then another rule. A date-only value omits the hour.
+5. Writes one Glancable drive date for that visit as a `#####` heading: `##### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date), with a muted `<span class="rv-stamp-ago">` such as `Today` or `20 days ago`. The plugin recomputes that label on screen each time the note is opened, without rewriting the file. It sits under `### Visit Notes:`. The expanded `> [!quote]+ RV Dashboard` callout comes before that, with Hubs, Address, the buttons, and a nested collapsed `> [!rv]- Quick Facts`. A rule separates the dashboard from Visit Notes. The line under the stamp is a Meta Bind `INPUT[textArea:sVisit1Notes]` box for visit notes, then another rule. Each later Home adds the next `sVisitNNotes` box. The note opens in Reading view, and the boxes are editable there. One empty line sits between the frontmatter and RV Dashboard. A date-only value omits the hour.
 6. Adds Return Suggestions with a nested collapsed Attempt Log and one success bullet for that same stamp. The template starts the suggester as `> No May-go-out days` and the table as seven weekdays of `0/0`. The plugin rewrites the callout type, the quote, and the counts. There are no digest marker lines.
 
 ```markdown
+---
+(properties)
+---
+
 > [!quote]+ RV Dashboard
 > …
 
 ---
 ### Visit Notes:
 ##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>
+`INPUT[textArea:sVisit1Notes]`
 
 ---
-
 > [!example] Return Suggestions
 > No May-go-out days
 >

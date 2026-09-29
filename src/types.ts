@@ -73,6 +73,8 @@ export interface RVLocatorSettings {
 	 * Stored as a color name, never as an Obsidian callout id.
 	 */
 	suggestionColor: SuggestionColorChoice;
+	/** Open RV notes (cssclass `rv-dashboard`) in Reading view. On by default. */
+	openRvInReadingView: boolean;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -231,6 +233,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	digestOrientation: 'rows',
 	digestDays: 'all',
 	suggestionColor: 'auto',
+	openRvInReadingView: true,
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -297,6 +300,8 @@ export interface StoredPluginData {
 	 * above the callout. Missing, or an older number, means that pass still needs to run.
 	 */
 	digestPolish?: number;
+	/** Return Suggestions callout type the vault was last written with. */
+	suggestionTypeApplied?: string;
 }
 
 export interface LatLon {
@@ -342,6 +347,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		digestOrientation: input.digestOrientation === 'columns' ? 'columns' : 'rows',
 		digestDays: input.digestDays === 'may' ? 'may' : 'all',
 		suggestionColor: sanitizeSuggestionColor(input.suggestionColor),
+		openRvInReadingView: input.openRvInReadingView !== false,
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),

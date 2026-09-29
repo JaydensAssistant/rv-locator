@@ -178,12 +178,22 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Return Suggestions color')
-			.setDesc('Colors the Return Suggestions callout. Automatic follows the theme accent. Changing this rewrites every RV note.')
+			.setDesc('Colors the Return Suggestions callout. Automatic follows the theme accent, and changing the accent recolors every RV note. Changing this rewrites every RV note.')
 			.addDropdown((dropdown) => {
 				for (const option of SUGGESTION_COLOR_OPTIONS) dropdown.addOption(option.id, option.label);
 				dropdown.setValue(sanitizeSuggestionColor(this.plugin.settings.suggestionColor));
 				dropdown.onChange(async (value) => {
 					this.plugin.settings.suggestionColor = sanitizeSuggestionColor(value);
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Open RV notes in Reading view')
+			.setDesc('An RV note opens in Reading view. Visit notes are Meta Bind boxes, so they stay editable there. Switching to editing yourself is kept until the note is opened again.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.openRvInReadingView);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.openRvInReadingView = value;
 					await this.plugin.saveSettings();
 				});
 			});

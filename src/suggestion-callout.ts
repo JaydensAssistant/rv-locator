@@ -100,6 +100,37 @@ export function readAccentHsl(style?: { getPropertyValue(name: string): string }
 	return { h, s, l };
 }
 
+/**
+ * Decides when an accent change should recolor Return Suggestions on every note.
+ * A new type has to be read twice in a row, so a half-loaded theme during
+ * startup or a theme switch does not rewrite the vault. `applied` is the type
+ * the notes were last written with; empty means unknown, which never rewrites.
+ */
+export class AccentDriftGate {
+	private pending = '';
+
+	constructor(public applied = '') {}
+
+	/** True when `type` has settled on a value that differs from `applied`. */
+	observe(type: string): boolean {
+		if (!type || !this.applied || type === this.applied) {
+			this.pending = '';
+			return false;
+		}
+		if (this.pending !== type) {
+			this.pending = type;
+			return false;
+		}
+		this.pending = '';
+		return true;
+	}
+
+	markApplied(type: string): void {
+		this.applied = type;
+		this.pending = '';
+	}
+}
+
 function accentStyle(): { getPropertyValue(name: string): string } | null {
 	if (typeof document === 'undefined' || typeof getComputedStyle !== 'function') return null;
 	return getComputedStyle(document.body);
