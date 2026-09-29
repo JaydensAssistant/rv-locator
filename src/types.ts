@@ -18,6 +18,7 @@ import {
 	type DigestDayScope,
 	type DigestOrientation,
 } from './schedule';
+import { sanitizeSuggestionColor, type SuggestionColorChoice } from './suggestion-callout';
 
 export type DistanceUnit = 'miles' | 'kilometers';
 
@@ -67,6 +68,11 @@ export interface RVLocatorSettings {
 	digestOrientation: DigestOrientation;
 	/** All seven weekdays, or only days with a May-go-out daypart. */
 	digestDays: DigestDayScope;
+	/**
+	 * Return Suggestions color. `auto` follows the theme accent.
+	 * Stored as a color name, never as an Obsidian callout id.
+	 */
+	suggestionColor: SuggestionColorChoice;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -224,6 +230,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	availabilityGrid: defaultAvailabilityGrid(),
 	digestOrientation: 'rows',
 	digestDays: 'all',
+	suggestionColor: 'auto',
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -334,6 +341,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		availabilityGrid: migrateAvailabilityGrid(input.availabilityGrid),
 		digestOrientation: input.digestOrientation === 'columns' ? 'columns' : 'rows',
 		digestDays: input.digestDays === 'may' ? 'may' : 'all',
+		suggestionColor: sanitizeSuggestionColor(input.suggestionColor),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),

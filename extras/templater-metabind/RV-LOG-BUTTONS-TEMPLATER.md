@@ -4,17 +4,21 @@ Requirements: **Templater** (user scripts enabled) + **Meta Bind**.
 
 Does **not** change `Address`. Matches the plugin priority-tap logger:
 
-- **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), then a callout bullet `> - … — success`. A Glancable `### Wed, 2pm — Sep 9, 2026` heading (weekday, nearest hour, calendar date) and a blank notes line are inserted **above** the Attempt Log on every Home, including a second Home in the same rounded hour.
-- **Not home:** Visits++, Last Attempted only, callout bullet `> - … — not home`. No stamp. A second Not home immediately after the first still logs.
+- **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), then a callout bullet. A Glancable `##### Wed, 2pm — Sep 9, 2026` heading (weekday, nearest hour, calendar date) is inserted under `### Visit Notes:` on every Home, including a second Home in the same rounded hour.
+- **Not home:** Visits++, Last Attempted only, callout bullet `— not home`. No stamp. A second Not home immediately after the first still logs.
 
-Attempt Log is a collapsed callout, not a `##` heading. The suggester quote sits above it. The daypart table is the first block inside the callout, then the dated bullets. The plugin writes that table. The note has no digest marker lines.
+Attempt Log is a collapsed callout, nested under Return Suggestions after the plugin rewrites the note. The daypart table is the first block inside the log, then the dated bullets. The plugin writes that table and the suggestions callout. The note has no digest marker lines.
 
 ```markdown
-> [!note]- Attempt Log
-> - Wed, 2pm — Sep 9, 2026 — success
+> [!example] Return Suggestions
+> Try: **Wed afternoon (1/1)**
+>
+> > [!note]- Attempt Log
+> >
+> >- Wed, 2pm — Sep 9, 2026 — success
 ```
 
-The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, and tight forms such as `>[!note]+ Attempt Log`. A `+` or `-` already on the note stays. If the note still has the old `## Attempt Log` heading, the next Home or Not home write migrates that section into the collapsed callout and appends there. Existing notes are not bulk-migrated by the script. The plugin's first launch of 1.2.11 moves the daypart table inside Attempt Log, leaves the suggester quote above the callout, strips old `%%` and HTML digest markers, and collapses an opened Attempt Log once. Home and Not home also refresh the muted age on each `###` stamp.
+The script also recognizes `> [!note]+ Attempt Log`, `> > [!note]- Attempt Log`, `> [!note] Attempt Log`, and tight forms such as `>[!note]+ Attempt Log`. A `+` or `-` already on the note stays. If the note still has the old `## Attempt Log` heading, the next Home or Not home write migrates that section into the collapsed callout and appends there. The plugin's first launch of 1.2.12 wraps the suggester and the log in Return Suggestions, nests the log, strips old `%%` and HTML digest markers, and collapses an opened Attempt Log once. Home and Not home also refresh the muted age and promote a `###` visit stamp to `#####`.
 
 `New RV.md` already includes these buttons. Paste the blocks below only when you are adding them to an older note.
 
@@ -29,7 +33,7 @@ The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, an
 
 (The `BUTTON[…]` line must be wrapped in backticks so Meta Bind renders real buttons instead of raw text.)
 
-The script creates `> [!note]- Attempt Log` at the bottom when the note has neither that callout nor a legacy `## Attempt Log` heading. A home stamp is inserted above the suggester quote when one already sits on the callout. A `---` that sits on that quote stays under the new stamp.
+The script creates `> [!note]- Attempt Log` at the bottom when the note has neither that callout nor a legacy `## Attempt Log` heading. A home stamp is inserted above Return Suggestions, or above the suggester quote on an older note. A `---` that sits on that block stays under the new stamp.
 
 ## Meta Bind buttons (`runTemplaterFile`)
 

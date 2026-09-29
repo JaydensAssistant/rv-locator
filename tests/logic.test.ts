@@ -954,7 +954,7 @@ describe('new RV note title', () => {
 
 describe('visit log', () => {
 	const now = new Date(2026, 8, 26, 23, 12, 4);
-	const stampLine = '### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>';
+	const stampLine = '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>';
 
 	it('logs a home visit without touching Address', () => {
 		assert.equal(formatVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
@@ -978,6 +978,7 @@ describe('visit log', () => {
 		assert.equal(body, [
 			'Talked on the porch.',
 			'',
+			'### Visit Notes:',
 			stampLine,
 			'',
 			'',
@@ -986,7 +987,7 @@ describe('visit log', () => {
 			'',
 		].join('\n'));
 		assert.equal(body.includes('## Attempt Log'), false);
-		const stampAt = body.indexOf('### Sat, 11pm — Sep 26, 2026');
+		const stampAt = body.indexOf('##### Sat, 11pm — Sep 26, 2026');
 		const logAt = body.indexOf('> [!note]- Attempt Log');
 		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
@@ -1041,6 +1042,7 @@ describe('visit log', () => {
 		].join('\n');
 		const more = applyVisitBody(expanded, 'home', now);
 		assert.equal(more, [
+			'### Visit Notes:',
 			stampLine,
 			'',
 			'',
@@ -1051,7 +1053,7 @@ describe('visit log', () => {
 			'Footer.',
 			'',
 		].join('\n'));
-		assert.ok(more.indexOf('### Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
+		assert.ok(more.indexOf('##### Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
 	});
 
 	it('writes another home stamp in the same rounded hour, and a miss still logs', () => {
@@ -1122,7 +1124,7 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const next = applyVisitBody(note, 'home', now);
-		const stampAt = next.indexOf('### Sat, 11pm — Sep 26, 2026');
+		const stampAt = next.indexOf('##### Sat, 11pm — Sep 26, 2026');
 		const digestAt = next.indexOf('<!-- rv-locator-digest -->');
 		const logAt = next.indexOf('> [!note]+ Attempt Log');
 		assert.ok(stampAt >= 0 && stampAt < digestAt && digestAt < logAt);
@@ -1144,7 +1146,7 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const above = applyVisitBody(quoted, 'home', now);
-		const quoteStamp = above.indexOf('### Sat, 11pm — Sep 26, 2026');
+		const quoteStamp = above.indexOf('##### Sat, 11pm — Sep 26, 2026');
 		const tryAt = above.indexOf('> Try: **Mon morning (1/1)**');
 		const quotedLog = above.indexOf('> [!note]- Attempt Log');
 		assert.ok(quoteStamp >= 0 && quoteStamp < tryAt && tryAt < quotedLog);
@@ -1163,7 +1165,7 @@ describe('visit log', () => {
 		].join('\n');
 		const ruledNext = applyVisitBody(ruled, 'home', now);
 		const ruledLines = ruledNext.split('\n');
-		const newStamp = ruledLines.findIndex((line) => line.startsWith('### Sat, 11pm'));
+		const newStamp = ruledLines.findIndex((line) => line.startsWith('##### Sat, 11pm'));
 		const rule = ruledLines.findIndex((line) => line === '---');
 		assert.ok(newStamp >= 0 && newStamp < rule);
 		assert.ok(ruledNext.indexOf('> Try: **Mon morning (1/1)**') > ruledNext.indexOf('\n---\n'));
@@ -1252,7 +1254,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.11');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.12');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1295,7 +1297,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.11/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.12/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1316,9 +1318,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.11');
+		assert.equal(plan.ref, 'v1.2.12');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.11/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.12/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

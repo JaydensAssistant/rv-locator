@@ -150,3 +150,31 @@ span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
 	color: var(--text-on-accent);
 	border-color: var(--text-accent);
 }
+
+span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
+	background-color: color-mix(in srgb, var(--background-primary) 68%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 55%, var(--text-muted));
+}
+
+.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) {
+	display: grid;
+	grid-template-columns: 5.6em minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 0.4em;
+}
+
+.rv-dashboard .callout[data-callout="quote"] :is(input, textarea, select),
+.rv-dashboard .callout[data-callout="quote"] :is(.meta-bind-input, .mb-input, .mb-suggest-input, .mb-input-wrapper) {
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+}
+
+.rv-dashboard .callout-icon {
+	display: none;
+}
+
+.rv-dashboard .callout-title {
+	gap: 0;
+}

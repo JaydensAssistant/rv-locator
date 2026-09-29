@@ -2,16 +2,16 @@
  * RV Locator visit-log parity for Templater (plugin 1.1.3).
  * Never writes Address.
  *
- * Attempt Log is a collapsed callout. An existing + or - is left alone.
+ * Attempt Log is a collapsed callout, nested under Return Suggestions on
+ * notes this plugin has rewritten. An existing + or - is left alone.
  * An old `## Attempt Log` heading is migrated to the collapsed callout on
- * the next Home / Not home write. A home stamp is inserted above the
- * suggester quote when one sits on the callout. The daypart table stays
- * inside the callout. Each ### visit stamp gets a muted "N days ago" age,
- * refreshed on the next Home or Not home.
- * Home inserts a Glancable `###` stamp above the log, including a second
- * Home in the same rounded hour. Two blank lines sit between that stamp and
- * Attempt Log so there is room for notes. Counters and the Attempt Log
- * bullet update on every Home and Not home.
+ * the next Home / Not home write. A home stamp is inserted above Return
+ * Suggestions, or above the suggester quote on an older note. The daypart
+ * table stays inside the log. Each visit stamp is `#####` with a muted
+ * "N days ago" age. An older `###` stamp is promoted on the next write.
+ * Home inserts that stamp above the log, including a second Home in the
+ * same rounded hour, and adds `### Visit Notes:` once. Two blank lines sit
+ * between that stamp and the suggestions block so there is room for notes.
  *
  * Home also asks who they brought (one person). That name is appended to
  * Taken and does not change Met With. Not home does not ask, and a skipped
@@ -64,8 +64,9 @@ function asNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-/** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
-const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
+/** Flat and nested `> [!note]` / `> > [!note]` Attempt Log titles all count. */
+const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*Attempt Log[\t ]*$/i;
+const RETURN_SUGGESTIONS = /^(?:>[\t ]*)+\[![A-Za-z0-9-]+\][\t ]*([+-])?[\t ]*Return Suggestions[\t ]*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const CALLOUT_HEADER = "> [!note]- Attempt Log";
 const DIGEST_STARTS = ["%% rv-locator-digest %%", "<!-- rv-locator-digest -->"];
@@ -112,12 +113,12 @@ function refreshStampAges(body, today) {
   const newline = body.includes("\r\n") ? "\r\n" : "\n";
   const lines = body.split(/\r?\n/);
   const next = lines.map((line) => {
-    const match = /^###\s+(.+?)\s*$/.exec(line);
+    const match = /^(?:###|#####)\s+(.+?)\s*$/.exec(line);
     if (!match) return line;
     const stamp = String(match[1] || "").replace(STAMP_AGE_SUFFIX, "").trim();
     const days = stampCalendarDays(stamp, today);
     if (days == null) return line;
-    return `### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
+    return `##### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
   });
   return next.join(newline);
 }
@@ -170,9 +171,44 @@ function ensureAttemptLog(body) {
 }
 
 function isVoiceQuoteLine(line) {
-  if (!/^>/.test(line) || /^>\s*\[!/.test(line)) return false;
-  const text = String(line).replace(/^>\s?/, "").trim();
+  if (!/^>/.test(line) || /\[!/.test(line)) return false;
+  const text = String(line).replace(/^(?:>\s*)+/, "").trim();
   return /^(?:Avoid|Try|Unsure|Untried)\b/.test(text) || text === "No May-go-out days";
+}
+
+function isReturnSuggestionsLine(line) {
+  return RETURN_SUGGESTIONS.test(line);
+}
+
+function isDigestFurniture(line) {
+  if (!/^>/.test(line)) return false;
+  if (isReturnSuggestionsLine(line) || ATTEMPT_LOG_CALLOUT.test(line) || isVoiceQuoteLine(line)) return false;
+  if (isDigestStartLine(line) || isDigestEndLine(line)) return true;
+  const text = String(line).replace(/^(?:>\s*)+/, "").trim();
+  if (text === "") return true;
+  return text.startsWith("|") && text.endsWith("|");
+}
+
+function suggestionsRegionStart(lines, logIndex) {
+  let index = logIndex;
+  while (index > 0) {
+    const prev = lines[index - 1] ?? "";
+    if (prev.trim() === "") {
+      const earlier = index > 1 ? lines[index - 2] ?? "" : "";
+      if (isReturnSuggestionsLine(earlier) || isVoiceQuoteLine(earlier) || isDigestFurniture(earlier)) {
+        index -= 1;
+        continue;
+      }
+      break;
+    }
+    if (isReturnSuggestionsLine(prev)) return index - 1;
+    if (isVoiceQuoteLine(prev) || isDigestFurniture(prev)) {
+      index -= 1;
+      continue;
+    }
+    break;
+  }
+  return index;
 }
 
 function isThematicBreak(line) {
@@ -187,20 +223,46 @@ function aboveThematicBreak(lines, index) {
 }
 
 function attemptLogAnchor(lines, calloutIndex) {
-  let index = calloutIndex;
-  while (index > 0 && (lines[index - 1] ?? "") === "") index -= 1;
-  const previous = lines[index - 1] ?? "";
-  let anchor = calloutIndex;
-  if (index > 0 && isDigestEndLine(previous)) {
-    let start = index - 1;
-    while (start > 0 && !isDigestStartLine(lines[start] ?? "")) start -= 1;
-    if (isDigestStartLine(lines[start] ?? "")) anchor = start;
-  } else if (index > 0 && isVoiceQuoteLine(previous)) {
-    let start = index;
-    while (start > 0 && isVoiceQuoteLine(lines[start - 1] ?? "")) start -= 1;
-    anchor = start;
+  let anchor = suggestionsRegionStart(lines, calloutIndex);
+  if (anchor === calloutIndex) {
+    let index = calloutIndex;
+    while (index > 0 && (lines[index - 1] ?? "") === "") index -= 1;
+    const previous = lines[index - 1] ?? "";
+    if (index > 0 && isDigestEndLine(previous)) {
+      let start = index - 1;
+      while (start > 0 && !isDigestStartLine(lines[start] ?? "")) start -= 1;
+      if (isDigestStartLine(lines[start] ?? "")) anchor = start;
+    }
   }
   return aboveThematicBreak(lines, anchor);
+}
+
+function quoteDepth(line) {
+  const lead = /^(?:>\s*)+/.exec(line);
+  const marks = lead ? lead[0].match(/>/g) : null;
+  return Math.max(1, marks ? marks.length : 1);
+}
+
+function formatLogBullet(header, line) {
+  const text = String(line).replace(/^(?:>\s*)+/, "").replace(/^[-*]\s+/, "").trim();
+  const depth = quoteDepth(header);
+  if (depth <= 1) return `> - ${text}`;
+  return `${Array.from({ length: depth }, () => ">").join(" ")}- ${text}`;
+}
+
+function isVisitStampLine(line) {
+  const match = /^(?:###|#####)\s+(.+?)\s*$/.exec(line);
+  if (!match) return false;
+  return stampCalendarDays(String(match[1] || ""), new Date()) != null;
+}
+
+function ensureVisitNotesHeading(body) {
+  const lines = body.split(/\r?\n/);
+  if (lines.some((line) => line.trim() === "### Visit Notes:")) return body;
+  const stampAt = lines.findIndex((line) => isVisitStampLine(line));
+  if (stampAt < 0) return body;
+  lines.splice(stampAt, 0, "### Visit Notes:");
+  return lines.join(body.includes("\r\n") ? "\r\n" : "\n");
 }
 
 function insertHomeHeading(body, whenLabel) {
@@ -211,7 +273,7 @@ function insertHomeHeading(body, whenLabel) {
   const before = lines.slice(0, anchor);
   while (before.length > 0 && before[before.length - 1] === "") before.pop();
   const after = lines.slice(anchor);
-  const heading = `### ${whenLabel}`;
+  const heading = `##### ${whenLabel}`;
   const padding = ["", ""];
   const mid = before.length > 0 ? ["", heading, ...padding, ...after] : [heading, ...padding, ...after];
   return [...before, ...mid].join("\n");
@@ -230,9 +292,11 @@ function appendLogBullet(body, bullet) {
   const block = lines.slice(found.index, end);
   while (block.length > 1 && /^>\s*$/.test(block[block.length - 1] ?? "")) block.pop();
   while (block.length > 0 && block[block.length - 1] === "") block.pop();
-  if (block.length > 1 && /^>\s*\|/.test(block[block.length - 1] ?? "")) block.push(">");
-  const line = bullet.startsWith(">") ? bullet : `> ${bullet}`;
-  block.push(line);
+  const depth = quoteDepth(block[0] ?? "");
+  if (block.length > 1 && /^(?:>\s*)+\|/.test(block[block.length - 1] ?? "")) {
+    block.push(depth >= 2 ? "> >" : ">");
+  }
+  block.push(formatLogBullet(block[0] ?? "", bullet));
   const rest = lines.slice(end);
   const gap = rest.length > 0 && rest[0] !== "" ? [""] : [];
   return [...lines.slice(0, found.index), ...block, ...gap, ...rest].join("\n").replace(/\s*$/, "") + "\n";
@@ -597,6 +661,7 @@ async function rvLog(tp, kind) {
   if (mode === "home") content = insertHomeHeading(content, whenLabel);
   content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
   content = refreshStampAges(content, now);
+  content = ensureVisitNotesHeading(content);
 
   await app.vault.modify(file, fmBlock + content);
   const plugin = rvPlugin();

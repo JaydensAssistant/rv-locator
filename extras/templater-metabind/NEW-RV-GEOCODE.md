@@ -21,40 +21,43 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 2. Renames the note to `{Name} on {Street}` when both are present. Examples: `Alex on Maple`, `Riley on Cypress`. The street is the first address line with the house number, a leading directional (`N`, `SW`), a trailing suffix (`St`, `Lane`), and an apartment tail removed. `10 Oak Hammock Lane` becomes `Oak Hammock`.
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
 4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
-5. Writes one Glancable drive date for that visit as a `###` heading: `### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date), with a muted `<span class="rv-stamp-ago">` such as `20 days ago`. The collapsed `[!rv]-` dashboard comes before that stamp. A rule separates the dashboard from the stamp. The blank line under the stamp is the place to type visit notes, then another rule. A date-only value omits the hour.
-6. Adds a collapsed Attempt Log with one success bullet for that same stamp. The suggester quote sits under the notes rule and above the callout. The daypart table is inside the callout, above the bullets, and the template starts it as all seven weekdays. There are no digest marker lines. The template starts the quote as `> No May-go-out days` until the plugin fills the quote and the table from the May-go-out schedule.
+5. Writes one Glancable drive date for that visit as a `#####` heading: `##### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date), with a muted `<span class="rv-stamp-ago">` such as `20 days ago`. It sits under `### Visit Notes:`. The expanded `> [!quote]+ RV Dashboard` callout comes before that, with Hubs, Address, the buttons, and a nested collapsed `> [!rv]- Quick Facts`. A rule separates the dashboard from Visit Notes. The line under the stamp is the place to type visit notes, then another rule. A date-only value omits the hour.
+6. Adds Return Suggestions with a nested collapsed Attempt Log and one success bullet for that same stamp. The template starts the suggester as `> No May-go-out days` and the table as seven weekdays of `0/0`. The plugin rewrites the callout type, the quote, and the counts. There are no digest marker lines.
 
 ```markdown
-> [!rv]- 👤 RV Dashboard
+> [!quote]+ RV Dashboard
 > …
 
 ---
-### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>
+### Visit Notes:
+##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>
 
 ---
 
+> [!example] Return Suggestions
 > No May-go-out days
-
-> [!note]- Attempt Log
 >
-> | | Morning | Afternoon | Evening |
-> | --- | --- | --- | --- |
-> | Sun | — | — | — |
->
-> - Wed, 2pm — Sep 9, 2026 — success
+> > [!note]- Attempt Log
+> >
+> >| | Morning | Afternoon | Evening |
+> >| --- | --- | --- | --- |
+> >| Sun | 0/0 | 0/0 | 0/0 |
+> >
+> >- Wed, 2pm — Sep 9, 2026 — success
 ```
 
 7. After Templater finishes (`tp.hooks.on_all_templates_executed`), runs `rv-locator:geocode-current-note`. That command reads the file from disk, so the Address just written is visible. Geocode fills `Location` and sets `Map Link` to a Google Maps search of the stored Address: `https://www.google.com/maps/search/?api=1&query=<urlencoded Address>`. If that Address has no city (no comma-separated locality, and the City text is not already in the line), the link query appends `, ` plus the note’s `City`. Address itself is not rewritten. A full address such as `142 Maple Street, Orlando, FL` is searched as stored. It also rewrites the 🗺️ link already in the body so the icon matches the new Map Link. A later re-geocode replaces coordinates, Map Link, that icon, and derived place fields. Address itself is not rewritten. If the new hit has no city, the old City property is cleared and is not reused in the map query.
 
-`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) increments both, appends another success bullet, and inserts another `###` stamp above Attempt Log, including a second Home in the same rounded hour. Not home increments Visits and Last Attempted and appends a not-home bullet, including a second Not home immediately after the first. The plugin priority tap uses the same rule.
+`Visits` and `Successful Visits` are `1` on create. A Home tap in Templater (`rvLog.js`) increments both, appends another success bullet, and inserts another `#####` stamp above Return Suggestions, including a second Home in the same rounded hour. Not home increments Visits and Last Attempted and appends a not-home bullet, including a second Not home immediately after the first. The plugin priority tap uses the same rule.
 
 ## Quote strip
 
-The first two body lines are markdown quotes, with no blank line between them. There is no `Map Link:` label and no Meta Bind view of the URL (a link view shows the raw URL text). The map icon is a normal markdown link. Templater fills it at create from the address just typed:
+Hubs and Address are the first lines inside `> [!quote]+ RV Dashboard`. There is no `Map Link:` label and no Meta Bind view of the URL (a link view shows the raw URL text). The map icon is a normal markdown link. Templater fills it at create from the address just typed. CSS aligns the two inputs; the template does not pad Hubs with spaces.
 
 ```markdown
-> **Hubs:**      `INPUT[inlineListSuggester(optionQuery("")):Hub]`
-> **Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
+> [!quote]+ RV Dashboard
+>**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+>**Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL)
 ```
 
 Both lines are also `font-weight: var(--font-semibold)` in `rv-dashboard.css`, so the map icon matches the bold labels.
@@ -63,7 +66,7 @@ The Hub property is still `Hub`. The icon URL is `https://www.google.com/maps/se
 
 ## Collapsed dashboard
 
-`> [!rv]- 👤 RV Dashboard` (the `-` means collapsed until opened). The `[!rv]` type is styled in `rv-dashboard.css` with theme variables (`--background-primary`, `--background-secondary`, `--background-modifier-border`) so it stays grey against the page in light and dark, instead of the blue info callout. Inside, top to bottom:
+Quick Facts is `> > [!rv]- Quick Facts` (the `-` means collapsed until opened), nested in the dashboard quote callout. The `[!rv]` type is styled in `rv-dashboard.css` with theme variables (`--background-primary`, `--background-secondary`, `--background-modifier-border`) so it stays grey against the page in light and dark, instead of the blue info callout. Inside, top to bottom:
 
 - Priority (slider + `VIEW[{Priority}]`)
 - Visits

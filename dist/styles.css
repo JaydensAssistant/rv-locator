@@ -1021,8 +1021,8 @@ table.rv-locator-digest-table,
 	max-width: 100%;
 }
 
-.markdown-rendered h3 .rv-stamp-ago,
-.markdown-preview-view h3 .rv-stamp-ago,
+.markdown-rendered :is(h3, h5) .rv-stamp-ago,
+.markdown-preview-view :is(h3, h5) .rv-stamp-ago,
 .cm-header .rv-stamp-ago,
 .rv-stamp-ago {
 	margin-left: 0.45em;
@@ -1274,8 +1274,8 @@ table.rv-locator-digest-table,
         > button.mb-button-inner
   The class from the button block lands on the span, not the <button>.
   button.mb-button never matches, so these rules do not use it.
-  They also do not require cssclass rv-dashboard, because the buttons sit
-  outside the dashboard callout.
+  They also do not require cssclass rv-dashboard. The buttons sit inside
+  the RV Dashboard quote callout.
 */
 .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
 	display: inline-flex;
@@ -1316,4 +1316,63 @@ span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
 	background-color: var(--text-accent);
 	color: var(--text-on-accent);
 	border-color: var(--text-accent);
+}
+
+/*
+  Not home is the default Meta Bind button. The quote callout behind it is
+  already a grey strip, so the stock grey button disappears. Mix the page
+  background toward black so the button stays darker than that strip in
+  light and dark themes.
+*/
+span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
+	background-color: color-mix(in srgb, var(--background-primary) 68%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 55%, var(--text-muted));
+}
+
+/*
+  Hub and Address controls left-align with each other. The label is the
+  first <strong> ("Hubs:" / "Address:"). A later <strong> inside Return
+  Suggestions ("Try: **Tue**") is not the first child, so that line stays
+  a normal paragraph. Markdown spaces cannot move the Hub box inside a callout.
+*/
+.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) {
+	display: grid;
+	grid-template-columns: 5.6em minmax(0, 1fr) auto;
+	align-items: center;
+	column-gap: 0.4em;
+}
+
+.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) > strong {
+	font-weight: var(--font-semibold);
+}
+
+/*
+  Address text input and Hub suggester, inside the dashboard quote callout.
+  Darken them against the quote background. Quick Facts stays on the nested
+  [!rv] callout and is not included here.
+*/
+.rv-dashboard .callout[data-callout="quote"] :is(input, textarea, select),
+.rv-dashboard .callout[data-callout="quote"] :is(.meta-bind-input, .mb-input, .mb-suggest-input, .mb-input-wrapper) {
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+}
+
+/*
+  Hide callout type icons on RV notes (quote mark, list, pencil). The title
+  shifts left because the icon is out of the flex row, not covered.
+  Scoped to cssclasses rv-dashboard.
+
+  Live Preview still reveals callout markdown when the caret enters that
+  block. Obsidian has no public API to keep a callout rendered while the
+  cursor is inside it. These rules do not change that. Visit notes stay
+  outside the callouts, so typing a note does not open the dashboard source.
+*/
+.rv-dashboard .callout-icon {
+	display: none;
+}
+
+.rv-dashboard .callout-title {
+	gap: 0;
 }

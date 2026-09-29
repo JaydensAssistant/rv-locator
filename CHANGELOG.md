@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.12
+
+`main.js` SHA-256: `be1a3534cf6525ed5c618b4113e587d822b4419fb192be217d91ea15d0372641`
+
+`styles.css` SHA-256: `bfd29df9678802b039f73a2be133c9e8d563c385845cf8741c2aa900893c6cb9`
+
+`manifest.json` SHA-256: `4748980aa201eeb4a9bbcca1b1b3e52e0de2a6669cdd6f625f4c15cb58b7bfac`
+
+- The all-weekdays digest table (the default) shows `homes/trials` or `0/0` in every cell, including days that are not May go out. An em dash remains only when Show every weekday is off, and only for a daypart that is not May go out. Voice lines still name May-go-out slots only.
+- A new RV note matches the created-note layout. The outer callout is an expanded `> [!quote]+ RV Dashboard`. Hubs, Address, and the Home / Not home buttons sit in it. Quick Facts is a nested collapsed `> [!rv]-` callout. `### Visit Notes:` and a `#####` stamp follow, then Return Suggestions with Attempt Log nested inside it (table, then bullets). Meta Bind button blocks stay at the bottom. Home and Not home write `#####` stamps and nested bullets, and the first launch of 1.2.12 rewrites existing suggester / Attempt Log regions into that shape.
+- Return Suggestions color follows the theme accent by default (blue info, green success, yellow/orange warning, red failure, dark red danger, red/purple bug, purple example, grey quote). Everyday → Return Suggestions color is a list of those color names, plus Automatic. Changing it, or the accent while Automatic is on, rewrites `> [!TYPE] Return Suggestions` on every RV note.
+- The Not home button and the Address / Hub inputs inside the dashboard quote callout are darker than the quote background. Hub and Address inputs share a label column so they left-align. Callout icons are hidden on notes with `rv-dashboard`, and the titles shift left.
+- Live Preview still reveals callout source when the caret enters that block. Obsidian does not expose an API to keep a callout rendered while it is being edited, so this build does not pretend to lock it. Visit notes stay outside the callouts.
+- Extras sync is pinned to tag `v1.2.12` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.11`, `v1.2.10`, `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.11
 
 `main.js` SHA-256: `710258228234998c4341b7b3e19eee69eb20e0b4543456b3bc4383a80e534435`

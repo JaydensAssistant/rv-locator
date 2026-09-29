@@ -159,7 +159,7 @@ export interface AttemptEntry {
 
 /**
  * Attempt Log bullets are the source of truth. `success` and `Home` count as home.
- * `not home` and `miss` count as a miss. A `###` stamp is the same home visit as its
+ * `not home` and `miss` count as a miss. A `###` or `#####` stamp is the same home visit as its
  * bullet and is counted only when that bullet is missing.
  * The written hour is the rounded local hour. 4:30 in the raw clock is evening; a rounded `4pm` stamp is afternoon.
  * Lines inside the digest markers are not attempts.
@@ -273,8 +273,11 @@ const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
  * Compact weekday table, then Avoid, Try, Unsure, and Untried.
  * Empty voice lines are omitted. The dated Home / Not home list is not repeated here.
  * Default orientation is days down the side and dayparts across.
- * Default days are all seven weekdays. Off cells are an em dash.
- * `days: 'may'` lists only days that have a May-go-out daypart.
+ * Default days are all seven weekdays and all three dayparts. A cell is
+ * `homes/trials`, or `0/0` when that slot has no attempts. All-weekdays
+ * mode never writes an em dash, including days that are not May go out.
+ * `days: 'may'` lists only days that have a May-go-out daypart, and a
+ * daypart that is not May go out stays an em dash.
  * Voice lines still name May-go-out slots only.
  */
 export function suggestReturnDigest(args: {
@@ -294,7 +297,7 @@ export function suggestReturnDigest(args: {
 		if (scope === 'may') {
 			return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
 		}
-		const table = emptyWeekTable(orientation);
+		const table = emptyWeekTable(orientation, args.buckets);
 		return {
 			text: NO_SCHEDULE,
 			sentences: [NO_SCHEDULE],
@@ -304,9 +307,11 @@ export function suggestReturnDigest(args: {
 	}
 	const shown = scope === 'all' ? [...ALL_WEEKDAYS] : mayDays;
 	const facts = daypartFacts(mayDays, args.buckets, args.grid);
+	const fill: CellFill = scope === 'all' ? 'count' : 'dash';
+	const dayparts = scope === 'all' ? DAYPARTS : undefined;
 	const table = orientation === 'columns'
-		? tableDaysAsColumns(shown, facts)
-		: tableDaysAsRows(shown, facts);
+		? tableDaysAsColumns(shown, facts, dayparts, fill, args.buckets)
+		: tableDaysAsRows(shown, facts, dayparts, fill, args.buckets);
 	const sentences = voiceLines(facts, thresholds);
 	const blocks = [table];
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
@@ -318,10 +323,10 @@ export function suggestReturnDigest(args: {
 	};
 }
 
-function emptyWeekTable(orientation: DigestOrientation): string {
+function emptyWeekTable(orientation: DigestOrientation, buckets: AttemptBuckets): string {
 	const days = [...ALL_WEEKDAYS];
-	if (orientation === 'columns') return tableDaysAsColumns(days, [], DAYPARTS);
-	return tableDaysAsRows(days, [], DAYPARTS);
+	if (orientation === 'columns') return tableDaysAsColumns(days, [], DAYPARTS, 'count', buckets);
+	return tableDaysAsRows(days, [], DAYPARTS, 'count', buckets);
 }
 
 function mayGoOutDays(grid: AvailabilityGrid): number[] {
@@ -356,29 +361,60 @@ function daypartFacts(days: readonly number[], buckets: AttemptBuckets, grid: Av
 	return facts;
 }
 
-function tableDaysAsRows(days: readonly number[], facts: readonly SlotFact[], dayparts?: readonly Daypart[]): string {
+type CellFill = 'dash' | 'count';
+
+function tableDaysAsRows(
+	days: readonly number[],
+	facts: readonly SlotFact[],
+	dayparts?: readonly Daypart[],
+	fill: CellFill = 'dash',
+	buckets: AttemptBuckets = {},
+): string {
 	const columns = dayparts ?? DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
 	const header = ['| |', ...columns.map((daypart) => ` ${daypartTitle(daypart)} |`)].join('');
 	const rule = ['| --- |', ...columns.map(() => ' --- |')].join('');
 	const body = days.map((weekday) => {
-		const cells = columns.map((daypart) => ` ${cellText(facts, weekday, daypart)} |`);
+		const cells = columns.map((daypart) => ` ${cellText(facts, weekday, daypart, fill, buckets)} |`);
 		return `| ${weekdayShort(weekday)} |${cells.join('')}`;
 	});
 	return [header, rule, ...body].join('\n');
 }
 
-function tableDaysAsColumns(days: readonly number[], facts: readonly SlotFact[], dayparts?: readonly Daypart[]): string {
+function tableDaysAsColumns(
+	days: readonly number[],
+	facts: readonly SlotFact[],
+	dayparts?: readonly Daypart[],
+	fill: CellFill = 'dash',
+	buckets: AttemptBuckets = {},
+): string {
 	const rows = dayparts ?? DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
 	const header = ['| |', ...days.map((weekday) => ` ${weekdayShort(weekday)} |`)].join('');
 	const rule = ['| --- |', ...days.map(() => ' --- |')].join('');
 	const body = rows.map((daypart) => {
-		const cells = days.map((weekday) => ` ${cellText(facts, weekday, daypart)} |`);
+		const cells = days.map((weekday) => ` ${cellText(facts, weekday, daypart, fill, buckets)} |`);
 		return `| ${daypartTitle(daypart)} |${cells.join('')}`;
 	});
 	return [header, rule, ...body].join('\n');
 }
 
-function cellText(facts: readonly SlotFact[], weekday: number, daypart: Daypart): string {
+/**
+ * All-weekdays mode (`count`) reads the attempt buckets, so a day that is
+ * not May go out still shows `0/0` or the real homes/trials. May-go-out-only
+ * mode (`dash`) leaves a daypart with no May-go-out fact as an em dash.
+ */
+function cellText(
+	facts: readonly SlotFact[],
+	weekday: number,
+	daypart: Daypart,
+	fill: CellFill,
+	buckets: AttemptBuckets,
+): string {
+	if (fill === 'count') {
+		const count = buckets[availabilityKey(weekday, daypart)] ?? { homes: 0, trials: 0 };
+		const trials = Math.max(0, count.trials);
+		const homes = Math.min(Math.max(0, count.homes), trials);
+		return `${homes}/${trials}`;
+	}
 	const slot = facts.find((item) => item.weekday === weekday && item.daypart === daypart);
 	if (!slot) return '—';
 	return `${slot.homes}/${slot.trials}`;
@@ -540,8 +576,8 @@ function mapLevel(value: unknown): AvailabilityLevel {
 }
 
 const STAMP_BODY = /^(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})$/i;
-const BULLET_LINE = /^(?:>\s*)?[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\*\*)?\s*$/i;
-const HEADING_LINE = /^###\s+(.+?)\s*$/;
+const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\*\*)?\s*$/i;
+const HEADING_LINE = /^(?:###|#####)\s+(.+?)\s*$/;
 
 function parseBulletLine(line: string): AttemptEntry | null {
 	const match = BULLET_LINE.exec(line.trim());
