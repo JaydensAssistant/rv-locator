@@ -162,6 +162,19 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					void this.plugin.saveSettings().then(() => this.display());
 				});
 			});
+		new Setting(containerEl)
+			.setName('Show every weekday')
+			.setDesc(this.plugin.settings.digestDays === 'may'
+				? 'Off. The table lists only days that have a May-go-out daypart. Turn this on to list Sun through Sat. Off days show an em dash.'
+				: 'On. The table lists Sun through Sat. A day that is Off shows an em dash. Turn this off to list only May-go-out days.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.digestDays !== 'may');
+				toggle.onChange(async (value) => {
+					this.plugin.settings.digestDays = value ? 'all' : 'may';
+					await this.plugin.saveSettings();
+					this.display();
+				});
+			});
 
 		new Setting(containerEl).setName('Glancable density').setHeading();
 		renderDensitySettings(containerEl, this.plugin);

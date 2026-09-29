@@ -52,11 +52,7 @@ cssclasses:
 ### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
 
 
-%% rv-locator-digest %%
-
 > No May-go-out days
-
-%% /rv-locator-digest %%
 
 > [!note]- Attempt Log
 > - <% rv.stamp %> — success

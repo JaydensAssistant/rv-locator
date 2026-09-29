@@ -25,6 +25,9 @@ export type AvailabilityGrid = Record<string, AvailabilityLevel>;
 /** Days down the side, or dayparts down the side. */
 export type DigestOrientation = 'rows' | 'columns';
 
+/** All seven weekdays, or only days that have a May-go-out daypart. */
+export type DigestDayScope = 'all' | 'may';
+
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 /** Minutes from midnight, inclusive start. */
@@ -264,29 +267,46 @@ export const DEFAULT_DIGEST_THRESHOLDS: DigestThresholds = {
 	tryMinHomes: DEFAULT_TRY_MIN_HOMES,
 };
 
+const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
+
 /**
- * Compact table of May-go-out days, then Avoid, Try, Unsure, and Untried.
+ * Compact weekday table, then Avoid, Try, Unsure, and Untried.
  * Empty voice lines are omitted. The dated Home / Not home list is not repeated here.
  * Default orientation is days down the side and dayparts across.
+ * Default days are all seven weekdays. Off cells are an em dash.
+ * `days: 'may'` lists only days that have a May-go-out daypart.
+ * Voice lines still name May-go-out slots only.
  */
 export function suggestReturnDigest(args: {
 	buckets: AttemptBuckets;
 	entries?: readonly AttemptEntry[];
 	grid: AvailabilityGrid;
 	orientation?: DigestOrientation;
+	days?: DigestDayScope;
 	thresholds?: Partial<DigestThresholds>;
 	now?: Date;
 }): ReturnDigest {
 	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
+	const scope: DigestDayScope = args.days === 'may' ? 'may' : 'all';
 	const thresholds = resolveThresholds(args.thresholds);
-	const days = mayGoOutDays(args.grid);
-	if (days.length === 0) {
-		return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
+	const mayDays = mayGoOutDays(args.grid);
+	if (mayDays.length === 0) {
+		if (scope === 'may') {
+			return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
+		}
+		const table = emptyWeekTable(orientation);
+		return {
+			text: NO_SCHEDULE,
+			sentences: [NO_SCHEDULE],
+			table,
+			markdown: `${table}\n\n${NO_SCHEDULE}`,
+		};
 	}
-	const facts = daypartFacts(days, args.buckets, args.grid);
+	const shown = scope === 'all' ? [...ALL_WEEKDAYS] : mayDays;
+	const facts = daypartFacts(mayDays, args.buckets, args.grid);
 	const table = orientation === 'columns'
-		? tableDaysAsColumns(days, facts)
-		: tableDaysAsRows(days, facts);
+		? tableDaysAsColumns(shown, facts)
+		: tableDaysAsRows(shown, facts);
 	const sentences = voiceLines(facts, thresholds);
 	const blocks = [table];
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
@@ -296,6 +316,12 @@ export function suggestReturnDigest(args: {
 		table,
 		markdown: blocks.join('\n\n'),
 	};
+}
+
+function emptyWeekTable(orientation: DigestOrientation): string {
+	const days = [...ALL_WEEKDAYS];
+	if (orientation === 'columns') return tableDaysAsColumns(days, [], DAYPARTS);
+	return tableDaysAsRows(days, [], DAYPARTS);
 }
 
 function mayGoOutDays(grid: AvailabilityGrid): number[] {
@@ -330,8 +356,8 @@ function daypartFacts(days: readonly number[], buckets: AttemptBuckets, grid: Av
 	return facts;
 }
 
-function tableDaysAsRows(days: readonly number[], facts: readonly SlotFact[]): string {
-	const columns = DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
+function tableDaysAsRows(days: readonly number[], facts: readonly SlotFact[], dayparts?: readonly Daypart[]): string {
+	const columns = dayparts ?? DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
 	const header = ['| |', ...columns.map((daypart) => ` ${daypartTitle(daypart)} |`)].join('');
 	const rule = ['| --- |', ...columns.map(() => ' --- |')].join('');
 	const body = days.map((weekday) => {
@@ -341,8 +367,8 @@ function tableDaysAsRows(days: readonly number[], facts: readonly SlotFact[]): s
 	return [header, rule, ...body].join('\n');
 }
 
-function tableDaysAsColumns(days: readonly number[], facts: readonly SlotFact[]): string {
-	const rows = DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
+function tableDaysAsColumns(days: readonly number[], facts: readonly SlotFact[], dayparts?: readonly Daypart[]): string {
+	const rows = dayparts ?? DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
 	const header = ['| |', ...days.map((weekday) => ` ${weekdayShort(weekday)} |`)].join('');
 	const rule = ['| --- |', ...days.map(() => ' --- |')].join('');
 	const body = rows.map((daypart) => {

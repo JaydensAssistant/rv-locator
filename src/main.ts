@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
-import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, formatDigestNote, upsertAttemptDigest } from './attempt-digest';
+import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
 	GLANCABLE_ALL_VIEW_TYPE,
@@ -428,6 +428,7 @@ export default class RVLocatorPlugin extends Plugin {
 			buckets,
 			grid: this.settings.availabilityGrid,
 			orientation: this.settings.digestOrientation,
+			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
 			now: new Date(),
 		});
@@ -901,6 +902,7 @@ export default class RVLocatorPlugin extends Plugin {
 		return JSON.stringify({
 			grid: this.settings.availabilityGrid,
 			orientation: this.settings.digestOrientation,
+			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
 		});
 	}
@@ -921,10 +923,11 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * First launch of this digest shape rewrites every RV note. The daypart
-	 * table and the suggester quote stay above Attempt Log, outside any
-	 * comment, and an opened Attempt Log is collapsed once. Later Home and
-	 * Not home writes leave a fold the person set after that.
+	 * First launch of this digest shape rewrites every RV note. The suggester
+	 * quote stays above Attempt Log. The daypart table moves inside the
+	 * callout. Visible `%%` and HTML digest markers are removed. An opened
+	 * Attempt Log is collapsed once. Later Home and Not home writes leave a
+	 * fold the person set after that.
 	 */
 	private applyDigestPolish(): Promise<void> {
 		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
@@ -1000,9 +1003,10 @@ export default class RVLocatorPlugin extends Plugin {
 					entries: log.entries,
 					grid: this.settings.availabilityGrid,
 					orientation: this.settings.digestOrientation,
+					days: this.settings.digestDays,
 					thresholds: this.digestThresholds(),
 				});
-				const rewritten = upsertAttemptDigest(next, formatDigestNote(digest), { collapse: collapseLog });
+				const rewritten = upsertAttemptDigest(next, digest, { collapse: collapseLog });
 				return rewritten ?? next;
 			});
 		} catch {

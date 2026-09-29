@@ -22,16 +22,12 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 3. Writes **Address** in the template output (quoted). A later geocode does not replace it. If the prompt had an address and the property is still empty when the template finishes, `newRv.js` writes it once.
 4. Seeds **Met**, **Last Spoke**, and **Last Attempted** with the note’s creation time, local `YYYY-MM-DDTHH:mm:ss`. Creating the note **is** the first successful visit, so **Visits** and **Successful Visits** start at `1`.
 5. Writes one Glancable drive date for that visit as a `###` heading: `### Wed, 2pm — Sep 9, 2026` (weekday, hour rounded to the nearest hour, calendar date), with a muted `<span class="rv-stamp-ago">` such as `20 days ago`. A blank line under that heading is the place to type visit notes. A date-only value omits the hour.
-6. Adds a collapsed Attempt Log with one success bullet for that same stamp. The daypart table and the suggester quote sit above the callout, between `%% rv-locator-digest %%` markers, with a blank line before the table so Obsidian renders it. The plugin fills that block from the May-go-out schedule after the note exists. The template starts it as `> No May-go-out days` until then.
+6. Adds a collapsed Attempt Log with one success bullet for that same stamp. The suggester quote sits above the callout. The daypart table is inside the callout, above the bullets. There are no digest marker lines. The template starts the quote as `> No May-go-out days` until the plugin fills the quote and the table from the May-go-out schedule.
 
 ```markdown
 ### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>
 
-%% rv-locator-digest %%
-
 > No May-go-out days
-
-%% /rv-locator-digest %%
 
 > [!note]- Attempt Log
 > - Wed, 2pm — Sep 9, 2026 — success

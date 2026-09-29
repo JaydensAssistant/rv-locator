@@ -15,6 +15,7 @@ import {
 	defaultAvailabilityGrid,
 	migrateAvailabilityGrid,
 	type AvailabilityGrid,
+	type DigestDayScope,
 	type DigestOrientation,
 } from './schedule';
 
@@ -64,6 +65,8 @@ export interface RVLocatorSettings {
 	availabilityGrid: AvailabilityGrid;
 	/** Days as rows, or days as columns, in the Attempt Log digest table. */
 	digestOrientation: DigestOrientation;
+	/** All seven weekdays, or only days with a May-go-out daypart. */
+	digestDays: DigestDayScope;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -220,6 +223,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	homeLikelihoodEnabled: false,
 	availabilityGrid: defaultAvailabilityGrid(),
 	digestOrientation: 'rows',
+	digestDays: 'all',
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -329,6 +333,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		homeLikelihoodEnabled: input.homeLikelihoodEnabled === true,
 		availabilityGrid: migrateAvailabilityGrid(input.availabilityGrid),
 		digestOrientation: input.digestOrientation === 'columns' ? 'columns' : 'rows',
+		digestDays: input.digestDays === 'may' ? 'may' : 'all',
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),

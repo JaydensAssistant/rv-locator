@@ -1,22 +1,22 @@
 /**
- * The daypart table and the suggester quote sit above the Attempt Log
- * callout. The callout itself keeps only the dated bullets. An ordinary
- * rewrite leaves the fold (`+` / `-`) as the note already has it.
+ * The suggester quote sits above the Attempt Log callout. The daypart table
+ * is the first block inside that callout, then the dated bullets. The callout
+ * is the rewrite boundary, so the note has no visible digest markers.
+ * An ordinary rewrite leaves the fold (`+` / `-`) as the note already has it.
  * The one-time polish can collapse an opened log.
  */
 
 import { domInstanceOf } from './dom';
 
 /**
- * Obsidian comment markers, closed on the same line.
- * HTML comments (`<!-- -->`) are an HTML block. Obsidian keeps reading until
- * a later `-->`, so a start/end pair showed the table and the quote as raw
- * source. `%%` comments stay hidden in Live Preview and Reading view and do
- * not swallow the markdown between them. A blank line after the start marker
- * is what lets the table render.
+ * Older builds wrapped the digest in markers. Both forms are stripped on
+ * rewrite and are never written again.
+ * HTML comments are one HTML block: Obsidian keeps reading until a later
+ * `-->`, so the table rendered as raw source. Same-line `%%` comments
+ * rendered the table, and Live Preview still showed the marker text.
  */
-export const DIGEST_START = '%% rv-locator-digest %%';
-export const DIGEST_END = '%% /rv-locator-digest %%';
+const DIGEST_START = '%% rv-locator-digest %%';
+const DIGEST_END = '%% /rv-locator-digest %%';
 const LEGACY_DIGEST_START = '<!-- rv-locator-digest -->';
 const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
 
@@ -27,8 +27,11 @@ const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
  * the callout fold alone. New logs start collapsed.
  * 3 rewrites the digest with `%%` markers and a blank line before the table,
  * and collapses an opened Attempt Log once.
+ * 4 moves the table inside Attempt Log, leaves only the suggester quote
+ * above the callout, strips `%%` and HTML markers, and collapses an opened
+ * log once.
  */
-export const DIGEST_POLISH_VERSION = 3;
+export const DIGEST_POLISH_VERSION = 4;
 
 export function isDigestStartLine(line: string): boolean {
 	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);
@@ -47,15 +50,12 @@ export interface DigestNoteParts {
 }
 
 /**
- * Table, then a blockquote of the voice lines. An empty schedule is one
- * quoted line. HTML comment markers are added by {@link upsertAttemptDigest}.
+ * The suggester as a blockquote. The table is not included. An empty
+ * schedule is one quoted line. {@link upsertAttemptDigest} places this
+ * above Attempt Log and the table inside the callout.
  */
 export function formatDigestNote(parts: DigestNoteParts): string {
-	const lines = parts.sentences.length > 0
-		? parts.sentences
-		: (!parts.table && parts.text ? [parts.text] : []);
-	const quote = lines.map((line) => `> ${line}`).join('\n');
-	return [parts.table, quote].filter((part) => part.length > 0).join('\n\n');
+	return quoteLines(parts).join('\n');
 }
 
 export interface DigestWriteOptions {
@@ -64,31 +64,41 @@ export interface DigestWriteOptions {
 }
 
 /**
- * Insert or replace the digest above Attempt Log.
- * A digest that an older build stored inside the callout, or inside HTML
- * comments, is removed. Null when the note has no Attempt Log.
- * The callout header is not rewritten unless `collapse` is set.
+ * Put the suggester quote above Attempt Log and the daypart table inside it,
+ * above the bullets. Marker regions, a voice quote already on the callout,
+ * and a markdown table already on the callout are replaced. A table or voice
+ * block already inside the callout is replaced. Null when the note has no
+ * Attempt Log. The callout header is not rewritten unless `collapse` is set.
  */
-export function upsertAttemptDigest(markdown: string, inner: string, options?: DigestWriteOptions): string | null {
+export function upsertAttemptDigest(markdown: string, parts: DigestNoteParts, options?: DigestWriteOptions): string | null {
 	const source = options?.collapse ? collapseAttemptLog(markdown) : markdown;
 	const newline = source.includes('\r\n') ? '\r\n' : '\n';
-	const lines = source.split(/\r?\n/);
+	let lines = removeDigestRegions(source.split(/\r?\n/));
 	if (!lines.some((line) => ATTEMPT_LOG_CALLOUT.test(line))) return null;
-	const cleaned = removeDigestRegions(lines);
-	const start = cleaned.findIndex((line) => ATTEMPT_LOG_CALLOUT.test(line));
+	let start = lines.findIndex((line) => ATTEMPT_LOG_CALLOUT.test(line));
 	if (start < 0) return null;
-	const end = calloutEnd(cleaned, start);
-	const before = cleaned.slice(0, start);
+	({ lines, calloutIndex: start } = stripAdjacentVoice(lines, start));
+	({ lines, calloutIndex: start } = stripAdjacentTable(lines, start));
+	const end = calloutEnd(lines, start);
+	const before = lines.slice(0, start);
 	while (before.length > 0 && (before[before.length - 1] ?? '').trim() === '') before.pop();
-	const header = cleaned[start] ?? '';
-	const section = cleaned.slice(start + 1, end);
-	const rest = cleaned.slice(end);
+	const header = lines[start] ?? '';
+	const kept = logLinesAfterDigest(lines.slice(start + 1, end));
+	const rest = lines.slice(end);
+	const quote = quoteLines(parts);
+	const table = calloutTableLines(parts.table);
 	const lead = before.length > 0 ? [''] : [];
-	const block = digestBlockLines(inner);
-	return [...before, ...lead, ...block, '', header, ...section, ...rest].join(newline);
+	const gap = quote.length > 0 ? [''] : [];
+	const body = table.length === 0
+		? kept
+		: ['>', ...table, ...(kept.length > 0 ? ['>', ...kept] : [])];
+	return [...before, ...lead, ...quote, ...gap, header, ...body, ...rest].join(newline);
 }
 
-/** Index of the digest block that sits on Attempt Log, or the callout itself. */
+/**
+ * Where a new `###` stamp is inserted: above the suggester quote when one
+ * sits on Attempt Log, above a legacy marker block, or at the callout.
+ */
 export function attemptLogAnchor(lines: readonly string[], calloutIndex: number): number {
 	let index = calloutIndex;
 	while (index > 0 && (lines[index - 1] ?? '') === '') index -= 1;
@@ -97,6 +107,11 @@ export function attemptLogAnchor(lines: readonly string[], calloutIndex: number)
 		let start = index - 1;
 		while (start > 0 && !isDigestStartLine(lines[start] ?? '')) start -= 1;
 		if (isDigestStartLine(lines[start] ?? '')) return start;
+	}
+	if (index > 0 && isVoiceQuoteLine(previous)) {
+		let start = index;
+		while (start > 0 && isVoiceQuoteLine(lines[start - 1] ?? '')) start -= 1;
+		return start;
 	}
 	return calloutIndex;
 }
@@ -113,9 +128,9 @@ export function attemptLogCallouts(root: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Grey the Attempt Log callout and mark the table and quote that sit above it.
- * Voice lines inside an older in-callout digest are tagged until the rewrite
- * moves them out.
+ * Grey the Attempt Log callout, mark the suggester quote above it, and mark
+ * the daypart table inside it. A table still sitting above the callout, from
+ * a note not yet rewritten, is marked too.
  */
 export function decorateAttemptLog(root: HTMLElement): void {
 	for (const callout of attemptLogCallouts(root)) {
@@ -159,12 +174,93 @@ export function collapseAttemptLog(markdown: string): string {
 	return changed ? next.join(newline) : markdown;
 }
 
-function digestBlockLines(inner: string): string[] {
-	const body = inner.replace(/^\s+|\s+$/g, '');
-	const lines = body.length > 0 ? body.split('\n') : [];
-	// Blank line after the marker: Obsidian will not render a table that
-	// sits on the next line after other content.
-	return [DIGEST_START, '', ...lines, '', DIGEST_END];
+function quoteLines(parts: DigestNoteParts): string[] {
+	const lines = parts.sentences.length > 0
+		? parts.sentences
+		: (!parts.table && parts.text ? [parts.text] : []);
+	return lines.filter((line) => line.trim().length > 0).map((line) => `> ${line}`);
+}
+
+function calloutTableLines(table: string): string[] {
+	return table.split('\n').map((row) => row.trim()).filter((row) => row.length > 0).map((row) => `> ${row}`);
+}
+
+function isSuggesterText(text: string): boolean {
+	return /^(?:Avoid|Try|Unsure|Untried)\b/.test(text) || text === 'No May-go-out days';
+}
+
+function isVoiceQuoteLine(line: string): boolean {
+	if (!/^>/.test(line) || /^>\s*\[!/.test(line)) return false;
+	return isSuggesterText(line.replace(/^>\s?/, '').trim());
+}
+
+function isMarkdownTableLine(line: string): boolean {
+	const text = line.trim();
+	return text.startsWith('|') && text.endsWith('|');
+}
+
+function stripAdjacentVoice(lines: readonly string[], calloutIndex: number): { lines: string[]; calloutIndex: number } {
+	let index = calloutIndex;
+	while (index > 0 && (lines[index - 1] ?? '').trim() === '') index -= 1;
+	if (index === 0 || !isVoiceQuoteLine(lines[index - 1] ?? '')) return { lines: [...lines], calloutIndex };
+	let start = index;
+	while (start > 0 && isVoiceQuoteLine(lines[start - 1] ?? '')) start -= 1;
+	return {
+		lines: [...lines.slice(0, start), ...lines.slice(calloutIndex)],
+		calloutIndex: start,
+	};
+}
+
+function stripAdjacentTable(lines: readonly string[], calloutIndex: number): { lines: string[]; calloutIndex: number } {
+	let index = calloutIndex;
+	while (index > 0 && (lines[index - 1] ?? '').trim() === '') index -= 1;
+	if (!isMarkdownTableLine(lines[index - 1] ?? '')) return { lines: [...lines], calloutIndex };
+	let start = index;
+	while (start > 0) {
+		const prev = lines[start - 1] ?? '';
+		if (isMarkdownTableLine(prev)) {
+			start -= 1;
+			continue;
+		}
+		if (prev.trim() === '' && start > 1 && isMarkdownTableLine(lines[start - 2] ?? '')) {
+			start -= 1;
+			continue;
+		}
+		break;
+	}
+	return {
+		lines: [...lines.slice(0, start), ...lines.slice(calloutIndex)],
+		calloutIndex: start,
+	};
+}
+
+function logLinesAfterDigest(body: readonly string[]): string[] {
+	let index = 0;
+	let sawDigest = false;
+	while (index < body.length) {
+		const line = body[index] ?? '';
+		if (isTableOrVoice(line)) {
+			sawDigest = true;
+			index += 1;
+			continue;
+		}
+		if (/^>\s*$/.test(line) && (sawDigest || nextIsDigest(body, index + 1))) {
+			index += 1;
+			continue;
+		}
+		break;
+	}
+	return [...body.slice(index)];
+}
+
+function isTableOrVoice(line: string): boolean {
+	const text = line.replace(/^>\s?/, '').trim();
+	if (text.startsWith('|') && text.endsWith('|')) return true;
+	return isSuggesterText(text);
+}
+
+function nextIsDigest(body: readonly string[], index: number): boolean {
+	return index < body.length && isTableOrVoice(body[index] ?? '');
 }
 
 function removeDigestRegions(lines: readonly string[]): string[] {
@@ -210,8 +306,10 @@ function tagInsideLegacy(callout: HTMLElement): void {
 	if (!content) return;
 	for (const child of Array.from(content.children)) {
 		if (!domInstanceOf(child, HTMLElement)) continue;
-		if (child.matches('table') || child.querySelector(':scope > table, table')) {
+		const table = child.matches('table') ? child : child.querySelector(':scope > table, table');
+		if (table && domInstanceOf(table, HTMLElement)) {
 			child.classList.add('rv-locator-digest-block');
+			table.classList.add('rv-locator-digest-table');
 		}
 		const text = (child.textContent ?? '').replace(/\s+/g, ' ').trim();
 		const voice = digestVoiceClass(text);

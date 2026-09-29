@@ -84,8 +84,9 @@ export function applyVisitFrontmatter(
  * Both outcomes append `> - <stamp> — success|not home` inside the Attempt Log
  * callout. A missing log is created collapsed (`> [!note]-`). An existing `+`
  * or `-` stays. An old `## Attempt Log` heading is migrated to that collapsed
- * callout on write. A home stamp is inserted above the digest block when one
- * sits on the callout, so the table and quote stay next to the log.
+ * callout on write. A home stamp is inserted above the suggester quote when
+ * one sits on the callout, so the quote stays next to the log. The daypart
+ * table stays inside the callout.
  * Each `###` visit stamp gets a muted age (`54 days ago`). Home and Not home
  * refresh ages already on the note. Address is not part of the body edit.
  */
@@ -220,6 +221,7 @@ function appendLogLine(body: string, line: string): string {
 	const section = lines.slice(found.index, end);
 	while (section.length > 1 && /^>\s*$/.test(section[section.length - 1] ?? '')) section.pop();
 	while (section.length > 0 && section[section.length - 1] === '') section.pop();
+	if (section.length > 1 && /^>\s*\|/.test(section[section.length - 1] ?? '')) section.push('>');
 	section.push(line.startsWith('>') ? line : `> ${line}`);
 	const rest = lines.slice(end);
 	const gap = rest.length > 0 && rest[0] !== '' ? [''] : [];

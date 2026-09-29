@@ -315,6 +315,23 @@ describe('dayparts and return suggester', () => {
 		assert.equal(digest.table, [
 			'| | Morning | Afternoon | Evening |',
 			'| --- | --- | --- | --- |',
+			'| Sun | — | — | — |',
+			'| Mon | — | — | — |',
+			'| Tue | — | — | — |',
+			'| Wed | — | — | — |',
+			'| Thu | — | — | — |',
+			'| Fri | 1/5 | 1/5 | 1/5 |',
+			'| Sat | 0/0 | — | — |',
+		].join('\n'));
+		const mayDays = suggestReturnDigest({
+			buckets,
+			grid,
+			days: 'may',
+			now: new Date(2026, 8, 24, 12, 0, 0),
+		});
+		assert.equal(mayDays.table, [
+			'| | Morning | Afternoon | Evening |',
+			'| --- | --- | --- | --- |',
 			'| Fri | 1/5 | 1/5 | 1/5 |',
 			'| Sat | 0/0 | — | — |',
 		].join('\n'));
@@ -338,15 +355,19 @@ describe('dayparts and return suggester', () => {
 			now: new Date(2026, 8, 24, 12, 0, 0),
 		});
 		assert.equal(columns.table, [
-			'| | Fri | Sat |',
-			'| --- | --- | --- |',
-			'| Morning | 1/5 | 0/0 |',
-			'| Afternoon | 1/5 | — |',
-			'| Evening | 1/5 | — |',
+			'| | Sun | Mon | Tue | Wed | Thu | Fri | Sat |',
+			'| --- | --- | --- | --- | --- | --- | --- | --- |',
+			'| Morning | — | — | — | — | — | 1/5 | 0/0 |',
+			'| Afternoon | — | — | — | — | — | 1/5 | — |',
+			'| Evening | — | — | — | — | — | 1/5 | — |',
 		].join('\n'));
 		const empty = suggestReturnDigest({ buckets: {}, grid: defaultAvailabilityGrid() });
-		assert.equal(empty.markdown, 'No May-go-out days');
-		assert.equal(empty.table, '');
+		assert.equal(empty.sentences[0], 'No May-go-out days');
+		assert.match(empty.table, /\| Sun \| — \| — \| — \|/);
+		assert.match(empty.table, /\| Sat \| — \| — \| — \|/);
+		const mayEmpty = suggestReturnDigest({ buckets: {}, grid: defaultAvailabilityGrid(), days: 'may' });
+		assert.equal(mayEmpty.markdown, 'No May-go-out days');
+		assert.equal(mayEmpty.table, '');
 
 		const halfGrid = defaultAvailabilityGrid();
 		halfGrid['3:evening'] = 'may';
@@ -508,18 +529,25 @@ describe('dayparts and return suggester', () => {
 	it('keeps days as rows unless the user swapped to columns', () => {
 		const settings = mergeSettings(undefined);
 		assert.equal(settings.digestOrientation, 'rows');
+		assert.equal(settings.digestDays, 'all');
 		assert.equal(mergeSettings({ digestOrientation: 'columns' }).digestOrientation, 'columns');
 		assert.equal(mergeSettings({ digestOrientation: 'rows' }).digestOrientation, 'rows');
+		assert.equal(mergeSettings({ digestDays: 'may' }).digestDays, 'may');
+		assert.equal(mergeSettings({}).digestDays, 'all');
 		const grid = defaultAvailabilityGrid();
 		grid['0:morning'] = 'may';
 		grid['0:afternoon'] = 'may';
 		const digest = suggestReturnDigest({ buckets: {}, grid });
 		assert.match(digest.table, /^\| \| Morning \| Afternoon \|/);
 		assert.match(digest.table, /\| Sun \| 0\/0 \| 0\/0 \|/);
+		assert.match(digest.table, /\| Sat \| — \| — \|/);
 		assert.equal(/^\| Morning \|/m.test(digest.table), false);
+		const mayOnly = suggestReturnDigest({ buckets: {}, grid, days: 'may' });
+		assert.equal(mayOnly.table.includes('| Mon |'), false);
+		assert.match(mayOnly.table, /\| Sun \| 0\/0 \| 0\/0 \|/);
 	});
 
-	it('places the table and the suggester quote above a collapsed Attempt Log', () => {
+	it('places the suggester quote above Attempt Log and the table inside it', () => {
 		const grid = defaultAvailabilityGrid();
 		grid['1:morning'] = 'may';
 		grid['1:evening'] = 'may';
@@ -529,14 +557,24 @@ describe('dayparts and return suggester', () => {
 				'1:evening': { homes: 2, trials: 2 },
 			},
 			grid,
+			days: 'may',
 		});
 		const body = formatDigestNote(digest);
-		assert.equal(body.startsWith(digest.table), true);
-		assert.ok(body.indexOf(digest.table) < body.indexOf('> Avoid:'));
+		assert.equal(body.includes(digest.table), false);
+		assert.equal(body.startsWith('> Avoid:'), true);
 		assert.ok(body.indexOf('> Avoid:') < body.indexOf('> Try:'));
 		assert.equal(body.includes('> [!note]'), false);
 		const note = [
 			'### Mon, 9am — Sep 1, 2026',
+			'',
+			'%% rv-locator-digest %%',
+			'',
+			digest.table,
+			'',
+			'> Avoid: old',
+			'> Try: old',
+			'',
+			'%% /rv-locator-digest %%',
 			'',
 			'> [!note]+ Attempt Log',
 			'> <!-- rv-locator-digest -->',
@@ -545,41 +583,38 @@ describe('dayparts and return suggester', () => {
 			'> - Mon, 9am — Sep 1, 2026 — success',
 			'',
 		].join('\n');
-		const next = upsertAttemptDigest(note, body);
+		const next = upsertAttemptDigest(note, digest);
 		assert.ok(next);
 		const lines = (next ?? '').split('\n');
-		const tableAt = lines.findIndex((line) => line.startsWith('| |'));
 		const avoidAt = lines.findIndex((line) => line.startsWith('> Avoid:'));
 		const tryAt = lines.findIndex((line) => line.startsWith('> Try:'));
 		const logAt = lines.findIndex((line) => line === '> [!note]+ Attempt Log');
+		const tableAt = lines.findIndex((line) => line.startsWith('> | |'));
 		const bulletAt = lines.findIndex((line) => line.startsWith('> - Mon, 9am'));
-		assert.ok(tableAt >= 0 && tableAt < avoidAt && avoidAt < tryAt && tryAt < logAt && logAt < bulletAt);
+		assert.ok(avoidAt >= 0 && avoidAt < tryAt && tryAt < logAt && logAt < tableAt && tableAt < bulletAt);
 		assert.equal(lines[logAt - 1], '');
-		assert.equal(lines.includes('> <!-- rv-locator-digest -->'), false);
+		assert.equal(lines[logAt + 1], '>');
+		assert.equal(lines.includes('%% rv-locator-digest %%'), false);
+		assert.equal(lines.includes('%% /rv-locator-digest %%'), false);
 		assert.equal(lines.includes('<!-- rv-locator-digest -->'), false);
-		assert.equal(lines.filter((line) => line === '%% rv-locator-digest %%').length, 1);
-		assert.equal(lines[tableAt - 1], '');
-		assert.equal(lines[tableAt - 2], '%% rv-locator-digest %%');
-		const callout = lines.slice(logAt + 1).filter((line) => line.startsWith('>'));
-		assert.deepEqual(callout, ['> - Mon, 9am — Sep 1, 2026 — success']);
-		const closed = upsertAttemptDigest('> [!note]- Attempt Log\n> - old — success\n', '> No May-go-out days');
+		assert.equal(lines.includes('> <!-- rv-locator-digest -->'), false);
+		assert.equal(lines.filter((line) => line.startsWith('| |')).length, 0);
+		assert.equal(next, upsertAttemptDigest(next ?? '', digest));
+		const noSchedule = { table: '', sentences: ['No May-go-out days'], text: 'No May-go-out days' };
+		const closed = upsertAttemptDigest('> [!note]- Attempt Log\n> - old — success\n', noSchedule);
 		assert.equal(closed, [
-			'%% rv-locator-digest %%',
-			'',
 			'> No May-go-out days',
-			'',
-			'%% /rv-locator-digest %%',
 			'',
 			'> [!note]- Attempt Log',
 			'> - old — success',
 			'',
 		].join('\n'));
-		const collapsed = upsertAttemptDigest('> [!note]+ Attempt Log\n> - old — success\n', '> No May-go-out days', { collapse: true });
+		const collapsed = upsertAttemptDigest('> [!note]+ Attempt Log\n> - old — success\n', noSchedule, { collapse: true });
 		assert.equal(collapsed?.includes('> [!note]- Attempt Log'), true);
 		assert.equal(collapsed?.includes('> [!note]+ Attempt Log'), false);
-		const kept = upsertAttemptDigest('> [!note]+ Attempt Log\n> - old — success\n', '> No May-go-out days');
+		const kept = upsertAttemptDigest('> [!note]+ Attempt Log\n> - old — success\n', noSchedule);
 		assert.equal(kept?.includes('> [!note]+ Attempt Log'), true);
-		assert.equal(upsertAttemptDigest('no log', 'x'), null);
+		assert.equal(upsertAttemptDigest('no log', noSchedule), null);
 		const aged = refreshHomeStampAges([
 			'### Tue, 10am — Sep 29, 2026',
 			'',
@@ -672,6 +707,7 @@ describe('settings defaults', () => {
 		assert.equal(settings.sortChips.distance, true);
 		assert.equal(settings.homeLikelihoodEnabled, false);
 		assert.equal(settings.digestOrientation, 'rows');
+		assert.equal(settings.digestDays, 'all');
 		assert.equal(settings.priorityNudgeEvery, 3);
 		assert.equal(Object.values(settings.availabilityGrid).every((level) => level === 'off'), true);
 		assert.equal(settings.availabilityGrid['5:evening'], 'off');

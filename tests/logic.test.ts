@@ -1129,6 +1129,26 @@ describe('visit log', () => {
 		assert.equal(next.includes('> [!note]- Attempt Log'), false);
 		assert.ok(next.indexOf('> - Sat, 11pm — Sep 26, 2026 — success') > logAt);
 		assert.equal(next.split('<!-- rv-locator-digest -->').length, 2);
+
+		const quoted = [
+			'Notes.',
+			'',
+			'> Try: **Mon morning (1/1)**',
+			'> Untried: Sun',
+			'',
+			'> [!note]- Attempt Log',
+			'>',
+			'> | Mon | 1/1 |',
+			'>',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const above = applyVisitBody(quoted, 'home', now);
+		const quoteStamp = above.indexOf('### Sat, 11pm — Sep 26, 2026');
+		const tryAt = above.indexOf('> Try: **Mon morning (1/1)**');
+		const quotedLog = above.indexOf('> [!note]- Attempt Log');
+		assert.ok(quoteStamp >= 0 && quoteStamp < tryAt && tryAt < quotedLog);
+		assert.ok(above.indexOf('> | Mon | 1/1 |') > quotedLog);
 	});
 
 	it('accepts unmarked and tight Attempt Log callout variants', () => {
@@ -1214,7 +1234,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.10');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.11');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1257,7 +1277,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.10/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.11/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1278,9 +1298,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.10');
+		assert.equal(plan.ref, 'v1.2.11');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.10/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.11/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

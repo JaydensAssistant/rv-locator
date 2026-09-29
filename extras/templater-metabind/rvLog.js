@@ -4,9 +4,10 @@
  *
  * Attempt Log is a collapsed callout. An existing + or - is left alone.
  * An old `## Attempt Log` heading is migrated to the collapsed callout on
- * the next Home / Not home write. A home stamp is inserted above the digest
- * block when one sits on the callout. Each ### visit stamp gets a muted
- * "N days ago" age, refreshed on the next Home or Not home.
+ * the next Home / Not home write. A home stamp is inserted above the
+ * suggester quote when one sits on the callout. The daypart table stays
+ * inside the callout. Each ### visit stamp gets a muted "N days ago" age,
+ * refreshed on the next Home or Not home.
  * Home inserts a Glancable `###` stamp above the log, including a second
  * Home in the same rounded hour. Two blank lines sit between that stamp and
  * Attempt Log so there is room for notes. Counters and the Attempt Log
@@ -168,6 +169,12 @@ function ensureAttemptLog(body) {
   return normalized;
 }
 
+function isVoiceQuoteLine(line) {
+  if (!/^>/.test(line) || /^>\s*\[!/.test(line)) return false;
+  const text = String(line).replace(/^>\s?/, "").trim();
+  return /^(?:Avoid|Try|Unsure|Untried)\b/.test(text) || text === "No May-go-out days";
+}
+
 function attemptLogAnchor(lines, calloutIndex) {
   let index = calloutIndex;
   while (index > 0 && (lines[index - 1] ?? "") === "") index -= 1;
@@ -176,6 +183,11 @@ function attemptLogAnchor(lines, calloutIndex) {
     let start = index - 1;
     while (start > 0 && !isDigestStartLine(lines[start] ?? "")) start -= 1;
     if (isDigestStartLine(lines[start] ?? "")) return start;
+  }
+  if (index > 0 && isVoiceQuoteLine(previous)) {
+    let start = index;
+    while (start > 0 && isVoiceQuoteLine(lines[start - 1] ?? "")) start -= 1;
+    return start;
   }
   return calloutIndex;
 }
@@ -207,6 +219,7 @@ function appendLogBullet(body, bullet) {
   const block = lines.slice(found.index, end);
   while (block.length > 1 && /^>\s*$/.test(block[block.length - 1] ?? "")) block.pop();
   while (block.length > 0 && block[block.length - 1] === "") block.pop();
+  if (block.length > 1 && /^>\s*\|/.test(block[block.length - 1] ?? "")) block.push(">");
   const line = bullet.startsWith(">") ? bullet : `> ${bullet}`;
   block.push(line);
   const rest = lines.slice(end);
