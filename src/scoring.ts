@@ -70,6 +70,25 @@ export function urgencyMark(urgency: number | null, priority: number | null): Ur
 	return { glyphs: '!!!', band: 3 };
 }
 
+/**
+ * Drawn bangs and the low-urgency ring. Bar width matches the card-circle stroke
+ * so the marks stay short and heavy instead of a thin system-font exclamation.
+ * Priority 0 has no glyph.
+ */
+export function urgencyGlyphMarkup(glyphs: string): string {
+	if (glyphs === '○') {
+		return '<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false"><circle cx="14" cy="14" r="5.1" fill="none" stroke="currentColor" stroke-width="2.8"/></svg>';
+	}
+	const count = glyphs === '!' ? 1 : glyphs === '!!' ? 2 : glyphs === '!!!' ? 3 : 0;
+	if (count === 0) return '';
+	const centers = count === 1 ? [14] : count === 2 ? [10.6, 17.4] : [7.4, 14, 20.6];
+	const marks = centers.map((cx) => {
+		const x = (cx - 1.4).toFixed(2);
+		return `<rect x="${x}" y="6.4" width="2.8" height="8.4" rx="1.4"/><circle cx="${cx}" cy="18.5" r="1.5"/>`;
+	}).join('');
+	return `<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false" fill="currentColor">${marks}</svg>`;
+}
+
 /** Green below 1, then a distinct yellow, orange, and red. Priority 0 stays neutral grey. */
 export function urgencyAccentColor(urgency: number | null, priority: number | null = 1): string {
 	if (priority == null || priority <= 0) return 'var(--text-faint)';

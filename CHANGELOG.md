@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.8
+
+`main.js` SHA-256: `2052fd682d2922669088feab2ca2dfa8e438e47c4927fda795037b702644b4e1`
+
+`styles.css` SHA-256: `7e6c7a2ea9d0fecdadda79d55b0ab6409c20ebcc1c983f3ad1f4d3fecdf8f19a`
+
+`manifest.json` SHA-256: `48d2b6f75a8bb0811233d6ea1b9dba47b79f27b740f8fd83600d0859125cc220`
+
+- Glancable urgency, priority, and map controls (Active, All, and Inactive Nearby cards) use a thicker circle. The stroke, a soft same-hue fill, and the glyph share the urgency color. Priority 0 stays a grey outline with the same grey tint. Bang marks for urgency 3/2/1 are drawn as short heavy bars, not a thin system-font exclamation. The low-urgency mark stays a ring of the same stroke weight. The left accent stripe is unchanged.
+- Attempt Log table and the four bucket lines stay inside the collapsible callout body. Collapsing the header hides them. The first time 1.2.8 loads, a header that still uses the old collapsed default (`> [!note]- Attempt Log`) is opened (`+`). A header collapsed after that stays collapsed. New logs and the New RV template start open. Home and Not home still append inside whatever fold sign is already on the note.
+- The dated Home / Not home list under the Attempt Log table is no longer written. The visit bullets stay. The first launch rewrites each RV note's digest so that list is removed. Template notes are not given a schedule digest.
+- Bucket lines under the table are Avoid, then Try, then Unsure, then Untried. Empty lines are still omitted, including an empty Try line. The worst Avoid slots are bold the same way the best Try slots are, and a tie bolds every slot at that soft rate. Membership rules are unchanged.
+- The digest table still defaults to days of the week down the side and Morning, Afternoon, and Evening across. A saved Swap rows and columns choice (`columns`) is kept. That swap is the only way plugin data stores `columns`.
+- Extras sync is pinned to tag `v1.2.8` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.7
 
 `main.js` SHA-256: `8ce28f6b8358e3bf7e8674d02eaf3281929a6cf2be85334a6bc10f40565f5ff1`

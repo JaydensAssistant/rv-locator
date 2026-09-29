@@ -574,7 +574,7 @@
 	white-space: nowrap;
 }
 
-.rv-locator-glancable .rv-locator-map-pin {
+.rv-locator-view .rv-locator-map-pin {
 	display: inline-flex;
 	box-sizing: border-box;
 	flex: 0 0 auto;
@@ -582,16 +582,17 @@
 	justify-content: center;
 	width: var(--rv-control-size, 28px);
 	height: var(--rv-control-size, 28px);
-	border: 1.5px solid var(--rv-urgency-accent, var(--text-faint));
+	border: 3px solid var(--rv-urgency-accent, var(--text-faint));
 	border-radius: 999px;
-	background: transparent;
+	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 22%, transparent);
 	color: var(--rv-urgency-accent, var(--text-faint));
 	text-decoration: none;
 }
 
-.rv-locator-glancable .rv-locator-map-pin svg {
-	width: calc(15px * var(--rv-font-scale, 1));
-	height: calc(15px * var(--rv-font-scale, 1));
+.rv-locator-view .rv-locator-map-pin svg {
+	width: calc(16px * var(--rv-font-scale, 1));
+	height: calc(16px * var(--rv-font-scale, 1));
+	stroke-width: 2.6;
 }
 
 .rv-locator-glancable .rv-locator-card-actions {
@@ -645,8 +646,8 @@
 	white-space: nowrap;
 }
 
-.rv-locator-glancable .rv-locator-priority-pill,
-.rv-locator-glancable .rv-locator-urgency {
+.rv-locator-view .rv-locator-priority-pill,
+.rv-locator-view .rv-locator-urgency {
 	display: inline-flex;
 	box-sizing: border-box;
 	flex: 0 0 auto;
@@ -656,9 +657,9 @@
 	height: var(--rv-control-size, 28px);
 	margin: 0;
 	padding: 0;
-	border: 1.5px solid var(--rv-urgency-accent, var(--text-faint));
+	border: 3px solid var(--rv-urgency-accent, var(--text-faint));
 	border-radius: 999px;
-	background: transparent;
+	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 22%, transparent);
 	box-shadow: none;
 	color: var(--rv-urgency-accent, var(--text-faint));
 	font-family: inherit;
@@ -667,33 +668,21 @@
 	cursor: pointer;
 }
 
-.rv-locator-glancable .rv-locator-priority-pill {
-	font-size: calc(13px * var(--rv-font-scale, 1));
-	font-weight: 700;
-}
-
-.rv-locator-glancable .rv-locator-urgency {
-	font-size: calc(12px * var(--rv-font-scale, 1));
-	font-weight: 600;
-	letter-spacing: -0.06em;
-}
-
-.rv-locator-glancable .rv-locator-urgency[data-band="0"] {
+.rv-locator-view .rv-locator-priority-pill {
 	font-size: calc(15px * var(--rv-font-scale, 1));
-	font-weight: 500;
-	letter-spacing: 0;
+	font-weight: 800;
 }
 
-.rv-locator-glancable .rv-locator-urgency[data-band="3"] {
-	font-size: calc(10px * var(--rv-font-scale, 1));
-	font-weight: 600;
-	letter-spacing: -0.08em;
+.rv-locator-view .rv-locator-urgency svg {
+	display: block;
+	width: 100%;
+	height: 100%;
 }
 
-.rv-locator-glancable .rv-locator-card.is-priority-zero .rv-locator-urgency,
-.rv-locator-glancable .rv-locator-card.is-priority-zero .rv-locator-priority-pill,
-.rv-locator-glancable .rv-locator-card.is-priority-zero .rv-locator-map-pin {
-	background: transparent;
+.rv-locator-view .rv-locator-card.is-priority-zero .rv-locator-urgency,
+.rv-locator-view .rv-locator-card.is-priority-zero .rv-locator-priority-pill,
+.rv-locator-view .rv-locator-card.is-priority-zero .rv-locator-map-pin {
+	background: color-mix(in srgb, var(--text-faint) 22%, transparent);
 	color: var(--text-faint);
 	border-color: var(--text-faint);
 }
@@ -845,48 +834,42 @@
 	height: 16px;
 }
 
-.callout > .rv-locator-return-digest,
 .rv-locator-modal .rv-locator-return-digest {
 	display: block;
-	margin: 0 0.75rem 0.5rem 2.15rem;
+	margin: 0 0 12px;
 	color: var(--text-muted);
 	font-size: var(--font-ui-small);
 	line-height: 1.35;
 }
 
-.rv-locator-modal .rv-locator-return-digest {
-	margin: 0 0 12px;
-}
-
-.callout.is-collapsed > .rv-locator-return-digest {
-	display: block;
-	margin-bottom: 0.55rem;
-}
-
-.rv-locator-return-digest table {
+.rv-locator-digest-block table,
+table.rv-locator-digest-block,
+.rv-locator-modal .rv-locator-return-digest table {
 	width: auto;
 	margin: 0 0 0.35rem;
 	font-size: var(--font-ui-smaller);
 }
 
-.rv-locator-return-digest .is-avoid,
+.callout-content > .rv-locator-digest-block.is-avoid,
 .rv-locator-return-line.is-avoid,
-.rv-locator-return-digest .is-try,
+.callout-content > .rv-locator-digest-block.is-try,
 .rv-locator-return-line.is-try,
-.rv-locator-return-digest .is-untried,
+.callout-content > .rv-locator-digest-block.is-untried,
 .rv-locator-return-line.is-untried,
-.rv-locator-return-digest .is-unsure,
+.callout-content > .rv-locator-digest-block.is-unsure,
 .rv-locator-return-line.is-unsure {
 	color: var(--text-normal);
 	font-weight: 400;
 }
 
-.rv-locator-return-digest .is-try strong,
-.rv-locator-return-line.is-try strong {
+.callout-content > .rv-locator-digest-block.is-try strong,
+.rv-locator-return-line.is-try strong,
+.callout-content > .rv-locator-digest-block.is-avoid strong,
+.rv-locator-return-line.is-avoid strong {
 	font-weight: 700;
 }
 
-.rv-locator-return-digest .is-history,
+.callout-content > .rv-locator-digest-block.is-history,
 .rv-locator-return-line.is-history {
 	color: var(--text-muted);
 	font-weight: 400;

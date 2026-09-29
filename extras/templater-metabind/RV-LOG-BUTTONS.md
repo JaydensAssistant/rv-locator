@@ -15,7 +15,7 @@ Jayden runs Templater. Use the Templater path for **full parity** with the plugi
 |----------|--------|----------------------|----------------------------|
 | Visits / Successful Visits / Last Spoke / Last Attempted | yes | yes | yes |
 | Mid-note `## Wed, 2pm — Sep 9, 2026` + blank notes above the log (home) | yes | yes | **no** |
-| Attempt Log collapsed callout bullet (`> - stamp — success\|not home`) | yes | yes | partial |
+| Attempt Log open callout bullet (`> - stamp — success\|not home`) | yes | yes | partial |
 | Never write Address | yes | yes | yes |
 
 See `metabind/RV-LOG-BUTTONS-TEMPLATER.md` for paste-ready buttons.

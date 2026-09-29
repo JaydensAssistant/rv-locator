@@ -2,7 +2,7 @@
  * RV Locator visit-log parity for Templater (plugin 1.1.3).
  * Never writes Address.
  *
- * Attempt Log is a collapsed callout. An old `## Attempt Log` heading is
+ * Attempt Log is an open callout. An old `## Attempt Log` heading is
  * migrated to that callout on the next Home / Not home write.
  * Home inserts a Glancable `###` stamp above the log, including a second
  * Home in the same rounded hour. Two blank lines sit between that stamp and
@@ -63,7 +63,7 @@ function asNumber(v) {
 /** `> [!note]-`, `> [!note]+`, and an unmarked `> [!note]` title all count. */
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
-const CALLOUT_HEADER = "> [!note]- Attempt Log";
+const CALLOUT_HEADER = "> [!note]+ Attempt Log";
 const ADDRESS_KEY = "Address";
 
 function findAttemptLog(lines) {

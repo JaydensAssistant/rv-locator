@@ -7,14 +7,14 @@ Does **not** change `Address`. Matches the plugin priority-tap logger:
 - **Home:** Visits++, Successful Visits++, Last Spoke + Last Attempted (local ISO), then a callout bullet `> - … — success`. A Glancable `### Wed, 2pm — Sep 9, 2026` heading (weekday, nearest hour, calendar date) and a blank notes line are inserted **above** the Attempt Log on every Home, including a second Home in the same rounded hour.
 - **Not home:** Visits++, Last Attempted only, callout bullet `> - … — not home`. No stamp. A second Not home immediately after the first still logs.
 
-Attempt Log is a collapsed callout, not a `##` heading:
+Attempt Log is an open callout, not a `##` heading:
 
 ```markdown
-> [!note]- Attempt Log
+> [!note]+ Attempt Log
 > - Wed, 2pm — Sep 9, 2026 — success
 ```
 
-The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, and tight forms such as `>[!note]- Attempt Log`. If the note still has the old `## Attempt Log` heading, the next Home or Not home write migrates that section into the collapsed callout and appends there. Existing notes are not bulk-migrated.
+The script also recognizes `> [!note]- Attempt Log`, `> [!note] Attempt Log`, and tight forms such as `>[!note]- Attempt Log`. If the note still has the old `## Attempt Log` heading, the next Home or Not home write migrates that section into the open callout and appends there. Existing notes are not bulk-migrated.
 
 `New RV.md` already includes these buttons. Paste the blocks below only when you are adding them to an older note.
 
@@ -29,7 +29,7 @@ The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, an
 
 (The `BUTTON[…]` line must be wrapped in backticks so Meta Bind renders real buttons instead of raw text.)
 
-The script creates `> [!note]- Attempt Log` at the bottom when the note has neither that callout nor a legacy `## Attempt Log` heading.
+The script creates `> [!note]+ Attempt Log` at the bottom when the note has neither that callout nor a legacy `## Attempt Log` heading.
 
 ## Meta Bind buttons (`runTemplaterFile`)
 

@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
-import { attemptLogCallouts, hoistAttemptDigest, upsertAttemptDigest } from './attempt-digest';
+import { attemptLogCallouts, containAttemptDigest, DIGEST_POLISH_VERSION, openAttemptLogCallout, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
 	GLANCABLE_ALL_VIEW_TYPE,
@@ -83,6 +83,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** A setup notice is already on screen, so another view open does not stack a second one. */
 	private setupNudgeOpen = false;
 	private digestKeyApplied = '';
+	private digestPolish = 0;
 	private digestRewrite: Promise<void> = Promise.resolve();
 
 	async onload(): Promise<void> {
@@ -145,7 +146,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 
 		this.registerMarkdownPostProcessor((element) => {
-			for (const callout of attemptLogCallouts(element)) hoistAttemptDigest(callout);
+			for (const callout of attemptLogCallouts(element)) containAttemptDigest(callout);
 		});
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
@@ -155,6 +156,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 		this.app.workspace.onLayoutReady(() => {
 			void this.syncSetupCompletion();
+			void this.applyDigestPolish();
 		});
 		this.digestKeyApplied = this.digestKey();
 	}
@@ -902,15 +904,34 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private rewriteAllDigests(): Promise<void> {
+		const run = this.digestRewrite.then(() => this.rewriteVaultDigests(false));
+		this.digestRewrite = run.catch(() => undefined);
+		return run;
+	}
+
+	/**
+	 * First launch of this digest shape rewrites every RV note and opens
+	 * Attempt Log headers that still use the collapsed default. A header the
+	 * reader later sets back to collapsed is not opened again.
+	 */
+	private applyDigestPolish(): Promise<void> {
+		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
 		const run = this.digestRewrite.then(async () => {
-			for (const file of this.app.vault.getMarkdownFiles()) {
-				if (this.unloaded) return;
-				if (this.isTemplateNote(file)) continue;
-				await this.rewriteDigestFile(file);
-			}
+			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
+			await this.rewriteVaultDigests(true);
+			if (this.unloaded) return;
+			this.digestPolish = DIGEST_POLISH_VERSION;
+			await this.persist();
 		});
 		this.digestRewrite = run.catch(() => undefined);
 		return run;
+	}
+
+	private async rewriteVaultDigests(openCallout: boolean): Promise<void> {
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			if (this.unloaded) return;
+			await this.rewriteDigestFile(file, openCallout);
+		}
 	}
 
 	private isTemplateNote(file: TFile): boolean {
@@ -952,21 +973,25 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async rewriteDigestFile(file: TFile): Promise<void> {
-		if (file.extension !== 'md' || this.isTemplateNote(file)) return;
+	private async rewriteDigestFile(file: TFile, openCallout = false): Promise<void> {
+		if (file.extension !== 'md') return;
+		const template = this.isTemplateNote(file);
+		if (template && !openCallout) return;
 		const current = this.app.vault.getFileByPath(file.path);
 		if (!current) return;
 		try {
 			await this.app.vault.process(current, (data) => {
-				const log = readAttemptLog(data);
+				const source = openCallout ? openAttemptLogCallout(data) : data;
+				if (template) return source;
+				const log = readAttemptLog(source);
 				const digest = suggestReturnDigest({
 					buckets: log.buckets,
 					entries: log.entries,
 					grid: this.settings.availabilityGrid,
 					orientation: this.settings.digestOrientation,
 				});
-				const next = upsertAttemptDigest(data, digest.markdown);
-				return next ?? data;
+				const next = upsertAttemptDigest(source, digest.markdown);
+				return next ?? source;
 			});
 		} catch {
 			return;
@@ -1015,6 +1040,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.settings = mergeSettings(data?.settings);
 		this.nearbySort = sanitizeNearbySort(data?.nearbySort);
 		this.geocodeCache = sanitizeCache(data?.geocodeCache);
+		this.digestPolish = data?.digestPolish === DIGEST_POLISH_VERSION ? DIGEST_POLISH_VERSION : 0;
 	}
 
 	private async writeMigrations(snapshots: readonly NoteSnapshot[]): Promise<{ visits: number; cities: number }> {
@@ -1046,6 +1072,7 @@ export default class RVLocatorPlugin extends Plugin {
 				settings: this.settings,
 				geocodeCache: this.geocodeCache,
 				nearbySort: this.nearbySort,
+				digestPolish: this.digestPolish,
 			});
 		}).catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : 'Could not save plugin data.';

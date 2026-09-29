@@ -1,6 +1,6 @@
 {
 	"name": "rv-locator",
-	"version": "1.2.7",
+	"version": "1.2.8",
 	"description": "Geocode return-visit addresses and browse live distance in Obsidian Bases.",
 	"main": "main.js",
 	"type": "module",
