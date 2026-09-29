@@ -4,14 +4,14 @@
 
 `main.js` SHA-256: `7c9abe40c2458366bbf0d86b95ae0bac0ccfcab226378c9f89677bc692a709bb`
 
-`styles.css` SHA-256: `b5d1b174e58793247febf3f6fbb15aa134bcab98f73d635e625c3e62df4ad3ea`
+`styles.css` SHA-256: `32a0f80cc10711aba17f155428f3f688c8bcdfd3726b978aa0c77f58a287828d`
 
 `manifest.json` SHA-256: `f5ff8c489e17228ee78684b09f606f9550c607ef04a0e7730436b5f6ddde74d5`
 
 - Return Suggestions voice agrees with the table. Before, the voice read only May-go-out slots, so attempts in an Off slot (such as Tue evening at 2/3) were ignored and the rest of that day was listed as `Untried: Tue`. Every slot with an attempt is now classified as Try, Unsure, or Avoid. Untried lists only May-go-out slots with no attempts (`Untried: Sun · Tue morning/afternoon · …`). With no May-go-out days, attempted slots are still voiced above `No May-go-out days`. May-go-out-only tables also show those attempted slots. The first launch of 1.3.1 rewrites every digest.
 - The companion chosen on New RV create is Met With (who was there when first meeting the householder) and the first Taken entry. Later Home visits append to Taken only and never change Met With, even when it is blank. Met is unchanged.
 - RV Dashboard is `> [!quote] RV Dashboard` with no fold mark, so it cannot be collapsed. The first launch of 1.3.1 drops a `+` or `-` from existing notes, and Home / Not home writes keep it off. Quick Facts and Attempt Log stay collapsible and collapsed by default. Return Suggestions stays without a fold mark.
-- The dashboard reads as one column. The Hub item and the Address box share one width (long hub names are cut with an ellipsis), the 🗺️ link sits under the Hub plus button, and Quick Facts ends at that same right edge.
+- The dashboard reads as one column. The Hub item and the Address box share one width (long hub names are cut with an ellipsis), the 🗺️ link sits under the Hub plus button, and Quick Facts and the Attempt Log callout (with its table) end at that same right edge.
 - Extras sync is pinned to tag `v1.3.1` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.3.0`, `v1.2.12`, or any older tag, `main`, or `unstable`.
 
 ## 1.3.0

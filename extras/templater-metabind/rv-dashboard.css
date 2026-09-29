@@ -168,11 +168,12 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
   Hubs and Address are soft-wrapped lines of one paragraph, each starting
   with a <strong> label. One column layout for the dashboard:
   label | field | Hub + or 🗺️. The Hub item and the Address box share one
-  width, so the map link lines up under the Hub plus button, and Quick
-  Facts ends at that same right edge. Registered properties resolve the em
-  values once, on the callout content, so inputs with a smaller font keep
-  the same lengths. Return Suggestions can also be a quote callout, so it
-  is excluded.
+  width, so the map link lines up under the Hub plus button. Quick Facts
+  and Attempt Log end at that same right edge (--rv-dash-column), so the
+  note reads as one column. Registered properties resolve the em values
+  once, on the note, so inputs and tables with a smaller font keep the same
+  lengths. Return Suggestions can also be a quote callout, so it is
+  excluded from the Hubs / Address rules.
 */
 @property --rv-dash-label {
 	syntax: "<length>";
@@ -198,11 +199,18 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 	initial-value: 0px;
 }
 
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+@property --rv-dash-column {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+.rv-dashboard {
 	--rv-dash-label: 4.6em;
 	--rv-dash-field: 11em;
 	--rv-dash-plus: 2.1em;
 	--rv-dash-gap: 0.4em;
+	--rv-dash-column: calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em);
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
@@ -238,7 +246,26 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
-	max-width: min(100%, calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em));
+	max-width: min(100%, var(--rv-dash-column));
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] {
+	max-width: min(100%, var(--rv-dash-column));
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log table,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] table {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	table-layout: auto;
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log :is(th, td),
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] :is(th, td) {
+	padding: 0.25em 0.4em;
+	white-space: nowrap;
 }
 
 /*
