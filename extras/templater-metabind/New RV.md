@@ -49,12 +49,14 @@ cssclasses:
 >
 > **Taken**
 > `INPUT[inlineList:Taken]`
-### <% rv.stamp %>
+### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
 
 
-<!-- rv-locator-digest -->
+%% rv-locator-digest %%
+
 > No May-go-out days
-<!-- /rv-locator-digest -->
+
+%% /rv-locator-digest %%
 
 > [!note]- Attempt Log
 > - <% rv.stamp %> — success

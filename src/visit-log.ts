@@ -1,6 +1,6 @@
 import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
-import { formatGlancableVisitStamp } from './dates';
+import { calendarDaysSinceStamp, formatDaysAgo, formatGlancableVisitStamp, stripStampAge } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
@@ -86,14 +86,46 @@ export function applyVisitFrontmatter(
  * or `-` stays. An old `## Attempt Log` heading is migrated to that collapsed
  * callout on write. A home stamp is inserted above the digest block when one
  * sits on the callout, so the table and quote stay next to the log.
- * Address is not part of the body edit.
+ * Each `###` visit stamp gets a muted age (`54 days ago`). Home and Not home
+ * refresh ages already on the note. Address is not part of the body edit.
  */
 export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): string {
 	const stamp = formatVisitStamp(now);
 	const phrase = outcome === 'home' ? 'success' : 'not home';
 	let next = ensureAttemptLog(body);
 	if (outcome === 'home') next = insertHomeHeading(next, stamp);
-	return appendLogLine(next, `> - ${stamp} — ${phrase}`);
+	next = appendLogLine(next, `> - ${stamp} — ${phrase}`);
+	return refreshHomeStampAges(next, now);
+}
+
+const STAMP_HEADING = /^###\s+(.+?)\s*$/;
+
+/**
+ * Rewrite every Glancable `###` visit stamp so the inline age matches `today`.
+ * Other headings are left alone. The age is calendar days, not a Dataview query.
+ */
+export function refreshHomeStampAges(body: string, today: Date): string {
+	const newline = body.includes('\r\n') ? '\r\n' : '\n';
+	const lines = body.split(/\r?\n/);
+	let changed = false;
+	const next = lines.map((line) => {
+		const updated = refreshStampLine(line, today);
+		if (updated !== line) changed = true;
+		return updated;
+	});
+	if (!changed) return body;
+	const joined = next.join(newline);
+	if (body.endsWith('\n') && !joined.endsWith('\n')) return `${joined}\n`;
+	return joined;
+}
+
+function refreshStampLine(line: string, today: Date): string {
+	const match = STAMP_HEADING.exec(line);
+	if (!match) return line;
+	const stamp = stripStampAge(match[1] ?? '');
+	const days = calendarDaysSinceStamp(stamp, today);
+	if (days == null) return line;
+	return `### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {

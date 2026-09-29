@@ -9,12 +9,12 @@
  */
 export const EXTRAS_SYNC_REPO = 'JaydensAssistant/rv-locator';
 /**
- * Release tag this build downloads. Matches manifest 1.2.9.
+ * Release tag this build downloads. Matches manifest 1.2.10.
  * The GitHub tag must exist before Update from GitHub can fetch these files.
- * This plugin does not create that tag. Do not point this pin at v1.2.8,
- * v1.2.7, v1.2.6, v1.2.5, v1.2.4, v1.2.3, v1.2.2, v1.2.1, v1.2.0, v1.1.5, `main`, or `unstable`.
+ * This plugin does not create that tag. Do not point this pin at v1.2.9,
+ * v1.2.8, v1.2.7, v1.2.6, v1.2.5, v1.2.4, v1.2.3, v1.2.2, v1.2.1, v1.2.0, v1.1.5, `main`, or `unstable`.
  */
-export const EXTRAS_SYNC_REF = 'v1.2.9';
+export const EXTRAS_SYNC_REF = 'v1.2.10';
 export const EXTRAS_SYNC_HOST = 'raw.githubusercontent.com';
 export const EXTRAS_MAX_FILE_BYTES = 256 * 1024;
 export const EXTRAS_MAX_TOTAL_BYTES = 1024 * 1024;

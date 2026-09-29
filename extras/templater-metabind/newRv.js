@@ -114,6 +114,29 @@ function hourLabel(hour) {
   return `${onClock}${suffix}`;
 }
 
+const MONTH_INDEX = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+/** Calendar days for a Glancable stamp. Mirrors src/dates.ts calendarDaysSinceStamp. */
+function stampAgeLabel(stamp, today) {
+  const match = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/.exec(String(stamp || "").trim());
+  if (!match) return "0 days ago";
+  const dateMatch = /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/.exec(String(match[1] || "").trim());
+  if (!dateMatch) return "0 days ago";
+  const month = MONTH_INDEX[String(dateMatch[1] || "").toLowerCase().slice(0, 3)];
+  const day = Number(dateMatch[2]);
+  const year = Number(dateMatch[3]);
+  if (!month) return "0 days ago";
+  const then = Date.UTC(year, month - 1, day);
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((now - then) / 86400000);
+  const whole = Number.isFinite(days) ? Math.max(0, days) : 0;
+  if (whole === 1) return "1 day ago";
+  return `${whole} days ago`;
+}
+
 function glancableStamp(date) {
   let year = date.getFullYear();
   let month = date.getMonth();
@@ -468,6 +491,7 @@ async function newRv(tp) {
     mapUrl: mapsSearchUrl(address),
     created,
     stamp,
+    ago: stampAgeLabel(stamp, new Date()),
     title,
     priority: newRvPriority(),
     companionYaml: companionFrontmatterBlock(companion),

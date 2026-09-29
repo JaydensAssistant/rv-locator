@@ -1,7 +1,7 @@
 import { Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
-import { decorateAttemptLog, DIGEST_POLISH_VERSION, formatDigestNote, upsertAttemptDigest } from './attempt-digest';
+import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, formatDigestNote, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
 	GLANCABLE_ALL_VIEW_TYPE,
@@ -18,7 +18,7 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, shouldNudgePriority, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, refreshHomeStampAges, shouldNudgePriority, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
@@ -921,15 +921,16 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * First launch of this digest shape rewrites every RV note: the daypart
-	 * table and the suggester quote move above Attempt Log. The callout fold
-	 * is left as written. A later collapse or expand stays.
+	 * First launch of this digest shape rewrites every RV note. The daypart
+	 * table and the suggester quote stay above Attempt Log, outside any
+	 * comment, and an opened Attempt Log is collapsed once. Later Home and
+	 * Not home writes leave a fold the person set after that.
 	 */
 	private applyDigestPolish(): Promise<void> {
 		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
 		const run = this.digestRewrite.then(async () => {
 			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
-			await this.rewriteVaultDigests();
+			await this.rewriteVaultDigests(true);
 			if (this.unloaded) return;
 			this.digestPolish = DIGEST_POLISH_VERSION;
 			await this.persist();
@@ -938,10 +939,10 @@ export default class RVLocatorPlugin extends Plugin {
 		return run;
 	}
 
-	private async rewriteVaultDigests(): Promise<void> {
+	private async rewriteVaultDigests(collapseLog = false): Promise<void> {
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			if (this.unloaded) return;
-			await this.rewriteDigestFile(file);
+			await this.rewriteDigestFile(file, collapseLog);
 		}
 	}
 
@@ -984,14 +985,16 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async rewriteDigestFile(file: TFile): Promise<void> {
+	private async rewriteDigestFile(file: TFile, collapseLog = false): Promise<void> {
 		if (file.extension !== 'md') return;
 		if (this.isTemplateNote(file)) return;
 		const current = this.app.vault.getFileByPath(file.path);
 		if (!current) return;
 		try {
 			await this.app.vault.process(current, (data) => {
-				const log = readAttemptLog(data);
+				let next = refreshHomeStampAges(data, new Date());
+				if (collapseLog) next = collapseAttemptLog(next);
+				const log = readAttemptLog(next);
 				const digest = suggestReturnDigest({
 					buckets: log.buckets,
 					entries: log.entries,
@@ -999,8 +1002,8 @@ export default class RVLocatorPlugin extends Plugin {
 					orientation: this.settings.digestOrientation,
 					thresholds: this.digestThresholds(),
 				});
-				const next = upsertAttemptDigest(data, formatDigestNote(digest));
-				return next ?? data;
+				const rewritten = upsertAttemptDigest(next, formatDigestNote(digest), { collapse: collapseLog });
+				return rewritten ?? next;
 			});
 		} catch {
 			return;

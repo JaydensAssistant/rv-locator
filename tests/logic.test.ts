@@ -954,6 +954,7 @@ describe('new RV note title', () => {
 
 describe('visit log', () => {
 	const now = new Date(2026, 8, 26, 23, 12, 4);
+	const stampLine = '### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>';
 
 	it('logs a home visit without touching Address', () => {
 		assert.equal(formatVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
@@ -977,7 +978,7 @@ describe('visit log', () => {
 		assert.equal(body, [
 			'Talked on the porch.',
 			'',
-			'### Sat, 11pm — Sep 26, 2026',
+			stampLine,
 			'',
 			'',
 			'> [!note]- Attempt Log',
@@ -1040,7 +1041,7 @@ describe('visit log', () => {
 		].join('\n');
 		const more = applyVisitBody(expanded, 'home', now);
 		assert.equal(more, [
-			'### Sat, 11pm — Sep 26, 2026',
+			stampLine,
 			'',
 			'',
 			'> [!note]+ Attempt Log',
@@ -1062,17 +1063,17 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const next = applyVisitBody(existing, 'home', now);
-		assert.equal(next.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
+		assert.equal(next.split('\n').filter((line) => line === stampLine).length, 2);
 		assert.equal(next.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
 
 		const legacy = existing.replace('### Sat', '## Sat');
 		const kept = applyVisitBody(legacy, 'home', now);
 		assert.equal(kept.includes('## Sat, 11pm — Sep 26, 2026'), true);
-		assert.equal(kept.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 1);
+		assert.equal(kept.split('\n').filter((line) => line === stampLine).length, 1);
 		assert.equal(kept.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
 
 		const missed = applyVisitBody(next, 'miss', now);
-		assert.equal(missed.split('\n').filter((line) => line === '### Sat, 11pm — Sep 26, 2026').length, 2);
+		assert.equal(missed.split('\n').filter((line) => line === stampLine).length, 2);
 		assert.equal(missed.includes('> - Sat, 11pm — Sep 26, 2026 — not home'), true);
 		const missedAgain = applyVisitBody(missed, 'miss', now);
 		assert.equal(missedAgain.split('\n').filter((line) => line.endsWith('— not home')).length, 2);
@@ -1213,7 +1214,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.2.9');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.2.10');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1256,7 +1257,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.9/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.10/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1277,9 +1278,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.2.9');
+		assert.equal(plan.ref, 'v1.2.10');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.2.9/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.2.10/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

@@ -3,7 +3,8 @@
  * Wednesday morning never shares a bucket with Saturday morning.
  * Boundaries are local time. Evening starts at 4:30.
  */
-import { DIGEST_END, DIGEST_START } from './attempt-digest';
+import { isDigestEndLine, isDigestStartLine } from './attempt-digest';
+import { stripStampAge } from './dates';
 
 export const DAYPARTS = ['morning', 'afternoon', 'evening'] as const;
 
@@ -166,11 +167,11 @@ export function readAttemptLog(body: string): { buckets: AttemptBuckets; entries
 	let inDigest = false;
 	for (const raw of body.split('\n')) {
 		const line = raw.trim();
-		if (line.includes(DIGEST_START)) {
-			inDigest = true;
+		if (isDigestStartLine(line)) {
+			inDigest = !isDigestEndLine(line);
 			continue;
 		}
-		if (line.includes(DIGEST_END)) {
+		if (isDigestEndLine(line)) {
 			inDigest = false;
 			continue;
 		}
@@ -527,7 +528,7 @@ function parseBulletLine(line: string): AttemptEntry | null {
 function parseHeadingLine(line: string): AttemptEntry | null {
 	const match = HEADING_LINE.exec(line.trim());
 	if (!match) return null;
-	const parsed = parseStamp(match[1] ?? '');
+	const parsed = parseStamp(stripStampAge(match[1] ?? ''));
 	if (!parsed) return null;
 	return { ...parsed, home: true };
 }

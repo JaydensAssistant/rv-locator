@@ -5,7 +5,8 @@
  * Attempt Log is a collapsed callout. An existing + or - is left alone.
  * An old `## Attempt Log` heading is migrated to the collapsed callout on
  * the next Home / Not home write. A home stamp is inserted above the digest
- * block when one sits on the callout.
+ * block when one sits on the callout. Each ### visit stamp gets a muted
+ * "N days ago" age, refreshed on the next Home or Not home.
  * Home inserts a Glancable `###` stamp above the log, including a second
  * Home in the same rounded hour. Two blank lines sit between that stamp and
  * Attempt Log so there is room for notes. Counters and the Attempt Log
@@ -66,9 +67,59 @@ function asNumber(v) {
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
 const CALLOUT_HEADER = "> [!note]- Attempt Log";
-const DIGEST_START = "<!-- rv-locator-digest -->";
-const DIGEST_END = "<!-- /rv-locator-digest -->";
+const DIGEST_STARTS = ["%% rv-locator-digest %%", "<!-- rv-locator-digest -->"];
+const DIGEST_ENDS = ["%% /rv-locator-digest %%", "<!-- /rv-locator-digest -->"];
 const ADDRESS_KEY = "Address";
+const STAMP_AGE_SUFFIX = /\s*<span class="rv-stamp-ago">[^<]*<\/span>\s*$/i;
+const MONTH_INDEX = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+function isDigestStartLine(line) {
+  return DIGEST_STARTS.some((mark) => String(line || "").includes(mark));
+}
+
+function isDigestEndLine(line) {
+  return DIGEST_ENDS.some((mark) => String(line || "").includes(mark));
+}
+
+/** Calendar days for `Wed, 2pm — Sep 9, 2026`. Mirrors src/dates.ts. */
+function stampCalendarDays(stamp, today) {
+  const text = String(stamp || "").replace(STAMP_AGE_SUFFIX, "").trim();
+  const match = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/.exec(text);
+  if (!match) return null;
+  const dateMatch = /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})$/.exec(String(match[1] || "").trim());
+  if (!dateMatch) return null;
+  const month = MONTH_INDEX[String(dateMatch[1] || "").toLowerCase().slice(0, 3)];
+  const day = Number(dateMatch[2]);
+  const year = Number(dateMatch[3]);
+  if (!month || !Number.isInteger(day) || !Number.isInteger(year)) return null;
+  const then = Date.UTC(year, month - 1, day);
+  const now = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const days = Math.round((now - then) / 86400000);
+  if (!Number.isFinite(days)) return null;
+  return days < 0 ? 0 : days;
+}
+
+function formatDaysAgo(days) {
+  if (days === 1) return "1 day ago";
+  return `${days} days ago`;
+}
+
+function refreshStampAges(body, today) {
+  const newline = body.includes("\r\n") ? "\r\n" : "\n";
+  const lines = body.split(/\r?\n/);
+  const next = lines.map((line) => {
+    const match = /^###\s+(.+?)\s*$/.exec(line);
+    if (!match) return line;
+    const stamp = String(match[1] || "").replace(STAMP_AGE_SUFFIX, "").trim();
+    const days = stampCalendarDays(stamp, today);
+    if (days == null) return line;
+    return `### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
+  });
+  return next.join(newline);
+}
 
 function findAttemptLog(lines) {
   for (let index = 0; index < lines.length; index += 1) {
@@ -121,10 +172,10 @@ function attemptLogAnchor(lines, calloutIndex) {
   let index = calloutIndex;
   while (index > 0 && (lines[index - 1] ?? "") === "") index -= 1;
   const previous = lines[index - 1] ?? "";
-  if (index > 0 && previous.includes(DIGEST_END)) {
+  if (index > 0 && isDigestEndLine(previous)) {
     let start = index - 1;
-    while (start > 0 && !(lines[start] ?? "").includes(DIGEST_START)) start -= 1;
-    if ((lines[start] ?? "").includes(DIGEST_START)) return start;
+    while (start > 0 && !isDigestStartLine(lines[start] ?? "")) start -= 1;
+    if (isDigestStartLine(lines[start] ?? "")) return start;
   }
   return calloutIndex;
 }
@@ -521,6 +572,7 @@ async function rvLog(tp, kind) {
   content = ensureAttemptLog(content);
   if (mode === "home") content = insertHomeHeading(content, whenLabel);
   content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
+  content = refreshStampAges(content, now);
 
   await app.vault.modify(file, fmBlock + content);
   const plugin = rvPlugin();

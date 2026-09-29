@@ -76,6 +76,43 @@ export function parseFlexibleDate(input: string): Date | null {
 	return localDate(Number(pretty[3]), month, Number(pretty[2]));
 }
 
+const STAMP_AGE_SUFFIX = /\s*<span class="rv-stamp-ago">[^<]*<\/span>\s*$/i;
+const VISIT_STAMP_DATE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/;
+
+/** Drop a plugin-written age suffix so the visit stamp can be parsed again. */
+export function stripStampAge(text: string): string {
+	return text.replace(STAMP_AGE_SUFFIX, '').trim();
+}
+
+/**
+ * Calendar days from a Glancable visit stamp (`Wed, 2pm — Sep 9, 2026`) to `today`.
+ * The clock on the stamp is ignored. A stamp dated tomorrow (hour rounding) is 0.
+ * Text that is not a visit stamp returns null.
+ */
+export function calendarDaysSinceStamp(stamp: string, today: Date = new Date()): number | null {
+	const match = VISIT_STAMP_DATE.exec(stripStampAge(stamp));
+	if (!match) return null;
+	const date = parseFlexibleDate(match[1] ?? '');
+	if (!date) return null;
+	const days = calendarDaysSince(formatShortDate(date), today);
+	if (days == null) return 0;
+	return days;
+}
+
+/** `0 days ago`, `1 day ago`, or `54 days ago`. */
+export function formatDaysAgo(days: number): string {
+	const whole = Math.max(0, Math.floor(days));
+	if (whole === 1) return '1 day ago';
+	return `${whole} days ago`;
+}
+
+/** Inline age next to a `###` visit stamp. Empty when `stamp` is not a visit stamp. */
+export function stampAgeMarkup(stamp: string, today: Date = new Date()): string {
+	const days = calendarDaysSinceStamp(stamp, today);
+	if (days == null) return '';
+	return `<span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
+}
+
 export function formatShortDate(date: Date): string {
 	const month = MONTHS[date.getMonth()] ?? '';
 	return `${month} ${date.getDate()}, ${date.getFullYear()}`;

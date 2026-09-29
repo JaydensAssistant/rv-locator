@@ -1,21 +1,42 @@
 /**
  * The daypart table and the suggester quote sit above the Attempt Log
- * callout. The callout itself keeps only the dated bullets. Fold (`+` / `-`)
- * is left as the note already has it.
+ * callout. The callout itself keeps only the dated bullets. An ordinary
+ * rewrite leaves the fold (`+` / `-`) as the note already has it.
+ * The one-time polish can collapse an opened log.
  */
 
 import { domInstanceOf } from './dom';
 
-export const DIGEST_START = '<!-- rv-locator-digest -->';
-export const DIGEST_END = '<!-- /rv-locator-digest -->';
+/**
+ * Obsidian comment markers, closed on the same line.
+ * HTML comments (`<!-- -->`) are an HTML block. Obsidian keeps reading until
+ * a later `-->`, so a start/end pair showed the table and the quote as raw
+ * source. `%%` comments stay hidden in Live Preview and Reading view and do
+ * not swallow the markdown between them. A blank line after the start marker
+ * is what lets the table render.
+ */
+export const DIGEST_START = '%% rv-locator-digest %%';
+export const DIGEST_END = '%% /rv-locator-digest %%';
+const LEGACY_DIGEST_START = '<!-- rv-locator-digest -->';
+const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
 
 /**
  * Bump when a one-time vault rewrite should run again.
  * 1 moved the dated visit list out of the digest and opened collapsed logs.
  * 2 moves the table and the suggester quote above Attempt Log and leaves
  * the callout fold alone. New logs start collapsed.
+ * 3 rewrites the digest with `%%` markers and a blank line before the table,
+ * and collapses an opened Attempt Log once.
  */
-export const DIGEST_POLISH_VERSION = 2;
+export const DIGEST_POLISH_VERSION = 3;
+
+export function isDigestStartLine(line: string): boolean {
+	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);
+}
+
+export function isDigestEndLine(line: string): boolean {
+	return line.includes(DIGEST_END) || line.includes(LEGACY_DIGEST_END);
+}
 
 const ATTEMPT_LOG_CALLOUT = /^>\s*\[!note\]\s*([+-])?\s*Attempt Log\s*$/i;
 
@@ -37,14 +58,21 @@ export function formatDigestNote(parts: DigestNoteParts): string {
 	return [parts.table, quote].filter((part) => part.length > 0).join('\n\n');
 }
 
+export interface DigestWriteOptions {
+	/** One-time polish. Ordinary rewrites leave an existing `+` or `-` alone. */
+	collapse?: boolean;
+}
+
 /**
  * Insert or replace the digest above Attempt Log.
- * A digest that an older build stored inside the callout is removed.
- * Null when the note has no Attempt Log. The callout header is not rewritten.
+ * A digest that an older build stored inside the callout, or inside HTML
+ * comments, is removed. Null when the note has no Attempt Log.
+ * The callout header is not rewritten unless `collapse` is set.
  */
-export function upsertAttemptDigest(markdown: string, inner: string): string | null {
-	const newline = markdown.includes('\r\n') ? '\r\n' : '\n';
-	const lines = markdown.split(/\r?\n/);
+export function upsertAttemptDigest(markdown: string, inner: string, options?: DigestWriteOptions): string | null {
+	const source = options?.collapse ? collapseAttemptLog(markdown) : markdown;
+	const newline = source.includes('\r\n') ? '\r\n' : '\n';
+	const lines = source.split(/\r?\n/);
 	if (!lines.some((line) => ATTEMPT_LOG_CALLOUT.test(line))) return null;
 	const cleaned = removeDigestRegions(lines);
 	const start = cleaned.findIndex((line) => ATTEMPT_LOG_CALLOUT.test(line));
@@ -65,10 +93,10 @@ export function attemptLogAnchor(lines: readonly string[], calloutIndex: number)
 	let index = calloutIndex;
 	while (index > 0 && (lines[index - 1] ?? '') === '') index -= 1;
 	const previous = lines[index - 1] ?? '';
-	if (index > 0 && previous.includes(DIGEST_END)) {
+	if (index > 0 && isDigestEndLine(previous)) {
 		let start = index - 1;
-		while (start > 0 && !(lines[start] ?? '').includes(DIGEST_START)) start -= 1;
-		if ((lines[start] ?? '').includes(DIGEST_START)) return start;
+		while (start > 0 && !isDigestStartLine(lines[start] ?? '')) start -= 1;
+		if (isDigestStartLine(lines[start] ?? '')) return start;
 	}
 	return calloutIndex;
 }
@@ -114,22 +142,41 @@ export function digestVoiceClass(text: string): string | null {
 	return null;
 }
 
+/**
+ * Collapse `> [!note]+` and an unmarked `> [!note]` Attempt Log to `-`.
+ * A header that is already collapsed stays as written.
+ */
+export function collapseAttemptLog(markdown: string): string {
+	const newline = markdown.includes('\r\n') ? '\r\n' : '\n';
+	const lines = markdown.split(/\r?\n/);
+	let changed = false;
+	const next = lines.map((line) => {
+		if (!ATTEMPT_LOG_CALLOUT.test(line)) return line;
+		if (/^>\s*\[!note\]-\s*Attempt Log\s*$/i.test(line)) return line;
+		changed = true;
+		return '> [!note]- Attempt Log';
+	});
+	return changed ? next.join(newline) : markdown;
+}
+
 function digestBlockLines(inner: string): string[] {
-	const body = inner.replace(/\s+$/g, '');
+	const body = inner.replace(/^\s+|\s+$/g, '');
 	const lines = body.length > 0 ? body.split('\n') : [];
-	return [DIGEST_START, ...lines, DIGEST_END];
+	// Blank line after the marker: Obsidian will not render a table that
+	// sits on the next line after other content.
+	return [DIGEST_START, '', ...lines, '', DIGEST_END];
 }
 
 function removeDigestRegions(lines: readonly string[]): string[] {
 	const next: string[] = [];
 	let skipping = false;
 	for (const line of lines) {
-		if (!skipping && line.includes(DIGEST_START)) {
-			skipping = !line.includes(DIGEST_END);
+		if (!skipping && isDigestStartLine(line)) {
+			skipping = !isDigestEndLine(line);
 			continue;
 		}
 		if (skipping) {
-			if (line.includes(DIGEST_END)) skipping = false;
+			if (isDigestEndLine(line)) skipping = false;
 			continue;
 		}
 		next.push(line);

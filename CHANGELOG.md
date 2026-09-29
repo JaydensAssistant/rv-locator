@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.2.10
+
+`main.js` SHA-256: `ea9ee85d832e81fb918fc6239f129d7678d0debb79180f3d77b8a40a06d20ee9`
+
+`styles.css` SHA-256: `3d9383c34dabf50aa914e2b2150aabedbd8149ad12010a3fa9301f68287c71f8`
+
+`manifest.json` SHA-256: `9ed6a846b80f5dd66803bdbfc76c8a49ac7bc9fbb332354c9114c55e8a6a1a24`
+
+- Glancable urgency marks are heavy again, the same visual weight as the priority digit. `!`, `!!`, and `!!!` are thick stems with a round dot, sized from `--rv-control-size` (0.7 of the circle) so they scale with general density. The map pin uses the same stroke weight as that digit (`0.08` of the control size). Band 0 (urgency at least 0 and under 1, priority at least 1) is still the green circle, and it now draws an inner ring in place of the bangs. That ring uses the same stroke weight. Priority 0 stays a faint grey stack with no inner mark.
+- The Attempt Log digest renders as a live table and a blockquote. HTML comments were the problem: Obsidian treats `<!-- rv-locator-digest -->` … `<!-- /rv-locator-digest -->` as one HTML block and shows the table and the quote as raw source. Markers are now same-line `%% rv-locator-digest %%` comments, with a blank line before the table, so Live Preview and Reading view render the table and the suggester quote. The order is unchanged: table, then the quote, then the Attempt Log callout. The first launch of 1.2.10 rewrites old HTML-comment digests into that shape.
+- New Attempt Logs stay collapsed (`> [!note]-`). The Glancable priority pill and the note's Home / Not home buttons (`rvLog.js`) both create that `-` form. The 1.2.10 polish collapses an opened or unmarked Attempt Log once. A later Home or Not home leaves a `+` or `-` the note already has.
+- Each `###` visit stamp gets a small muted age, such as `54 days ago` or `0 days ago`, from calendar days since that stamp. It is plugin text in `<span class="rv-stamp-ago">`, not Dataview. Creating a note, logging Home, and the polish pass all write or refresh it. Not home refreshes ages already on the note.
+- The Glancable sort row scrolls horizontally while the Bases top bar is still on, both in a hub note that embeds the `.base` and when the `.base` file is open. The toolbar was widening the host past the visible width and clipping the chip scrollbar. The host is constrained so the chip row is the visible width. Hiding the whole bar is not required.
+- Extras sync is pinned to tag `v1.2.10` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.9
 
 `main.js` SHA-256: `4534c97700c56d7e9053759ea01ebb5051422d7e8efd8dcd6e2ee4e33e616e43`

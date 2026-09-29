@@ -14,7 +14,7 @@ Attempt Log is a collapsed callout, not a `##` heading. The dated bullets are th
 > - Wed, 2pm — Sep 9, 2026 — success
 ```
 
-The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, and tight forms such as `>[!note]+ Attempt Log`. A `+` or `-` already on the note stays. If the note still has the old `## Attempt Log` heading, the next Home or Not home write migrates that section into the collapsed callout and appends there. Existing notes are not bulk-migrated by the script. The plugin's first launch of this layout moves an older in-callout digest above the callout and leaves the fold as written.
+The script also recognizes `> [!note]+ Attempt Log`, `> [!note] Attempt Log`, and tight forms such as `>[!note]+ Attempt Log`. A `+` or `-` already on the note stays. If the note still has the old `## Attempt Log` heading, the next Home or Not home write migrates that section into the collapsed callout and appends there. Existing notes are not bulk-migrated by the script. The plugin's first launch of 1.2.10 rewrites the digest between `%%` markers (so the table renders) and collapses an opened Attempt Log once. Home and Not home also refresh the muted age on each `###` stamp.
 
 `New RV.md` already includes these buttons. Paste the blocks below only when you are adding them to an older note.
 

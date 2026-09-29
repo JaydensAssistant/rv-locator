@@ -36,7 +36,7 @@ import {
 } from '../src/schedule';
 import { formatSnoozeUntil, parseSnoozeUntil, snoozeActive, URGENCY_SNOOZE_PROPERTY } from '../src/snooze';
 import { settingsGraphs } from '../src/settings-graphs';
-import { applyVisitBody, shouldNudgePriority } from '../src/visit-log';
+import { applyVisitBody, refreshHomeStampAges, shouldNudgePriority } from '../src/visit-log';
 import {
 	DEFAULT_IDEALITY_FLOOR_DAYS,
 	DEFAULT_TERRITORY_SPAN_MILES,
@@ -457,7 +457,7 @@ describe('dayparts and return suggester', () => {
 		assert.equal(digest.sentences[0]?.startsWith('Try:'), true);
 		const homeWord = readAttemptLog('> - Fri, 1pm — Sep 18, 2026 — Home');
 		assert.deepEqual(homeWord.buckets['5:afternoon'], { homes: 1, trials: 1 });
-		const headingsOnly = readAttemptLog('### Wed, 2pm — Sep 9, 2026');
+		const headingsOnly = readAttemptLog('### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>');
 		assert.deepEqual(headingsOnly.buckets['3:afternoon'], { homes: 1, trials: 1 });
 		assert.equal(digestVoiceClass('Try: **Sat evening (2/2)**'.replaceAll('**', '')), 'is-try');
 		assert.equal(digestVoiceClass('Untried: Wed'), 'is-untried');
@@ -556,34 +556,66 @@ describe('dayparts and return suggester', () => {
 		assert.ok(tableAt >= 0 && tableAt < avoidAt && avoidAt < tryAt && tryAt < logAt && logAt < bulletAt);
 		assert.equal(lines[logAt - 1], '');
 		assert.equal(lines.includes('> <!-- rv-locator-digest -->'), false);
-		assert.equal(lines.filter((line) => line === '<!-- rv-locator-digest -->').length, 1);
+		assert.equal(lines.includes('<!-- rv-locator-digest -->'), false);
+		assert.equal(lines.filter((line) => line === '%% rv-locator-digest %%').length, 1);
+		assert.equal(lines[tableAt - 1], '');
+		assert.equal(lines[tableAt - 2], '%% rv-locator-digest %%');
 		const callout = lines.slice(logAt + 1).filter((line) => line.startsWith('>'));
 		assert.deepEqual(callout, ['> - Mon, 9am — Sep 1, 2026 — success']);
 		const closed = upsertAttemptDigest('> [!note]- Attempt Log\n> - old — success\n', '> No May-go-out days');
 		assert.equal(closed, [
-			'<!-- rv-locator-digest -->',
+			'%% rv-locator-digest %%',
+			'',
 			'> No May-go-out days',
-			'<!-- /rv-locator-digest -->',
+			'',
+			'%% /rv-locator-digest %%',
 			'',
 			'> [!note]- Attempt Log',
 			'> - old — success',
 			'',
 		].join('\n'));
+		const collapsed = upsertAttemptDigest('> [!note]+ Attempt Log\n> - old — success\n', '> No May-go-out days', { collapse: true });
+		assert.equal(collapsed?.includes('> [!note]- Attempt Log'), true);
+		assert.equal(collapsed?.includes('> [!note]+ Attempt Log'), false);
+		const kept = upsertAttemptDigest('> [!note]+ Attempt Log\n> - old — success\n', '> No May-go-out days');
+		assert.equal(kept?.includes('> [!note]+ Attempt Log'), true);
 		assert.equal(upsertAttemptDigest('no log', 'x'), null);
+		const aged = refreshHomeStampAges([
+			'### Tue, 10am — Sep 29, 2026',
+			'',
+			'### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">1 day ago</span>',
+			'',
+			'## Not a visit',
+		].join('\n'), new Date(2026, 8, 29, 12, 0, 0));
+		assert.equal(aged.includes('### Tue, 10am — Sep 29, 2026 <span class="rv-stamp-ago">0 days ago</span>'), true);
+		assert.equal(aged.includes('### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>'), true);
+		assert.equal(aged.includes('## Not a visit'), true);
+		const later = refreshHomeStampAges(aged, new Date(2026, 8, 30, 8, 0, 0));
+		assert.equal(later.includes('<span class="rv-stamp-ago">1 day ago</span>'), true);
+		assert.equal(later.includes('<span class="rv-stamp-ago">21 days ago</span>'), true);
+		const counted = readAttemptLog(later);
+		assert.deepEqual(counted.buckets['2:morning'], { homes: 1, trials: 1 });
+		assert.deepEqual(counted.buckets['3:afternoon'], { homes: 1, trials: 1 });
 	});
 
-	it('draws breathable bangs and leaves band 0 as the circle ring', () => {
+	it('draws heavy bangs and a band 0 inner ring', () => {
 		const triple = urgencyGlyphMarkup('!!!');
 		assert.equal(triple.split('<rect ').length - 1, 3);
-		assert.equal(triple.includes('width="1.7"'), true);
+		assert.equal(triple.includes('width="3.2"'), true);
+		assert.equal(triple.includes('height="12.6"'), true);
 		assert.equal(triple.includes('fill="currentColor"'), true);
-		assert.equal(triple.includes('width="2.8"'), false);
+		assert.equal(triple.includes('width="1.7"'), false);
 		assert.equal(triple.includes('!'), false);
 		assert.equal(urgencyBangShapes('!!!').filter((shape) => shape.kind === 'rect').length, 3);
-		assert.equal(urgencyBangShapes('○').length, 0);
+		const ring = urgencyBangShapes('○');
+		assert.equal(ring.length, 1);
+		assert.equal(ring[0]?.kind, 'circle');
+		assert.equal(ring[0]?.attr.fill, 'none');
+		assert.equal(ring[0]?.attr.stroke, 'currentColor');
+		assert.equal(ring[0]?.attr.class, 'is-ring');
+		assert.equal(urgencyGlyphMarkup('○').includes('class="is-ring"'), true);
 		assert.equal(urgencyGlyphMarkup('!!').split('<rect ').length - 1, 2);
 		assert.equal(urgencyGlyphMarkup('!').split('<rect ').length - 1, 1);
-		assert.equal(urgencyGlyphMarkup('○'), '');
 		assert.equal(urgencyGlyphMarkup(''), '');
 		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
 		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
