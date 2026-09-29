@@ -10,7 +10,9 @@
  *   const rv = await tp.user.newRv(tp)
  *
  * After the householder and Address, it asks who they brought. One person.
- * That name is appended to Taken. Met With stays blank. Cancel leaves both blank.
+ * That name is set on Met With (who was there when first meeting this
+ * householder) and is the first Taken entry. Cancel leaves both blank.
+ * Later Home visits append to Taken only and never change Met With.
  * Priority comes from RV Locator `defaultNewRvPriority` (0–5, default 4).
  *
  * Street short names and the visit stamp mirror src/note-name.ts and
@@ -413,7 +415,7 @@ function companionFrontmatterBlock(stored) {
   const name = String(stored || "").trim();
   if (!name) return "Met With:\nTaken:";
   const quoted = `"${yamlQuoted(name)}"`;
-  return `Met With:\nTaken:\n  - ${quoted}`;
+  return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;
 }
 
 function newRvPriority() {

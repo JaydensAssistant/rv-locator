@@ -1255,7 +1255,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.3.0');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.3.1');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1298,7 +1298,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.0/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.1/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1319,9 +1319,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.3.0');
+		assert.equal(plan.ref, 'v1.3.1');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.3.0/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.3.1/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1645,8 +1645,8 @@ describe('companions', () => {
 		assert.equal(formatStoredCompanion(''), '');
 		assert.deepEqual(appendCompanionTaken([['Ada']], 'Pat'), ['[[Ada]]', 'Pat']);
 		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
-		assert.equal(companionFrontmatterBlock('Pat'), 'Met With:\nTaken:\n  - "Pat"');
-		assert.equal(companionFrontmatterBlock(formatStoredCompanion('[[Pat]]')), 'Met With:\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock('Pat'), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock(formatStoredCompanion('[[Pat]]')), 'Met With: "Pat"\nTaken:\n  - "Pat"');
 	});
 
 	it('quotes Taken and Met With wikilinks that Obsidian flattened', () => {
@@ -1710,6 +1710,23 @@ describe('companions', () => {
 		assert.equal(frontmatter.Address, '142 Maple Street');
 		assert.equal(frontmatter['Met With'], 'Ada');
 		assert.deepEqual(frontmatter.Taken, ['Ada', 'Pat']);
+	});
+
+	it('sets Met With once on create, and a later Home only appends Taken', () => {
+		assert.equal(companionFrontmatterBlock('Devin'), 'Met With: "Devin"\nTaken:\n  - "Devin"');
+		const now = new Date(2026, 8, 29, 17, 0, 0);
+		const created: Record<string, unknown> = { 'Met With': 'Devin', Taken: ['Devin'], Met: '2026-09-29T16:39:36' };
+		applyVisitFrontmatter(created, 'home', now, 'Sam');
+		assert.equal(created['Met With'], 'Devin');
+		assert.deepEqual(created.Taken, ['Devin', 'Sam']);
+		assert.equal(created.Met, '2026-09-29T16:39:36');
+		applyVisitFrontmatter(created, 'miss', now, 'Pat');
+		assert.equal(created['Met With'], 'Devin');
+		assert.deepEqual(created.Taken, ['Devin', 'Sam']);
+		const skipped: Record<string, unknown> = { 'Met With': null, Taken: null };
+		applyVisitFrontmatter(skipped, 'home', now, 'Sam');
+		assert.equal(skipped['Met With'], null);
+		assert.deepEqual(skipped.Taken, ['Sam']);
 	});
 
 	it('offers a typed Use row as the name itself', () => {

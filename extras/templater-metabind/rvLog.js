@@ -292,6 +292,15 @@ function nextVisitNotesProperty(body) {
   return `sVisit${highest + 1}Notes`;
 }
 
+/** Mirrors src/visit-log.ts unfoldDashboard: RV Dashboard has no fold mark. */
+function unfoldDashboard(body) {
+  const lines = body.split("\n");
+  const at = lines.findIndex((line) => /^>[\t ]*\[!quote\][+-][\t ]*RV Dashboard[\t ]*$/i.test(line.replace(/\r$/, "")));
+  if (at < 0) return body;
+  lines[at] = `> [!quote] RV Dashboard${lines[at].endsWith("\r") ? "\r" : ""}`;
+  return lines.join("\n");
+}
+
 /** Mirrors src/visit-log.ts ensureDashboardLeadBlank. */
 function ensureDashboardLeadBlank(body) {
   const first = (/^[^\r\n]*/.exec(body) || [""])[0];
@@ -682,7 +691,7 @@ async function rvLog(tp, kind) {
   content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
   content = refreshStampAges(content, now);
   content = ensureVisitNotesHeading(content);
-  content = ensureDashboardLeadBlank(content);
+  content = ensureDashboardLeadBlank(unfoldDashboard(content));
 
   await app.vault.modify(file, fmBlock + content);
   const plugin = rvPlugin();

@@ -30,6 +30,9 @@ const CALLOUT_HEADER = '> [!note]- Attempt Log';
 const STAMP_LEVEL = '#####';
 const VISIT_NOTES_FIELD = /\bsVisit(\d+)Notes\b/g;
 const DASHBOARD_CALLOUT = /^>[\t ]*\[!quote\][+-]?[\t ]*RV Dashboard\b/i;
+const FOLDABLE_DASHBOARD = /^>[\t ]*\[!quote\][+-][\t ]*RV Dashboard[\t ]*$/i;
+/** No fold mark: RV Dashboard cannot be collapsed. */
+const DASHBOARD_HEADER = '> [!quote] RV Dashboard';
 
 /** Local date-time stored on Last Spoke / Last Attempted. No UTC shift. */
 export function formatFrontmatterDateTime(date: Date): string {
@@ -103,7 +106,21 @@ export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): 
 	next = appendLogLine(next, `> - ${stamp} — ${phrase}`);
 	next = refreshHomeStampAges(next, now);
 	next = ensureVisitNotesHeading(next);
-	return ensureDashboardLeadBlank(next);
+	return ensureDashboardLeadBlank(unfoldDashboard(next));
+}
+
+/**
+ * `> [!quote]+ RV Dashboard` and `> [!quote]- RV Dashboard` become
+ * `> [!quote] RV Dashboard`, which Obsidian renders without a fold toggle.
+ * Quick Facts and Attempt Log keep their marks.
+ */
+export function unfoldDashboard(body: string): string {
+	const lines = body.split('\n');
+	const at = lines.findIndex((line) => FOLDABLE_DASHBOARD.test(line.replace(/\r$/, '')));
+	if (at < 0) return body;
+	const carriage = lines[at]?.endsWith('\r') ? '\r' : '';
+	lines[at] = `${DASHBOARD_HEADER}${carriage}`;
+	return lines.join('\n');
 }
 
 /** `sVisit1Notes` on a note with none, otherwise one past the highest number already used. */

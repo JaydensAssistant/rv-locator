@@ -39,7 +39,7 @@ import {
 } from '../src/schedule';
 import { formatSnoozeUntil, parseSnoozeUntil, snoozeActive, URGENCY_SNOOZE_PROPERTY } from '../src/snooze';
 import { settingsGraphs } from '../src/settings-graphs';
-import { applyVisitBody, ensureDashboardLeadBlank, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority } from '../src/visit-log';
+import { applyVisitBody, ensureDashboardLeadBlank, unfoldDashboard, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority } from '../src/visit-log';
 import {
 	DEFAULT_IDEALITY_FLOOR_DAYS,
 	DEFAULT_TERRITORY_SPAN_MILES,
@@ -572,10 +572,50 @@ describe('dayparts and return suggester', () => {
 		assert.match(all.table, /\| Sun \| 2\/3 \| 0\/0 \| 0\/0 \|/);
 		assert.match(all.table, /\| Tue \| 0\/0 \| 1\/1 \| 0\/0 \|/);
 		assert.equal(all.table.includes('—'), false);
-		assert.equal(all.sentences.join('\n').includes('Sun'), false);
+		assert.equal(all.sentences[0], 'Try: **Tue afternoon (1/1)** · Sun morning (2/3)');
+		assert.equal(all.sentences.some((line) => line.startsWith('Untried:') && line.includes('Sun')), false);
 		const may = suggestReturnDigest({ buckets, grid, days: 'may' });
-		assert.equal(may.table.includes('| Sun |'), false);
+		assert.match(may.table, /\| Sun \| 2\/3 \| — \| — \|/);
 		assert.match(may.table, /\| Tue \| — \| 1\/1 \| — \|/);
+		assert.equal(may.table.includes('| Mon |'), false);
+	});
+
+	it('voices an attempted Off slot and keeps it out of Untried (Tue evening 2/3)', () => {
+		const grid = defaultAvailabilityGrid();
+		for (const weekday of [0, 2, 3, 5, 6]) {
+			grid[`${weekday}:morning`] = 'may';
+			grid[`${weekday}:afternoon`] = 'may';
+		}
+		const body = [
+			'> [!example] Return Suggestions',
+			'> Untried: Sun · Tue · Wed · Fri · Sat',
+			'>',
+			'> > [!note]- Attempt Log',
+			'> >',
+			'> >| | Morning | Afternoon | Evening |',
+			'> >| --- | --- | --- | --- |',
+			'> >| Tue | 0/0 | 0/0 | 2/3 |',
+			'> >',
+			'> >- Tue, 5pm — Sep 29, 2026 — success',
+			'> >- Tue, 5pm — Sep 29, 2026 — not home',
+			'> >- Tue, 5pm — Sep 29, 2026 — success',
+			'',
+		].join('\n');
+		const log = readAttemptLog(body);
+		assert.deepEqual(log.buckets['2:evening'], { homes: 2, trials: 3 });
+		const digest = suggestReturnDigest({ buckets: log.buckets, entries: log.entries, grid });
+		assert.match(digest.table, /\| Tue \| 0\/0 \| 0\/0 \| 2\/3 \|/);
+		assert.deepEqual(digest.sentences, [
+			'Try: **Tue evening (2/3)**',
+			'Untried: Sun · Tue morning/afternoon · Wed · Fri · Sat',
+		]);
+
+		const coldGrid = defaultAvailabilityGrid();
+		coldGrid['2:morning'] = 'may';
+		const cold = suggestReturnDigest({ buckets: { '2:evening': { homes: 0, trials: 4 } }, grid: coldGrid });
+		assert.deepEqual(cold.sentences, ['Avoid: **Tue evening (0/4)**', 'Untried: Tue morning']);
+		const none = suggestReturnDigest({ buckets: log.buckets, grid: defaultAvailabilityGrid() });
+		assert.deepEqual(none.sentences, ['Try: **Tue evening (2/3)**', 'No May-go-out days']);
 	});
 
 	it('maps the theme accent to a Return Suggestions callout and lets the color setting win', () => {
@@ -804,7 +844,7 @@ describe('RV note view', () => {
 		const next = applyVisitBody(note, 'home', now);
 		const lines = next.split('\n');
 		assert.equal(lines[0], '');
-		assert.equal(lines[1], '> [!quote]+ RV Dashboard');
+		assert.equal(lines[1], '> [!quote] RV Dashboard');
 		const at = lines.indexOf('##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>');
 		assert.ok(at > 0);
 		assert.deepEqual(lines.slice(at - 3, at + 4), [
@@ -816,9 +856,12 @@ describe('RV note view', () => {
 			'',
 			'---',
 		]);
-		assert.equal(applyVisitBody(next, 'miss', now).startsWith('\n> [!quote]+ RV Dashboard'), true);
+		assert.equal(applyVisitBody(next, 'miss', now).startsWith('\n> [!quote] RV Dashboard'), true);
 		assert.equal(ensureDashboardLeadBlank('\n> [!quote]+ RV Dashboard\n'), '\n> [!quote]+ RV Dashboard\n');
 		assert.equal(ensureDashboardLeadBlank('Plain note.\n'), 'Plain note.\n');
+		assert.equal(unfoldDashboard('> [!quote]+ RV Dashboard\n> [!rv]- Quick Facts\n'), '> [!quote] RV Dashboard\n> [!rv]- Quick Facts\n');
+		assert.equal(unfoldDashboard('> [!quote]- RV Dashboard\r\n'), '> [!quote] RV Dashboard\r\n');
+		assert.equal(unfoldDashboard('> [!note]- Attempt Log\n'), '> [!note]- Attempt Log\n');
 		assert.equal(ensureDashboardLeadBlank('> [!quote]+ RV Dashboard\r\n'), '\r\n> [!quote]+ RV Dashboard\r\n');
 	});
 

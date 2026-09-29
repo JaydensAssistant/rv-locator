@@ -260,13 +260,15 @@ function stripYamlQuote(value: string): string {
 
 /**
  * Frontmatter lines for a new note.
- * Met With stays blank. Taken lists the companion, or stays blank when they skipped.
+ * Met With is the publisher taken when first meeting this householder, so
+ * the create companion goes on Met With and is also the first Taken entry.
+ * A skip leaves both blank. Later Home visits append to Taken only.
  */
 export function companionFrontmatterBlock(stored: string): string {
 	const name = stored.trim();
 	if (!name) return 'Met With:\nTaken:';
 	const quoted = `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-	return `Met With:\nTaken:\n  - ${quoted}`;
+	return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;
 }
 
 function parseCompanionStamp(value: unknown): number | null {

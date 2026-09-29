@@ -19,7 +19,7 @@ cssclasses:
   - rv-dashboard
 ---
 
-> [!quote]+ RV Dashboard
+> [!quote] RV Dashboard
 >**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 >**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
 > 

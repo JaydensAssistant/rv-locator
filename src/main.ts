@@ -18,7 +18,7 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
@@ -1100,7 +1100,7 @@ export default class RVLocatorPlugin extends Plugin {
 		try {
 			await this.app.vault.process(current, (data) => {
 				const info = getFrontMatterInfo(data);
-				let next = data.slice(0, info.contentStart) + ensureDashboardLeadBlank(data.slice(info.contentStart));
+				let next = data.slice(0, info.contentStart) + ensureDashboardLeadBlank(unfoldDashboard(data.slice(info.contentStart)));
 				next = refreshHomeStampAges(next, new Date());
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);

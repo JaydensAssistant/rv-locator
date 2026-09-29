@@ -34,8 +34,10 @@ const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
  * 5 wraps that quote and log in Return Suggestions, nests Attempt Log,
  * and rewrites the suggestions callout type from the color setting.
  * 6 adds an empty line between the frontmatter and RV Dashboard.
+ * 7 drops the RV Dashboard fold mark and re-voices every digest with
+ * attempted Off slots included.
  */
-export const DIGEST_POLISH_VERSION = 6;
+export const DIGEST_POLISH_VERSION = 7;
 
 export function isDigestStartLine(line: string): boolean {
 	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);

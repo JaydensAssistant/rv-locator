@@ -518,7 +518,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 1'), true);
 		assert.equal(createdText.includes('Successful Visits: 1'), true);
-		assert.equal(createdText.includes('> [!quote]+ RV Dashboard\n>**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n>**Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		assert.equal(createdText.includes('> [!quote] RV Dashboard\n>**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n>**Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
 		assert.equal(createdText.includes('> **Hubs:**      '), false);
 		assert.equal(createdText.includes('VIEW[{["Map Link"]}]'), false);
 		assert.equal(createdText.includes('VIEW[{Map Link}]'), false);
@@ -559,7 +559,7 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
 		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss\]`\n>\n> > \[!rv\]- Quick Facts/);
 		assert.equal(createdText.includes('Notes would go here'), false);
-		assert.match(createdText, /\n---\n\n> \[!quote\]\+ RV Dashboard\n/);
+		assert.match(createdText, /\n---\n\n> \[!quote\] RV Dashboard\n/);
 		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
 		assert.equal(createdText.includes(`##### ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`).length, 1);
@@ -986,7 +986,7 @@ describe('disk proof', () => {
 		});
 		assert.equal(prompts.length, 0);
 		assert.equal(rv.priority, 4);
-		assert.equal(rv.companionYaml, 'Met With:\nTaken:\n  - "Sam"');
+		assert.equal(rv.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
 		assert.equal(rv.companionYaml.includes('[['), false);
 		assert.equal(rv.title, 'Ada on Oak');
 
@@ -1174,7 +1174,7 @@ describe('disk proof', () => {
 		});
 		assert.equal(textPrompts, 2);
 		assert.equal(prompts.length, 0);
-		assert.equal(linked.companionYaml, 'Met With:\nTaken:\n  - "Sam"');
+		assert.equal(linked.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
 		assert.equal(linked.title, 'Ada on Oak');
 
 		const plainPrompts = ['Ada', '10 Oak Street'];
@@ -1192,7 +1192,7 @@ describe('disk proof', () => {
 			system: { prompt: async () => plainPrompts.shift() ?? '' },
 			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
 		});
-		assert.equal(plain.companionYaml, 'Met With:\nTaken:\n  - "TestCompanion"');
+		assert.equal(plain.companionYaml, 'Met With: "TestCompanion"\nTaken:\n  - "TestCompanion"');
 
 		const skipped = await loadNewRv({
 			...baseApp,

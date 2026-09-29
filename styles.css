@@ -1333,14 +1333,79 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 
 /*
   Hubs and Address are soft-wrapped lines of one paragraph, each starting
-  with a <strong> label. A fixed label width lines up the two controls just
-  after the longer label. The map link stays next to the Address box.
-  Return Suggestions can also be a quote callout, so it is excluded.
+  with a <strong> label. One column layout for the dashboard:
+  label | field | Hub + or 🗺️. The Hub item and the Address box share one
+  width, so the map link lines up under the Hub plus button, and Quick
+  Facts ends at that same right edge. Registered properties resolve the em
+  values once, on the callout content, so inputs with a smaller font keep
+  the same lengths. Return Suggestions can also be a quote callout, so it
+  is excluded.
 */
+@property --rv-dash-label {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-field {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-plus {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-gap {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+	--rv-dash-label: 4.6em;
+	--rv-dash-field: 11em;
+	--rv-dash-plus: 2.1em;
+	--rv-dash-gap: 0.4em;
+}
+
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
 	display: inline-block;
-	min-width: 4.3em;
+	width: var(--rv-dash-label);
+	margin: 0;
 	font-weight: var(--font-semibold);
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-item {
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type])) {
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a {
+	display: inline-block;
+	width: var(--rv-dash-plus);
+	margin-left: var(--rv-dash-gap);
+	text-align: center;
+	vertical-align: middle;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
+	max-width: min(100%, calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em));
 }
 
 /*
