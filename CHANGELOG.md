@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.2.6
+
+`main.js` SHA-256: `34dde78319a01bbf620a5a6380f18a2cc03886c1d1dd7d35def7327e159eae07`
+
+`styles.css` SHA-256: `88c24b63194e66bb519537f894e00f1c9a21a39d06af79af4d232ea8f5aac80f`
+
+`manifest.json` SHA-256: `fe28b276046ba4d8418270ad5be1ce3f0a30148fdb8d1496f51626a2ae1f2f44`
+
+- The ideality planner (view, toggle, command, and modal) is removed. It may return later. Ideality as a score, the hidden sort chip, home likelihood, territory span, and the priority floors stay.
+- Re-geocoding a changed Address refreshes Location, Map Link, the body 🗺️ link, City, and the other derived place fields. A city or extra the new hit does not have is cleared. The map query uses the new hit’s city, not a previously stored City. Address is still never overwritten.
+- Availability is Off or May go out. Dayparts are Morning (before 12pm), Afternoon (12pm–4:29pm), and Evening (after 4:30pm). A click toggles the cell. New installs start all Off. An untouched all-Willing grid from 1.2.4 becomes all Off. Any other Willing or Go out cell becomes May go out, and Morning is on when either old morning cell was on. Willing and Go out multipliers are gone.
+- The Attempt Log digest is a compact table of only May-go-out days, stored under the callout title so it stays visible when the log is collapsed. Ratios are homes/trials for that daypart. Settings can swap rows and columns and edit the schedule. Changing the schedule or the orientation rewrites the digest on every existing RV note (files in the Templater templates folder are skipped) and on new notes. Avoid and try name dayparts, never a whole day. There is no Suggest button on the card.
+- Urgency on the card is a circle the same size as priority and the map pin, stacked on the right. Below 1, with priority above 0, it is a green circle with ○. Then yellow `!`, orange `!!`, and red `!!!` (3 and above). Priority 0 stays grey. Card accents use that color. There is no separate colorblind mode. Under 3 days the score is the raw ratio times `(days / 3)` squared, so priority 5 at about 2 days stays well below 1. Tapping the circle snoozes urgency to 0 for today, 7 days, or 14 days.
+- Every 3rd visit (configurable) asks whether to lower, keep, or raise priority. Stay is the primary button.
+- The address line uses the same small muted type as the date lines. General scale (the old font-size multiplier) scales the card text and the three circles together.
+- Settings are tabs: Everyday, Urgency, Nearby, Templates, and Advanced. Live graphs sit under the setting they describe, with labeled axes, and follow the theme.
+- Extras sync is pinned to tag `v1.2.6` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.4
 
 `main.js` SHA-256: `881bbfa5d28bbc449d220edb4d3b7a48ef41d168f858d2af8711e7aebed5b68a`

@@ -30,9 +30,9 @@ Copy `extras/templater-metabind/newRv.js` into Templater’s user scripts folder
 
 ```bash
 shasum -a 256 main.js styles.css manifest.json
-# main.js       9ca43507243b97e7d8da814de410232c7ab5a8168d0bbb8bc38cf40a0bbec967
-# styles.css    73ae6077410bbfcc90b028749d6c4731a47d7dc15352dc80f0b96e02a47217c1
-# manifest.json 1bc452f7468acd6075b0ca101271c0c581590c38e4d82bbe3c2f7aabc19ba2c8
+# main.js       34dde78319a01bbf620a5a6380f18a2cc03886c1d1dd7d35def7327e159eae07
+# styles.css    88c24b63194e66bb519537f894e00f1c9a21a39d06af79af4d232ea8f5aac80f
+# manifest.json fe28b276046ba4d8418270ad5be1ce3f0a30148fdb8d1496f51626a2ae1f2f44
 ```
 
 ## Attribution
