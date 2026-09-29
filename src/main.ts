@@ -18,12 +18,12 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, shouldNudgePriority, type VisitOutcome } from './visit-log';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { parseAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
+import { readAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
@@ -150,9 +150,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
-			window.setTimeout(() => {
-				if (!this.unloaded) void this.rewriteDigestFile(file);
-			}, 1500);
+			void this.watchCreatedDigest(file);
 		}));
 
 		this.app.workspace.onLayoutReady(() => {
@@ -185,6 +183,7 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
+			else if (created instanceof TFile) await this.refreshAttemptDigest(created);
 		} catch (error) {
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
 			new Notice(reason);
@@ -450,10 +449,17 @@ export default class RVLocatorPlugin extends Plugin {
 	/**
 	 * Templater rvLog calls this after a visit is on disk.
 	 * Refreshes that note's digest and may ask about priority.
+	 * A miss never asks. Home asks when Successful Visits hits a multiple of N.
 	 */
-	async noteVisitLogged(file: TFile): Promise<void> {
-		await this.rewriteDigestFile(file);
-		await this.maybeNudgePriority(file);
+	async noteVisitLogged(file: TFile, outcome?: VisitOutcome): Promise<void> {
+		await this.enqueueDigestRewrite(file);
+		await this.maybeNudgePriority(file, outcome);
+	}
+
+	/** Templater newRv calls this after the new note is on disk. */
+	async refreshAttemptDigest(file: TFile): Promise<void> {
+		if (!(file instanceof TFile) || this.isTemplateNote(file)) return;
+		await this.enqueueDigestRewrite(file);
 	}
 
 	private async loadAttemptBuckets(paths: readonly string[]): Promise<void> {
@@ -472,7 +478,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const cached = this.attemptBuckets.get(file.path);
 		if (cached && cached.mtime === file.stat.mtime) return cached.buckets;
 		const text = await this.app.vault.cachedRead(file);
-		const buckets = parseAttemptLog(text);
+		const buckets = readAttemptLog(text).buckets;
 		this.attemptBuckets.set(file.path, { mtime: file.stat.mtime, buckets });
 		return buckets;
 	}
@@ -912,23 +918,59 @@ export default class RVLocatorPlugin extends Plugin {
 		return folder.length > 0 && (file.path === folder || file.path.startsWith(`${folder}/`));
 	}
 
+	private enqueueDigestRewrite(file: TFile): Promise<void> {
+		const run = this.digestRewrite.then(() => this.rewriteDigestFile(file));
+		this.digestRewrite = run.catch(() => undefined);
+		return run;
+	}
+
+	/**
+	 * Templater writes the New RV body after the prompts, which can be well after
+	 * the vault create event. Poll until Attempt Log is present, then fill the digest.
+	 */
+	private async watchCreatedDigest(file: TFile): Promise<void> {
+		const path = file.path;
+		for (let attempt = 0; attempt < 180; attempt += 1) {
+			if (this.unloaded) return;
+			await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 800 : 1000));
+			const current = this.app.vault.getFileByPath(path);
+			if (!current || this.isTemplateNote(current)) return;
+			let text = '';
+			try {
+				text = await this.app.vault.cachedRead(current);
+			} catch {
+				return;
+			}
+			if (!text.trim() || text.includes('<%')) continue;
+			const hasLog = /\[!note\][^\n]*Attempt Log/i.test(text);
+			const hasVisit = /(?:success|\bhome\b|not home|\bmiss\b)/i.test(text);
+			if (hasLog && hasVisit) {
+				await this.refreshAttemptDigest(current);
+				return;
+			}
+			if (attempt >= 2) return;
+		}
+	}
+
 	private async rewriteDigestFile(file: TFile): Promise<void> {
 		if (file.extension !== 'md' || this.isTemplateNote(file)) return;
-		let text: string;
+		const current = this.app.vault.getFileByPath(file.path);
+		if (!current) return;
 		try {
-			text = await this.app.vault.read(file);
+			await this.app.vault.process(current, (data) => {
+				const log = readAttemptLog(data);
+				const digest = suggestReturnDigest({
+					buckets: log.buckets,
+					entries: log.entries,
+					grid: this.settings.availabilityGrid,
+					orientation: this.settings.digestOrientation,
+				});
+				const next = upsertAttemptDigest(data, digest.markdown);
+				return next ?? data;
+			});
 		} catch {
 			return;
 		}
-		const digest = suggestReturnDigest({
-			buckets: parseAttemptLog(text),
-			grid: this.settings.availabilityGrid,
-			orientation: this.settings.digestOrientation,
-			now: new Date(),
-		});
-		const next = upsertAttemptDigest(text, digest.markdown);
-		if (next == null || next === text) return;
-		await this.app.vault.modify(file, next);
 	}
 
 	private async applySnooze(path: string, choice: SnoozeChoice | 'clear'): Promise<void> {
@@ -945,12 +987,12 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const callback of this.viewRefreshers) callback();
 	}
 
-	private async maybeNudgePriority(file: TFile): Promise<void> {
-		const every = this.settings.priorityNudgeEvery;
-		if (!Number.isInteger(every) || every < 1) return;
-		const frontmatter = frontmatterFromMarkdown(await this.app.vault.read(file));
-		const visits = finiteVisitCount(readProperty(frontmatter, 'Visits'));
-		if (visits == null || visits < every || visits % every !== 0) return;
+	private async maybeNudgePriority(file: TFile, outcome?: VisitOutcome): Promise<void> {
+		const text = await this.app.vault.read(file);
+		const frontmatter = frontmatterFromMarkdown(text);
+		const successful = finiteVisitCount(readProperty(frontmatter, 'Successful Visits'));
+		const resolved = outcome ?? outcomeFromAttemptLog(text);
+		if (!shouldNudgePriority(resolved, successful, this.settings.priorityNudgeEvery)) return;
 		const current = finiteVisitCount(readProperty(frontmatter, 'Priority'));
 		const priority = current == null ? this.settings.defaultNewRvPriority : Math.max(0, Math.min(5, Math.round(current)));
 		const next = await new Promise<number | null>((resolve) => {
@@ -1039,6 +1081,13 @@ function findTemplateFile(app: App, paths: readonly string[]): TFile | null {
 		if (file?.extension === 'md') return file;
 	}
 	return null;
+}
+
+function outcomeFromAttemptLog(text: string): VisitOutcome | 'unknown' {
+	const entries = readAttemptLog(text).entries;
+	const last = entries[entries.length - 1];
+	if (!last) return 'unknown';
+	return last.home ? 'home' : 'miss';
 }
 
 function finiteVisitCount(value: unknown): number | null {

@@ -566,6 +566,9 @@ describe('disk proof', () => {
 		assert.equal(createdLines[stampLine + 3], '> [!note]- Attempt Log');
 		assert.equal(createdText.includes('## Attempt Log'), false);
 		assert.equal(createdText.includes('> [!note]- Attempt Log'), true);
+		assert.equal(createdText.includes('<!-- rv-locator-digest -->'), true);
+		assert.equal(createdText.includes('<!-- /rv-locator-digest -->'), true);
+		assert.ok(createdText.indexOf('<!-- rv-locator-digest -->') < createdText.indexOf(`> - ${stamp} — success`));
 		assert.equal(createdText.includes(`> - ${stamp} — success`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `> - ${stamp} — success`).length, 1);
 		assert.equal(createdText.includes('Location:'), false);
