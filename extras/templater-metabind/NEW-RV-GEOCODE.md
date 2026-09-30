@@ -85,7 +85,7 @@ Frontmatter still has Hub, Address, Priority, Met, Last Spoke, Last Attempted, M
 
 ## Home / Not home
 
-The buttons sit directly under the quote strip and above the `---` divider. There is no caption above them. `` `BUTTON[rv-log-home, rv-log-miss]` `` renders both, and the hidden `runTemplaterFile` blocks from `RV-LOG-BUTTONS-TEMPLATER.md` stay at the bottom of the note so they do not add a gap. Both button blocks set `class: rv-visit-btn`. Meta Bind puts that class on `span.mb-button` and draws the control as `button.mb-button-inner`. The snippet sizes that inner button to `8.25rem` by `2rem`. Paths:
+The buttons sit directly under the quote strip and above the `---` divider. There is no caption above them. `` `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]` `` renders Home, Not home, Log past visit, and Archive, two per row across the dashboard column. Log past visit and Archive run the `rv-locator:log-past-visit` and `rv-locator:archive-rv` commands. The hidden button blocks from `RV-LOG-BUTTONS-TEMPLATER.md` stay at the bottom of the note so they do not add a gap. All four button blocks set `class: rv-visit-btn`. Meta Bind puts that class on `span.mb-button` and draws the control as `button.mb-button-inner`. The snippet makes each inner button half the dashboard column wide and `2rem` tall. Paths:
 
 - `Templates/RV Log Home.md`
 - `Templates/RV Log Miss.md`

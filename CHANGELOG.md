@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.2
+
+`main.js` SHA-256: `17336eea02d19406e9971583c7d82f63295610740cbf23fd87df1cc857414dbc`
+
+`styles.css` SHA-256: `2f36443d9d9711f4821583b74202a0aba56c99339767a536b11cf792927e57f2`
+
+`manifest.json` SHA-256: `9a5814fd7cd25d6d80fa7beb536e8aa48988881826046e115d1d688761a985d5`
+
+- Log past visit backfills a visit you forgot to log. It is a button in the note, a choice on the card's priority badge, and a command. It asks Home or Not home, the day, and the approximate hour, and for a Home who was taken. The `#####` stamp and the Attempt Log line are placed by time, so an older visit sits above a newer one. Visits and Successful Visits go up, Last Attempted and Last Spoke move only when the visit is newer, and the companion is added to Taken. A time later than now is refused.
+- Each `#####` stamp and each Attempt Log line (including Not home) has an ellipsis in Reading view with Edit visit and Delete visit. Delete removes the stamp, its notes box and its `sVisitNNotes` property, the log line, and what the visit added: Visits, Successful Visits, Last Attempted and Last Spoke (moved back to the latest remaining visit), and its companion on Taken (kept while another visit records them or they are Met With). Edit changes the outcome, day, hour, or companion the same way, and keeps the notes box when a Home stays a Home. Met and Met With are never changed. The command *Edit or delete a visit* lists the note's visits, for Live Preview.
+- Home log lines now record the companion: `— success with Devin`. New RV, the priority badge, and `rvLog.js` all write it. Older lines without a name still count.
+- Archive sets Priority to 0 after a confirmation. It is a button in the note, a choice on the priority badge, and a command.
+- After Home or a past Home is logged, the note opens when you started from the card, and the caret is put at the end of the new notes box. Logging from the note's buttons does the same. On iOS the keyboard may stay down, because the focus does not come straight from a tap.
+- Visit notes boxes are one line tall when empty, grow while you type up to five lines, and then scroll. Every open refits each box, so a box left tall on a phone shrinks on a wider screen.
+- The note has four buttons, two per row, spanning the dashboard column. Log past visit and Archive use the Not home style for now. The first launch of 1.3.2 adds the two new buttons to existing notes.
+- The 🗺️ link beside Address is drawn as a map-pin button with the same size and box as the Hub plus button, directly under it. The note still stores the 🗺️ link, so it works without the plugin.
+- Extras sync is pinned to tag `v1.3.2` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.3.1` or any older tag, `main`, or `unstable`.
+
 ## 1.3.1
 
 `main.js` SHA-256: `7c9abe40c2458366bbf0d86b95ae0bac0ccfcab226378c9f89677bc692a709bb`

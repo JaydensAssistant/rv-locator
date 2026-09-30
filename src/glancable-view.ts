@@ -181,7 +181,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				attr: {
 					type: 'button',
 					title: `Priority ${rank}. Log a visit.`,
-					'aria-label': `Priority ${rank}. Home or Not home?`,
+					'aria-label': `Priority ${rank}. Log a visit or archive`,
 				},
 			});
 			pill.addEventListener('click', (event) => {
