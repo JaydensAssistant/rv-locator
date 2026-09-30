@@ -63,7 +63,7 @@ cssclasses:
 >
 > > [!note]- Attempt Log
 > >
-> >| | Morning | Afternoon | Evening |
+> >| | Mor | Aft | Eve |
 > >| --- | --- | --- | --- |
 > >| Sun | 0/0 | 0/0 | 0/0 |
 > >| Mon | 0/0 | 0/0 | 0/0 |
@@ -76,7 +76,9 @@ cssclasses:
 > >- <% rv.stamp %> — success<% rv.companionSuffix %>
 
 ```meta-bind-button
-label: Home
+label: ""
+icon: door-open
+tooltip: Home
 style: primary
 class: rv-visit-btn
 id: rv-log-home
@@ -87,7 +89,9 @@ actions:
 ```
 
 ```meta-bind-button
-label: Not home
+label: ""
+icon: door-closed
+tooltip: Not home
 style: default
 class: rv-visit-btn
 id: rv-log-miss
@@ -98,7 +102,9 @@ actions:
 ```
 
 ```meta-bind-button
-label: Log past visit
+label: ""
+icon: rotate-ccw-clock
+tooltip: Log past visit
 style: default
 class: rv-visit-btn
 id: rv-log-past
@@ -109,7 +115,9 @@ actions:
 ```
 
 ```meta-bind-button
-label: Archive
+label: ""
+icon: archive
+tooltip: Archive
 style: default
 class: rv-visit-btn
 id: rv-archive

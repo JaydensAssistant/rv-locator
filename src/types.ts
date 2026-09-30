@@ -19,8 +19,17 @@ import {
 	type DigestOrientation,
 } from './schedule';
 import { sanitizeSuggestionColor, type SuggestionColorChoice } from './suggestion-callout';
+import {
+	defaultUrgencyColors,
+	sanitizeUrgencyColors,
+	sanitizeUrgencyPalette,
+	type UrgencyColors,
+	type UrgencyPaletteId,
+} from './urgency-palette';
 
 export type DistanceUnit = 'miles' | 'kilometers';
+
+export type AttemptLogWidth = 'auto' | 'full' | 'column';
 
 export interface RVLocatorSettings {
 	geoapifyApiKey: string;
@@ -75,6 +84,16 @@ export interface RVLocatorSettings {
 	suggestionColor: SuggestionColorChoice;
 	/** Open RV notes (cssclass `rv-dashboard`) in Reading view. On by default. */
 	openRvInReadingView: boolean;
+	/** Attempt Log table headers read Mor, Aft, Eve. On by default. */
+	abbreviateDayparts: boolean;
+	/** `auto` is full width when days are columns, otherwise the dashboard column. */
+	attemptLogWidth: AttemptLogWidth;
+	centerDashboard: boolean;
+	centerVisitNotes: boolean;
+	centerSuggestions: boolean;
+	urgencyPalette: UrgencyPaletteId;
+	/** Low to high urgency. Used when {@link urgencyPalette} is `custom`. */
+	urgencyCustomColors: UrgencyColors;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -234,6 +253,13 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	digestDays: 'all',
 	suggestionColor: 'auto',
 	openRvInReadingView: true,
+	abbreviateDayparts: true,
+	attemptLogWidth: 'auto',
+	centerDashboard: false,
+	centerVisitNotes: false,
+	centerSuggestions: false,
+	urgencyPalette: 'default',
+	urgencyCustomColors: defaultUrgencyColors(),
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -348,6 +374,13 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		digestDays: input.digestDays === 'may' ? 'may' : 'all',
 		suggestionColor: sanitizeSuggestionColor(input.suggestionColor),
 		openRvInReadingView: input.openRvInReadingView !== false,
+		abbreviateDayparts: input.abbreviateDayparts !== false,
+		attemptLogWidth: input.attemptLogWidth === 'full' || input.attemptLogWidth === 'column' ? input.attemptLogWidth : 'auto',
+		centerDashboard: input.centerDashboard === true,
+		centerVisitNotes: input.centerVisitNotes === true,
+		centerSuggestions: input.centerSuggestions === true,
+		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
+		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),
@@ -360,6 +393,13 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		glancableFontScale: boundedNumber(input.glancableFontScale, 0.5, 2.5, DEFAULT_GLANCABLE_FONT_SCALE),
 		glancableLines: sanitizeGlancableLines(input.glancableLines),
 	};
+}
+
+/** Automatic is full width only when days run across the Attempt Log table. */
+export function attemptLogFullWidth(settings: Pick<RVLocatorSettings, 'attemptLogWidth' | 'digestOrientation'>): boolean {
+	if (settings.attemptLogWidth === 'full') return true;
+	if (settings.attemptLogWidth === 'column') return false;
+	return settings.digestOrientation === 'columns';
 }
 
 export function sanitizeNewRvPriority(value: unknown): number {

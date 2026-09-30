@@ -17,6 +17,12 @@ class FakeEl {
 		return el;
 	}
 
+	createSpan(spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }): FakeEl {
+		return this.createEl('span', typeof spec === 'object' ? spec : undefined);
+	}
+
+	setCssProps(_props: Record<string, string>): void {}
+
 	createEl(tag: string, spec?: { text?: string; cls?: string }): FakeEl {
 		const el = new FakeEl();
 		el.tag = tag;
@@ -145,8 +151,23 @@ export class Notice {
 	hide(): void {}
 }
 
+class FakeColor {
+	value = '';
+	setValue(value: string): this {
+		this.value = value;
+		return this;
+	}
+	onChange(_fn: (value: string) => void): this { return this; }
+}
+
 export class Setting {
+	controlEl = new FakeEl();
 	constructor(private el?: FakeEl) {}
+	setClass(_cls: string): this { return this; }
+	addColorPicker(cb: (picker: FakeColor) => void): this {
+		cb(new FakeColor());
+		return this;
+	}
 	setName(_name: string): this { return this; }
 	setDesc(_desc: string): this { return this; }
 	setHeading(): this { return this; }

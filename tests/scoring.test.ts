@@ -37,6 +37,7 @@ import {
 	suggestReturnDigest,
 	type AttemptBuckets,
 } from '../src/schedule';
+import { URGENCY_PALETTES, defaultUrgencyColors, editableUrgencyColors, sanitizeUrgencyColors, sanitizeUrgencyPalette, urgencyColorsFor } from '../src/urgency-palette';
 import { formatSnoozeUntil, parseSnoozeUntil, snoozeActive, URGENCY_SNOOZE_PROPERTY } from '../src/snooze';
 import { settingsGraphs } from '../src/settings-graphs';
 import { applyVisitBody, ensureDashboardLeadBlank, unfoldDashboard, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority } from '../src/visit-log';
@@ -44,6 +45,7 @@ import {
 	DEFAULT_IDEALITY_FLOOR_DAYS,
 	DEFAULT_TERRITORY_SPAN_MILES,
 	DEFAULT_URGENCY_THRESHOLD_DAYS,
+	attemptLogFullWidth,
 	mergeSettings,
 } from '../src/types';
 
@@ -104,6 +106,35 @@ describe('urgency', () => {
 		assert.notEqual(urgencyAccentColor(0), urgencyAccentColor(1));
 		assert.notEqual(urgencyAccentColor(1), urgencyAccentColor(5));
 		assert.equal(urgencyAccentColor(2, 0), 'var(--text-faint)');
+		const purple = urgencyColorsFor('purple', defaultUrgencyColors());
+		assert.equal(urgencyAccentColor(0, 3, purple), purple[0]);
+		assert.equal(urgencyAccentColor(7, 3, purple), purple[3]);
+		assert.equal(urgencyAccentColor(7, 0, purple), 'var(--text-faint)');
+	});
+
+	it('offers urgency palettes and keeps custom colors as hex', () => {
+		assert.deepEqual(urgencyColorsFor('default', ['#000000', '#000000', '#000000', '#000000']), ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c']);
+		for (const id of ['pastel', 'purple', 'green', 'blue', 'pink', 'color-blind', 'sunset', 'accent'] as const) {
+			assert.equal(URGENCY_PALETTES.some((palette) => palette.id === id), true, id);
+			assert.equal(urgencyColorsFor(id, defaultUrgencyColors()).length, 4);
+		}
+		const custom: [string, string, string, string] = ['#111111', '#222222', '#333333', '#444444'];
+		assert.deepEqual(urgencyColorsFor('custom', custom), custom);
+		assert.deepEqual(sanitizeUrgencyColors(['#ABCDEF', 'red', null]), ['#abcdef', '#d6a100', '#e06a00', '#d63c3c']);
+		assert.equal(sanitizeUrgencyPalette('nope'), 'default');
+		assert.equal(sanitizeUrgencyPalette('pink'), 'pink');
+		assert.deepEqual(editableUrgencyColors('accent', custom), defaultUrgencyColors());
+		assert.deepEqual(editableUrgencyColors('blue', custom), urgencyColorsFor('blue', custom));
+		const merged = mergeSettings({});
+		assert.equal(merged.urgencyPalette, 'default');
+		assert.deepEqual(merged.urgencyCustomColors, defaultUrgencyColors());
+		assert.equal(merged.abbreviateDayparts, true);
+		assert.equal(merged.attemptLogWidth, 'auto');
+		assert.equal(merged.centerDashboard || merged.centerVisitNotes || merged.centerSuggestions, false);
+		assert.equal(attemptLogFullWidth(merged), false);
+		assert.equal(attemptLogFullWidth({ ...merged, digestOrientation: 'columns' }), true);
+		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'column', digestOrientation: 'columns' }), false);
+		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'full', digestOrientation: 'rows' }), true);
 	});
 
 	it('holds displayed urgency at 0 while a snooze is still ahead', () => {
@@ -365,6 +396,13 @@ describe('dayparts and return suggester', () => {
 			'| Afternoon | 0/0 | 0/0 | 0/0 | 0/0 | 0/0 | 1/5 | 0/0 |',
 			'| Evening | 0/0 | 0/0 | 0/0 | 0/0 | 0/0 | 1/5 | 0/0 |',
 		].join('\n'));
+		const shortRows = suggestReturnDigest({ buckets, grid, abbreviate: true });
+		assert.equal(shortRows.table.split('\n')[0], '| | Mor | Aft | Eve |');
+		const shortColumns = suggestReturnDigest({ buckets, grid, orientation: 'columns', abbreviate: true });
+		assert.deepEqual(shortColumns.table.split('\n').slice(2).map((line) => line.split(' |')[0]), ['| Mor', '| Aft', '| Eve']);
+		assert.equal(shortRows.sentences.join('\n'), digest.sentences.join('\n'));
+		const shortEmpty = suggestReturnDigest({ buckets: {}, grid: defaultAvailabilityGrid(), abbreviate: true });
+		assert.equal(shortEmpty.table.split('\n')[0], '| | Mor | Aft | Eve |');
 		const empty = suggestReturnDigest({ buckets: {}, grid: defaultAvailabilityGrid() });
 		assert.equal(empty.sentences[0], 'No May-go-out days');
 		assert.match(empty.table, /\| Sun \| 0\/0 \| 0\/0 \| 0\/0 \|/);

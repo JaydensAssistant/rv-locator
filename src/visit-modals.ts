@@ -1,5 +1,5 @@
 import { Modal, Notice, Setting, SuggestModal, type App } from 'obsidian';
-import { dateInputValue, describeVisit, hourLabel, isFutureVisit, roundedHour, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
+import { dateInputValue, defaultPastVisitTime, describeVisit, hourLabel, isFutureVisit, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
 export interface VisitEditOptions {
 	title: string;
@@ -25,7 +25,7 @@ export class VisitEditModal extends Modal {
 	constructor(app: App, private options: VisitEditOptions) {
 		super(app);
 		const start = options.initial ?? { when: new Date(), home: true, companion: '' };
-		const rounded = options.initial ? { date: start.when, hour: start.when.getHours() } : roundedHour(start.when);
+		const rounded = options.initial ? { date: start.when, hour: start.when.getHours() } : defaultPastVisitTime(start.when);
 		this.home = start.home;
 		this.dateText = dateInputValue(rounded.date);
 		this.hour = rounded.hour;

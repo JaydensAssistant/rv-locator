@@ -123,16 +123,70 @@ export function unfoldDashboard(body: string): string {
 }
 
 const TWO_BUTTON_LINE = /^(>[\t ]*)`BUTTON\[\s*rv-log-home\s*,\s*rv-log-miss\s*\]`[\t ]*$/;
+/** Icon-only visit buttons. The tooltip names the button on hover and on a long press. */
+export const VISIT_BUTTON_FACES: Readonly<Record<string, { icon: string; tooltip: string }>> = {
+	'rv-log-home': { icon: 'door-open', tooltip: 'Home' },
+	'rv-log-miss': { icon: 'door-closed', tooltip: 'Not home' },
+	'rv-log-past': { icon: 'rotate-ccw-clock', tooltip: 'Log past visit' },
+	'rv-archive': { icon: 'archive', tooltip: 'Archive' },
+};
+
+function faceLines(id: string): string[] {
+	const face = VISIT_BUTTON_FACES[id];
+	if (!face) return [];
+	return ['label: ""', `icon: ${face.icon}`, `tooltip: ${face.tooltip}`];
+}
+
 const VISIT_BUTTON_BLOCKS: ReadonlyArray<{ id: string; block: string }> = [
 	{
 		id: 'rv-log-past',
-		block: ['```meta-bind-button', 'label: Log past visit', 'style: default', 'class: rv-visit-btn', 'id: rv-log-past', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:log-past-visit', '```'].join('\n'),
+		block: ['```meta-bind-button', ...faceLines('rv-log-past'), 'style: default', 'class: rv-visit-btn', 'id: rv-log-past', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:log-past-visit', '```'].join('\n'),
 	},
 	{
 		id: 'rv-archive',
-		block: ['```meta-bind-button', 'label: Archive', 'style: default', 'class: rv-visit-btn', 'id: rv-archive', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:archive-rv', '```'].join('\n'),
+		block: ['```meta-bind-button', ...faceLines('rv-archive'), 'style: default', 'class: rv-visit-btn', 'id: rv-archive', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:archive-rv', '```'].join('\n'),
 	},
 ];
+
+const BUTTON_FENCE = /^```meta-bind-button[\t ]*$/;
+const BUTTON_FACE_KEY = /^(?:label|icon|tooltip):/;
+
+/**
+ * The four visit button blocks get an empty label, their icon, and a
+ * tooltip, in place of the old text label. Other button blocks and every
+ * other key are left alone.
+ */
+export function iconizeVisitButtons(body: string): string {
+	const newline = body.includes('\r\n') ? '\r\n' : '\n';
+	const lines = body.split(/\r?\n/);
+	const out: string[] = [];
+	let changed = false;
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? '';
+		if (!BUTTON_FENCE.test(line)) {
+			out.push(line);
+			continue;
+		}
+		let end = index + 1;
+		while (end < lines.length && !/^```[\t ]*$/.test(lines[end] ?? '')) end += 1;
+		const inner = lines.slice(index + 1, end);
+		const id = inner.map((item) => /^id:\s*(\S+)\s*$/.exec(item)?.[1]).find((value) => value != null) ?? '';
+		const face = faceLines(id);
+		if (face.length === 0) {
+			out.push(line, ...inner);
+		} else {
+			const labelAt = inner.findIndex((item) => /^label:/.test(item));
+			const kept = inner.filter((item, at) => at === labelAt || !BUTTON_FACE_KEY.test(item));
+			const insertAt = labelAt < 0 ? 0 : kept.indexOf(inner[labelAt] ?? '');
+			const rebuilt = [...kept.slice(0, insertAt), ...face, ...kept.slice(labelAt < 0 ? 0 : insertAt + 1)];
+			if (rebuilt.join('\n') !== inner.join('\n')) changed = true;
+			out.push(line, ...rebuilt);
+		}
+		if (end < lines.length) out.push(lines[end] ?? '');
+		index = end;
+	}
+	return changed ? out.join(newline) : body;
+}
 
 /**
  * A note with the Home / Not home button line gets Log past visit and
@@ -143,16 +197,16 @@ export function ensureVisitButtons(body: string): string {
 	const newline = body.includes('\r\n') ? '\r\n' : '\n';
 	const lines = body.split(/\r?\n/);
 	const at = lines.findIndex((line) => TWO_BUTTON_LINE.test(line));
-	if (at < 0) return body;
+	if (at < 0) return iconizeVisitButtons(body);
 	const lead = TWO_BUTTON_LINE.exec(lines[at] ?? '')?.[1] ?? '> ';
 	lines[at] = `${lead}\`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]\``;
 	let next = lines.join(newline);
 	const missing = VISIT_BUTTON_BLOCKS.filter(({ id }) => !new RegExp(`^id:\\s*${id}\\s*$`, 'm').test(next));
-	if (missing.length === 0) return next;
+	if (missing.length === 0) return iconizeVisitButtons(next);
 	const trailing = /\s*$/.exec(next)?.[0] ?? '';
 	next = next.slice(0, next.length - trailing.length);
 	const blocks = missing.map(({ block }) => block.split('\n').join(newline)).join(`${newline}${newline}`);
-	return `${next}${newline}${newline}${blocks}${newline}`;
+	return iconizeVisitButtons(`${next}${newline}${newline}${blocks}${newline}`);
 }
 
 /** `success`, `success with Devin`, or `not home`. The companion is only kept on a Home. */

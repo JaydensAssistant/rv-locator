@@ -1255,7 +1255,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.3.2');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.3.3');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1298,7 +1298,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.2/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.3/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1319,9 +1319,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.3.2');
+		assert.equal(plan.ref, 'v1.3.3');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.3.2/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.3.3/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
@@ -1945,11 +1945,13 @@ describe('setup wizard', () => {
 
 		let counties = ['Orange'];
 		const saved: string[][] = [];
+		const savedColors: unknown[] = [];
 		const opened = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: counties }), wizardActions({
 			onSaveHomeCounties: async (next) => {
 				saved.push(next);
 				counties = mergeSettings({ homeCounties: next }).homeCounties;
 			},
+			onSaveUrgencyColors: async (choice) => { savedColors.push(choice); },
 		}));
 		opened.open();
 		await waitTurn();
@@ -1966,9 +1968,13 @@ describe('setup wizard', () => {
 		await waitTurn();
 		assert.deepEqual(saved, [['Orange County', 'orange', 'Lake']]);
 		assert.deepEqual(counties, ['Orange County', 'Lake']);
+		assert.equal(collectText(opened.contentEl as unknown as Clickable).includes('Step 2 of 3. Urgency colors.'), true);
+		clickLabeled(opened.contentEl as unknown as Clickable, 'Save and continue');
+		await waitTurn();
+		assert.deepEqual(savedColors, [{ palette: 'default', custom: ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c'] }]);
 		const afterSave = collectText(opened.contentEl as unknown as Clickable);
 		assert.equal(afterSave.includes('Home counties: Orange County, Lake'), true);
-		assert.equal(afterSave.includes('Step 2 of 2'), true);
+		assert.equal(afterSave.includes('Step 3 of 3'), true);
 
 		let skippedSaved = 0;
 		let skippedSchedule = 0;
@@ -1977,6 +1983,8 @@ describe('setup wizard', () => {
 			onSaveMayGoOut: async () => { skippedSchedule += 1; },
 		}));
 		skipped.open();
+		await waitTurn();
+		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
 		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
@@ -2099,9 +2107,11 @@ describe('setup wizard', () => {
 		}), true);
 	});
 
-	it('page 2 lists the Geoapify gap and every action button', async () => {
+	it('page 3 lists the Geoapify gap and every action button', async () => {
 		const blocked = new SetupWizardModal({} as never, async () => sampleSetup({ geoapifyConfigured: false }), wizardActions({}));
 		blocked.open();
+		await waitTurn();
+		clickLabeled(blocked.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
 		clickLabeled(blocked.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
@@ -2123,6 +2133,8 @@ describe('setup wizard', () => {
 		await waitTurn();
 		clickLabeled(ready.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
+		clickLabeled(ready.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
 		const readyText = collectText(ready.contentEl as unknown as Clickable);
 		assert.equal(readyText.includes('Ready: Geoapify API key is set'), true);
 		assert.equal(readyText.includes('Needs attention'), false);
@@ -2131,6 +2143,8 @@ describe('setup wizard', () => {
 			onDismiss: () => { dismissed += 1; },
 		}));
 		done.open();
+		await waitTurn();
+		clickLabeled(done.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
 		clickLabeled(done.contentEl as unknown as Clickable, 'Skip');
 		await waitTurn();
@@ -2148,6 +2162,7 @@ function wizardActions(partial: Partial<ConstructorParameters<typeof SetupWizard
 		openMetaBindSettings: () => {},
 		onSaveHomeCounties: async () => {},
 		onSaveMayGoOut: async () => {},
+		onSaveUrgencyColors: async () => {},
 		...partial,
 	};
 }

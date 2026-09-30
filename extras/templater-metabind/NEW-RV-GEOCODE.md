@@ -43,7 +43,7 @@ There is one copy of this template in the repo: `extras/templater-metabind/New R
 >
 > > [!note]- Attempt Log
 > >
-> >| | Morning | Afternoon | Evening |
+> >| | Mor | Aft | Eve |
 > >| --- | --- | --- | --- |
 > >| Sun | 0/0 | 0/0 | 0/0 |
 > >
