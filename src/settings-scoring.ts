@@ -158,7 +158,7 @@ export function renderUrgencySettings(containerEl: HTMLElement, plugin: ScoringH
 export function renderDigestThresholds(containerEl: HTMLElement, plugin: ScoringHost): void {
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'The Attempt Log suggester sorts May-go-out dayparts into Avoid, Try, Unsure, and Untried.',
+		text: 'The Attempt Log suggester sorts May-go-out dayparts, and any daypart that already has an attempt, into Avoid, Try, Unsure, and Untried.',
 	});
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',

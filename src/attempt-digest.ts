@@ -33,8 +33,12 @@ const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
  * log once.
  * 5 wraps that quote and log in Return Suggestions, nests Attempt Log,
  * and rewrites the suggestions callout type from the color setting.
+ * 6 adds an empty line between the frontmatter and RV Dashboard.
+ * 7 drops the RV Dashboard fold mark and re-voices every digest with
+ * attempted Off slots included.
+ * 8 adds the Log past visit and Archive buttons beside Home and Not home.
  */
-export const DIGEST_POLISH_VERSION = 5;
+export const DIGEST_POLISH_VERSION = 8;
 
 export function isDigestStartLine(line: string): boolean {
 	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);
@@ -147,11 +151,14 @@ export function attemptLogCallouts(root: HTMLElement): HTMLElement[] {
 /**
  * Grey the Attempt Log callout, mark the suggester quote above it, and mark
  * the daypart table inside it. A table still sitting above the callout, from
- * a note not yet rewritten, is marked too.
+ * a note not yet rewritten, is marked too. With `suggestionType`, Return
+ * Suggestions is shown in that callout color even before the file is rewritten.
  */
-export function decorateAttemptLog(root: HTMLElement): void {
+export function decorateAttemptLog(root: HTMLElement, suggestionType?: string): void {
+	const type = suggestionType ? sanitizeSuggestionType(suggestionType) : '';
 	for (const callout of returnSuggestionCallouts(root)) {
 		callout.classList.add('rv-locator-return-suggestions');
+		if (type && callout.getAttribute('data-callout') !== type) callout.setAttribute('data-callout', type);
 		tagInsideLegacy(callout);
 	}
 	for (const callout of attemptLogCallouts(root)) {

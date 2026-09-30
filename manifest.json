@@ -1,7 +1,7 @@
 {
 	"id": "rv-locator",
 	"name": "RV Locator",
-	"version": "1.2.12",
+	"version": "1.3.2",
 	"minAppVersion": "1.10.0",
 	"description": "Look up return-visit addresses and show live distance in Nearby.",
 	"author": "RV Locator",

@@ -6,7 +6,7 @@ import path from 'node:path';
 mkdirSync('tests-dist', { recursive: true });
 
 await esbuild.build({
-	entryPoints: ['tests/logic.test.ts', 'tests/disk-proof.test.ts', 'tests/scoring.test.ts'],
+	entryPoints: ['tests/logic.test.ts', 'tests/disk-proof.test.ts', 'tests/scoring.test.ts', 'tests/visit-editor.test.ts'],
 	bundle: true,
 	format: 'cjs',
 	platform: 'node',
@@ -20,7 +20,7 @@ await esbuild.build({
 	logLevel: 'warning',
 });
 
-const result = spawnSync(process.execPath, ['--test', 'tests-dist/logic.test.cjs', 'tests-dist/disk-proof.test.cjs', 'tests-dist/scoring.test.cjs'], {
+const result = spawnSync(process.execPath, ['--test', 'tests-dist/logic.test.cjs', 'tests-dist/disk-proof.test.cjs', 'tests-dist/scoring.test.cjs', 'tests-dist/visit-editor.test.cjs'], {
 	stdio: 'inherit',
 });
 

@@ -99,11 +99,27 @@ export function calendarDaysSinceStamp(stamp: string, today: Date = new Date()):
 	return days;
 }
 
-/** `0 days ago`, `1 day ago`, or `54 days ago`. */
+/** `Today`, `1 day ago`, or `54 days ago`. */
 export function formatDaysAgo(days: number): string {
 	const whole = Math.max(0, Math.floor(days));
+	if (whole === 0) return 'Today';
 	if (whole === 1) return '1 day ago';
 	return `${whole} days ago`;
+}
+
+const STAMP_DATE_ANYWHERE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/;
+
+/**
+ * Age label for rendered stamp heading text, such as
+ * `Wed, 2pm — Sep 9, 2026 20 days ago`. The stale age text after the date is
+ * ignored. Text without a visit stamp returns null.
+ */
+export function stampAgeFromHeadingText(text: string, today: Date = new Date()): string | null {
+	const match = STAMP_DATE_ANYWHERE.exec(text);
+	if (!match) return null;
+	const days = calendarDaysSinceStamp(`— ${match[1] ?? ''}`, today);
+	if (days == null) return null;
+	return formatDaysAgo(days);
 }
 
 /** Inline age next to a `###` visit stamp. Empty when `stamp` is not a visit stamp. */

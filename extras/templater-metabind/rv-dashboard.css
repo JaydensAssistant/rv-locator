@@ -111,19 +111,20 @@
   outside the dashboard callout.
 */
 .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
-	display: inline-flex;
-	align-items: stretch;
-	gap: 0.45rem;
-	flex-wrap: wrap;
+	display: inline-grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.4em;
+	box-sizing: border-box;
+	width: min(100%, var(--rv-dash-column, 18.4em));
 	vertical-align: middle;
 }
 
+/* Four buttons, two per row, spanning the dashboard column edge to edge. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
-	flex: 0 0 8.25rem;
-	width: 8.25rem;
-	min-width: 8.25rem;
-	max-width: 8.25rem;
+	min-width: 0;
+	width: 100%;
+	max-width: none;
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
@@ -133,7 +134,7 @@ span.mb-button.rv-visit-btn {
 	justify-content: center;
 	flex: 1 1 auto;
 	width: 100%;
-	min-width: 8.25rem;
+	min-width: 0;
 	max-width: none;
 	height: 2rem;
 	min-height: 2rem;
@@ -142,35 +143,234 @@ span.mb-button.rv-visit-btn {
 	border-radius: var(--radius-s, 6px);
 	line-height: 1;
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	text-align: center;
 }
 
 span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
 	background-color: var(--text-accent);
 	color: var(--text-on-accent);
-	border-color: var(--text-accent);
+	border: 1px solid var(--text-accent);
+	box-shadow: none;
 }
 
+/*
+  Not home is the default Meta Bind button. It takes the theme accent at about
+  a third of its lightness, so a blue accent gives dark navy. Same border and
+  box as Home so both buttons are the same size.
+*/
 span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
-	background-color: color-mix(in srgb, var(--background-primary) 68%, #000);
-	color: var(--text-normal);
-	border-color: color-mix(in srgb, var(--background-modifier-border) 55%, var(--text-muted));
+	background-color: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) * 0.34));
+	color: hsl(var(--accent-h), 70%, 92%);
+	border: 1px solid hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) * 0.55));
+	box-shadow: none;
 }
 
-.rv-dashboard .callout[data-callout="quote"] > .callout-content > p:has(> strong:first-child) {
-	display: grid;
-	grid-template-columns: 5.6em minmax(0, 1fr) auto;
+/*
+  Hubs and Address are soft-wrapped lines of one paragraph, each starting
+  with a <strong> label. One column layout for the dashboard:
+  label | field | Hub + or 🗺️. The Hub item and the Address box share one
+  width, so the map link lines up under the Hub plus button. Quick Facts
+  and Attempt Log end at that same right edge (--rv-dash-column), so the
+  note reads as one column. Registered properties resolve the em values
+  once, on the note, so inputs and tables with a smaller font keep the same
+  lengths. Return Suggestions can also be a quote callout, so it is
+  excluded from the Hubs / Address rules.
+*/
+@property --rv-dash-label {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-field {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-plus {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-gap {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-column {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+.rv-dashboard {
+	--rv-dash-label: 4.6em;
+	--rv-dash-field: 11em;
+	--rv-dash-plus: 2.1em;
+	--rv-dash-gap: 0.4em;
+	--rv-dash-column: calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
+	display: inline-block;
+	width: var(--rv-dash-label);
+	margin: 0;
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-item {
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type])) {
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a {
+	display: inline-block;
+	width: var(--rv-dash-plus);
+	margin-left: var(--rv-dash-gap);
+	text-align: center;
+	vertical-align: middle;
+}
+
+/*
+  The Hub plus and the map button share one box: --rv-dash-plus wide and
+  one input tall, so the map pin sits directly under the plus. The map link
+  is drawn by the plugin as a map-pin icon, without the external-link mark.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p button:not(.mb-button-inner):not(.mb-inline-list-item button),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+	display: inline-flex;
 	align-items: center;
-	column-gap: 0.4em;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--rv-dash-plus);
+	min-width: var(--rv-dash-plus);
+	height: var(--input-height, 2em);
+	padding: 0;
+	vertical-align: middle;
 }
 
-.rv-dashboard .callout[data-callout="quote"] :is(input, textarea, select),
-.rv-dashboard .callout[data-callout="quote"] :is(.meta-bind-input, .mb-input, .mb-suggest-input, .mb-input-wrapper) {
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+	margin-left: var(--rv-dash-gap);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--button-radius, var(--radius-s, 4px));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	color: var(--text-muted);
+	text-decoration: none;
+}
+
+.rv-dashboard a.rv-map-button:hover {
+	color: var(--text-normal);
+}
+
+.rv-dashboard a.rv-map-button svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
+	max-width: min(100%, var(--rv-dash-column));
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] {
+	max-width: min(100%, var(--rv-dash-column));
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log table,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] table {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	table-layout: auto;
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log :is(th, td),
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] :is(th, td) {
+	padding: 0.25em 0.4em;
+	white-space: nowrap;
+}
+
+/*
+  Only the Address text box, the Hub list items, and the Hub plus button are
+  darkened. Their wrappers keep the callout background. Quick Facts sits in
+  a nested callout, not a direct paragraph, and is not matched.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type]), textarea, .mb-inline-list-item, button:not(.mb-button-inner)) {
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
 	color: var(--text-normal);
 	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 }
 
+/*
+  Visit notes under each stamp are Meta Bind textAreas. One line when
+  empty, growing with the text to five lines, then scrolling. The plugin
+  sets the height as you type and on every open; field-sizing does the same
+  where the browser supports it.
+*/
+.rv-dashboard textarea {
+	--rv-notes-pad: 0.3em;
+	box-sizing: border-box;
+	width: 100%;
+	padding: var(--rv-notes-pad) 0.6em;
+	line-height: 1.45;
+	resize: none;
+	field-sizing: content;
+	min-height: calc(1lh + 2 * var(--rv-notes-pad) + 2 * var(--input-border-width, 1px));
+	max-height: calc(5lh + 2 * var(--rv-notes-pad) + 2 * var(--input-border-width, 1px));
+	overflow-y: auto;
+}
+
+/* Edit or delete one visit: an ellipsis after each stamp and each Attempt Log line. */
+.rv-visit-more {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: 0.35em;
+	padding: 0.1em 0.25em;
+	height: auto;
+	vertical-align: middle;
+	background: none;
+	box-shadow: none;
+	color: var(--text-faint);
+	--icon-size: var(--icon-xs, 14px);
+}
+
+.rv-visit-more:hover,
+.rv-visit-more:focus-visible {
+	color: var(--text-normal);
+}
+
+.rv-visit-more svg {
+	width: var(--icon-xs, 14px);
+	height: var(--icon-xs, 14px);
+}
+
+/*
+  Hide callout type icons on RV notes (quote mark, list, pencil). The title
+  shifts left because the icon is out of the flex row, not covered.
+  Scoped to cssclasses rv-dashboard.
+
+  RV notes open in Reading view, and visit notes are Meta Bind textAreas,
+  so the callout source is not revealed while typing a note.
+*/
 .rv-dashboard .callout-icon {
 	display: none;
 }

@@ -8,14 +8,17 @@
  * the next Home / Not home write. A home stamp is inserted above Return
  * Suggestions, or above the suggester quote on an older note. The daypart
  * table stays inside the log. Each visit stamp is `#####` with a muted
- * "N days ago" age. An older `###` stamp is promoted on the next write.
+ * "N days ago" age ("Today" on the day). An older `###` stamp is promoted on the next write.
  * Home inserts that stamp above the log, including a second Home in the
- * same rounded hour, and adds `### Visit Notes:` once. Two blank lines sit
- * between that stamp and the suggestions block so there is room for notes.
+ * same rounded hour, and adds `### Visit Notes:` once. The line under each
+ * new stamp is a Meta Bind textArea bound to the next `sVisitNNotes`
+ * property, so notes stay editable in Reading view.
  *
  * Home also asks who they brought (one person). That name is appended to
  * Taken and does not change Met With. Not home does not ask, and a skipped
- * name leaves Met With and Taken unchanged.
+ * name leaves Met With and Taken unchanged. The name is also written on the
+ * bullet (`— success with Devin`) so deleting or editing that visit can
+ * take it back out of Taken.
  *
  * Call: await tp.user.rvLog(tp, "home")  or  await tp.user.rvLog(tp, "miss")
  */
@@ -105,6 +108,7 @@ function stampCalendarDays(stamp, today) {
 }
 
 function formatDaysAgo(days) {
+  if (days === 0) return "Today";
   if (days === 1) return "1 day ago";
   return `${days} days ago`;
 }
@@ -274,9 +278,36 @@ function insertHomeHeading(body, whenLabel) {
   while (before.length > 0 && before[before.length - 1] === "") before.pop();
   const after = lines.slice(anchor);
   const heading = `##### ${whenLabel}`;
-  const padding = ["", ""];
-  const mid = before.length > 0 ? ["", heading, ...padding, ...after] : [heading, ...padding, ...after];
-  return [...before, ...mid].join("\n");
+  const field = `\`INPUT[textArea:${nextVisitNotesProperty(body)}]\``;
+  const last = before.length > 0 ? String(before[before.length - 1]).trim() : "";
+  const lead = before.length === 0 || last === "### Visit Notes:" ? [] : [""];
+  return [...before, ...lead, heading, field, "", ...after].join("\n");
+}
+
+/** Mirrors src/visit-log.ts nextVisitNotesProperty. */
+function nextVisitNotesProperty(body) {
+  let highest = 0;
+  for (const match of String(body).matchAll(/\bsVisit(\d+)Notes\b/g)) {
+    const index = Number(match[1]);
+    if (Number.isInteger(index) && index > highest) highest = index;
+  }
+  return `sVisit${highest + 1}Notes`;
+}
+
+/** Mirrors src/visit-log.ts unfoldDashboard: RV Dashboard has no fold mark. */
+function unfoldDashboard(body) {
+  const lines = body.split("\n");
+  const at = lines.findIndex((line) => /^>[\t ]*\[!quote\][+-][\t ]*RV Dashboard[\t ]*$/i.test(line.replace(/\r$/, "")));
+  if (at < 0) return body;
+  lines[at] = `> [!quote] RV Dashboard${lines[at].endsWith("\r") ? "\r" : ""}`;
+  return lines.join("\n");
+}
+
+/** Mirrors src/visit-log.ts ensureDashboardLeadBlank. */
+function ensureDashboardLeadBlank(body) {
+  const first = (/^[^\r\n]*/.exec(body) || [""])[0];
+  if (!/^>[\t ]*\[!quote\][+-]?[\t ]*RV Dashboard\b/i.test(first)) return body;
+  return `${body.includes("\r\n") ? "\r\n" : "\n"}${body}`;
 }
 
 function appendLogBullet(body, bullet) {
@@ -659,9 +690,10 @@ async function rvLog(tp, kind) {
 
   content = ensureAttemptLog(content);
   if (mode === "home") content = insertHomeHeading(content, whenLabel);
-  content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
+  content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}${companion ? ` with ${companion}` : ""}`);
   content = refreshStampAges(content, now);
   content = ensureVisitNotesHeading(content);
+  content = ensureDashboardLeadBlank(unfoldDashboard(content));
 
   await app.vault.modify(file, fmBlock + content);
   const plugin = rvPlugin();

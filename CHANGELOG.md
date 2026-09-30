@@ -1,5 +1,56 @@
 # Changelog
 
+## 1.3.2
+
+`main.js` SHA-256: `17336eea02d19406e9971583c7d82f63295610740cbf23fd87df1cc857414dbc`
+
+`styles.css` SHA-256: `2f36443d9d9711f4821583b74202a0aba56c99339767a536b11cf792927e57f2`
+
+`manifest.json` SHA-256: `9a5814fd7cd25d6d80fa7beb536e8aa48988881826046e115d1d688761a985d5`
+
+- Log past visit backfills a visit you forgot to log. It is a button in the note, a choice on the card's priority badge, and a command. It asks Home or Not home, the day, and the approximate hour, and for a Home who was taken. The `#####` stamp and the Attempt Log line are placed by time, so an older visit sits above a newer one. Visits and Successful Visits go up, Last Attempted and Last Spoke move only when the visit is newer, and the companion is added to Taken. A time later than now is refused.
+- Each `#####` stamp and each Attempt Log line (including Not home) has an ellipsis in Reading view with Edit visit and Delete visit. Delete removes the stamp, its notes box and its `sVisitNNotes` property, the log line, and what the visit added: Visits, Successful Visits, Last Attempted and Last Spoke (moved back to the latest remaining visit), and its companion on Taken (kept while another visit records them or they are Met With). Edit changes the outcome, day, hour, or companion the same way, and keeps the notes box when a Home stays a Home. Met and Met With are never changed. The command *Edit or delete a visit* lists the note's visits, for Live Preview.
+- Home log lines now record the companion: `— success with Devin`. New RV, the priority badge, and `rvLog.js` all write it. Older lines without a name still count.
+- Archive sets Priority to 0 after a confirmation. It is a button in the note, a choice on the priority badge, and a command.
+- After Home or a past Home is logged, the note opens when you started from the card, and the caret is put at the end of the new notes box. Logging from the note's buttons does the same. On iOS the keyboard may stay down, because the focus does not come straight from a tap.
+- Visit notes boxes are one line tall when empty, grow while you type up to five lines, and then scroll. Every open refits each box, so a box left tall on a phone shrinks on a wider screen.
+- The note has four buttons, two per row, spanning the dashboard column. Log past visit and Archive use the Not home style for now. The first launch of 1.3.2 adds the two new buttons to existing notes.
+- The 🗺️ link beside Address is drawn as a map-pin button with the same size and box as the Hub plus button, directly under it. The note still stores the 🗺️ link, so it works without the plugin.
+- Extras sync is pinned to tag `v1.3.2` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.3.1` or any older tag, `main`, or `unstable`.
+
+## 1.3.1
+
+`main.js` SHA-256: `7c9abe40c2458366bbf0d86b95ae0bac0ccfcab226378c9f89677bc692a709bb`
+
+`styles.css` SHA-256: `32a0f80cc10711aba17f155428f3f688c8bcdfd3726b978aa0c77f58a287828d`
+
+`manifest.json` SHA-256: `f5ff8c489e17228ee78684b09f606f9550c607ef04a0e7730436b5f6ddde74d5`
+
+- Return Suggestions voice agrees with the table. Before, the voice read only May-go-out slots, so attempts in an Off slot (such as Tue evening at 2/3) were ignored and the rest of that day was listed as `Untried: Tue`. Every slot with an attempt is now classified as Try, Unsure, or Avoid. Untried lists only May-go-out slots with no attempts (`Untried: Sun · Tue morning/afternoon · …`). With no May-go-out days, attempted slots are still voiced above `No May-go-out days`. May-go-out-only tables also show those attempted slots. The first launch of 1.3.1 rewrites every digest.
+- The companion chosen on New RV create is Met With (who was there when first meeting the householder) and the first Taken entry. Later Home visits append to Taken only and never change Met With, even when it is blank. Met is unchanged.
+- RV Dashboard is `> [!quote] RV Dashboard` with no fold mark, so it cannot be collapsed. The first launch of 1.3.1 drops a `+` or `-` from existing notes, and Home / Not home writes keep it off. Quick Facts and Attempt Log stay collapsible and collapsed by default. Return Suggestions stays without a fold mark.
+- The dashboard reads as one column. The Hub item and the Address box share one width (long hub names are cut with an ellipsis), the 🗺️ link sits under the Hub plus button, and Quick Facts and the Attempt Log callout (with its table) end at that same right edge.
+- Extras sync is pinned to tag `v1.3.1` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.3.0`, `v1.2.12`, or any older tag, `main`, or `unstable`.
+
+## 1.3.0
+
+`main.js` SHA-256: `e52cb49955626de282e1d89cbcc8b328279bc2b09a9bc6264412880020253874`
+
+`styles.css` SHA-256: `5aee4419910777bc813da0cfc5faa5a48db7d48aba2788fbcbe34bce77734b16`
+
+`manifest.json` SHA-256: `07aba24956d964737ffd532d3b6243e26b8373a871ee9634171c55535ba8ab45`
+
+- The `x days ago` label beside each visit stamp is recomputed on screen whenever a note is opened, when the active pane changes, and every few seconds while a note is open, in Reading view and Live Preview. The file is not rewritten for it. Home and Not home still write the current age into the file.
+- An age of zero days reads `Today`, in the plugin, `newRv.js`, and `rvLog.js`.
+- With Return Suggestions color on Automatic, an accent change recolors Return Suggestions on every RV note to the nearest callout type. Open notes change at once. The vault rewrite waits until the accent reads the same twice in a row, a few seconds apart, so a half-loaded theme does not trigger it. The last type written is saved, so an accent changed while Obsidian was closed is caught on the next launch.
+- Visit notes are Meta Bind textAreas. The new RV template puts `INPUT[textArea:sVisit1Notes]` under the first `#####` stamp, and each Home adds the next `sVisitNNotes` box under its stamp (one past the highest number already on the note). Plain-text notes under older stamps are left alone.
+- RV notes (cssclass `rv-dashboard`) open in Reading view. Everyday → Open RV notes in Reading view turns that off. Only the first open of a file in a pane is switched, so choosing editing afterwards is kept until the note is opened again. A new note switches once Templater has finished writing it. Because notes are typed into Meta Bind boxes in Reading view, tapping a callout no longer reveals its source.
+- One empty line sits between the frontmatter and RV Dashboard. The first launch of 1.3.0 adds it to existing RV notes, and later writes keep it.
+- The dark box around Hubs and Address is gone. Only the Address text box, the Hub list items, and the Hub plus button are darkened. The map link sits next to the Address box again.
+- Hubs and Address still line up, closer to their labels (a 4.3em label width instead of a 5.6em column).
+- Not home is a dark shade of the theme accent (about a third of its lightness; a blue accent gives dark navy) with light text. Home and Not home share the same border and box so they are the same size.
+- Extras sync is pinned to tag `v1.3.0` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.2.12`, `v1.2.11`, `v1.2.10`, `v1.2.9`, `v1.2.8`, `v1.2.7`, `v1.2.6`, `v1.2.5`, `v1.2.4`, `v1.2.3`, `v1.2.2`, `v1.2.1`, `v1.2.0`, `v1.1.5`, `main`, or `unstable`.
+
 ## 1.2.12
 
 `main.js` SHA-256: `be1a3534cf6525ed5c618b4113e587d822b4419fb192be217d91ea15d0372641`

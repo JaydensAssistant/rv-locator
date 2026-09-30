@@ -276,9 +276,11 @@ const ALL_WEEKDAYS = [0, 1, 2, 3, 4, 5, 6] as const;
  * Default days are all seven weekdays and all three dayparts. A cell is
  * `homes/trials`, or `0/0` when that slot has no attempts. All-weekdays
  * mode never writes an em dash, including days that are not May go out.
- * `days: 'may'` lists only days that have a May-go-out daypart, and a
- * daypart that is not May go out stays an em dash.
- * Voice lines still name May-go-out slots only.
+ * `days: 'may'` lists only days that have a May-go-out daypart or an
+ * attempt, and a daypart with neither stays an em dash.
+ * Voice lines name May-go-out slots and every slot that already has an
+ * attempt, so the voice agrees with the table. Untried lists only
+ * May-go-out slots with no attempts.
  */
 export function suggestReturnDigest(args: {
 	buckets: AttemptBuckets;
@@ -294,24 +296,22 @@ export function suggestReturnDigest(args: {
 	const thresholds = resolveThresholds(args.thresholds);
 	const mayDays = mayGoOutDays(args.grid);
 	if (mayDays.length === 0) {
-		if (scope === 'may') {
-			return { text: NO_SCHEDULE, sentences: [NO_SCHEDULE], table: '', markdown: NO_SCHEDULE };
+		const tried = daypartFacts(ALL_WEEKDAYS, args.buckets, args.grid);
+		const sentences = [...voiceLines(tried, thresholds), NO_SCHEDULE];
+		const text = sentences.join('\n');
+		if (scope === 'may' && tried.length === 0) {
+			return { text, sentences, table: '', markdown: text };
 		}
-		const table = emptyWeekTable(orientation, args.buckets);
-		return {
-			text: NO_SCHEDULE,
-			sentences: [NO_SCHEDULE],
-			table,
-			markdown: `${table}\n\n${NO_SCHEDULE}`,
-		};
+		const table = scope === 'may'
+			? tableFor(orientation, factDays(tried), tried, undefined, 'dash', args.buckets)
+			: emptyWeekTable(orientation, args.buckets);
+		return { text, sentences, table, markdown: `${table}\n\n${text}` };
 	}
-	const shown = scope === 'all' ? [...ALL_WEEKDAYS] : mayDays;
-	const facts = daypartFacts(mayDays, args.buckets, args.grid);
+	const facts = daypartFacts(ALL_WEEKDAYS, args.buckets, args.grid);
+	const shown = scope === 'all' ? [...ALL_WEEKDAYS] : factDays(facts);
 	const fill: CellFill = scope === 'all' ? 'count' : 'dash';
 	const dayparts = scope === 'all' ? DAYPARTS : undefined;
-	const table = orientation === 'columns'
-		? tableDaysAsColumns(shown, facts, dayparts, fill, args.buckets)
-		: tableDaysAsRows(shown, facts, dayparts, fill, args.buckets);
+	const table = tableFor(orientation, shown, facts, dayparts, fill, args.buckets);
 	const sentences = voiceLines(facts, thresholds);
 	const blocks = [table];
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
@@ -321,6 +321,23 @@ export function suggestReturnDigest(args: {
 		table,
 		markdown: blocks.join('\n\n'),
 	};
+}
+
+function tableFor(
+	orientation: DigestOrientation,
+	days: readonly number[],
+	facts: readonly SlotFact[],
+	dayparts: readonly Daypart[] | undefined,
+	fill: CellFill,
+	buckets: AttemptBuckets,
+): string {
+	return orientation === 'columns'
+		? tableDaysAsColumns(days, facts, dayparts, fill, buckets)
+		: tableDaysAsRows(days, facts, dayparts, fill, buckets);
+}
+
+function factDays(facts: readonly SlotFact[]): number[] {
+	return [...new Set(facts.map((slot) => slot.weekday))].sort((a, b) => a - b);
 }
 
 function emptyWeekTable(orientation: DigestOrientation, buckets: AttemptBuckets): string {
@@ -337,13 +354,14 @@ function mayGoOutDays(grid: AvailabilityGrid): number[] {
 	return days;
 }
 
+/** May-go-out slots, plus any slot that already has an attempt. */
 function daypartFacts(days: readonly number[], buckets: AttemptBuckets, grid: AvailabilityGrid): SlotFact[] {
 	const facts: SlotFact[] = [];
 	for (const weekday of days) {
 		for (const daypart of DAYPARTS) {
 			const availability = availabilityAt(grid, weekday, daypart);
-			if (availability !== 'may') continue;
 			const count = buckets[availabilityKey(weekday, daypart)] ?? { homes: 0, trials: 0 };
+			if (availability !== 'may' && count.trials <= 0) continue;
 			const trials = Math.max(0, count.trials);
 			const homes = Math.min(Math.max(0, count.homes), trials);
 			facts.push({
@@ -438,7 +456,10 @@ function numberOr(value: number | undefined, fallback: number): number {
 
 function voiceLines(facts: readonly SlotFact[], thresholds: DigestThresholds): string[] {
 	const grouped: Record<VoiceBucket, SlotFact[]> = { try: [], untried: [], unsure: [], avoid: [] };
-	for (const slot of facts) grouped[classifySlot(slot, thresholds)].push(slot);
+	for (const slot of facts) {
+		const bucket = classifySlot(slot, thresholds);
+		if (bucket !== 'untried') grouped[bucket].push(slot);
+	}
 	const lines = [
 		avoidLine(grouped.avoid),
 		tryLine(grouped.try),
@@ -478,12 +499,12 @@ function compareTry(a: SlotFact, b: SlotFact): number {
 }
 
 function untriedLine(facts: readonly SlotFact[]): string | null {
-	const weekdays = [...new Set(facts.filter((slot) => slot.trials === 0).map((slot) => slot.weekday))]
+	const weekdays = [...new Set(facts.filter((slot) => slot.trials === 0 && slot.availability === 'may').map((slot) => slot.weekday))]
 		.sort((a, b) => a - b);
 	if (weekdays.length === 0) return null;
 	const bits = weekdays.map((weekday) => {
 		const may = facts.filter((slot) => slot.weekday === weekday).sort(byDaypart);
-		const open = may.filter((slot) => slot.trials === 0);
+		const open = may.filter((slot) => slot.trials === 0 && slot.availability === 'may');
 		if (open.length === may.length) return weekdayShort(weekday);
 		return condenseDayparts(weekday, open);
 	});
@@ -576,8 +597,37 @@ function mapLevel(value: unknown): AvailabilityLevel {
 }
 
 const STAMP_BODY = /^(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})$/i;
-const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\*\*)?\s*$/i;
+const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\s+with\s+(.+?))?(?:\*\*)?\s*$/i;
 const HEADING_LINE = /^(?:###|#####)\s+(.+?)\s*$/;
+
+export interface LogBullet {
+	stamp: string;
+	home: boolean;
+	/** Person taken on that Home, from `— success with Name`. Empty when not recorded. */
+	companion: string;
+	when: Date;
+}
+
+/** One Attempt Log bullet, with the companion suffix and the stamp as a local date-time. */
+export function parseLogBullet(line: string): LogBullet | null {
+	const match = BULLET_LINE.exec(line.trim());
+	if (!match) return null;
+	const parsed = parseStamp(match[1] ?? '');
+	const when = stampDateTime(match[1] ?? '');
+	if (!parsed || !when) return null;
+	const home = isHomeOutcome(match[2] ?? '');
+	return { stamp: parsed.stamp, home, companion: home ? (match[3] ?? '').trim() : '', when };
+}
+
+/** `Tue, 5pm — Sep 29, 2026` as a local Date on that hour. Null for anything else. */
+export function stampDateTime(stamp: string): Date | null {
+	const match = STAMP_BODY.exec(stripStampAge(stamp).trim());
+	if (!match) return null;
+	const clock = clock24(Number(match[2]), match[3] ? Number(match[3]) : 0, (match[4] ?? '').toLowerCase());
+	const date = parseStampDate(match[5] ?? '');
+	if (!clock || !date) return null;
+	return new Date(date.year, date.month, date.day, clock.hour, clock.minute, 0, 0);
+}
 
 function parseBulletLine(line: string): AttemptEntry | null {
 	const match = BULLET_LINE.exec(line.trim());

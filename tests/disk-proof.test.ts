@@ -507,7 +507,8 @@ describe('disk proof', () => {
 			.replaceAll('<% rv.ago %>', rv.ago)
 			.replaceAll('<% rv.mapUrl %>', rv.mapUrl)
 			.replaceAll('<% rv.priority %>', String(rv.priority))
-			.replaceAll('<% rv.companionYaml %>', rv.companionYaml);
+			.replaceAll('<% rv.companionYaml %>', rv.companionYaml)
+			.replaceAll('<% rv.companionSuffix %>', rv.companionSuffix);
 		assert.equal(rendered.includes('<%'), false);
 		writeFileSync(file, rendered);
 		const createdText = readFileSync(file, 'utf8');
@@ -518,7 +519,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes(`Last Attempted: ${yamlQuote(created)}`), true);
 		assert.equal(createdText.includes('Visits: 1'), true);
 		assert.equal(createdText.includes('Successful Visits: 1'), true);
-		assert.equal(createdText.includes('> [!quote]+ RV Dashboard\n>**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n>**Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
+		assert.equal(createdText.includes('> [!quote] RV Dashboard\n>**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`\n>**Address:** `INPUT[text:Address]` [🗺️](' + rv.mapUrl + ')\n'), true);
 		assert.equal(createdText.includes('> **Hubs:**      '), false);
 		assert.equal(createdText.includes('VIEW[{["Map Link"]}]'), false);
 		assert.equal(createdText.includes('VIEW[{Map Link}]'), false);
@@ -527,8 +528,10 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('> [!rv]- 👤 RV Dashboard'), false);
 		assert.equal(createdText.includes('> [!info]-'), false);
 		assert.equal(createdText.includes('Log visit'), false);
-		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
-		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 2);
+		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`'), true);
+		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 4);
+		assert.equal(createdText.includes('    command: rv-locator:log-past-visit\n'), true);
+		assert.equal(createdText.includes('    command: rv-locator:archive-rv\n'), true);
 		assert.equal(createdText.includes('Priority: 4\n'), true);
 		assert.equal(createdText.includes('\nMet With:\nTaken:\n'), true);
 		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Home.md'), true);
@@ -539,7 +542,7 @@ describe('disk proof', () => {
 		const hubsAt = createdText.indexOf('>**Hubs:**');
 		const addressInputAt = createdText.indexOf('>**Address:** `INPUT[text:Address]`');
 		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
-		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss]`');
+		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`');
 		const factsAt = createdText.indexOf('> > [!rv]- Quick Facts');
 		const ruleAt = createdText.indexOf('\n---\n### Visit Notes:');
 		const stampAt = createdText.indexOf(`##### ${stamp}`);
@@ -557,8 +560,9 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Spoke**') < callout.indexOf('**Last Attempted**'));
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
-		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss\]`\n>\n> > \[!rv\]- Quick Facts/);
-		assert.equal(createdText.includes('Notes would go here, but template makes this a new line. Another new line also goes below.'), true);
+		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
+		assert.equal(createdText.includes('Notes would go here'), false);
+		assert.match(createdText, /\n---\n\n> \[!quote\] RV Dashboard\n/);
 		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
 		assert.equal(createdText.includes(`##### ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`).length, 1);
@@ -566,7 +570,7 @@ describe('disk proof', () => {
 		const createdLines = createdText.split('\n');
 		assert.equal(createdLines[stampLine - 1], '### Visit Notes:');
 		assert.equal(createdLines[stampLine - 2], '---');
-		assert.equal(createdLines[stampLine + 1], 'Notes would go here, but template makes this a new line. Another new line also goes below.');
+		assert.equal(createdLines[stampLine + 1], '`INPUT[textArea:sVisit1Notes]`');
 		assert.equal(createdLines[stampLine + 2], '');
 		assert.equal(createdLines[stampLine + 3], '---');
 		assert.equal(createdLines[stampLine + 4], '> [!example] Return Suggestions');
@@ -646,7 +650,7 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('Last Spoke: "2026-09-26T23:12:04"'), true);
 		assert.equal(disk.includes('## Attempt Log'), false);
-		assert.match(disk, /##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago<\/span>\n\n\n> \[!note\]\- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
+		assert.match(disk, /##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today<\/span>\n`INPUT\[textArea:sVisit1Notes\]`\n\n> \[!note\]\- Attempt Log\n> - Sat, 11pm — Sep 26, 2026 — success\n$/);
 		assert.ok(disk.indexOf('\n##### Sat, 11pm — Sep 26, 2026') < disk.indexOf('> [!note]- Attempt Log'));
 		assert.equal(bodyOf(disk).includes('Talked on the porch.'), true);
 
@@ -691,7 +695,7 @@ describe('disk proof', () => {
 		console.log(`\n----- VISIT COMPANION ${file} -----\n${disk}`);
 		assert.equal(addressLine(disk), addressLine(before));
 		assert.equal(disk.includes('---###'), false);
-		assert.equal(disk.includes('\n##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>\n'), true);
+		assert.equal(disk.includes('\n##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>\n'), true);
 		assert.equal(disk.includes('Met With: "Door"'), true);
 		assert.equal(disk.includes('Met With: "TestCompanion"'), false);
 		assert.equal(disk.includes('  - "Ada"'), true);
@@ -707,8 +711,9 @@ describe('disk proof', () => {
 		assert.equal(againDisk.split('  - "TestCompanion"').length, 2);
 		assert.equal(againDisk.includes('Visits: 3'), true);
 		assert.equal(againDisk.includes('Successful Visits: 3'), true);
-		assert.equal(againDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>').length, 2);
-		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 3);
+		assert.equal(againDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>').length, 2);
+		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 1);
+		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success with TestCompanion')).length, 2);
 
 		const skipped = commitVisit(againDisk, 'home', now, '  ');
 		writeFileSync(file, skipped);
@@ -729,7 +734,7 @@ describe('disk proof', () => {
 		assert.equal(missDisk.includes('Visits: 5'), true);
 		assert.equal(missDisk.includes('Successful Visits: 4'), true);
 		assert.equal(missDisk.includes('Last Attempted: "2026-09-26T23:12:04"'), true);
-		assert.equal(missDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">0 days ago</span>').length, 3);
+		assert.equal(missDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>').length, 3);
 	});
 
 	it('migrates a legacy Attempt Log heading on disk and does not invent Address', () => {
@@ -792,8 +797,8 @@ describe('disk proof', () => {
 		const homeLog = homeLines.findIndex((line) => line === '> [!note]- Attempt Log');
 		assert.ok(homeLog > 1);
 		assert.equal(homeLines[homeLog - 1], '');
-		assert.equal(homeLines[homeLog - 2], '');
-		assert.match(homeLines[homeLog - 3] ?? '', /^##### /);
+		assert.equal(homeLines[homeLog - 2], '`INPUT[textArea:sVisit1Notes]`');
+		assert.match(homeLines[homeLog - 3] ?? '', /^##### .+<span class="rv-stamp-ago">Today<\/span>$/);
 		assert.equal(homeLines.includes('### Visit Notes:'), true);
 		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
 		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
@@ -846,6 +851,10 @@ describe('disk proof', () => {
 		assert.equal(secondHome.includes('Successful Visits: 3'), true);
 		const secondHeadings = secondHome.split('\n').filter((line) => line.startsWith('##### '));
 		assert.deepEqual(secondHeadings, [firstHeadings[0], firstHeadings[0]]);
+		const secondLines = secondHome.split('\n');
+		const secondStamps = secondLines.flatMap((line, index) => line.startsWith('##### ') ? [index] : []);
+		assert.deepEqual(secondStamps.map((index) => secondLines[index + 1]), ['`INPUT[textArea:sVisit1Notes]`', '`INPUT[textArea:sVisit2Notes]`']);
+		assert.equal(secondLines[(secondStamps[1] ?? 0) - 1], '');
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
 		assert.equal(notices.at(-1), 'Logged success');
 
@@ -940,6 +949,7 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('  - "Pat Smith"'), true);
 		assert.equal(disk.split('  - "Pat Smith"').length, 2);
 		assert.equal(disk.includes('Visits: 2'), true);
+		assert.match(disk, /^> - .+ — success with Pat Smith$/m);
 
 		const missFile = join(dir, 'miss.md');
 		writeFileSync(missFile, disk);
@@ -981,7 +991,8 @@ describe('disk proof', () => {
 		});
 		assert.equal(prompts.length, 0);
 		assert.equal(rv.priority, 4);
-		assert.equal(rv.companionYaml, 'Met With:\nTaken:\n  - "Sam"');
+		assert.equal(rv.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
+		assert.equal(rv.companionSuffix, ' with Sam');
 		assert.equal(rv.companionYaml.includes('[['), false);
 		assert.equal(rv.title, 'Ada on Oak');
 
@@ -1169,7 +1180,7 @@ describe('disk proof', () => {
 		});
 		assert.equal(textPrompts, 2);
 		assert.equal(prompts.length, 0);
-		assert.equal(linked.companionYaml, 'Met With:\nTaken:\n  - "Sam"');
+		assert.equal(linked.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
 		assert.equal(linked.title, 'Ada on Oak');
 
 		const plainPrompts = ['Ada', '10 Oak Street'];
@@ -1187,7 +1198,7 @@ describe('disk proof', () => {
 			system: { prompt: async () => plainPrompts.shift() ?? '' },
 			file: { creation_date: () => '2026-09-09T13:38:03', rename: async () => {}, path: 'Untitled.md' },
 		});
-		assert.equal(plain.companionYaml, 'Met With:\nTaken:\n  - "TestCompanion"');
+		assert.equal(plain.companionYaml, 'Met With: "TestCompanion"\nTaken:\n  - "TestCompanion"');
 
 		const skipped = await loadNewRv({
 			...baseApp,
@@ -1231,7 +1242,7 @@ function commitVisit(markdown: string, outcome: VisitOutcome, now: Date, compani
 	const afterFence = next.slice(fenceEnd);
 	// Obsidian's contentStart includes the newline after the closing fence.
 	const separator = afterFence.startsWith(nl) ? nl : '';
-	return next.slice(0, fenceEnd) + separator + applyVisitBody(afterFence.slice(separator.length), outcome, now);
+	return next.slice(0, fenceEnd) + separator + applyVisitBody(afterFence.slice(separator.length), outcome, now, companion?.trim() ?? '');
 }
 
 function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; companionYaml: string; title: string }> {

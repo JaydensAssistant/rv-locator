@@ -407,13 +407,15 @@ export class SuccessfulVisitsModal extends Modal {
 	}
 }
 
+export type VisitMenuAnswer = 'home' | 'miss' | 'past' | 'archive';
+
 export class VisitConfirmModal extends Modal {
 	private answered = false;
 
 	constructor(
 		app: App,
 		private displayName: string,
-		private onAnswer: (answer: 'home' | 'miss' | null) => void,
+		private onAnswer: (answer: VisitMenuAnswer | null) => void,
 	) {
 		super(app);
 	}
@@ -437,6 +439,15 @@ export class VisitConfirmModal extends Modal {
 				button.onClick(() => this.finish('miss'));
 			})
 			.addButton((button) => {
+				button.setButtonText('Log past visit');
+				button.onClick(() => this.finish('past'));
+			});
+		new Setting(contentEl)
+			.addButton((button) => {
+				button.setButtonText('Archive');
+				button.onClick(() => this.finish('archive'));
+			})
+			.addButton((button) => {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.finish(null));
 			});
@@ -447,7 +458,7 @@ export class VisitConfirmModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	private finish(answer: 'home' | 'miss' | null): void {
+	private finish(answer: VisitMenuAnswer | null): void {
 		if (this.answered) return;
 		this.answered = true;
 		this.onAnswer(answer);
