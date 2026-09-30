@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.3
+
+`main.js` SHA-256: `e936d328ffd42f8b268b6f05e336cf5c1ecfda8a5ca07b65841d6f1528debd86`
+
+`styles.css` SHA-256: `6a457a14b431ea5ff0830769320307e89b50dd9e127643e6e917440e24f9750e`
+
+`manifest.json` SHA-256: `b9217f012e9b6d04c3d68504b3ceae63d0ba75c20c35b11cb9b721cebdc916c4`
+
+- The four visit buttons are icons on one line: `door-open` (Home), `door-closed` (Not home), `rotate-ccw-clock` (Log past visit), and `archive` (Archive). Hovering shows the name on desktop. Holding a button on a phone shows the name and does not press it. When Obsidian's icon set has no `rotate-ccw-clock`, it is drawn from `history`, the same arrow around a clock. The first launch of 1.3.3 rewrites the four button blocks on existing notes and keeps their other keys.
+- The buttons start at the theme accent and get darker in three equal steps of apparent brightness (mixed toward black in OKLab).
+- The map pin sits exactly under the Hub plus button. The plus button uses the same dark grey as the Hub item and the Address box.
+- Urgency colors can be changed in Settings → Urgency and in a new setup wizard step: Traffic light (the default, unchanged), Pastel traffic light, Pastel purple, Pastel green, Pastel blue, Pastel pink, Color-blind safe, Sunset, and Theme accent. A strip beside the dropdown previews the four levels. Each level has its own color picker. Changing one switches to Custom.
+- Settings → Everyday → RV note layout has three center-align toggles, one each for the RV Dashboard, the visit notes, and Return Suggestions.
+- The Attempt Log table reads Mor, Aft, and Eve by default. **Short daypart names** turns the full names back on and rewrites every digest.
+- **Attempt Log width** is Automatic, Full width, or Dashboard column. Automatic is full width when the digest table has days as columns. A table wider than its box now scrolls instead of being cut off.
+- The date on each Attempt Log line is set small, like a `#####` stamp.
+- Log past visit starts at 10am, or 10am yesterday when it is still before 10am.
+- Extras sync is pinned to tag `v1.3.3` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.3.2` or any older tag, `main`, or `unstable`.
+
 ## 1.3.2
 
 `main.js` SHA-256: `17336eea02d19406e9971583c7d82f63295610740cbf23fd87df1cc857414dbc`
