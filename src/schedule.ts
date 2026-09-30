@@ -597,8 +597,37 @@ function mapLevel(value: unknown): AvailabilityLevel {
 }
 
 const STAMP_BODY = /^(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})$/i;
-const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\*\*)?\s*$/i;
+const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\s+with\s+(.+?))?(?:\*\*)?\s*$/i;
 const HEADING_LINE = /^(?:###|#####)\s+(.+?)\s*$/;
+
+export interface LogBullet {
+	stamp: string;
+	home: boolean;
+	/** Person taken on that Home, from `— success with Name`. Empty when not recorded. */
+	companion: string;
+	when: Date;
+}
+
+/** One Attempt Log bullet, with the companion suffix and the stamp as a local date-time. */
+export function parseLogBullet(line: string): LogBullet | null {
+	const match = BULLET_LINE.exec(line.trim());
+	if (!match) return null;
+	const parsed = parseStamp(match[1] ?? '');
+	const when = stampDateTime(match[1] ?? '');
+	if (!parsed || !when) return null;
+	const home = isHomeOutcome(match[2] ?? '');
+	return { stamp: parsed.stamp, home, companion: home ? (match[3] ?? '').trim() : '', when };
+}
+
+/** `Tue, 5pm — Sep 29, 2026` as a local Date on that hour. Null for anything else. */
+export function stampDateTime(stamp: string): Date | null {
+	const match = STAMP_BODY.exec(stripStampAge(stamp).trim());
+	if (!match) return null;
+	const clock = clock24(Number(match[2]), match[3] ? Number(match[3]) : 0, (match[4] ?? '').toLowerCase());
+	const date = parseStampDate(match[5] ?? '');
+	if (!clock || !date) return null;
+	return new Date(date.year, date.month, date.day, clock.hour, clock.minute, 0, 0);
+}
 
 function parseBulletLine(line: string): AttemptEntry | null {
 	const match = BULLET_LINE.exec(line.trim());

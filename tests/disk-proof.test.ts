@@ -507,7 +507,8 @@ describe('disk proof', () => {
 			.replaceAll('<% rv.ago %>', rv.ago)
 			.replaceAll('<% rv.mapUrl %>', rv.mapUrl)
 			.replaceAll('<% rv.priority %>', String(rv.priority))
-			.replaceAll('<% rv.companionYaml %>', rv.companionYaml);
+			.replaceAll('<% rv.companionYaml %>', rv.companionYaml)
+			.replaceAll('<% rv.companionSuffix %>', rv.companionSuffix);
 		assert.equal(rendered.includes('<%'), false);
 		writeFileSync(file, rendered);
 		const createdText = readFileSync(file, 'utf8');
@@ -527,8 +528,10 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('> [!rv]- 👤 RV Dashboard'), false);
 		assert.equal(createdText.includes('> [!info]-'), false);
 		assert.equal(createdText.includes('Log visit'), false);
-		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss]`'), true);
-		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 2);
+		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`'), true);
+		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 4);
+		assert.equal(createdText.includes('    command: rv-locator:log-past-visit\n'), true);
+		assert.equal(createdText.includes('    command: rv-locator:archive-rv\n'), true);
 		assert.equal(createdText.includes('Priority: 4\n'), true);
 		assert.equal(createdText.includes('\nMet With:\nTaken:\n'), true);
 		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Home.md'), true);
@@ -539,7 +542,7 @@ describe('disk proof', () => {
 		const hubsAt = createdText.indexOf('>**Hubs:**');
 		const addressInputAt = createdText.indexOf('>**Address:** `INPUT[text:Address]`');
 		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
-		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss]`');
+		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`');
 		const factsAt = createdText.indexOf('> > [!rv]- Quick Facts');
 		const ruleAt = createdText.indexOf('\n---\n### Visit Notes:');
 		const stampAt = createdText.indexOf(`##### ${stamp}`);
@@ -557,7 +560,7 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Spoke**') < callout.indexOf('**Last Attempted**'));
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met With**'));
 		assert.ok(callout.indexOf('**Met With**') < callout.indexOf('**Taken**'));
-		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss\]`\n>\n> > \[!rv\]- Quick Facts/);
+		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
 		assert.equal(createdText.includes('Notes would go here'), false);
 		assert.match(createdText, /\n---\n\n> \[!quote\] RV Dashboard\n/);
 		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
@@ -709,7 +712,8 @@ describe('disk proof', () => {
 		assert.equal(againDisk.includes('Visits: 3'), true);
 		assert.equal(againDisk.includes('Successful Visits: 3'), true);
 		assert.equal(againDisk.split('\n').filter((line) => line === '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>').length, 2);
-		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 3);
+		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success')).length, 1);
+		assert.equal(againDisk.split('\n').filter((line) => line.endsWith('— success with TestCompanion')).length, 2);
 
 		const skipped = commitVisit(againDisk, 'home', now, '  ');
 		writeFileSync(file, skipped);
@@ -945,6 +949,7 @@ describe('disk proof', () => {
 		assert.equal(disk.includes('  - "Pat Smith"'), true);
 		assert.equal(disk.split('  - "Pat Smith"').length, 2);
 		assert.equal(disk.includes('Visits: 2'), true);
+		assert.match(disk, /^> - .+ — success with Pat Smith$/m);
 
 		const missFile = join(dir, 'miss.md');
 		writeFileSync(missFile, disk);
@@ -987,6 +992,7 @@ describe('disk proof', () => {
 		assert.equal(prompts.length, 0);
 		assert.equal(rv.priority, 4);
 		assert.equal(rv.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
+		assert.equal(rv.companionSuffix, ' with Sam');
 		assert.equal(rv.companionYaml.includes('[['), false);
 		assert.equal(rv.title, 'Ada on Oak');
 
@@ -1236,7 +1242,7 @@ function commitVisit(markdown: string, outcome: VisitOutcome, now: Date, compani
 	const afterFence = next.slice(fenceEnd);
 	// Obsidian's contentStart includes the newline after the closing fence.
 	const separator = afterFence.startsWith(nl) ? nl : '';
-	return next.slice(0, fenceEnd) + separator + applyVisitBody(afterFence.slice(separator.length), outcome, now);
+	return next.slice(0, fenceEnd) + separator + applyVisitBody(afterFence.slice(separator.length), outcome, now, companion?.trim() ?? '');
 }
 
 function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; companionYaml: string; title: string }> {

@@ -98,12 +98,11 @@ export function applyVisitFrontmatter(
  * to `#####`. Home and Not home refresh ages already on the note. Address is
  * not part of the body edit.
  */
-export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date): string {
+export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date, companion = ''): string {
 	const stamp = formatVisitStamp(now);
-	const phrase = outcome === 'home' ? 'success' : 'not home';
 	let next = ensureAttemptLog(body);
 	if (outcome === 'home') next = insertHomeHeading(next, stamp);
-	next = appendLogLine(next, `> - ${stamp} — ${phrase}`);
+	next = appendLogLine(next, `> - ${stamp} — ${visitPhrase(outcome === 'home', companion)}`);
 	next = refreshHomeStampAges(next, now);
 	next = ensureVisitNotesHeading(next);
 	return ensureDashboardLeadBlank(unfoldDashboard(next));
@@ -121,6 +120,50 @@ export function unfoldDashboard(body: string): string {
 	const carriage = lines[at]?.endsWith('\r') ? '\r' : '';
 	lines[at] = `${DASHBOARD_HEADER}${carriage}`;
 	return lines.join('\n');
+}
+
+const TWO_BUTTON_LINE = /^(>[\t ]*)`BUTTON\[\s*rv-log-home\s*,\s*rv-log-miss\s*\]`[\t ]*$/;
+const VISIT_BUTTON_BLOCKS: ReadonlyArray<{ id: string; block: string }> = [
+	{
+		id: 'rv-log-past',
+		block: ['```meta-bind-button', 'label: Log past visit', 'style: default', 'class: rv-visit-btn', 'id: rv-log-past', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:log-past-visit', '```'].join('\n'),
+	},
+	{
+		id: 'rv-archive',
+		block: ['```meta-bind-button', 'label: Archive', 'style: default', 'class: rv-visit-btn', 'id: rv-archive', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:archive-rv', '```'].join('\n'),
+	},
+];
+
+/**
+ * A note with the Home / Not home button line gets Log past visit and
+ * Archive beside them, and their hidden button blocks at the end. Notes
+ * without that line, or already on four buttons, are unchanged.
+ */
+export function ensureVisitButtons(body: string): string {
+	const newline = body.includes('\r\n') ? '\r\n' : '\n';
+	const lines = body.split(/\r?\n/);
+	const at = lines.findIndex((line) => TWO_BUTTON_LINE.test(line));
+	if (at < 0) return body;
+	const lead = TWO_BUTTON_LINE.exec(lines[at] ?? '')?.[1] ?? '> ';
+	lines[at] = `${lead}\`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]\``;
+	let next = lines.join(newline);
+	const missing = VISIT_BUTTON_BLOCKS.filter(({ id }) => !new RegExp(`^id:\\s*${id}\\s*$`, 'm').test(next));
+	if (missing.length === 0) return next;
+	const trailing = /\s*$/.exec(next)?.[0] ?? '';
+	next = next.slice(0, next.length - trailing.length);
+	const blocks = missing.map(({ block }) => block.split('\n').join(newline)).join(`${newline}${newline}`);
+	return `${next}${newline}${newline}${blocks}${newline}`;
+}
+
+/** `success`, `success with Devin`, or `not home`. The companion is only kept on a Home. */
+export function visitPhrase(home: boolean, companion = ''): string {
+	if (!home) return 'not home';
+	const name = companion.trim();
+	return name ? `success with ${name}` : 'success';
+}
+
+export function visitNotesField(property: string): string {
+	return `\`INPUT[textArea:${property}]\``;
 }
 
 /** `sVisit1Notes` on a note with none, otherwise one past the highest number already used. */
@@ -189,7 +232,7 @@ export function ensureVisitNotesHeading(body: string): string {
 	return joined;
 }
 
-function isVisitStampLine(line: string): boolean {
+export function isVisitStampLine(line: string): boolean {
 	const match = STAMP_HEADING.exec(line);
 	if (!match) return false;
 	return calendarDaysSinceStamp(stripStampAge(match[1] ?? ''), new Date()) != null;
@@ -209,9 +252,9 @@ function finiteCount(value: unknown): number | null {
 	return Number.isFinite(parsed) ? parsed : null;
 }
 
-type AttemptLogHit = { index: number; kind: 'callout' | 'heading' };
+export type AttemptLogHit = { index: number; kind: 'callout' | 'heading' };
 
-function findAttemptLog(lines: string[]): AttemptLogHit | null {
+export function findAttemptLog(lines: string[]): AttemptLogHit | null {
 	for (let index = 0; index < lines.length; index += 1) {
 		const line = lines[index] ?? '';
 		if (ATTEMPT_LOG_CALLOUT.test(line)) return { index, kind: 'callout' };
@@ -220,7 +263,7 @@ function findAttemptLog(lines: string[]): AttemptLogHit | null {
 	return null;
 }
 
-function sectionEnd(lines: string[], start: number, kind: AttemptLogHit['kind']): number {
+export function sectionEnd(lines: string[], start: number, kind: AttemptLogHit['kind']): number {
 	if (kind === 'callout') {
 		let end = start + 1;
 		while (end < lines.length && /^>/.test(lines[end] ?? '')) end += 1;
@@ -246,7 +289,7 @@ function migrateHeadingToCallout(lines: string[], start: number): string[] {
 	return [...lines.slice(0, start), ...callout, ...lines.slice(end)];
 }
 
-function ensureAttemptLog(body: string): string {
+export function ensureAttemptLog(body: string): string {
 	const normalized = body.replace(/\s*$/, '');
 	const lines = normalized.split('\n');
 	const found = findAttemptLog(lines);
@@ -258,7 +301,8 @@ function ensureAttemptLog(body: string): string {
 	return normalized;
 }
 
-function insertHomeHeading(body: string, stamp: string): string {
+/** Stamp and notes box just above the Attempt Log region, after every existing stamp. */
+export function insertHomeHeading(body: string, stamp: string, notesProperty?: string): string {
 	const lines = body.split('\n');
 	const found = findAttemptLog(lines);
 	if (!found || found.kind !== 'callout') return body;
@@ -267,13 +311,13 @@ function insertHomeHeading(body: string, stamp: string): string {
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
 	const after = lines.slice(anchor);
 	const heading = `${STAMP_LEVEL} ${stamp}`;
-	const field = `\`INPUT[textArea:${nextVisitNotesProperty(body)}]\``;
+	const field = visitNotesField(notesProperty ?? nextVisitNotesProperty(body));
 	const last = before[before.length - 1]?.trim() ?? '';
 	const lead = before.length === 0 || last === VISIT_NOTES_HEADING ? [] : [''];
 	return [...before, ...lead, heading, field, '', ...after].join('\n');
 }
 
-function appendLogLine(body: string, line: string): string {
+export function appendLogLine(body: string, line: string): string {
 	let lines = body.split('\n');
 	let found = findAttemptLog(lines);
 	if (!found) return body;
@@ -301,7 +345,7 @@ function quoteDepth(line: string): number {
 	return Math.max(1, (lead.match(/>/g) ?? []).length);
 }
 
-function formatLogBullet(header: string, line: string): string {
+export function formatLogBullet(header: string, line: string): string {
 	const text = line.replace(/^(?:>\s*)+/, '').replace(/^[-*]\s+/, '').trim();
 	const depth = quoteDepth(header);
 	if (depth <= 1) return `> - ${text}`;

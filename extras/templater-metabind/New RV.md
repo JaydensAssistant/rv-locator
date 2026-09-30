@@ -23,7 +23,7 @@ cssclasses:
 >**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
 >**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
 > 
-> `BUTTON[rv-log-home, rv-log-miss]`
+> `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`
 >
 > > [!rv]- Quick Facts
 > >
@@ -73,7 +73,7 @@ cssclasses:
 > >| Fri | 0/0 | 0/0 | 0/0 |
 > >| Sat | 0/0 | 0/0 | 0/0 |
 > >
-> >- <% rv.stamp %> — success
+> >- <% rv.stamp %> — success<% rv.companionSuffix %>
 
 ```meta-bind-button
 label: Home
@@ -95,4 +95,26 @@ hidden: true
 actions:
   - type: runTemplaterFile
     templateFile: Templates/99 RV Log Miss.md
+```
+
+```meta-bind-button
+label: Log past visit
+style: default
+class: rv-visit-btn
+id: rv-log-past
+hidden: true
+actions:
+  - type: command
+    command: rv-locator:log-past-visit
+```
+
+```meta-bind-button
+label: Archive
+style: default
+class: rv-visit-btn
+id: rv-archive
+hidden: true
+actions:
+  - type: command
+    command: rv-locator:archive-rv
 ```

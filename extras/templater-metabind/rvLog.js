@@ -16,7 +16,9 @@
  *
  * Home also asks who they brought (one person). That name is appended to
  * Taken and does not change Met With. Not home does not ask, and a skipped
- * name leaves Met With and Taken unchanged.
+ * name leaves Met With and Taken unchanged. The name is also written on the
+ * bullet (`— success with Devin`) so deleting or editing that visit can
+ * take it back out of Taken.
  *
  * Call: await tp.user.rvLog(tp, "home")  or  await tp.user.rvLog(tp, "miss")
  */
@@ -688,7 +690,7 @@ async function rvLog(tp, kind) {
 
   content = ensureAttemptLog(content);
   if (mode === "home") content = insertHomeHeading(content, whenLabel);
-  content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}`);
+  content = appendLogBullet(content, `> - ${whenLabel} — ${outcome}${companion ? ` with ${companion}` : ""}`);
   content = refreshStampAges(content, now);
   content = ensureVisitNotesHeading(content);
   content = ensureDashboardLeadBlank(unfoldDashboard(content));

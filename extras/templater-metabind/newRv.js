@@ -498,6 +498,7 @@ async function newRv(tp) {
     title,
     priority: newRvPriority(),
     companionYaml: companionFrontmatterBlock(companion),
+    companionSuffix: companion ? ` with ${companion}` : "",
   };
 }
 

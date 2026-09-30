@@ -111,19 +111,20 @@
   outside the dashboard callout.
 */
 .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
-	display: inline-flex;
-	align-items: stretch;
-	gap: 0.45rem;
-	flex-wrap: wrap;
+	display: inline-grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0.4em;
+	box-sizing: border-box;
+	width: min(100%, var(--rv-dash-column, 18.4em));
 	vertical-align: middle;
 }
 
+/* Four buttons, two per row, spanning the dashboard column edge to edge. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
-	flex: 0 0 8.25rem;
-	width: 8.25rem;
-	min-width: 8.25rem;
-	max-width: 8.25rem;
+	min-width: 0;
+	width: 100%;
+	max-width: none;
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
@@ -133,7 +134,7 @@ span.mb-button.rv-visit-btn {
 	justify-content: center;
 	flex: 1 1 auto;
 	width: 100%;
-	min-width: 8.25rem;
+	min-width: 0;
 	max-width: none;
 	height: 2rem;
 	min-height: 2rem;
@@ -142,6 +143,8 @@ span.mb-button.rv-visit-btn {
 	border-radius: var(--radius-s, 6px);
 	line-height: 1;
 	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
 	text-align: center;
 }
 
@@ -244,6 +247,43 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 	vertical-align: middle;
 }
 
+/*
+  The Hub plus and the map button share one box: --rv-dash-plus wide and
+  one input tall, so the map pin sits directly under the plus. The map link
+  is drawn by the plugin as a map-pin icon, without the external-link mark.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p button:not(.mb-button-inner):not(.mb-inline-list-item button),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--rv-dash-plus);
+	min-width: var(--rv-dash-plus);
+	height: var(--input-height, 2em);
+	padding: 0;
+	vertical-align: middle;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+	margin-left: var(--rv-dash-gap);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--button-radius, var(--radius-s, 4px));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	color: var(--text-muted);
+	text-decoration: none;
+}
+
+.rv-dashboard a.rv-map-button:hover {
+	color: var(--text-normal);
+}
+
+.rv-dashboard a.rv-map-button svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
+}
+
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
 	max-width: min(100%, var(--rv-dash-column));
@@ -279,11 +319,48 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 }
 
-/* Visit notes under each stamp are Meta Bind textAreas. Full width, room for a few lines. */
+/*
+  Visit notes under each stamp are Meta Bind textAreas. One line when
+  empty, growing with the text to five lines, then scrolling. The plugin
+  sets the height as you type and on every open; field-sizing does the same
+  where the browser supports it.
+*/
 .rv-dashboard textarea {
+	--rv-notes-pad: 0.3em;
+	box-sizing: border-box;
 	width: 100%;
-	min-height: 4.5em;
-	resize: vertical;
+	padding: var(--rv-notes-pad) 0.6em;
+	line-height: 1.45;
+	resize: none;
+	field-sizing: content;
+	min-height: calc(1lh + 2 * var(--rv-notes-pad) + 2 * var(--input-border-width, 1px));
+	max-height: calc(5lh + 2 * var(--rv-notes-pad) + 2 * var(--input-border-width, 1px));
+	overflow-y: auto;
+}
+
+/* Edit or delete one visit: an ellipsis after each stamp and each Attempt Log line. */
+.rv-visit-more {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: 0.35em;
+	padding: 0.1em 0.25em;
+	height: auto;
+	vertical-align: middle;
+	background: none;
+	box-shadow: none;
+	color: var(--text-faint);
+	--icon-size: var(--icon-xs, 14px);
+}
+
+.rv-visit-more:hover,
+.rv-visit-more:focus-visible {
+	color: var(--text-normal);
+}
+
+.rv-visit-more svg {
+	width: var(--icon-xs, 14px);
+	height: var(--icon-xs, 14px);
 }
 
 /*

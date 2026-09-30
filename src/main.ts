@@ -1,4 +1,4 @@
-import { MarkdownView, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { refreshBodyMapLink } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
@@ -18,7 +18,12 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitNotesHeading, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
+import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
+import { decorateMapLink, decorateVisitControls, type VisitTarget } from './visit-controls';
+import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
+import { stripStampAge } from './dates';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
@@ -61,6 +66,11 @@ const SETUP_NUDGE_MS = 12_000;
 const ACCENT_CHECK_MS = 5_000;
 /** Reading view renders after file-open, so ages are refreshed again a little later. */
 const AGE_REFRESH_DELAYS_MS = [0, 250, 1_000] as const;
+/** Meta Bind mounts its textAreas after the section renders, sometimes well after. */
+const NOTES_FIT_DELAYS_MS = [0, 250, 1_000, 2_500] as const;
+/** How long to look for a new visit's notes box after the note re-renders. */
+const FOCUS_ATTEMPTS = 40;
+const FOCUS_STEP_MS = 100;
 
 const NEARBY_LAYOUTS: readonly NearbyLayout[] = [
 	{ id: VANILLA_VIEW_TYPE, name: 'Active (Vanilla)', icon: 'table', mode: 'vanilla', scope: 'active' },
@@ -143,6 +153,36 @@ export default class RVLocatorPlugin extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: 'log-past-visit',
+			name: 'Log past visit',
+			checkCallback: (checking) => {
+				const file = this.activeMarkdownFile();
+				if (file && !checking) this.promptPastVisit(file);
+				return file != null;
+			},
+		});
+
+		this.addCommand({
+			id: 'edit-visit',
+			name: 'Edit or delete a visit',
+			checkCallback: (checking) => {
+				const file = this.activeMarkdownFile();
+				if (file && !checking) void this.pickVisit(file);
+				return file != null;
+			},
+		});
+
+		this.addCommand({
+			id: 'archive-rv',
+			name: 'Archive RV (set Priority to 0)',
+			checkCallback: (checking) => {
+				const file = this.activeMarkdownFile();
+				if (file && !checking) this.confirmArchive(file);
+				return file != null;
+			},
+		});
+
 		const registered = NEARBY_LAYOUTS.map((layout) => this.registerBasesView(layout.id, {
 			name: layout.name,
 			icon: layout.icon,
@@ -154,11 +194,26 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
 
-		this.registerMarkdownPostProcessor((element) => {
+		this.registerMarkdownPostProcessor((element, context) => {
 			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
 			decorateAttemptLog(element, hasCallout ? this.suggestionCalloutType() : undefined);
 			refreshStampAgeLabels(element);
+			decorateMapLink(element);
+			decorateVisitControls(
+				element,
+				() => context.getSectionInfo(element)?.lineStart ?? null,
+				(target, evt) => this.openVisitMenu(context.sourcePath, target, evt),
+			);
+			for (const delay of NOTES_FIT_DELAYS_MS) window.setTimeout(() => fitNotesBoxes(element), delay);
 		});
+
+		this.registerDomEvent(document, 'input', (evt) => {
+			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
+		});
+		this.registerDomEvent(document, 'focusin', (evt) => {
+			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
+		});
+		this.registerDomEvent(window, 'resize', () => this.scheduleNotesFit());
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
@@ -187,6 +242,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private onNoteOpened(file: TFile | null): void {
 		this.scheduleAgeRefresh();
+		this.scheduleNotesFit();
 		if (!file) return;
 		window.setTimeout(() => this.openInReadingView(file, false), 0);
 	}
@@ -215,6 +271,21 @@ export default class RVLocatorPlugin extends Plugin {
 	private scheduleAgeRefresh(): void {
 		for (const delay of AGE_REFRESH_DELAYS_MS) {
 			window.setTimeout(() => this.refreshOpenAges(), delay);
+		}
+	}
+
+	/**
+	 * Every visit notes box in open notes grows to its text, up to five
+	 * lines, or shrinks away space left from a narrower screen.
+	 */
+	private scheduleNotesFit(): void {
+		for (const delay of NOTES_FIT_DELAYS_MS) {
+			window.setTimeout(() => {
+				if (this.unloaded) return;
+				for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+					if (leaf.view instanceof MarkdownView) fitNotesBoxes(leaf.view.containerEl);
+				}
+			}, delay);
 		}
 	}
 
@@ -552,6 +623,7 @@ export default class RVLocatorPlugin extends Plugin {
 	async noteVisitLogged(file: TFile, outcome?: VisitOutcome): Promise<void> {
 		await this.enqueueDigestRewrite(file);
 		await this.maybeNudgePriority(file, outcome);
+		if (outcome === 'home') await this.focusVisitNotes(file, null);
 	}
 
 	/** Templater newRv calls this after the new note is on disk. */
@@ -775,6 +847,14 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		const modal = new VisitConfirmModal(this.app, displayName, (answer) => {
 			if (!answer) return;
+			if (answer === 'past') {
+				this.promptPastVisit(file);
+				return;
+			}
+			if (answer === 'archive') {
+				this.confirmArchive(file);
+				return;
+			}
 			void this.writeVisit(file, answer).catch((error: unknown) => {
 				new Notice(this.friendlyError(error));
 			});
@@ -785,20 +865,254 @@ export default class RVLocatorPlugin extends Plugin {
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
 		const now = new Date();
 		const companion = outcome === 'home' ? await this.promptCompanion() : '';
+		let notesProperty: string | null = null;
 		await this.app.vault.process(file, (data) => {
 			const info = getFrontMatterInfo(data);
 			const head = data.slice(0, info.contentStart);
-			return head + applyVisitBody(data.slice(info.contentStart), outcome, now);
+			const body = data.slice(info.contentStart);
+			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
+			return head + applyVisitBody(body, outcome, now, companion);
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			applyVisitFrontmatter(frontmatter as Record<string, unknown>, outcome, now, companion);
 		});
+		await this.restabilizeCompanions(file);
+		const label = outcome === 'home' ? 'Home' : 'Not home';
+		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
+		await this.afterVisitWrite(file, outcome, notesProperty);
+	}
+
+	/** Log past visit, from the priority badge, the note's button, or the command. */
+	promptPastVisit(file: TFile): void {
+		new VisitEditModal(this.app, {
+			title: `Log past visit on “${file.basename}”`,
+			recentCompanions: this.recentCompanionNames(),
+			onSave: (facts) => {
+				void this.writePastVisit(file, facts).catch((error: unknown) => {
+					new Notice(this.friendlyError(error));
+				});
+			},
+		}).open();
+	}
+
+	private async writePastVisit(file: TFile, facts: VisitFacts): Promise<void> {
+		const companion = facts.home ? formatStoredCompanion(facts.companion) : '';
+		const visit: VisitFacts = { ...facts, companion };
+		let remaining: VisitFacts[] = [];
+		let notesProperty: string | null = null;
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			const body = data.slice(info.contentStart);
+			remaining = listVisits(body).map(visitFacts);
+			notesProperty = visit.home ? nextVisitNotesProperty(data) : null;
+			return data.slice(0, info.contentStart) + insertVisit(body, visit, { now: new Date(), notesProperty });
+		});
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, { added: visit, remaining });
+		});
+		await this.restabilizeCompanions(file);
+		new Notice(`Logged ${describeVisit(visit)} on “${file.basename}”.`);
+		await this.afterVisitWrite(file, visit.home ? 'home' : 'miss', notesProperty);
+	}
+
+	/** Digest, priority nudge, then the caret in the new notes box. */
+	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
+		await this.enqueueDigestRewrite(file);
+		for (const callback of this.viewRefreshers) callback();
+		await this.maybeNudgePriority(file, outcome);
+		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty);
+	}
+
+	private async restabilizeCompanions(file: TFile): Promise<void> {
 		const current = await this.app.vault.read(file);
 		const linked = this.stabilizeCompanionFrontmatter(current);
 		if (linked !== current) await this.app.vault.modify(file, linked);
-		const label = outcome === 'home' ? 'Home' : 'Not home';
-		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
-		await this.noteVisitLogged(file);
+	}
+
+	private activeMarkdownFile(): TFile | null {
+		const file = this.app.workspace.getActiveFile();
+		return file && file.extension === 'md' ? file : null;
+	}
+
+	private async readVisits(file: TFile): Promise<{ list: VisitEntry[]; offset: number }> {
+		const data = await this.app.vault.read(file);
+		const info = getFrontMatterInfo(data);
+		return {
+			list: listVisits(data.slice(info.contentStart)),
+			offset: data.slice(0, info.contentStart).split('\n').length - 1,
+		};
+	}
+
+	private openVisitMenu(sourcePath: string, target: VisitTarget, evt: MouseEvent): void {
+		const file = this.app.vault.getFileByPath(sourcePath);
+		if (!file) return;
+		const menu = new Menu();
+		menu.addItem((item) => item
+			.setTitle('Edit visit')
+			.setIcon('pencil')
+			.onClick(() => { void this.openVisitTarget(file, target, 'edit'); }));
+		menu.addItem((item) => item
+			.setTitle('Delete visit')
+			.setIcon('trash-2')
+			.setWarning(true)
+			.onClick(() => { void this.openVisitTarget(file, target, 'delete'); }));
+		menu.showAtMouseEvent(evt);
+	}
+
+	private async openVisitTarget(file: TFile, target: VisitTarget, action: 'edit' | 'delete'): Promise<void> {
+		const { list, offset } = await this.readVisits(file);
+		const entry = resolveVisit(list, {
+			when: target.when,
+			home: target.home,
+			ordinal: target.ordinal,
+			headingLine: target.fileLine == null ? null : target.fileLine - offset,
+		});
+		if (!entry) {
+			new Notice('That visit is no longer on the note.');
+			return;
+		}
+		const hint = hintFor(list, entry);
+		if (action === 'edit') this.promptEditVisit(file, entry, hint);
+		else this.confirmDeleteVisit(file, entry, hint);
+	}
+
+	private async pickVisit(file: TFile): Promise<void> {
+		const { list } = await this.readVisits(file);
+		if (list.length === 0) {
+			new Notice(`No visits on “${file.basename}”.`);
+			return;
+		}
+		new VisitPickModal(this.app, list, (entry) => this.promptEditVisit(file, entry, hintFor(list, entry))).open();
+	}
+
+	private promptEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
+		new VisitEditModal(this.app, {
+			title: 'Edit visit',
+			initial: visitFacts(entry),
+			recentCompanions: this.recentCompanionNames(),
+			onSave: (facts) => {
+				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
+			},
+			onDelete: () => this.confirmDeleteVisit(file, entry, hint),
+		}).open();
+	}
+
+	private confirmDeleteVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
+		const parts = entry.home
+			? 'its stamp and notes, its Attempt Log line, and what it added to Visits, Successful Visits, Last Attempted, Last Spoke, and Taken'
+			: 'its Attempt Log line, and what it added to Visits and Last Attempted';
+		new ConfirmActionModal(this.app, {
+			title: 'Delete visit',
+			message: `Delete ${describeVisit(entry)}? This removes ${parts}. Met and Met With are not changed.`,
+			confirmText: 'Delete visit',
+			warning: true,
+			onConfirm: () => {
+				void this.changeVisit(file, hint, null).catch((error: unknown) => new Notice(this.friendlyError(error)));
+			},
+		}).open();
+	}
+
+	/** Edit (`facts`) or delete (`null`) one visit, body and frontmatter together. */
+	private async changeVisit(file: TFile, hint: VisitHint, facts: VisitFacts | null): Promise<void> {
+		const added = facts ? { ...facts, companion: facts.home ? formatStoredCompanion(facts.companion) : '' } : null;
+		let change: VisitChange | null = null;
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			const body = data.slice(info.contentStart);
+			const list = listVisits(body);
+			const entry = resolveVisit(list, hint);
+			if (!entry) return data;
+			change = {
+				removed: visitFacts(entry),
+				added,
+				remaining: list.filter((other) => other !== entry).map(visitFacts),
+				removedNotesProperty: entry.notesProperty,
+			};
+			const next = added ? editVisit(body, entry, added, new Date()) : removeVisit(body, entry);
+			return data.slice(0, info.contentStart) + next;
+		});
+		const applied = change as VisitChange | null;
+		if (!applied) {
+			new Notice('That visit is no longer on the note.');
+			return;
+		}
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, applied);
+		});
+		await this.restabilizeCompanions(file);
+		await this.enqueueDigestRewrite(file);
+		for (const callback of this.viewRefreshers) callback();
+		new Notice(added ? `Saved ${describeVisit(added)}.` : `Deleted the visit on “${file.basename}”.`);
+	}
+
+	confirmArchive(file: TFile): void {
+		new ConfirmActionModal(this.app, {
+			title: 'Archive RV',
+			message: `Set Priority on “${file.basename}” to 0? The note and its visits stay. It moves to Inactive, and you can raise Priority again at any time.`,
+			confirmText: 'Archive',
+			warning: true,
+			onConfirm: () => {
+				void this.archiveRv(file).catch((error: unknown) => new Notice(this.friendlyError(error)));
+			},
+		}).open();
+	}
+
+	private async archiveRv(file: TFile): Promise<void> {
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			assignProperty(frontmatter as Record<string, unknown>, 'Priority', 0);
+		});
+		for (const callback of this.viewRefreshers) callback();
+		new Notice(`Archived “${file.basename}”. Priority is 0.`);
+	}
+
+	/**
+	 * Open the note (or bring its tab forward), scroll to the visit, and put
+	 * the caret at the end of its notes box. On iOS the keyboard may stay
+	 * down, because focus here does not come straight from a tap.
+	 */
+	private async focusVisitNotes(file: TFile, property: string | null): Promise<void> {
+		if (this.unloaded) return;
+		const data = await this.app.vault.read(file);
+		const info = getFrontMatterInfo(data);
+		const lines = data.split('\n');
+		const name = property ?? highestNotesProperty(data.slice(info.contentStart));
+		if (!name) return;
+		const fieldAt = lines.findIndex((line) => line.includes(`INPUT[textArea:${name}]`));
+		if (fieldAt < 1) return;
+		const heading = /^(?:###|#####)\s+(.+?)\s*$/.exec((lines[fieldAt - 1] ?? '').replace(/\r$/, ''));
+		const stamp = heading ? stripStampAge(heading[1] ?? '') : '';
+		if (!stamp) return;
+		const ordinal = lines.slice(0, fieldAt - 1).filter((line) => line.includes(stamp) && /^#{3,5}\s/.test(line)).length;
+
+		let leaf = this.app.workspace.getLeavesOfType('markdown')
+			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
+		if (leaf) {
+			this.app.workspace.setActiveLeaf(leaf, { focus: true });
+			if (leaf.view instanceof MarkdownView) leaf.view.setEphemeralState({ line: fieldAt });
+		} else {
+			leaf = this.app.workspace.getLeaf(false);
+			await leaf.openFile(file, { active: true, eState: { line: fieldAt } });
+		}
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView)) return;
+
+		let steady = 0;
+		for (let attempt = 0; attempt < FOCUS_ATTEMPTS && steady < 3; attempt += 1) {
+			if (this.unloaded) return;
+			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
+			const area = notesBoxAfterStamp(view.containerEl, stamp, ordinal);
+			if (!area) continue;
+			if (area.ownerDocument.activeElement === area) {
+				steady += 1;
+				continue;
+			}
+			steady = 0;
+			area.focus();
+			const end = area.value.length;
+			area.setSelectionRange(end, end);
+			area.scrollIntoView({ block: 'center' });
+			fitNotesBox(area);
+		}
 	}
 
 	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): void {
@@ -1100,7 +1414,7 @@ export default class RVLocatorPlugin extends Plugin {
 		try {
 			await this.app.vault.process(current, (data) => {
 				const info = getFrontMatterInfo(data);
-				let next = data.slice(0, info.contentStart) + ensureDashboardLeadBlank(unfoldDashboard(data.slice(info.contentStart)));
+				let next = data.slice(0, info.contentStart) + ensureVisitButtons(ensureDashboardLeadBlank(unfoldDashboard(data.slice(info.contentStart))));
 				next = refreshHomeStampAges(next, new Date());
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);
@@ -1243,6 +1557,30 @@ function outcomeFromAttemptLog(text: string): VisitOutcome | 'unknown' {
 	const last = entries[entries.length - 1];
 	if (!last) return 'unknown';
 	return last.home ? 'home' : 'miss';
+}
+
+function highestNotesProperty(body: string): string | null {
+	let highest = 0;
+	for (const match of body.matchAll(/`INPUT\[textArea:sVisit(\d+)Notes\]`/g)) {
+		const index = Number(match[1]);
+		if (Number.isInteger(index) && index > highest) highest = index;
+	}
+	return highest > 0 ? `sVisit${highest}Notes` : null;
+}
+
+/** The first textarea rendered after the `ordinal`th heading showing `stamp`. */
+function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
+	const headings = Array.from(root.querySelectorAll('h3, h5, .cm-line.HyperMD-header'))
+		.filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').includes(stamp));
+	const heading = headings[ordinal] ?? headings[headings.length - 1];
+	if (!heading) return null;
+	const areas = Array.from(root.querySelectorAll('textarea'));
+	for (const area of areas) {
+		if (heading.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING) {
+			return area;
+		}
+	}
+	return null;
 }
 
 function finiteVisitCount(value: unknown): number | null {
