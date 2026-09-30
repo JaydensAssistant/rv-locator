@@ -37,8 +37,10 @@ const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
  * 7 drops the RV Dashboard fold mark and re-voices every digest with
  * attempted Off slots included.
  * 8 adds the Log past visit and Archive buttons beside Home and Not home.
+ * 9 turns the four visit buttons into icons with tooltips and writes the
+ * Mor, Aft, Eve table headers.
  */
-export const DIGEST_POLISH_VERSION = 8;
+export const DIGEST_POLISH_VERSION = 9;
 
 export function isDigestStartLine(line: string): boolean {
 	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);

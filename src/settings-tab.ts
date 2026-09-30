@@ -32,6 +32,8 @@ import {
 	renderUrgencySettings,
 } from './settings-scoring';
 import { applyTemplateSettingChange, type TemplateRenameVault } from './template-rename';
+import { attemptLogFullWidth } from './types';
+import { renderUrgencyPalette } from './urgency-palette-ui';
 
 /** Pause so a half-typed file name does not rename the note on every keystroke. */
 const TEMPLATE_RENAME_DELAY_MS = 400;
@@ -154,8 +156,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Digest table')
 			.setDesc(this.plugin.settings.digestOrientation === 'columns'
-				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note.'
-				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note.')
+				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note. With Attempt Log width on Automatic, the Attempt Log is full width.'
+				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note. Days across also makes an Automatic-width Attempt Log full width.')
 			.addButton((button) => {
 				button.setButtonText('Swap rows and columns');
 				button.onClick(() => {
@@ -198,6 +200,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 
+		this.paintNoteLayout(containerEl);
+
 		new Setting(containerEl).setName('Glancable density').setHeading();
 		renderDensitySettings(containerEl, this.plugin);
 
@@ -217,8 +221,61 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		renderPriorityNudge(containerEl, this.plugin);
 	}
 
+	private paintNoteLayout(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('RV note layout').setHeading();
+		new Setting(containerEl)
+			.setName('Short daypart names')
+			.setDesc('The Attempt Log table reads Mor, Aft, and Eve. Turn this off for Morning, Afternoon, and Evening. Changing this rewrites the digest on every RV note.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.abbreviateDayparts);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.abbreviateDayparts = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Attempt Log width')
+			.setDesc('Automatic is full width when the digest table has days as columns, and the dashboard column width otherwise.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('auto', `Automatic (now ${attemptLogFullWidth(this.plugin.settings) ? 'full width' : 'dashboard column'})`);
+				dropdown.addOption('full', 'Full width');
+				dropdown.addOption('column', 'Dashboard column');
+				dropdown.setValue(this.plugin.settings.attemptLogWidth);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.attemptLogWidth = value === 'full' || value === 'column' ? value : 'auto';
+					await this.plugin.saveSettings();
+				});
+			});
+		const centers: ReadonlyArray<{ key: 'centerDashboard' | 'centerVisitNotes' | 'centerSuggestions'; name: string; desc: string }> = [
+			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, buttons, and Quick Facts.' },
+			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'Centers the Visit Notes heading, each visit stamp, and the text in its notes box.' },
+			{ key: 'centerSuggestions', name: 'Center Return Suggestions', desc: 'Centers the Return Suggestions title and lines, the Attempt Log, its table, and its visit lines.' },
+		];
+		for (const center of centers) {
+			new Setting(containerEl)
+				.setName(center.name)
+				.setDesc(center.desc)
+				.addToggle((toggle) => {
+					toggle.setValue(this.plugin.settings[center.key]);
+					toggle.onChange(async (value) => {
+						this.plugin.settings[center.key] = value;
+						await this.plugin.saveSettings();
+					});
+				});
+		}
+	}
+
 	private paintUrgency(containerEl: HTMLElement): void {
 		new Setting(containerEl).setName('Urgency').setHeading();
+		renderUrgencyPalette(
+			containerEl,
+			() => ({ palette: this.plugin.settings.urgencyPalette, custom: this.plugin.settings.urgencyCustomColors }),
+			async ({ palette, custom }) => {
+				this.plugin.settings.urgencyPalette = palette;
+				this.plugin.settings.urgencyCustomColors = custom;
+				await this.plugin.saveSettings();
+			},
+		);
 		renderUrgencySettings(containerEl, this.plugin);
 	}
 
@@ -259,7 +316,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Templates').setHeading();
 		new Setting(containerEl)
 			.setName('Setup wizard')
-			.setDesc('Home counties, the may-go-out schedule, then Templater and Meta Bind. RV Locator does not install plugins.')
+			.setDesc('Home counties and the may-go-out schedule, urgency colors, then Templater and Meta Bind. RV Locator does not install plugins.')
 			.addButton((button) => {
 				button.setButtonText('Open setup wizard');
 				button.onClick(() => { this.plugin.openSetupWizard(); });

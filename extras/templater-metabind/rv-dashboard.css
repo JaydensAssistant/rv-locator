@@ -107,64 +107,78 @@
         > button.mb-button-inner
   The class from the button block lands on the span, not the <button>.
   button.mb-button never matches, so these rules do not use it.
-  They also do not require cssclass rv-dashboard, because the buttons sit
-  outside the dashboard callout.
+  They also do not require cssclass rv-dashboard. The buttons sit inside
+  the RV Dashboard quote callout.
 */
 .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
-	display: inline-grid;
-	grid-template-columns: repeat(2, minmax(0, 1fr));
+	display: inline-flex;
+	flex-wrap: nowrap;
+	align-items: center;
 	gap: 0.4em;
 	box-sizing: border-box;
-	width: min(100%, var(--rv-dash-column, 18.4em));
+	max-width: 100%;
 	vertical-align: middle;
 }
 
-/* Four buttons, two per row, spanning the dashboard column edge to edge. */
+/* Four icon-only buttons on one line. The tooltip gives each one its name. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
+	flex: 0 0 auto;
 	min-width: 0;
-	width: 100%;
 	max-width: none;
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
+	--rv-visit-btn-bg: var(--interactive-accent);
 	box-sizing: border-box;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	flex: 1 1 auto;
-	width: 100%;
-	min-width: 0;
+	gap: 0;
+	width: 2.75rem;
+	min-width: 2.75rem;
 	max-width: none;
 	height: 2rem;
 	min-height: 2rem;
 	margin: 0;
-	padding: 0 0.6rem;
+	padding: 0;
+	border: 1px solid var(--rv-visit-btn-bg);
 	border-radius: var(--radius-s, 6px);
+	background-color: var(--rv-visit-btn-bg);
+	box-shadow: none;
+	color: var(--text-on-accent);
 	line-height: 1;
-	white-space: nowrap;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	text-align: center;
 }
 
-span.mb-button.rv-visit-btn > button.mb-button-inner.mod-cta {
-	background-color: var(--text-accent);
-	color: var(--text-on-accent);
-	border: 1px solid var(--text-accent);
-	box-shadow: none;
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner:hover {
+	filter: brightness(1.12);
+}
+
+span.mb-button.rv-visit-btn > button.mb-button-inner :is(.mb-icon-wrapper, .mb-button-icon) {
+	display: inline-flex;
+	margin: 0;
+}
+
+span.mb-button.rv-visit-btn > button.mb-button-inner svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
 }
 
 /*
-  Not home is the default Meta Bind button. It takes the theme accent at about
-  a third of its lightness, so a blue accent gives dark navy. Same border and
-  box as Home so both buttons are the same size.
+  The accent, then three darker steps. Mixing toward black in OKLab scales
+  lightness linearly, so equal mix steps are equal steps in apparent
+  brightness: about 65%, 53%, 42%, and 30% lightness for a mid accent.
 */
-span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
-	background-color: hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) * 0.34));
-	color: hsl(var(--accent-h), 70%, 92%);
-	border: 1px solid hsl(var(--accent-h), var(--accent-s), calc(var(--accent-l) * 0.55));
-	box-shadow: none;
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 82%, black);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 64%, black);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 46%, black);
 }
 
 /*
@@ -242,7 +256,7 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a {
 	display: inline-block;
 	width: var(--rv-dash-plus);
-	margin-left: var(--rv-dash-gap);
+	margin-left: 0;
 	text-align: center;
 	vertical-align: middle;
 }
@@ -250,9 +264,15 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 /*
   The Hub plus and the map button share one box: --rv-dash-plus wide and
   one input tall, so the map pin sits directly under the plus. The map link
-  is drawn by the plugin as a map-pin icon, without the external-link mark.
+  is drawn by the plugin as a map-pin icon, without the external-link mark,
+  and the plugin drops the space before it. The Address input has no inline
+  padding, so its box ends where the Hub item does.
 */
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p button:not(.mb-button-inner):not(.mb-inline-list-item button),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > code.mb-input {
+	padding-inline: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-add,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
 	display: inline-flex;
 	align-items: center;
@@ -266,7 +286,7 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
-	margin-left: var(--rv-dash-gap);
+	margin-left: 0;
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 	border-radius: var(--button-radius, var(--radius-s, 4px));
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
@@ -308,12 +328,32 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 	white-space: nowrap;
 }
 
+/* A table wider than the column scrolls instead of being cut off. */
+.rv-dashboard .callout.rv-locator-attempt-log > .callout-content {
+	overflow-x: auto;
+}
+
+/* Attempt Log width: Full width, or Automatic with days as columns. */
+body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-attempt-log,
+body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] {
+	max-width: 100%;
+}
+
+/* The date on each Attempt Log line is set small, like a ##### visit stamp. */
+.rv-dashboard .rv-log-stamp {
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: 0.72em;
+	font-weight: var(--font-normal, 400);
+	letter-spacing: 0;
+}
+
 /*
   Only the Address text box, the Hub list items, and the Hub plus button are
   darkened. Their wrappers keep the callout background. Quick Facts sits in
   a nested callout, not a direct paragraph, and is not matched.
 */
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type]), textarea, .mb-inline-list-item, button:not(.mb-button-inner)) {
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type]), textarea, .mb-inline-list-item, .mb-inline-list-add) {
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
 	color: var(--text-normal);
 	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
@@ -377,4 +417,55 @@ span.mb-button.rv-visit-btn > button.mb-button-inner:not(.mod-cta) {
 
 .rv-dashboard .callout-title {
 	gap: 0;
+}
+
+/*
+  Center-align toggles in Settings → Everyday → RV note layout. Each one is
+  a body class, so the RV Dashboard, the visit notes, and Return
+  Suggestions can be centered on their own.
+*/
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) .callout-title {
+	justify-content: center;
+}
+
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) .callout-content {
+	text-align: center;
+}
+
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content .callout[data-callout="rv"] {
+	margin-inline: auto;
+}
+
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
+	text-align: start;
+}
+
+body.rv-center-visit-notes .rv-dashboard :is(h3.rv-visit-notes-heading, h5.rv-visit-stamp) {
+	text-align: center;
+}
+
+body.rv-center-visit-notes .rv-dashboard textarea {
+	text-align: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-title {
+	justify-content: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-content {
+	text-align: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout,
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions table {
+	margin-inline: auto;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(th, td) {
+	text-align: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions ul {
+	padding-inline-start: 0;
+	list-style-position: inside;
 }

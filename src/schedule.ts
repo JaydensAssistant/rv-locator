@@ -112,6 +112,14 @@ export function daypartTitle(daypart: Daypart): string {
 	}
 }
 
+export function daypartShortTitle(daypart: Daypart): string {
+	switch (daypart) {
+		case 'morning': return 'Mor';
+		case 'afternoon': return 'Aft';
+		case 'evening': return 'Eve';
+	}
+}
+
 export function daypartSettingLabel(daypart: Daypart): string {
 	switch (daypart) {
 		case 'morning': return 'Morning (Before 12pm)';
@@ -290,8 +298,11 @@ export function suggestReturnDigest(args: {
 	days?: DigestDayScope;
 	thresholds?: Partial<DigestThresholds>;
 	now?: Date;
+	/** Mor, Aft, Eve in the table instead of full daypart names. */
+	abbreviate?: boolean;
 }): ReturnDigest {
 	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
+	const label = args.abbreviate === true ? daypartShortTitle : daypartTitle;
 	const scope: DigestDayScope = args.days === 'may' ? 'may' : 'all';
 	const thresholds = resolveThresholds(args.thresholds);
 	const mayDays = mayGoOutDays(args.grid);
@@ -303,15 +314,15 @@ export function suggestReturnDigest(args: {
 			return { text, sentences, table: '', markdown: text };
 		}
 		const table = scope === 'may'
-			? tableFor(orientation, factDays(tried), tried, undefined, 'dash', args.buckets)
-			: emptyWeekTable(orientation, args.buckets);
+			? tableFor(orientation, factDays(tried), tried, undefined, 'dash', args.buckets, label)
+			: emptyWeekTable(orientation, args.buckets, label);
 		return { text, sentences, table, markdown: `${table}\n\n${text}` };
 	}
 	const facts = daypartFacts(ALL_WEEKDAYS, args.buckets, args.grid);
 	const shown = scope === 'all' ? [...ALL_WEEKDAYS] : factDays(facts);
 	const fill: CellFill = scope === 'all' ? 'count' : 'dash';
 	const dayparts = scope === 'all' ? DAYPARTS : undefined;
-	const table = tableFor(orientation, shown, facts, dayparts, fill, args.buckets);
+	const table = tableFor(orientation, shown, facts, dayparts, fill, args.buckets, label);
 	const sentences = voiceLines(facts, thresholds);
 	const blocks = [table];
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
@@ -330,20 +341,21 @@ function tableFor(
 	dayparts: readonly Daypart[] | undefined,
 	fill: CellFill,
 	buckets: AttemptBuckets,
+	label: DaypartLabel,
 ): string {
 	return orientation === 'columns'
-		? tableDaysAsColumns(days, facts, dayparts, fill, buckets)
-		: tableDaysAsRows(days, facts, dayparts, fill, buckets);
+		? tableDaysAsColumns(days, facts, dayparts, fill, buckets, label)
+		: tableDaysAsRows(days, facts, dayparts, fill, buckets, label);
 }
 
 function factDays(facts: readonly SlotFact[]): number[] {
 	return [...new Set(facts.map((slot) => slot.weekday))].sort((a, b) => a - b);
 }
 
-function emptyWeekTable(orientation: DigestOrientation, buckets: AttemptBuckets): string {
+function emptyWeekTable(orientation: DigestOrientation, buckets: AttemptBuckets, label: DaypartLabel): string {
 	const days = [...ALL_WEEKDAYS];
-	if (orientation === 'columns') return tableDaysAsColumns(days, [], DAYPARTS, 'count', buckets);
-	return tableDaysAsRows(days, [], DAYPARTS, 'count', buckets);
+	if (orientation === 'columns') return tableDaysAsColumns(days, [], DAYPARTS, 'count', buckets, label);
+	return tableDaysAsRows(days, [], DAYPARTS, 'count', buckets, label);
 }
 
 function mayGoOutDays(grid: AvailabilityGrid): number[] {
@@ -381,15 +393,18 @@ function daypartFacts(days: readonly number[], buckets: AttemptBuckets, grid: Av
 
 type CellFill = 'dash' | 'count';
 
+type DaypartLabel = (daypart: Daypart) => string;
+
 function tableDaysAsRows(
 	days: readonly number[],
 	facts: readonly SlotFact[],
 	dayparts?: readonly Daypart[],
 	fill: CellFill = 'dash',
 	buckets: AttemptBuckets = {},
+	label: DaypartLabel = daypartTitle,
 ): string {
 	const columns = dayparts ?? DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
-	const header = ['| |', ...columns.map((daypart) => ` ${daypartTitle(daypart)} |`)].join('');
+	const header = ['| |', ...columns.map((daypart) => ` ${label(daypart)} |`)].join('');
 	const rule = ['| --- |', ...columns.map(() => ' --- |')].join('');
 	const body = days.map((weekday) => {
 		const cells = columns.map((daypart) => ` ${cellText(facts, weekday, daypart, fill, buckets)} |`);
@@ -404,13 +419,14 @@ function tableDaysAsColumns(
 	dayparts?: readonly Daypart[],
 	fill: CellFill = 'dash',
 	buckets: AttemptBuckets = {},
+	label: DaypartLabel = daypartTitle,
 ): string {
 	const rows = dayparts ?? DAYPARTS.filter((daypart) => facts.some((slot) => slot.daypart === daypart));
 	const header = ['| |', ...days.map((weekday) => ` ${weekdayShort(weekday)} |`)].join('');
 	const rule = ['| --- |', ...days.map(() => ' --- |')].join('');
 	const body = rows.map((daypart) => {
 		const cells = days.map((weekday) => ` ${cellText(facts, weekday, daypart, fill, buckets)} |`);
-		return `| ${daypartTitle(daypart)} |${cells.join('')}`;
+		return `| ${label(daypart)} |${cells.join('')}`;
 	});
 	return [header, rule, ...body].join('\n');
 }

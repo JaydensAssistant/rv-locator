@@ -415,6 +415,15 @@ export function roundedHour(date: Date): { date: Date; hour: number } {
 	return { date: shifted, hour: shifted.getHours() };
 }
 
+export const PAST_VISIT_DEFAULT_HOUR = 10;
+
+/** 10am today, or 10am yesterday while it is still before 10am. */
+export function defaultPastVisitTime(now: Date): { date: Date; hour: number } {
+	const date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), PAST_VISIT_DEFAULT_HOUR, 0, 0, 0);
+	if (date.getTime() > now.getTime()) date.setDate(date.getDate() - 1);
+	return { date, hour: PAST_VISIT_DEFAULT_HOUR };
+}
+
 /** A past visit may not be later than `now`, rounded to the hour. */
 export function isFutureVisit(when: Date, now: Date): boolean {
 	return formatVisitStamp(when) !== formatVisitStamp(now) && when.getTime() > now.getTime();

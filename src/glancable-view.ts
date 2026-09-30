@@ -10,6 +10,7 @@ import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
+import { urgencyColorsFor } from './urgency-palette';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -62,7 +63,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const band = priority != null && priority > 0 ? urgencyBand(urgency) : 0;
 		card.setAttr('data-urgency-band', String(band));
 		if (priority === 0) card.addClass('is-priority-zero');
-		card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority));
+		card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority, urgencyColorsFor(this.plugin.settings.urgencyPalette, this.plugin.settings.urgencyCustomColors)));
 		const titleBits: string[] = [];
 		if (rank) {
 			card.setAttr('data-priority', rank);

@@ -21,7 +21,7 @@ import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
-import { decorateMapLink, decorateVisitControls, type VisitTarget } from './visit-controls';
+import { decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { stripStampAge } from './dates';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
@@ -37,7 +37,7 @@ import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from '
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
-import { DEFAULT_SETTINGS, defaultNearbySort, mergeSettings, sanitizeNearbySort, type CacheEntry, type GeocodeHit, type NearbySortPreference, type RVLocatorSettings, type StoredPluginData } from './types';
+import { DEFAULT_SETTINGS, attemptLogFullWidth, defaultNearbySort, mergeSettings, sanitizeNearbySort, type CacheEntry, type GeocodeHit, type NearbySortPreference, type RVLocatorSettings, type StoredPluginData } from './types';
 import { NearbyVanillaView } from './vanilla-view';
 
 function cacheValue(frontmatter: { [key: string]: unknown } | undefined, key: string): unknown {
@@ -214,6 +214,16 @@ export default class RVLocatorPlugin extends Plugin {
 			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
 		});
 		this.registerDomEvent(window, 'resize', () => this.scheduleNotesFit());
+		ensureIconAlias('rotate-ccw-clock', 'history');
+		const longPress = new VisitButtonLongPress();
+		this.registerDomEvent(document, 'touchstart', (evt) => longPress.start(evt), { passive: true });
+		for (const type of ['touchend', 'touchmove', 'touchcancel'] as const) {
+			this.registerDomEvent(document, type, () => longPress.cancel(), { passive: true });
+		}
+		this.registerDomEvent(document, 'mouseover', (evt) => longPress.hover(evt));
+		this.registerDomEvent(document, 'click', (evt) => longPress.swallow(evt), { capture: true });
+		this.registerDomEvent(document, 'contextmenu', (evt) => longPress.swallow(evt), { capture: true });
+		this.applyLayoutClasses();
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
 			if (!(file instanceof TFile) || file.extension !== 'md') return;
@@ -238,6 +248,16 @@ export default class RVLocatorPlugin extends Plugin {
 			this.refreshOpenAges();
 		}, ACCENT_CHECK_MS));
 		this.digestKeyApplied = this.digestKey();
+	}
+
+	/** Body classes for the center-align toggles and the Attempt Log width. */
+	private applyLayoutClasses(): void {
+		const on = !this.unloaded;
+		const body = document.body;
+		body.toggleClass('rv-center-dashboard', on && this.settings.centerDashboard);
+		body.toggleClass('rv-center-visit-notes', on && this.settings.centerVisitNotes);
+		body.toggleClass('rv-center-suggestions', on && this.settings.centerSuggestions);
+		body.toggleClass('rv-attempt-log-wide', on && attemptLogFullWidth(this.settings));
 	}
 
 	private onNoteOpened(file: TFile | null): void {
@@ -357,6 +377,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
+		this.applyLayoutClasses();
 		this.bulkAborted = true;
 	}
 
@@ -396,7 +417,12 @@ export default class RVLocatorPlugin extends Plugin {
 				this.settings.availabilityGrid = grid;
 				await this.saveSettings();
 			},
-		}, this.settings.availabilityGrid);
+			onSaveUrgencyColors: async ({ palette, custom }) => {
+				this.settings.urgencyPalette = palette;
+				this.settings.urgencyCustomColors = custom;
+				await this.saveSettings();
+			},
+		}, this.settings.availabilityGrid, { palette: this.settings.urgencyPalette, custom: this.settings.urgencyCustomColors });
 		modal.open();
 	}
 
@@ -558,6 +584,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (digestChanged) this.accentGate.markApplied(this.suggestionCalloutType());
 		await this.persist();
 		this.digestKeyApplied = this.digestKey();
+		this.applyLayoutClasses();
 		for (const callback of this.viewRefreshers) callback();
 		if (digestChanged) {
 			this.recolorOpenSuggestions();
@@ -596,6 +623,7 @@ export default class RVLocatorPlugin extends Plugin {
 			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
 			now: new Date(),
+			abbreviate: this.settings.abbreviateDayparts,
 		});
 		new ReturnSuggestModal(this.app, displayName, digest.markdown).open();
 	}
@@ -1317,6 +1345,7 @@ export default class RVLocatorPlugin extends Plugin {
 			orientation: this.settings.digestOrientation,
 			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
+			abbreviate: this.settings.abbreviateDayparts,
 			suggestion: this.suggestionCalloutType(),
 		});
 	}
@@ -1426,6 +1455,7 @@ export default class RVLocatorPlugin extends Plugin {
 					orientation: this.settings.digestOrientation,
 					days: this.settings.digestDays,
 					thresholds: this.digestThresholds(),
+					abbreviate: this.settings.abbreviateDayparts,
 				});
 				const rewritten = upsertAttemptDigest(next, digest, {
 					collapse: collapseLog,

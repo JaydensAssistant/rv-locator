@@ -1,4 +1,5 @@
 import type { PriorityBand, PriorityDays } from './types';
+import { defaultUrgencyColors } from './urgency-palette';
 
 /**
  * Urgency is days since Last Spoke divided by the priority threshold.
@@ -145,14 +146,18 @@ export function urgencyGlyphMarkup(glyphs: string): string {
 	return `<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false" fill="currentColor">${body}</svg>`;
 }
 
-/** Green below 1, then a distinct yellow, orange, and red. Priority 0 stays neutral grey. */
-export function urgencyAccentColor(urgency: number | null, priority: number | null = 1): string {
+/**
+ * One color per urgency band. The default is green below 1, then a distinct
+ * yellow, orange, and red. Priority 0 stays neutral grey.
+ */
+export function urgencyAccentColor(
+	urgency: number | null,
+	priority: number | null = 1,
+	colors: readonly string[] = defaultUrgencyColors(),
+): string {
 	if (priority == null || priority <= 0) return 'var(--text-faint)';
 	const band = urgencyBand(urgency);
-	if (band === 0) return '#1f8a4c';
-	if (band === 1) return '#d6a100';
-	if (band === 2) return '#e06a00';
-	return '#d63c3c';
+	return colors[band] ?? 'var(--text-faint)';
 }
 
 export function distanceWeight(miles: number, territorySpan: number, alpha = IDEALITY_ALPHA): number | null {

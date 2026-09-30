@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseLogBullet } from '../src/schedule';
 import { notesBoxHeight } from '../src/notes-autosize';
-import { applyVisitBody, ensureVisitButtons } from '../src/visit-log';
+import { applyVisitBody, ensureVisitButtons, iconizeVisitButtons } from '../src/visit-log';
 import {
 	applyVisitChangeFrontmatter,
 	editVisit,
@@ -15,6 +15,7 @@ import {
 	removeVisit,
 	resolveVisit,
 	roundedHour,
+	defaultPastVisitTime,
 	visitFacts,
 	visitWhenFrom,
 } from '../src/visit-editor';
@@ -325,6 +326,17 @@ describe('past visit form', () => {
 		assert.equal(hourLabel(19), '7pm');
 	});
 
+	it('starts a past visit at 10am, yesterday while it is still before 10am', () => {
+		const afternoon = defaultPastVisitTime(new Date(2026, 8, 29, 15, 20));
+		assert.equal(afternoon.hour, 10);
+		assert.equal(afternoon.date.getDate(), 29);
+		const early = defaultPastVisitTime(new Date(2026, 8, 29, 1, 5));
+		assert.equal(early.hour, 10);
+		assert.equal(early.date.getDate(), 28);
+		assert.equal(defaultPastVisitTime(new Date(2026, 8, 1, 9, 59)).date.getMonth(), 7);
+		assert.equal(defaultPastVisitTime(new Date(2026, 8, 29, 10, 0)).date.getDate(), 29);
+	});
+
 	it('starts on the hour the stamp would show', () => {
 		assert.equal(roundedHour(new Date(2026, 8, 29, 17, 40)).hour, 18);
 		const late = roundedHour(new Date(2026, 8, 29, 23, 45));
@@ -368,6 +380,45 @@ describe('visit buttons', () => {
 		assert.match(next, /id: rv-log-past\nhidden: true\nactions:\n {2}- type: command\n {4}command: rv-locator:log-past-visit\n```/);
 		assert.match(next, /command: rv-locator:archive-rv/);
 		assert.equal(ensureVisitButtons(next), next);
+	});
+
+	it('turns the four visit buttons into icons with tooltips, once', () => {
+		const old = [
+			'> `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`',
+			'',
+			'```meta-bind-button',
+			'label: Home',
+			'style: primary',
+			'class: rv-visit-btn',
+			'id: rv-log-home',
+			'hidden: true',
+			'actions:',
+			'  - type: runTemplaterFile',
+			'    templateFile: Templates/99 RV Log Home.md',
+			'```',
+			'',
+			'```meta-bind-button',
+			'style: default',
+			'id: rv-archive',
+			'```',
+			'',
+			'```meta-bind-button',
+			'label: Other',
+			'id: someone-else',
+			'```',
+		].join('\n');
+		const next = iconizeVisitButtons(old);
+		const lines = next.split('\n');
+		assert.deepEqual(lines.slice(3, 6), ['label: ""', 'icon: door-open', 'tooltip: Home']);
+		assert.equal(lines[6], 'style: primary');
+		assert.equal(next.includes('    templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(next.includes('```meta-bind-button\nlabel: ""\nicon: archive\ntooltip: Archive\nstyle: default\nid: rv-archive\n```'), true);
+		assert.equal(next.includes('label: Other'), true);
+		assert.equal(iconizeVisitButtons(next), next);
+		const two = ensureVisitButtons('> `BUTTON[rv-log-home, rv-log-miss]`\n');
+		assert.equal(two.includes('icon: rotate-ccw-clock'), true);
+		assert.equal(two.includes('tooltip: Log past visit'), true);
+		assert.equal(two.includes('label: Log past visit'), false);
 	});
 
 	it('leaves a note without the button line alone', () => {

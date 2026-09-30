@@ -40,7 +40,9 @@ The script creates `> [!note]- Attempt Log` at the bottom when the note has neit
 Adjust `templateFile` if your Templates path differs. `New RV.md` uses these same paths.
 
 ~~~meta-bind-button
-label: Home
+label: ""
+icon: door-open
+tooltip: Home
 style: primary
 class: rv-visit-btn
 id: rv-log-home
@@ -51,7 +53,9 @@ actions:
 ~~~
 
 ~~~meta-bind-button
-label: Not home
+label: ""
+icon: door-closed
+tooltip: Not home
 style: default
 class: rv-visit-btn
 id: rv-log-miss
@@ -64,7 +68,9 @@ actions:
 Log past visit and Archive run RV Locator commands, so they need the plugin enabled:
 
 ~~~meta-bind-button
-label: Log past visit
+label: ""
+icon: rotate-ccw-clock
+tooltip: Log past visit
 style: default
 class: rv-visit-btn
 id: rv-log-past
@@ -75,7 +81,9 @@ actions:
 ~~~
 
 ~~~meta-bind-button
-label: Archive
+label: ""
+icon: archive
+tooltip: Archive
 style: default
 class: rv-visit-btn
 id: rv-archive
@@ -90,6 +98,8 @@ Inline row:
 `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`
 
 From 1.3.2 the plugin adds the two new buttons to older notes that still have `BUTTON[rv-log-home, rv-log-miss]`, once, on its first launch.
+
+From 1.3.3 the four buttons are icons on one line: `door-open` (Home), `door-closed` (Not home), `rotate-ccw-clock` (Log past visit), and `archive` (Archive). The label is empty and `tooltip` names the button. With the plugin on, hovering shows that name on desktop and holding the button shows it on a phone without pressing it. The plugin rewrites these four blocks on older notes once, on its first launch. Other keys in the blocks, such as `templateFile`, are kept. When Obsidian's icon set has no `rotate-ccw-clock`, the plugin draws it from `history`, the same arrow around a clock.
 
 ## Standalone Templater (no Meta Bind)
 

@@ -578,7 +578,7 @@ describe('disk proof', () => {
 		assert.equal(createdLines[stampLine + 6], '>');
 		assert.equal(createdLines[stampLine + 7], '> > [!note]- Attempt Log');
 		assert.equal(createdLines[stampLine + 8], '> >');
-		assert.equal(createdLines[stampLine + 9], '> >| | Morning | Afternoon | Evening |');
+		assert.equal(createdLines[stampLine + 9], '> >| | Mor | Aft | Eve |');
 		assert.equal(createdLines.includes('> >| Sun | 0/0 | 0/0 | 0/0 |'), true);
 		assert.equal(createdLines.includes('> >| Sat | 0/0 | 0/0 | 0/0 |'), true);
 		assert.equal(createdLines.includes('> >| Sun | — | — | — |'), false);

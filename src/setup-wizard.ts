@@ -6,13 +6,15 @@ import { explainMayGoOut, paintMayGoOutGrid } from './settings-scoring';
 import { META_BIND_PLUGIN_ID, setupChecklist, type SetupSnapshot } from './setup-check';
 import type { AvailabilityGrid } from './schedule';
 import type { RVLocatorSettings } from './types';
+import { defaultUrgencyColors } from './urgency-palette';
+import { renderUrgencyPalette, type UrgencyPaletteChoice } from './urgency-palette-ui';
 
 /** First launch opens the wizard. A finished wizard stays closed until Settings opens it. */
 export function shouldAutoOpenSetupWizard(completed: boolean, unloaded: boolean): boolean {
 	return !unloaded && !completed;
 }
 
-export type SetupWizardStep = 'home' | 'plugins';
+export type SetupWizardStep = 'home' | 'colors' | 'plugins';
 
 interface PluginHost {
 	plugins?: {
@@ -67,6 +69,8 @@ export interface SetupWizardActions {
 	onSaveHomeCounties: (counties: string[]) => Promise<void> | void;
 	/** Writes the may-go-out grid. Skip does not call this. */
 	onSaveMayGoOut: (grid: AvailabilityGrid) => Promise<void> | void;
+	/** Writes the urgency palette and custom colors. Skip does not call this. */
+	onSaveUrgencyColors: (choice: UrgencyPaletteChoice) => Promise<void> | void;
 }
 
 export class SetupWizardModal extends Modal {
@@ -76,14 +80,17 @@ export class SetupWizardModal extends Modal {
 	private homeDraft = '';
 	private homeDraftReady = false;
 	private scheduleDraft: AvailabilityGrid | null = null;
+	private colorsDraft: UrgencyPaletteChoice;
 
 	constructor(
 		app: App,
 		private load: () => Promise<SetupSnapshot>,
 		private actions: SetupWizardActions,
 		private initialSchedule: AvailabilityGrid = {},
+		initialColors: UrgencyPaletteChoice = { palette: 'default', custom: defaultUrgencyColors() },
 	) {
 		super(app);
+		this.colorsDraft = { palette: initialColors.palette, custom: [...initialColors.custom] };
 	}
 
 	onOpen(): void {
@@ -104,6 +111,10 @@ export class SetupWizardModal extends Modal {
 			await this.renderHome();
 			return;
 		}
+		if (this.step === 'colors') {
+			this.renderColors();
+			return;
+		}
 		await this.renderPlugins();
 	}
 
@@ -111,7 +122,7 @@ export class SetupWizardModal extends Modal {
 		const generation = ++this.renderGeneration;
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl('p', { text: 'Step 1 of 2. Home region.' });
+		contentEl.createEl('p', { text: 'Step 1 of 3. Home region.' });
 		contentEl.createEl('p', {
 			text: 'These counties are where you normally work return visits. A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in one of them, so a wrong-city pick is not saved.',
 		});
@@ -154,19 +165,50 @@ export class SetupWizardModal extends Modal {
 			})
 			.addButton((button) => {
 				button.setButtonText('Skip');
-				button.onClick(() => { this.showPlugins(); });
+				button.onClick(() => { this.showStep('colors'); });
 			});
+	}
+
+	private renderColors(): void {
+		++this.renderGeneration;
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('p', { text: 'Step 2 of 3. Urgency colors.' });
+		contentEl.createEl('p', {
+			text: 'Nearby colors each card by how overdue the return visit is. Pick a palette, or set each level yourself. Skip keeps the current colors. Settings can change these later.',
+		});
+		renderUrgencyPalette(
+			contentEl,
+			() => this.colorsDraft,
+			(choice) => { this.colorsDraft = { palette: choice.palette, custom: [...choice.custom] }; },
+		);
+		new Setting(contentEl)
+			.addButton((button) => {
+				button.setButtonText('Save and continue');
+				button.setCta();
+				button.onClick(() => { void this.saveColorsAndContinue(); });
+			})
+			.addButton((button) => {
+				button.setButtonText('Skip');
+				button.onClick(() => { this.showStep('plugins'); });
+			});
+	}
+
+	private async saveColorsAndContinue(): Promise<void> {
+		await this.actions.onSaveUrgencyColors({ palette: this.colorsDraft.palette, custom: [...this.colorsDraft.custom] });
+		if (this.closed) return;
+		this.showStep('plugins');
 	}
 
 	private async saveHomeAndContinue(): Promise<void> {
 		await this.actions.onSaveHomeCounties(parseHomeCountyLines(this.homeDraft));
 		if (this.scheduleDraft) await this.actions.onSaveMayGoOut({ ...this.scheduleDraft });
 		if (this.closed) return;
-		this.showPlugins();
+		this.showStep('colors');
 	}
 
-	private showPlugins(): void {
-		this.step = 'plugins';
+	private showStep(step: SetupWizardStep): void {
+		this.step = step;
 		void this.render();
 	}
 
@@ -174,7 +216,7 @@ export class SetupWizardModal extends Modal {
 		const generation = ++this.renderGeneration;
 		const { contentEl } = this;
 		contentEl.empty();
-		contentEl.createEl('p', { text: 'Step 2 of 2. Templates and scripts.' });
+		contentEl.createEl('p', { text: 'Step 3 of 3. Templates and scripts.' });
 		contentEl.createEl('p', {
 			text: 'Check the Geoapify key, Templater, and Meta Bind, then put the New RV templates and scripts in Templater’s folders. The setup notice uses this same list. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.',
 		});
