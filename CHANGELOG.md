@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.3.4
+
+`main.js` SHA-256: `28fe4ee5e9b9f11854e1825e24a9e38af3bfbe0fd9b60c83bacc47e28f0b5cbb`
+
+`styles.css` SHA-256: `3760fdda66b943d05e9274682dc2e2173f5f0dbf78e00a1e220125cce6e2dd18`
+
+`manifest.json` SHA-256: `82646b287f2db542d40567e44215a97ba8d441d79ce2a256acea758c6a41b71c`
+
+- Archive becomes Unarchive when the note is Inactive (Priority 0). Unarchive sets Active and Priority 1. The command id stays `archive-rv`.
+- Attempt Log time is exact (`4:32pm`). On the hour it stays `4pm`. Only the calendar date is small. The weekday, time, and dash stay normal size.
+- Attempt Log width defaults to Full.
+- Settings: wide Quick Facts, wide Hubs and Address, and wide visit buttons. All off by default.
+- Visit buttons are fully rounded, including the Home and Archive ends. By default they share the dashboard column so their right edge lines up with Hub + and the map button. Wide visit buttons span the RV Dashboard.
+- Button colors pull a very light or very dark accent toward the middle, then step down. The lightest is a bit darker than the raw accent. The darkest is lighter than a hard mix toward black.
+- The control beside Address is a Lucide earth icon. It opens a Map page that says Coming soon. The card’s external map icon is a Lucide route and still opens the maps link.
+- Creating an RV focuses the first visit notes box.
+- Quick Facts shows Visits as successful/total, human-readable Last Spoke, Last Attempted, and Met (that order), and no Met With line. The companion who was Met With is accented inside Taken. Every row has a Lucide icon. The value column shares one right edge.
+- The Quick Facts header has urgency, priority, and route badges, on by default and each toggleable. Urgency opens Home, Not home, Log past visit, Archive or Unarchive, and snooze today / 7 days / 14 days. Priority opens a 0–5 slider.
+- Quick Facts includes Status: Study, Active, or Inactive. New notes start Active. Inactive forces Priority 0. Priority 0 forces Inactive. Inactive to Active sets Priority 1. A priority above 0 on an Inactive note makes it Active.
+- Cards show a status icon left of the title: `user-round-check`, `user-round-x`, or `book-user`. The address line starts with an earth icon, and tapping that line opens the coming-soon map.
+- Sort chips add City after Met (nearest city when a position exists, otherwise alphabetical). After the sorts, a status cycle (Active, RVs Only, Studies, Archive) and a gender cycle (Men+Women, Men, Women). Notes with no gender stay in Men+Women only.
+- The only registered Bases view is Return Visits. The older vanilla view and the separate Active and Inactive glancable views are no longer registered.
+- Settings can set a default folder for new RVs. Advanced can append the Met date (`YYYY-MM-DD`) to new filenames. Off by default.
+- Return-suggester settings explain Try soft rate, Try homes, Avoid soft rate, and Avoid trials, and show a graph of those boundaries. Every settings graph has stepped, labeled X and Y axes.
+- Cards side by side (0–8) is off at 0. From 2 up it scales the current density so that many cards fit.
+- Met is the earliest logged visit that is not in the future, including after an edit or delete. Met With is unchanged. A future visit does not move Met.
+- New RV is one dialog: Man or Woman, and an optional name that is not prefilled. A blank name uses the gender in the title (`Man on Maple`).
+- Hub is singular. One row of equal-width chips shares the field. Adding a hub uses a vault file suggester, not a Dataview query. The first launch of 1.3.4 fills a missing Status from Priority and renames `**Hubs:**` to `**Hub:**`. It does not guess Gender or overwrite Study.
+- Extras sync is pinned to tag `v1.3.4` on `raw.githubusercontent.com`. This build does not create that git tag and does not retarget the download to `v1.3.3` or any older tag, `main`, or `unstable`.
+
 ## 1.3.3
 
 `main.js` SHA-256: `e936d328ffd42f8b268b6f05e336cf5c1ecfda8a5ca07b65841d6f1528debd86`

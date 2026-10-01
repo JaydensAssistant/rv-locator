@@ -18,6 +18,7 @@ export interface SettingsGraphs {
 	ideality: string;
 	floors: string;
 	likelihood: string;
+	suggester: string;
 }
 
 export function settingsGraphs(settings: RVLocatorSettings): SettingsGraphs {
@@ -27,7 +28,37 @@ export function settingsGraphs(settings: RVLocatorSettings): SettingsGraphs {
 		ideality: idealityMilesSvg(settings.territorySpanMiles),
 		floors: idealityFloorSvg(settings),
 		likelihood: settings.homeLikelihoodEnabled ? likelihoodSvg() : '',
+		suggester: suggesterSvg(settings),
 	};
+}
+
+/**
+ * Try stays closed until Try homes, then opens at the Try soft rate.
+ * Avoid stays closed until Avoid trials, then opens at the Avoid soft rate.
+ */
+export function suggesterSvg(settings: RVLocatorSettings): string {
+	const domain = Math.max(12, settings.digestAvoidMinTrials, settings.digestTryMinHomes);
+	const tryLine = sampleDays(domain, domain, (trials) => (
+		trials + 0.001 >= settings.digestTryMinHomes ? settings.digestTrySoftMin : 1
+	));
+	const avoidLine = sampleDays(domain, domain, (trials) => (
+		trials + 0.001 >= settings.digestAvoidMinTrials ? settings.digestAvoidSoftMax : 0
+	));
+	return lineChart({
+		title: 'Suggester Try and Avoid',
+		xLabel: 'trials',
+		yLabel: 'home rate',
+		xMax: domain,
+		yMax: 1,
+		series: [
+			{ label: 'Try', token: '5', points: tryLine },
+			{ label: 'Avoid', token: '1', points: avoidLine },
+		],
+		guides: [
+			{ x: settings.digestAvoidMinTrials, y: null, label: 'trials' },
+			{ x: null, y: settings.digestTrySoftMin, label: 'try' },
+		],
+	});
 }
 
 export function urgencyLadderSvg(thresholds: PriorityDays): string {
@@ -186,11 +217,11 @@ function lineChart(args: {
 	guides: Guide[];
 }): string {
 	const width = 360;
-	const height = 168;
-	const left = 36;
+	const height = 196;
+	const left = 52;
 	const right = 8;
-	const top = 22;
-	const bottom = 28;
+	const top = 42;
+	const bottom = 48;
 	const yMin = args.yMin ?? 0;
 	const xScale = (x: number) => left + ((x / args.xMax) * (width - left - right));
 	const yScale = (y: number) => {
@@ -201,12 +232,23 @@ function lineChart(args: {
 	const parts: string[] = [
 		`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" class="rv-locator-chart" role="img">`,
 		`<title>${escapeXml(args.title)}</title>`,
-		`<text class="rv-graph-title" x="${left}" y="15" fill="var(--text-normal)" font-size="12" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(args.title)}</text>`,
+		`<text class="rv-graph-title" x="${left}" y="14" fill="var(--text-normal)" font-size="12" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(args.title)}</text>`,
 		`<line class="rv-graph-axis" x1="${left}" y1="${yScale(yMin)}" x2="${width - right}" y2="${yScale(yMin)}" stroke="var(--rv-graph-axis)" stroke-width="1.25"/>`,
 		`<line class="rv-graph-axis" x1="${left}" y1="${top}" x2="${left}" y2="${height - bottom}" stroke="var(--rv-graph-axis)" stroke-width="1.25"/>`,
 		`<text class="rv-graph-label" x="${width / 2}" y="${height - 4}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="var(--font-interface), sans-serif">${escapeXml(args.xLabel)}</text>`,
-		`<text class="rv-graph-label" x="13" y="${(top + height - bottom) / 2}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="var(--font-interface), sans-serif" transform="rotate(-90 13 ${(top + height - bottom) / 2})">${escapeXml(args.yLabel)}</text>`,
+		`<text class="rv-graph-label" x="12" y="${(top + height - bottom) / 2}" text-anchor="middle" fill="var(--text-muted)" font-size="11" font-family="var(--font-interface), sans-serif" transform="rotate(-90 12 ${(top + height - bottom) / 2})">${escapeXml(args.yLabel)}</text>`,
 	];
+	for (const tick of tickValues(yMin, args.yMax, 5)) {
+		const y = yScale(tick).toFixed(1);
+		parts.push(`<line class="rv-graph-tick" x1="${left - 4}" y1="${y}" x2="${left}" y2="${y}" stroke="var(--rv-graph-axis)" stroke-width="1"/>`);
+		parts.push(`<text class="rv-graph-tick" x="${left - 6}" y="${y}" text-anchor="end" dominant-baseline="middle" fill="var(--text-muted)" font-size="9" font-family="var(--font-interface), sans-serif">${escapeXml(formatTick(tick))}</text>`);
+	}
+	for (const tick of tickValues(0, args.xMax, 5)) {
+		const x = xScale(tick).toFixed(1);
+		const axisY = height - bottom;
+		parts.push(`<line class="rv-graph-tick" x1="${x}" y1="${axisY}" x2="${x}" y2="${axisY + 4}" stroke="var(--rv-graph-axis)" stroke-width="1"/>`);
+		parts.push(`<text class="rv-graph-tick" x="${x}" y="${axisY + 14}" text-anchor="middle" fill="var(--text-muted)" font-size="9" font-family="var(--font-interface), sans-serif">${escapeXml(formatTick(tick))}</text>`);
+	}
 	for (const guide of args.guides) {
 		if (guide.y != null) {
 			const y = yScale(guide.y);
@@ -228,10 +270,28 @@ function lineChart(args: {
 			.join(' ');
 		parts.push(`<polyline class="rv-graph-series rv-series-${series.token}" fill="none" stroke="${color}" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round" points="${points}"/>`);
 		const legendX = left + index * 64;
-		parts.push(`<text class="rv-graph-legend rv-series-${series.token}" x="${legendX}" y="${height - 16}" fill="${color}" font-size="11" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(series.label)}</text>`);
+		parts.push(`<text class="rv-graph-legend rv-series-${series.token}" x="${legendX}" y="28" fill="${color}" font-size="11" font-weight="600" font-family="var(--font-interface), sans-serif">${escapeXml(series.label)}</text>`);
 	});
 	parts.push('</svg>');
 	return parts.join('');
+}
+
+function tickValues(min: number, max: number, count: number): number[] {
+	if (!(max > min) || count < 2) return [min];
+	const values: number[] = [];
+	for (let index = 0; index < count; index += 1) {
+		values.push(min + ((max - min) * index) / (count - 1));
+	}
+	return values;
+}
+
+function formatTick(value: number): string {
+	if (!Number.isFinite(value)) return '';
+	const abs = Math.abs(value);
+	if (abs >= 100 || Number.isInteger(value)) return String(Math.round(value));
+	if (abs >= 10) return String(Math.round(value));
+	const rounded = Math.round(value * 10) / 10;
+	return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 function escapeXml(value: string): string {

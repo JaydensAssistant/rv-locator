@@ -39,8 +39,9 @@ const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
  * 8 adds the Log past visit and Archive buttons beside Home and Not home.
  * 9 turns the four visit buttons into icons with tooltips and writes the
  * Mor, Aft, Eve table headers.
+ * 10 fills a missing Status from Priority and renames the Hubs label to Hub.
  */
-export const DIGEST_POLISH_VERSION = 9;
+export const DIGEST_POLISH_VERSION = 10;
 
 export function isDigestStartLine(line: string): boolean {
 	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);

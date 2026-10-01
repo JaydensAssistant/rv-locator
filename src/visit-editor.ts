@@ -247,7 +247,8 @@ export interface VisitChange {
  * Last Attempted and Last Spoke move to the latest remaining visit when they
  * were set by the removed one, or forward when an added visit is later.
  * A companion leaves Taken only when no other visit records them and they
- * are not Met With. Met and Met With are not changed.
+ * are not Met With. Met With is not changed. Met becomes the earliest
+ * logged visit that is not in the future.
  */
 export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>, change: VisitChange): void {
 	const removed = change.removed ?? null;
@@ -258,6 +259,7 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	moveLatest(frontmatter, 'Last Attempted', removed, after);
 	moveLatest(frontmatter, 'Last Spoke', removed?.home ? removed : null, after.filter((visit) => visit.home));
 	updateTaken(frontmatter, removed, added, after);
+	syncMet(frontmatter, after, new Date());
 	const property = change.removedNotesProperty?.trim();
 	if (removed?.home && property && !added?.home) removeProperty(frontmatter, property);
 }
@@ -292,6 +294,25 @@ export function parseFrontmatterDateTime(raw: string): Date | null {
 		Number(match[6] ?? 0),
 	);
 	return Number.isNaN(date.getTime()) ? null : date;
+}
+
+/** Earliest logged visit that is not later than `now`. Future visits do not move Met. */
+export function earliestNonFutureVisit(visits: readonly { when: Date }[], now: Date): Date | null {
+	let earliest: Date | null = null;
+	for (const visit of visits) {
+		if (visit.when.getTime() > now.getTime()) continue;
+		if (!earliest || visit.when.getTime() < earliest.getTime()) earliest = visit.when;
+	}
+	return earliest;
+}
+
+export function syncMet(frontmatter: Record<string, unknown>, visits: readonly { when: Date }[], now: Date): void {
+	const earliest = earliestNonFutureVisit(visits, now);
+	if (!earliest) return;
+	const next = formatFrontmatterDateTime(earliest);
+	const current = rawDate(readProperty(frontmatter, 'Met'));
+	if (current === next) return;
+	assignProperty(frontmatter, 'Met', next);
 }
 
 function latestOf(visits: readonly VisitFacts[]): Date | null {

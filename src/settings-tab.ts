@@ -263,6 +263,40 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					});
 				});
 		}
+		const wides: ReadonlyArray<{ key: 'wideQuickFacts' | 'wideHubsAddress' | 'wideVisitButtons'; name: string; desc: string }> = [
+			{ key: 'wideQuickFacts', name: 'Wide Quick Facts', desc: 'Quick Facts uses the full note width. Off keeps it in the dashboard column.' },
+			{ key: 'wideHubsAddress', name: 'Wide Hubs and Address', desc: 'Hubs and Address use the full note width. Off keeps them in the dashboard column.' },
+			{ key: 'wideVisitButtons', name: 'Wide visit buttons', desc: 'Home, Not home, Log past visit, and Archive span the full RV Dashboard. Off lines their right edge up with Hub + and the map button.' },
+		];
+		for (const wide of wides) {
+			new Setting(containerEl)
+				.setName(wide.name)
+				.setDesc(wide.desc)
+				.addToggle((toggle) => {
+					toggle.setValue(this.plugin.settings[wide.key]);
+					toggle.onChange(async (value) => {
+						this.plugin.settings[wide.key] = value;
+						await this.plugin.saveSettings();
+					});
+				});
+		}
+		const badges: ReadonlyArray<{ key: 'showUrgencyBadge' | 'showPriorityBadge' | 'showRouteBadge'; name: string; desc: string }> = [
+			{ key: 'showUrgencyBadge', name: 'Quick Facts urgency badge', desc: 'The urgency circle in the Quick Facts header. On by default. It opens Home, Not home, Log past visit, Archive, and snooze.' },
+			{ key: 'showPriorityBadge', name: 'Quick Facts priority badge', desc: 'The priority circle in the Quick Facts header. On by default. It opens a priority slider.' },
+			{ key: 'showRouteBadge', name: 'Quick Facts route badge', desc: 'The route circle in the Quick Facts header. On by default. It opens the map page.' },
+		];
+		for (const badge of badges) {
+			new Setting(containerEl)
+				.setName(badge.name)
+				.setDesc(badge.desc)
+				.addToggle((toggle) => {
+					toggle.setValue(this.plugin.settings[badge.key]);
+					toggle.onChange(async (value) => {
+						this.plugin.settings[badge.key] = value;
+						await this.plugin.saveSettings();
+					});
+				});
+		}
 	}
 
 	private paintUrgency(containerEl: HTMLElement): void {
@@ -283,7 +317,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Nearby').setHeading();
 		containerEl.createEl('p', {
 			cls: 'setting-item-description',
-			text: 'Active keeps a hub link when priority is above 0. All keeps it at any priority. Inactive keeps it only at 0. Templates are skipped.',
+			text: 'Return Visits keeps a hub link at any priority and skips templates. Active, RVs Only, Studies, and Archive, then Men+Women, Men, and Women, filter that list.',
 		});
 		new Setting(containerEl)
 			.setName('Distance unit')
@@ -309,7 +343,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		new Setting(containerEl).setName('Sort chips').setHeading();
-		renderSortChips(containerEl, this.plugin, ['distance', 'priority', 'spoke', 'attempted', 'met', 'urgency']);
+		renderSortChips(containerEl, this.plugin, ['distance', 'priority', 'spoke', 'attempted', 'met', 'city', 'urgency']);
 	}
 
 	private paintTemplates(containerEl: HTMLElement, templateGeneration: number): void {
@@ -359,6 +393,29 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 	}
 
 	private paintAdvanced(containerEl: HTMLElement): void {
+		new Setting(containerEl).setName('New RV files').setHeading();
+		new Setting(containerEl)
+			.setName('Default folder for new RVs')
+			.setDesc('Folder the New RV note is moved into after it is created. Leave empty to keep Templater’s folder. Slashes at the ends are ignored.')
+			.addText((text) => {
+				text.setPlaceholder('Return Visits');
+				text.setValue(this.plugin.settings.newRvFolder);
+				text.onChange(async (value) => {
+					this.plugin.settings.newRvFolder = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Append Met date to new filenames')
+			.setDesc('Off by default. When on, a new RV filename gains the Met date as YYYY-MM-DD, so two people on the same street do not collide.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.appendMetDateToFilename);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.appendMetDateToFilename = value;
+					await this.plugin.saveSettings();
+				});
+			});
+
 		new Setting(containerEl).setName('Property names').setHeading();
 		this.propertySetting(
 			'Address property',

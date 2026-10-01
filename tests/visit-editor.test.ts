@@ -179,7 +179,7 @@ describe('visit editor', () => {
 
 	it('rejects a visit later than now', () => {
 		assert.equal(isFutureVisit(new Date(2026, 8, 29, 19), NOW), true);
-		assert.equal(isFutureVisit(new Date(2026, 8, 29, 18), new Date(2026, 8, 29, 17, 40)), false);
+		assert.equal(isFutureVisit(new Date(2026, 8, 29, 18), new Date(2026, 8, 29, 17, 40)), true);
 		assert.equal(isFutureVisit(new Date(2026, 8, 28, 19), NOW), false);
 	});
 });

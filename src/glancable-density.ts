@@ -24,6 +24,24 @@ export function estimatedGlancableCardPx(settings: DensityMeasure): number {
 	return text + pad + ACTION_RAIL_PX;
 }
 
+/**
+ * Scale on top of the current density so `count` cards fit the pane.
+ * 0 and 1 leave the density scale alone.
+ */
+export function fittedFontScale(containerPx: number, settings: DensityMeasure, count: number): number {
+	const base = Number.isFinite(settings.glancableFontScale) && settings.glancableFontScale > 0
+		? settings.glancableFontScale
+		: 1;
+	if (!Number.isInteger(count) || count < 2) return base;
+	if (!Number.isFinite(containerPx) || containerPx <= 0) return base;
+	const card = estimatedGlancableCardPx(settings);
+	const gaps = (count - 1) * GRID_GAP_PX;
+	const slot = (containerPx - gaps) / count;
+	if (!Number.isFinite(card) || card <= 0 || !Number.isFinite(slot) || slot <= 0) return base;
+	const fitted = base * (slot / card);
+	return Math.min(2.5, Math.max(0.4, Math.round(fitted * 100) / 100));
+}
+
 export function glancableColumns(containerPx: number, settings: DensityMeasure): 1 | 2 {
 	if (!Number.isFinite(containerPx) || containerPx <= 0) return 1;
 	const card = estimatedGlancableCardPx(settings);

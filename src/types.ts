@@ -26,6 +26,7 @@ import {
 	type UrgencyColors,
 	type UrgencyPaletteId,
 } from './urgency-palette';
+import { sanitizeGenderFilter, sanitizeReturnScope, type GenderFilter, type ReturnScope } from './status';
 
 export type DistanceUnit = 'miles' | 'kilometers';
 
@@ -88,6 +89,12 @@ export interface RVLocatorSettings {
 	abbreviateDayparts: boolean;
 	/** `auto` is full width when days are columns, otherwise the dashboard column. */
 	attemptLogWidth: AttemptLogWidth;
+	/** Quick Facts grows to the note width. Off by default. */
+	wideQuickFacts: boolean;
+	/** Hubs and Address grow to the note width. Off by default. */
+	wideHubsAddress: boolean;
+	/** Visit buttons grow to the note width. Off they stop at the Hub column. */
+	wideVisitButtons: boolean;
 	centerDashboard: boolean;
 	centerVisitNotes: boolean;
 	centerSuggestions: boolean;
@@ -111,14 +118,26 @@ export interface RVLocatorSettings {
 	/** 0 keeps the line as wide as the card. */
 	glancableMaxLineChars: number;
 	glancableFontScale: number;
+	/** 0 keeps the density scale. 2 or more fits that many cards across. */
+	glancableFitCount: number;
 	glancableLines: GlancableLineFlags;
+	/** Quick Facts header circles. On by default. */
+	showUrgencyBadge: boolean;
+	showPriorityBadge: boolean;
+	showRouteBadge: boolean;
+	/** Folder for notes created with New RV. Empty keeps Templater's folder. */
+	newRvFolder: string;
+	/** Append the Met date `YYYY-MM-DD` to a created RV's file name. Off by default. */
+	appendMetDateToFilename: boolean;
+	returnScope: ReturnScope;
+	genderFilter: GenderFilter;
 }
 
 export type PriorityBand = 1 | 2 | 3 | 4 | 5;
 
 export type PriorityDays = Record<PriorityBand, number>;
 
-export const SORT_CHIP_IDS = ['distance', 'priority', 'spoke', 'attempted', 'met', 'urgency', 'ideality'] as const;
+export const SORT_CHIP_IDS = ['distance', 'priority', 'spoke', 'attempted', 'met', 'city', 'urgency', 'ideality'] as const;
 
 export type SortChipId = (typeof SORT_CHIP_IDS)[number];
 
@@ -186,6 +205,7 @@ export function defaultSortChips(): SortChipFlags {
 		spoke: true,
 		attempted: true,
 		met: true,
+		city: true,
 		urgency: true,
 		ideality: false,
 	};
@@ -254,7 +274,10 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	suggestionColor: 'auto',
 	openRvInReadingView: true,
 	abbreviateDayparts: true,
-	attemptLogWidth: 'auto',
+	attemptLogWidth: 'full',
+	wideQuickFacts: false,
+	wideHubsAddress: false,
+	wideVisitButtons: false,
 	centerDashboard: false,
 	centerVisitNotes: false,
 	centerSuggestions: false,
@@ -270,7 +293,15 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	glancablePaddingX: DEFAULT_GLANCABLE_PADDING_X,
 	glancableMaxLineChars: 0,
 	glancableFontScale: DEFAULT_GLANCABLE_FONT_SCALE,
+	glancableFitCount: 0,
 	glancableLines: defaultGlancableLines(),
+	showUrgencyBadge: true,
+	showPriorityBadge: true,
+	showRouteBadge: true,
+	newRvFolder: '',
+	appendMetDateToFilename: false,
+	returnScope: 'active',
+	genderFilter: 'all',
 };
 
 export interface NearbySortPreference {
@@ -375,7 +406,10 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		suggestionColor: sanitizeSuggestionColor(input.suggestionColor),
 		openRvInReadingView: input.openRvInReadingView !== false,
 		abbreviateDayparts: input.abbreviateDayparts !== false,
-		attemptLogWidth: input.attemptLogWidth === 'full' || input.attemptLogWidth === 'column' ? input.attemptLogWidth : 'auto',
+		attemptLogWidth: input.attemptLogWidth === 'auto' || input.attemptLogWidth === 'column' ? input.attemptLogWidth : 'full',
+		wideQuickFacts: input.wideQuickFacts === true,
+		wideHubsAddress: input.wideHubsAddress === true,
+		wideVisitButtons: input.wideVisitButtons === true,
 		centerDashboard: input.centerDashboard === true,
 		centerVisitNotes: input.centerVisitNotes === true,
 		centerSuggestions: input.centerSuggestions === true,
@@ -391,7 +425,15 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		glancablePaddingX: boundedNumber(input.glancablePaddingX, 0, 64, DEFAULT_GLANCABLE_PADDING_X),
 		glancableMaxLineChars: lineChars(input.glancableMaxLineChars),
 		glancableFontScale: boundedNumber(input.glancableFontScale, 0.5, 2.5, DEFAULT_GLANCABLE_FONT_SCALE),
+		glancableFitCount: fitCount(input.glancableFitCount),
 		glancableLines: sanitizeGlancableLines(input.glancableLines),
+		showUrgencyBadge: input.showUrgencyBadge !== false,
+		showPriorityBadge: input.showPriorityBadge !== false,
+		showRouteBadge: input.showRouteBadge !== false,
+		newRvFolder: folderSetting(input.newRvFolder),
+		appendMetDateToFilename: input.appendMetDateToFilename === true,
+		returnScope: sanitizeReturnScope(input.returnScope),
+		genderFilter: sanitizeGenderFilter(input.genderFilter),
 	};
 }
 
@@ -521,6 +563,19 @@ function boundedNumber(value: unknown, min: number, max: number, fallback: numbe
 			: Number.NaN;
 	if (!Number.isFinite(parsed) || parsed < min || parsed > max) return fallback;
 	return parsed;
+}
+
+function fitCount(value: unknown): number {
+	const parsed = typeof value === 'number' ? value : Number.NaN;
+	if (!Number.isInteger(parsed) || parsed < 0 || parsed > 8) return 0;
+	return parsed;
+}
+
+function folderSetting(value: unknown): string {
+	if (typeof value !== 'string') return '';
+	const trimmed = value.trim().replace(/^\/+|\/+$/g, '').replace(/\\/g, '/');
+	if (!trimmed || trimmed.includes('..')) return '';
+	return trimmed;
 }
 
 function lineChars(value: unknown): number {

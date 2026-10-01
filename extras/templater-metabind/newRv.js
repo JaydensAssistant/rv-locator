@@ -110,12 +110,6 @@ function mapsSearchUrl(address, city) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
-function hourLabel(hour) {
-  const suffix = hour >= 12 ? "pm" : "am";
-  const onClock = hour % 12 === 0 ? 12 : hour % 12;
-  return `${onClock}${suffix}`;
-}
-
 const MONTH_INDEX = {
   jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
   jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
@@ -140,23 +134,18 @@ function stampAgeLabel(stamp, today) {
   return `${whole} days ago`;
 }
 
+function exactClock(hour, minute) {
+  const suffix = hour >= 12 ? "pm" : "am";
+  const onClock = hour % 12 === 0 ? 12 : hour % 12;
+  if (!minute) return `${onClock}${suffix}`;
+  return `${onClock}:${pad2(minute)}${suffix}`;
+}
+
+/** Attempt Log and the visit heading. On the hour stays `4pm`. Other minutes stay exact. */
 function glancableStamp(date) {
-  let year = date.getFullYear();
-  let month = date.getMonth();
-  let day = date.getDate();
-  let hour = date.getHours();
-  if (date.getMinutes() >= 30) hour += 1;
-  if (hour >= 24) {
-    const next = new Date(year, month, day + 1);
-    year = next.getFullYear();
-    month = next.getMonth();
-    day = next.getDate();
-    hour = 0;
-  }
-  const shown = new Date(year, month, day);
-  const dow = WEEKDAYS[shown.getDay()];
-  const rest = `${MONTHS[month]} ${day}, ${year}`;
-  return `${dow}, ${hourLabel(hour)} — ${rest}`;
+  const dow = WEEKDAYS[date.getDay()];
+  const rest = `${MONTHS[date.getMonth()]} ${date.getDate()}, ${date.getFullYear()}`;
+  return `${dow}, ${exactClock(date.getHours(), date.getMinutes())} — ${rest}`;
 }
 
 function parseLocalIso(iso) {
@@ -463,12 +452,31 @@ async function askCompanion(tp) {
   return formatStoredCompanion(picked);
 }
 
+function takeNewRvDraft() {
+  const plugin = rvPlugin();
+  if (!plugin || typeof plugin.takeNewRvDraft !== "function") return null;
+  try {
+    const draft = plugin.takeNewRvDraft();
+    if (!draft || (draft.gender !== "Man" && draft.gender !== "Woman")) return null;
+    return {
+      gender: draft.gender,
+      name: typeof draft.name === "string" ? draft.name : "",
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function newRv(tp) {
-  const name = sanitizeNoteName(await promptText(tp, "Householder name"));
+  const plugin = rvPlugin();
+  const draft = takeNewRvDraft();
+  const gender = draft ? draft.gender : "";
+  const name = sanitizeNoteName(draft ? draft.name : await promptText(tp, "Householder name"));
   const address = (await promptText(tp, "Address")).replace(/\r?\n/g, " ").trim();
   const companion = await askCompanion(tp);
   const street = sanitizeNoteName(streetShortName(address));
-  const title = name && street ? `${name} on ${street}` : "";
+  const who = name || (gender === "Woman" ? "Woman" : gender === "Man" ? "Man" : "");
+  let title = who && street ? `${who} on ${street}` : (who || street);
 
   let created = "";
   try {
@@ -478,12 +486,27 @@ async function newRv(tp) {
   }
   if (!created) created = isoLocal(new Date());
   const stamp = glancableStamp(parseLocalIso(created));
+  const metDay = /^(\d{4}-\d{2}-\d{2})/.exec(created)?.[1] ?? "";
+  if (plugin?.settings?.appendMetDateToFilename === true && title && metDay) {
+    title = `${title} ${metDay}`;
+  }
 
   if (title && tp?.file?.rename) {
     try {
       await tp.file.rename(title);
     } catch {
       new Notice(`RV Locator: could not rename the note to “${title}”.`);
+    }
+  }
+
+  const folder = typeof plugin?.settings?.newRvFolder === "string"
+    ? plugin.settings.newRvFolder.replace(/^\/+|\/+$/g, "")
+    : "";
+  if (folder && title && tp?.file?.move) {
+    try {
+      await tp.file.move(`${folder}/${title}`);
+    } catch {
+      new Notice("RV Locator: could not move the note into the default folder.");
     }
   }
 
@@ -499,6 +522,7 @@ async function newRv(tp) {
     priority: newRvPriority(),
     companionYaml: companionFrontmatterBlock(companion),
     companionSuffix: companion ? ` with ${companion}` : "",
+    gender,
   };
 }
 

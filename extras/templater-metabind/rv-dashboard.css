@@ -113,17 +113,22 @@
 .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
 	display: inline-flex;
 	flex-wrap: nowrap;
-	align-items: center;
+	align-items: stretch;
 	gap: 0.4em;
 	box-sizing: border-box;
+	width: min(100%, var(--rv-dash-column, 100%));
 	max-width: 100%;
 	vertical-align: middle;
 }
 
-/* Four icon-only buttons on one line. The tooltip gives each one its name. */
+body.rv-wide-visit-buttons .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
+	width: 100%;
+}
+
+/* Four icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
-	flex: 0 0 auto;
+	flex: 1 1 0;
 	min-width: 0;
 	max-width: none;
 }
@@ -135,8 +140,8 @@ span.mb-button.rv-visit-btn {
 	align-items: center;
 	justify-content: center;
 	gap: 0;
-	width: 2.75rem;
-	min-width: 2.75rem;
+	width: 100%;
+	min-width: 0;
 	max-width: none;
 	height: 2rem;
 	min-height: 2rem;
@@ -165,20 +170,37 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 }
 
 /*
-  The accent, then three darker steps. Mixing toward black in OKLab scales
-  lightness linearly, so equal mix steps are equal steps in apparent
-  brightness: about 65%, 53%, 42%, and 30% lightness for a mid accent.
+  Pull a very light or very dark accent toward the middle, then step down.
+  The lightest button is a bit darker than the raw accent. The darkest is
+  lighter than a hard mix toward black. relative color() clamps lightness
+  when the browser has it; color-mix is the fallback.
 */
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 78%, oklch(0.62 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.52, l, 0.68) c h);
+}
+
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 82%, black);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 62%, oklch(0.48 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.44, calc(l - 0.08), 0.6) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 64%, black);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 48%, oklch(0.38 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.16), 0.52) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 46%, black);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 36%, oklch(0.32 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.3, calc(l - 0.24), 0.46) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:first-child > button.mb-button-inner,
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:last-child > button.mb-button-inner {
+	border-top-left-radius: var(--radius-s, 6px);
+	border-top-right-radius: var(--radius-s, 6px);
+	border-bottom-right-radius: var(--radius-s, 6px);
+	border-bottom-left-radius: var(--radius-s, 6px);
 }
 
 /*
@@ -339,9 +361,8 @@ body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > 
 	max-width: 100%;
 }
 
-/* The date on each Attempt Log line is set small, like a ##### visit stamp. */
-.rv-dashboard .rv-log-stamp {
-	white-space: nowrap;
+/* Only the calendar date is small. The weekday, exact time, and dash stay body size. */
+.rv-dashboard .rv-log-date {
 	color: var(--text-muted);
 	font-size: 0.72em;
 	font-weight: var(--font-normal, 400);
@@ -468,4 +489,134 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions ul {
 	padding-inline-start: 0;
 	list-style-position: inside;
+}
+
+.rv-qf-badges {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
+	margin-left: auto;
+}
+
+.rv-dashboard .callout[data-callout="rv"] > .callout-title {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+}
+
+.rv-qf-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2em;
+}
+
+.rv-qf-row {
+	display: grid;
+	grid-template-columns: 1.25em 8.2em minmax(0, 1fr);
+	align-items: center;
+	column-gap: 0.4em;
+}
+
+.rv-qf-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.rv-qf-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-qf-value {
+	justify-self: end;
+	min-width: 0;
+	text-align: right;
+}
+
+.rv-qf-control {
+	width: 9em;
+	max-width: 100%;
+}
+
+.rv-qf-taken.is-met-with {
+	color: var(--text-accent);
+	font-weight: 650;
+}
+
+.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest) {
+	display: none;
+}
+
+.rv-hub-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25em;
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+	vertical-align: middle;
+}
+
+.rv-hub-chip {
+	display: inline-flex;
+	flex: 1 1 0;
+	align-items: center;
+	min-width: 0;
+	overflow: hidden;
+	padding: 0 0.35em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-hub-remove,
+.rv-hub-add {
+	flex: 0 0 auto;
+	margin: 0;
+	padding: 0 0.25em;
+	border: 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
+body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
+	max-width: 100%;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) {
+	display: flex;
+	align-items: center;
+	gap: var(--rv-dash-gap);
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) :is(input[type="text"], input:not([type])),
+body.rv-wide-hubs .rv-hub-row {
+	flex: 1 1 auto;
+	width: auto;
+	max-width: none;
+}
+
+.rv-locator-status-icon,
+.rv-locator-place-earth {
+	display: inline-flex;
+	margin-right: 0.3em;
+	color: var(--text-muted);
+	vertical-align: -0.15em;
+}
+
+.rv-locator-status-icon svg,
+.rv-locator-place-earth svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-locator-place {
+	cursor: pointer;
+}
+
+.rv-map-soon {
+	padding: 1.5rem 1.25rem;
 }

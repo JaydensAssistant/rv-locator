@@ -129,9 +129,9 @@ describe('urgency', () => {
 		assert.equal(merged.urgencyPalette, 'default');
 		assert.deepEqual(merged.urgencyCustomColors, defaultUrgencyColors());
 		assert.equal(merged.abbreviateDayparts, true);
-		assert.equal(merged.attemptLogWidth, 'auto');
+		assert.equal(merged.attemptLogWidth, 'full');
 		assert.equal(merged.centerDashboard || merged.centerVisitNotes || merged.centerSuggestions, false);
-		assert.equal(attemptLogFullWidth(merged), false);
+		assert.equal(attemptLogFullWidth(merged), true);
 		assert.equal(attemptLogFullWidth({ ...merged, digestOrientation: 'columns' }), true);
 		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'column', digestOrientation: 'columns' }), false);
 		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'full', digestOrientation: 'rows' }), true);
@@ -967,13 +967,13 @@ describe('settings defaults', () => {
 		assert.equal(settings.glancableLines.visits, true);
 		assert.deepEqual(
 			visibleSortPresets(settings.sortChips).map((preset) => preset.id),
-			['urgency', 'distance', 'priority', 'spoke', 'attempted', 'met'],
+			['urgency', 'distance', 'priority', 'spoke', 'attempted', 'met', 'city'],
 		);
 		assert.equal(visibleSortPresets(settings.sortChips).some((preset) => preset.property === IDEALITY_COLUMN_ID), false);
 		const shown = visibleSortPresets(mergeSettings({ sortChips: { ...settings.sortChips, ideality: true } }).sortChips);
 		assert.deepEqual(
 			shown.map((preset) => preset.id),
-			['ideality', 'urgency', 'distance', 'priority', 'spoke', 'attempted', 'met'],
+			['ideality', 'urgency', 'distance', 'priority', 'spoke', 'attempted', 'met', 'city'],
 		);
 		assert.equal(settings.digestTrySoftMin, 0.42);
 		assert.equal(settings.digestAvoidSoftMax, 0.3);
