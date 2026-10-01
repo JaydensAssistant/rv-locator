@@ -288,6 +288,30 @@ export function formatGlancableVisitStamp(date: Date): string {
 	return formatGlancableStampFromRaw(iso);
 }
 
+/**
+ * Attempt Log and visit headings. The clock is exact (`4:32pm`).
+ * An hour with no minutes stays `4pm`, the same shape as the rounded stamp.
+ */
+export function formatExactVisitStamp(date: Date): string {
+	const dow = WEEKDAYS[date.getDay()] ?? '';
+	const rest = `${MONTHS[date.getMonth()] ?? ''} ${date.getDate()}, ${date.getFullYear()}`;
+	return `${dow}, ${formatExactClock(date.getHours(), date.getMinutes())} — ${rest}`;
+}
+
+/** `Tue, 4:32pm — Sep 15, 2026 — success` → the calendar date is the only small piece. */
+export function attemptLogDateParts(text: string): { lead: string; date: string; tail: string } | null {
+	const match = /^(.*?\s—\s)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},\s+\d{4})(.*)$/i.exec(text);
+	if (!match) return null;
+	return { lead: match[1] ?? '', date: match[2] ?? '', tail: match[3] ?? '' };
+}
+
+function formatExactClock(hour: number, minute: number): string {
+	const suffix = hour >= 12 ? 'pm' : 'am';
+	const onClock = hour % 12 === 0 ? 12 : hour % 12;
+	if (minute <= 0) return `${onClock}${suffix}`;
+	return `${onClock}:${String(minute).padStart(2, '0')}${suffix}`;
+}
+
 function parseClock(text: string): { hour: number; minute: number } | null {
 	const match = /(?:T|\s)(\d{1,2}):(\d{2})(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?$/i.exec(text.trim());
 	if (!match) return null;

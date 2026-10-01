@@ -37,6 +37,23 @@ export function rvNoteTitle(householder: string, address: string): string {
 	return name || street;
 }
 
+/**
+ * A blank name uses Man or Woman. `''` + Man + `142 Maple Street` → `Man on Maple`.
+ */
+export function rvNoteTitleFromIdentity(name: string, gender: string, address: string): string {
+	const named = sanitizeNoteName(name);
+	const who = named || (gender === 'Woman' ? 'Woman' : gender === 'Man' ? 'Man' : '');
+	return rvNoteTitle(who, address);
+}
+
+/** `Man on Maple` + `2026-10-01T16:32:00` → `Man on Maple 2026-10-01`. */
+export function appendMetDateToFilename(title: string, metIso: string): string {
+	const base = sanitizeNoteName(title);
+	const day = /^(\d{4}-\d{2}-\d{2})/.exec(metIso.trim())?.[1] ?? '';
+	if (!base || !day) return base;
+	return `${base} ${day}`;
+}
+
 export function sanitizeNoteName(value: string): string {
 	return value
 		.replace(/[\\/:*?"<>|#^[\]\r\n]/g, ' ')

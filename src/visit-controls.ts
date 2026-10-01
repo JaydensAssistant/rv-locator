@@ -1,6 +1,7 @@
 import { addIcon, displayTooltip, getIcon, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
+import { attemptLogDateParts } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
@@ -18,6 +19,7 @@ export type VisitMenuOpener = (target: VisitTarget, evt: MouseEvent) => void;
 const MORE_CLASS = 'rv-visit-more';
 const MAP_CLASS = 'rv-map-button';
 const LOG_STAMP_CLASS = 'rv-log-stamp';
+const LOG_DATE_CLASS = 'rv-log-date';
 const NOTES_HEADING_CLASS = 'rv-visit-notes-heading';
 const MAP_GLYPH = /^\s*🗺️?\s*$/u;
 
@@ -53,20 +55,25 @@ function stampHeadings(root: HTMLElement): HTMLElement[] {
 }
 
 /**
- * `Tue, 3pm — Sep 29, 2026` at the start of a log line goes in a span, so it
- * can be set small like a `#####` stamp. The outcome keeps the body size.
+ * Only the calendar date (`Sep 15, 2026`) is small. The weekday, the exact
+ * time, and the em dash stay at the body size.
  */
 function wrapLogStamp(item: HTMLElement): void {
-	if (item.querySelector(`:scope > .${LOG_STAMP_CLASS}`)) return;
+	if (item.querySelector(`:scope > .${LOG_DATE_CLASS}`)) return;
 	const first = Array.from(item.childNodes).find((node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '');
 	if (!first) return;
 	const text = first.textContent ?? '';
-	const parts = text.split(' — ');
-	if (parts.length < 3) return;
-	const stamp = parts.slice(0, 2).join(' — ');
-	const span = createSpan({ cls: LOG_STAMP_CLASS, text: stamp });
-	item.insertBefore(span, first);
-	first.textContent = ` — ${parts.slice(2).join(' — ')}`;
+	const parts = attemptLogDateParts(text);
+	if (!parts) return;
+	const lead = item.ownerDocument.createTextNode(parts.lead);
+	const date = item.ownerDocument.createElement('span');
+	date.className = LOG_DATE_CLASS;
+	date.textContent = parts.date;
+	const tail = item.ownerDocument.createTextNode(parts.tail);
+	item.insertBefore(lead, first);
+	item.insertBefore(date, first);
+	item.insertBefore(tail, first);
+	first.textContent = '';
 }
 
 function tagVisitNotesHeading(root: HTMLElement): void {
@@ -109,8 +116,8 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 	}
 }
 
-/** The 🗺️ link beside Address becomes a map-pin button the size of the Hub plus. */
-export function decorateMapLink(root: HTMLElement): void {
+/** The 🗺️ link beside Address becomes an earth button the size of the Hub plus. */
+export function decorateMapLink(root: HTMLElement, onOpen?: () => void): void {
 	root.querySelectorAll('.callout[data-callout="quote"] a').forEach((link) => {
 		if (!domInstanceOf(link, HTMLElement) || link.hasClass(MAP_CLASS)) return;
 		if (!MAP_GLYPH.test(link.textContent ?? '')) return;
@@ -118,8 +125,30 @@ export function decorateMapLink(root: HTMLElement): void {
 		if (gap && gap.nodeType === Node.TEXT_NODE && !(gap.textContent ?? '').trim()) gap.remove();
 		link.empty();
 		link.addClass(MAP_CLASS);
-		link.setAttribute('aria-label', 'Open map');
-		setIcon(link, 'map-pin');
+		link.setAttribute('aria-label', 'Map, coming soon');
+		setIcon(link, 'earth');
+		if (onOpen) {
+			link.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				onOpen();
+			});
+		}
+	});
+}
+
+/** Archive shows Unarchive once the note is inactive. The command does the switch. */
+export function decorateArchiveButton(root: HTMLElement, inactive: boolean): void {
+	root.querySelectorAll('.mb-button.rv-visit-btn button').forEach((node) => {
+		if (!domInstanceOf(node, HTMLElement)) return;
+		const label = node.getAttribute('aria-label') ?? '';
+		if (label !== 'Archive' && label !== 'Unarchive') return;
+		const next = inactive ? 'Unarchive' : 'Archive';
+		if (label !== next) {
+			node.setAttribute('aria-label', next);
+			node.empty();
+			setIcon(node, inactive ? 'archive-restore' : 'archive');
+		}
 	});
 }
 

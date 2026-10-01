@@ -2,7 +2,7 @@ import { setIcon, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
-import { glancableColumns } from './glancable-density';
+import { fittedFontScale, glancableColumns } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
@@ -11,6 +11,7 @@ import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
+import { statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -75,6 +76,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (this.lineOn('name')) {
 			const name = card.createDiv('rv-locator-card-name');
 			name.setAttr('data-line', glancableLineId(0));
+			const statusIconEl = name.createSpan('rv-locator-status-icon');
+			setIcon(statusIconEl, statusIcon(row.status));
+			statusIconEl.setAttr('aria-label', row.status);
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
 				text: row.name,
@@ -90,6 +94,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (showStreet || showCity || showDistance) {
 			const place = card.createDiv('rv-locator-place');
 			place.setAttr('data-line', glancableLineId(1));
+			const earth = place.createSpan('rv-locator-place-earth');
+			setIcon(earth, 'earth');
+			place.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void this.plugin.openMapSoon();
+			});
 			if (showStreet && row.addressStreet) {
 				place.createSpan({
 					cls: 'rv-locator-card-street',
@@ -173,7 +184,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
-			this.plugin.promptUrgencySnooze(row.path, row.name);
+			this.plugin.promptUrgencyMenu(row.path, row.name, event);
 		});
 		if (showRank && rank) {
 			const pill = actions.createEl('button', {
@@ -181,14 +192,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 				text: rank,
 				attr: {
 					type: 'button',
-					title: `Priority ${rank}. Log a visit.`,
-					'aria-label': `Priority ${rank}. Log a visit or archive`,
+					title: `Priority ${rank}. Change priority.`,
+					'aria-label': `Priority ${rank}. Change priority`,
 				},
 			});
 			pill.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				this.plugin.promptVisit(row.path, row.name);
+				this.plugin.promptPriority(row.path, row.name);
 			});
 		}
 		if (showMap && map) this.renderMapChip(actions, map);
@@ -235,7 +246,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				'aria-label': 'Open map',
 			},
 		});
-		setIcon(link, 'map-pin');
+		setIcon(link, 'route');
 	}
 
 	private mapCell(row: RowModel): CellModel | undefined {
@@ -261,10 +272,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private applyDensity(): void {
 		const settings = this.plugin.settings;
+		const fitted = fittedFontScale(this.scrollEl?.clientWidth ?? 0, settings, settings.glancableFitCount);
 		this.root.style.setProperty('--rv-pad-y', `${settings.glancablePaddingY}px`);
 		this.root.style.setProperty('--rv-pad-x', `${settings.glancablePaddingX}px`);
-		this.root.style.setProperty('--rv-font-scale', String(settings.glancableFontScale));
-		this.root.style.setProperty('--rv-control-size', `calc(28px * ${settings.glancableFontScale})`);
+		this.root.style.setProperty('--rv-font-scale', String(fitted));
+		this.root.style.setProperty('--rv-control-size', `calc(28px * ${fitted})`);
 		this.root.style.setProperty(
 			'--rv-line-max',
 			settings.glancableMaxLineChars > 0 ? `${settings.glancableMaxLineChars}ch` : '100%',
@@ -272,8 +284,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private applyColumnSnap(): void {
-		const columns = glancableColumns(this.scrollEl.clientWidth, this.plugin.settings);
-		const template = columns === 2 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
+		const fit = this.plugin.settings.glancableFitCount;
+		const columns = fit >= 2 ? fit : glancableColumns(this.scrollEl.clientWidth, this.plugin.settings);
+		const template = columns >= 2 ? `repeat(${columns}, minmax(0, 1fr))` : 'minmax(0, 1fr)';
 		for (const node of Array.from(this.scrollEl.querySelectorAll('.rv-locator-card-grid'))) {
 			(node as HTMLElement).style.gridTemplateColumns = template;
 		}
@@ -337,7 +350,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
  * Band 0's inner ring stays a stroke.
  */
-function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
+export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	const shapes = urgencyBangShapes(glyphs);
 	if (shapes.length === 0) return;
 	const svg = makeSvg(host, 'svg', {

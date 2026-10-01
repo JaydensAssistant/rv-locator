@@ -91,6 +91,12 @@ export const SORT_PRESETS = [
 		defaultDirection: 'DESC',
 		labels: { ASC: 'Met · oldest', DESC: 'Met · newest' },
 	},
+	{
+		id: 'city',
+		property: 'note.City',
+		defaultDirection: 'ASC',
+		labels: { ASC: 'City · nearest', DESC: 'City · furthest' },
+	},
 ] as const satisfies readonly {
 	id: SortChipId;
 	property: string;

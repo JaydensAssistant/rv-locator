@@ -15,6 +15,7 @@ import {
 	idealityFloorSvg,
 	idealityMilesSvg,
 	likelihoodSvg,
+	suggesterSvg,
 	urgencyLadderSvg,
 	urgencyRampSvg,
 } from './settings-graphs';
@@ -56,6 +57,7 @@ const CHIP_LABELS: Record<SortChipId, string> = {
 	spoke: 'Spoke',
 	attempted: 'Attempted',
 	met: 'Met',
+	city: 'City',
 	urgency: 'Urgency',
 	ideality: 'Ideality (beta)',
 };
@@ -81,6 +83,19 @@ export function renderDensitySettings(containerEl: HTMLElement, plugin: ScoringH
 		plugin.settings.glancableMaxLineChars = value;
 		await plugin.saveSettings();
 	});
+	sliderSetting(
+		containerEl,
+		'Cards side by side',
+		'Off at 0, which keeps the usual one or two columns. From 2 to 8, the current density is scaled so that many cards fit across the pane.',
+		plugin.settings.glancableFitCount,
+		0,
+		8,
+		1,
+		async (value) => {
+			plugin.settings.glancableFitCount = value;
+			await plugin.saveSettings();
+		},
+	);
 	for (const id of GLANCABLE_LINE_IDS) {
 		new Setting(containerEl)
 			.setName(LINE_LABELS[id])
@@ -158,12 +173,14 @@ export function renderUrgencySettings(containerEl: HTMLElement, plugin: ScoringH
 export function renderDigestThresholds(containerEl: HTMLElement, plugin: ScoringHost): void {
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'The Attempt Log suggester sorts May-go-out dayparts, and any daypart that already has an attempt, into Avoid, Try, Unsure, and Untried.',
+		text: 'The Attempt Log suggester sorts each May-go-out daypart, and any daypart that already has an attempt, into Try, Avoid, Unsure, or Untried. A daypart’s home rate is successful visits divided by attempts in that slot.',
 	});
 	containerEl.createEl('p', {
 		cls: 'setting-item-description',
-		text: 'These defaults are a baseline you can adapt to your own return style, not a perfect method.',
+		text: 'Try soft rate is how high that home rate must be before the slot is worth trying again. Try homes is how many of those attempts must have been home first. Avoid soft rate is how low the home rate must be before the slot is worth skipping. Avoid trials is how many attempts that slot needs before Avoid is allowed. Fewer attempts stay Unsure or Untried. These defaults are a baseline you can adapt, not a perfect method.',
 	});
+	const chart = containerEl.createDiv();
+	const paint = () => { mountSvg(chart, suggesterSvg(plugin.settings)); };
 	sliderSetting(
 		containerEl,
 		'Try soft rate',
@@ -175,6 +192,7 @@ export function renderDigestThresholds(containerEl: HTMLElement, plugin: Scoring
 		async (value) => {
 			plugin.settings.digestTrySoftMin = value;
 			await plugin.saveSettings();
+			paint();
 		},
 	);
 	sliderSetting(
@@ -188,6 +206,7 @@ export function renderDigestThresholds(containerEl: HTMLElement, plugin: Scoring
 		async (value) => {
 			plugin.settings.digestTryMinHomes = value;
 			await plugin.saveSettings();
+			paint();
 		},
 	);
 	sliderSetting(
@@ -201,6 +220,7 @@ export function renderDigestThresholds(containerEl: HTMLElement, plugin: Scoring
 		async (value) => {
 			plugin.settings.digestAvoidSoftMax = value;
 			await plugin.saveSettings();
+			paint();
 		},
 	);
 	sliderSetting(
@@ -214,8 +234,11 @@ export function renderDigestThresholds(containerEl: HTMLElement, plugin: Scoring
 		async (value) => {
 			plugin.settings.digestAvoidMinTrials = value;
 			await plugin.saveSettings();
+			paint();
 		},
 	);
+	containerEl.appendChild(chart);
+	paint();
 }
 
 export function renderGlancableChrome(containerEl: HTMLElement, plugin: ScoringHost): void {

@@ -403,14 +403,15 @@ describe('distance and dates', () => {
 			'spoke',
 			'attempted',
 			'met',
+			'city',
 		]);
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, null)),
-			['Ideality (beta) · high', 'Urgency · high', 'Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest'],
+			['Ideality (beta) · high', 'Urgency · high', 'Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest', 'City · nearest'],
 		);
 		assert.deepEqual(
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
-			['Ideality (beta) · low', 'Urgency · low', 'Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest'],
+			['Ideality (beta) · low', 'Urgency · low', 'Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest', 'City · furthest'],
 		);
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
@@ -954,12 +955,12 @@ describe('new RV note title', () => {
 
 describe('visit log', () => {
 	const now = new Date(2026, 8, 26, 23, 12, 4);
-	const stampLine = '##### Sat, 11pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>';
+	const stampLine = '##### Sat, 11:12pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>';
 	const notesField = '`INPUT[textArea:sVisit1Notes]`';
 
 	it('logs a home visit without touching Address', () => {
-		assert.equal(formatVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
-		assert.equal(formatVisitStamp(now), formatGlancableVisitStamp(now));
+		assert.equal(formatVisitStamp(now), 'Sat, 11:12pm — Sep 26, 2026');
+		assert.equal(formatGlancableVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
 		assert.equal(formatFrontmatterDateTime(now), '2026-09-26T23:12:04');
 		const frontmatter: Record<string, unknown> = {
 			Address: '142 Maple Street',
@@ -984,11 +985,11 @@ describe('visit log', () => {
 			notesField,
 			'',
 			'> [!note]- Attempt Log',
-			'> - Sat, 11pm — Sep 26, 2026 — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — success',
 			'',
 		].join('\n'));
 		assert.equal(body.includes('## Attempt Log'), false);
-		const stampAt = body.indexOf('##### Sat, 11pm — Sep 26, 2026');
+		const stampAt = body.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
 		const logAt = body.indexOf('> [!note]- Attempt Log');
 		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
@@ -1009,17 +1010,17 @@ describe('visit log', () => {
 		assert.equal(frontmatter['Last Spoke'], '2026-09-01T10:00:00');
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('', 'miss', now);
-		assert.equal(body.includes('## Sat, 11pm — Sep 26, 2026'), false);
+		assert.equal(body.includes('## Sat, 11:12pm — Sep 26, 2026'), false);
 		assert.equal(body, [
 			'> [!note]- Attempt Log',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 		const again = applyVisitBody(body, 'miss', now);
 		assert.equal(again, [
 			'> [!note]- Attempt Log',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 	});
@@ -1030,7 +1031,7 @@ describe('visit log', () => {
 		assert.equal(next, [
 			'> [!note]- Attempt Log',
 			'> - Mon, 9am — Sep 1, 2026 — success',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 
@@ -1049,35 +1050,35 @@ describe('visit log', () => {
 			'',
 			'> [!note]+ Attempt Log',
 			'> - Mon, 9am — Sep 1, 2026 — not home',
-			'> - Sat, 11pm — Sep 26, 2026 — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — success',
 			'',
 			'Footer.',
 			'',
 		].join('\n'));
-		assert.ok(more.indexOf('##### Sat, 11pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
+		assert.ok(more.indexOf('##### Sat, 11:12pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
 	});
 
 	it('writes another home stamp in the same rounded hour, and a miss still logs', () => {
 		const existing = [
-			'### Sat, 11pm — Sep 26, 2026',
+			'### Sat, 11:12pm — Sep 26, 2026',
 			'',
 			'> [!note]- Attempt Log',
-			'> - Sat, 11pm — Sep 26, 2026 — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — success',
 			'',
 		].join('\n');
 		const next = applyVisitBody(existing, 'home', now);
 		assert.equal(next.split('\n').filter((line) => line === stampLine).length, 2);
-		assert.equal(next.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
+		assert.equal(next.includes('> - Sat, 11:12pm — Sep 26, 2026 — success\n> - Sat, 11:12pm — Sep 26, 2026 — success'), true);
 
 		const legacy = existing.replace('### Sat', '## Sat');
 		const kept = applyVisitBody(legacy, 'home', now);
-		assert.equal(kept.includes('## Sat, 11pm — Sep 26, 2026'), true);
+		assert.equal(kept.includes('## Sat, 11:12pm — Sep 26, 2026'), true);
 		assert.equal(kept.split('\n').filter((line) => line === stampLine).length, 1);
-		assert.equal(kept.includes('> - Sat, 11pm — Sep 26, 2026 — success\n> - Sat, 11pm — Sep 26, 2026 — success'), true);
+		assert.equal(kept.includes('> - Sat, 11:12pm — Sep 26, 2026 — success\n> - Sat, 11:12pm — Sep 26, 2026 — success'), true);
 
 		const missed = applyVisitBody(next, 'miss', now);
 		assert.equal(missed.split('\n').filter((line) => line === stampLine).length, 2);
-		assert.equal(missed.includes('> - Sat, 11pm — Sep 26, 2026 — not home'), true);
+		assert.equal(missed.includes('> - Sat, 11:12pm — Sep 26, 2026 — not home'), true);
 		const missedAgain = applyVisitBody(missed, 'miss', now);
 		assert.equal(missedAgain.split('\n').filter((line) => line.endsWith('— not home')).length, 2);
 	});
@@ -1100,7 +1101,7 @@ describe('visit log', () => {
 			'',
 			'> [!note]- Attempt Log',
 			'> - Mon, 9am — Sep 1, 2026 — success',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 			'## Later',
 			'keep',
@@ -1125,12 +1126,12 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const next = applyVisitBody(note, 'home', now);
-		const stampAt = next.indexOf('##### Sat, 11pm — Sep 26, 2026');
+		const stampAt = next.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
 		const digestAt = next.indexOf('<!-- rv-locator-digest -->');
 		const logAt = next.indexOf('> [!note]+ Attempt Log');
 		assert.ok(stampAt >= 0 && stampAt < digestAt && digestAt < logAt);
 		assert.equal(next.includes('> [!note]- Attempt Log'), false);
-		assert.ok(next.indexOf('> - Sat, 11pm — Sep 26, 2026 — success') > logAt);
+		assert.ok(next.indexOf('> - Sat, 11:12pm — Sep 26, 2026 — success') > logAt);
 		assert.equal(next.split('<!-- rv-locator-digest -->').length, 2);
 
 		const quoted = [
@@ -1147,7 +1148,7 @@ describe('visit log', () => {
 			'',
 		].join('\n');
 		const above = applyVisitBody(quoted, 'home', now);
-		const quoteStamp = above.indexOf('##### Sat, 11pm — Sep 26, 2026');
+		const quoteStamp = above.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
 		const tryAt = above.indexOf('> Try: **Mon morning (1/1)**');
 		const quotedLog = above.indexOf('> [!note]- Attempt Log');
 		assert.ok(quoteStamp >= 0 && quoteStamp < tryAt && tryAt < quotedLog);
@@ -1166,7 +1167,7 @@ describe('visit log', () => {
 		].join('\n');
 		const ruledNext = applyVisitBody(ruled, 'home', now);
 		const ruledLines = ruledNext.split('\n');
-		const newStamp = ruledLines.findIndex((line) => line.startsWith('##### Sat, 11pm'));
+		const newStamp = ruledLines.findIndex((line) => line.startsWith('##### Sat, 11:12pm'));
 		const rule = ruledLines.findIndex((line) => line === '---');
 		assert.ok(newStamp >= 0 && newStamp < rule);
 		assert.ok(ruledNext.indexOf('> Try: **Mon morning (1/1)**') > ruledNext.indexOf('\n---\n'));
@@ -1178,7 +1179,7 @@ describe('visit log', () => {
 		assert.equal(next, [
 			'> [!note] Attempt Log',
 			'> - old — success',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 
@@ -1187,7 +1188,7 @@ describe('visit log', () => {
 		assert.equal(more, [
 			'>[!note]- Attempt Log',
 			'>- old — not home',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 
@@ -1196,7 +1197,7 @@ describe('visit log', () => {
 		assert.equal(spacedNext, [
 			'> [!NOTE] - Attempt Log',
 			'> - old — success',
-			'> - Sat, 11pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 	});
@@ -1255,7 +1256,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.3.3');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.3.4');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1298,7 +1299,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.3/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.4/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1319,9 +1320,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.3.3');
+		assert.equal(plan.ref, 'v1.3.4');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.3.3/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.3.4/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

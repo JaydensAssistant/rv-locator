@@ -1,5 +1,6 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextGenderFilter, nextReturnScope } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, OSM_ATTRIBUTION } from './constants';
 import { domInstanceOf } from './dom';
 import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
@@ -266,6 +267,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			settings: this.plugin.settings,
 			mode: this.mode,
 			scope: this.scope,
+			returnScope: this.mode === 'glancable' ? this.plugin.settings.returnScope : undefined,
+			genderFilter: this.mode === 'glancable' ? this.plugin.settings.genderFilter : undefined,
 			noteValue: (file, name) => readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, name),
 		});
 		this.columns = model.columns;
@@ -426,6 +429,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
 		}
+		if (this.mode === 'glancable') this.paintListFilters();
 		this.paintSortExtras();
 		const create = this.sortEl.createEl('button', {
 			cls: 'rv-locator-new-rv',
@@ -443,6 +447,29 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	protected paintSortExtras(): void {
 		// Ideality planner was removed in 1.2.6. It may return later.
+	}
+
+	/** Active → RVs Only → Studies → Archive, then Men+Women → Men → Women. */
+	private paintListFilters(): void {
+		if (!this.sortButtonsEl) return;
+		const scope = this.plugin.settings.returnScope;
+		const gender = this.plugin.settings.genderFilter;
+		const scopeButton = this.sortButtonsEl.createEl('button', {
+			cls: 'rv-locator-sort-preset is-filter',
+			text: RETURN_SCOPE_LABEL[scope],
+			attr: { type: 'button', 'aria-label': `Showing ${RETURN_SCOPE_LABEL[scope]}` },
+		});
+		scopeButton.addEventListener('click', () => {
+			void this.plugin.setReturnScope(nextReturnScope(scope));
+		});
+		const genderButton = this.sortButtonsEl.createEl('button', {
+			cls: 'rv-locator-sort-preset is-filter',
+			text: GENDER_FILTER_LABEL[gender],
+			attr: { type: 'button', 'aria-label': `Showing ${GENDER_FILTER_LABEL[gender]}` },
+		});
+		genderButton.addEventListener('click', () => {
+			void this.plugin.setGenderFilter(nextGenderFilter(gender));
+		});
 	}
 
 	private syncPositionSource(): void {

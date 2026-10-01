@@ -13,6 +13,7 @@ import {
 	type Value,
 } from 'obsidian';
 import { ACTIVE_SORT, matchesNearbyScope, parsePriority, resolveNearbyOrder, visiblePropertyText, type NearbyScope } from './active-layout';
+import { matchesGenderFilter, matchesReturnScope, resolveStatus, sanitizeGender, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { DISTANCE_COLUMN_ID } from './constants';
 import {
 	calendarDaysSince,
@@ -67,6 +68,8 @@ export interface RowModel {
 	addressStreet: string | null;
 	/** City for display, same row as Distance. Null when the stored address does not parse. */
 	addressCity: string | null;
+	status: RvStatus;
+	gender: RvGender | null;
 	cells: CellModel[];
 	sortKeys: Record<string, Sortable>;
 }
@@ -90,6 +93,9 @@ export function buildViewModel(args: {
 	mode: 'vanilla' | 'glancable';
 	/** Active, All, or Inactive. Does not write the Base file. */
 	scope: NearbyScope;
+	/** In-view cycle. When set, it replaces the Active / All / Inactive priority test. */
+	returnScope?: ReturnScope;
+	genderFilter?: GenderFilter;
 	/**
 	 * Frontmatter fallback when Bases has not materialized a property
 	 * (a bare view order often only asks for the file name).
@@ -112,7 +118,7 @@ export function buildViewModel(args: {
 	const cityId = resolveNoteProperty(CITY_PROPERTY, args.allProperties);
 	const groups = readGroups(args.result).flatMap((group) => {
 		const rows = group.entries
-			.filter((entry) => entryMatchesScope(entry, args.scope, args.noteValue))
+			.filter((entry) => entryMatchesScope(entry, args.scope, args.noteValue, args.returnScope, args.genderFilter))
 			.map((entry) => rowFromEntry(entry, columns, args.settings, locationId, addressId, cityId, args.noteValue));
 		if (rows.length === 0) return [];
 		return [{ label: group.label, rows }];
@@ -153,12 +159,26 @@ function columnFromId(
 	};
 }
 
-function entryMatchesScope(entry: BasesEntry, scope: NearbyScope, noteValue: NoteValueReader | undefined): boolean {
-	return matchesNearbyScope(scope, {
+function entryMatchesScope(
+	entry: BasesEntry,
+	scope: NearbyScope,
+	noteValue: NoteValueReader | undefined,
+	returnScope?: ReturnScope,
+	genderFilter?: GenderFilter,
+): boolean {
+	const priority = priorityOf(mergedValue(entry, 'note.Priority', noteValue));
+	const hub = {
 		folder: folderOf(entry),
-		priority: priorityOf(mergedValue(entry, 'note.Priority', noteValue)),
+		priority,
 		hubTexts: textsOf(mergedValue(entry, 'note.Hub', noteValue)),
-	});
+	};
+	if (!matchesNearbyScope('all', hub)) return false;
+	if (returnScope) {
+		const status = noteValue?.(entry.file, 'Status');
+		const gender = noteValue?.(entry.file, 'Gender');
+		return matchesReturnScope(returnScope, status, priority) && matchesGenderFilter(genderFilter ?? 'all', gender);
+	}
+	return matchesNearbyScope(scope, hub);
 }
 
 function folderOf(entry: BasesEntry): string {
@@ -245,6 +265,10 @@ function rowFromEntry(
 			|| isConfiguredDateId(sort.property, settings);
 		sortKeys[sort.property] = sortableFromValue(value, null, datetime);
 	}
+	if (!sortKeys['note.City']) {
+		const city = displayCity(storedCity, addressText);
+		sortKeys['note.City'] = city ? { kind: 'text', value: city } : { kind: 'empty' };
+	}
 
 	return {
 		path: entry.file.path,
@@ -254,6 +278,8 @@ function rowFromEntry(
 		addressText,
 		addressStreet: displayAddress?.street ?? null,
 		addressCity: displayCity(storedCity, addressText),
+		status: resolveStatus(noteValue?.(entry.file, 'Status'), priorityOf(mergedValue(entry, 'note.Priority', noteValue))),
+		gender: sanitizeGender(noteValue?.(entry.file, 'Gender')),
 		cells,
 		sortKeys,
 	};

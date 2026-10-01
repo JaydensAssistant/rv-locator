@@ -3,6 +3,8 @@ const rv = await tp.user.newRv(tp);
 -%>
 ---
 Address: "<% rv.addressYaml %>"
+Status: Active
+Gender: "<% rv.gender %>"
 Priority: <% rv.priority %>
 Met: "<% rv.created %>"
 Last Spoke: "<% rv.created %>"
@@ -20,25 +22,22 @@ cssclasses:
 ---
 
 > [!quote] RV Dashboard
->**Hubs:** `INPUT[inlineListSuggester(optionQuery("")):Hub]`
+>**Hub:** `INPUT[inlineList:Hub]`
 >**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
 > 
 > `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`
 >
 > > [!rv]- Quick Facts
 > >
+> >**Status**
+> > `INPUT[inlineSelect(option(Study), option(Active), option(Inactive)):Status]`
+> >
 > >**Priority**
 > > `INPUT[slider(minValue(0), maxValue(5)):Priority]` `VIEW[{Priority}]`
 > >
 > >**Visits**
 > >
-> > `INPUT[number:Visits]`
-> >
-> > **Successful Visits**
-> > `INPUT[number:["Successful Visits"]]`
-> > 
-> > **Met**
-> >`INPUT[dateTime:["Met"]]`
+> > `INPUT[number:["Successful Visits"]]` / `INPUT[number:Visits]`
 > >
 > >**Last Spoke**
 > >`INPUT[dateTime:["Last Spoke"]]`
@@ -46,8 +45,8 @@ cssclasses:
 > >**Last Attempted**
 > >`INPUT[dateTime:["Last Attempted"]]`
 > >
-> >**Met With**
-> >`INPUT[text:["Met With"]]`
+> >**Met**
+> >`INPUT[dateTime:["Met"]]`
 > >
 > >**Taken**
 > >`INPUT[inlineList:Taken]`

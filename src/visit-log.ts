@@ -1,6 +1,6 @@
 import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
-import { calendarDaysSinceStamp, formatDaysAgo, formatGlancableVisitStamp, stripStampAge } from './dates';
+import { calendarDaysSinceStamp, formatDaysAgo, formatExactVisitStamp, stripStampAge } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
@@ -42,7 +42,7 @@ export function formatFrontmatterDateTime(date: Date): string {
 
 /** Glancable drive date: weekday, hour rounded to the nearest hour, then the calendar date. */
 export function formatVisitStamp(date: Date): string {
-	return formatGlancableVisitStamp(date);
+	return formatExactVisitStamp(date);
 }
 
 /**

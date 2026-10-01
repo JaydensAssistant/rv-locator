@@ -4,14 +4,9 @@ import { refreshBodyMapLink } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
-	GLANCABLE_ALL_VIEW_TYPE,
-	GLANCABLE_INACTIVE_VIEW_TYPE,
 	GLANCABLE_VIEW_TYPE,
 	HOVER_SOURCE,
 	REQUEST_GAP_MS,
-	VANILLA_ALL_VIEW_TYPE,
-	VANILLA_INACTIVE_VIEW_TYPE,
-	VANILLA_VIEW_TYPE,
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
@@ -19,9 +14,15 @@ import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
-import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
+import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
-import { decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
+import { HubFileSuggestModal } from './hub-suggester';
+import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
+import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
+import { PrioritySliderModal } from './priority-modal';
+import { applyStatusPriority, resolveStatus, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type GenderFilter, type ReturnScope, type RvStatus } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { stripStampAge } from './dates';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
@@ -73,12 +74,7 @@ const FOCUS_ATTEMPTS = 40;
 const FOCUS_STEP_MS = 100;
 
 const NEARBY_LAYOUTS: readonly NearbyLayout[] = [
-	{ id: VANILLA_VIEW_TYPE, name: 'Active (Vanilla)', icon: 'table', mode: 'vanilla', scope: 'active' },
-	{ id: VANILLA_ALL_VIEW_TYPE, name: 'All (Vanilla)', icon: 'table', mode: 'vanilla', scope: 'all' },
-	{ id: VANILLA_INACTIVE_VIEW_TYPE, name: 'Inactive (Vanilla)', icon: 'archive', mode: 'vanilla', scope: 'inactive' },
-	{ id: GLANCABLE_VIEW_TYPE, name: 'Active (Glancable)', icon: 'smartphone', mode: 'glancable', scope: 'active' },
-	{ id: GLANCABLE_ALL_VIEW_TYPE, name: 'All (Glancable)', icon: 'smartphone', mode: 'glancable', scope: 'all' },
-	{ id: GLANCABLE_INACTIVE_VIEW_TYPE, name: 'Inactive (Glancable)', icon: 'archive', mode: 'glancable', scope: 'inactive' },
+	{ id: GLANCABLE_VIEW_TYPE, name: 'Return Visits', icon: 'smartphone', mode: 'glancable', scope: 'all' },
 ];
 
 export default class RVLocatorPlugin extends Plugin {
@@ -104,6 +100,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private accentGate = new AccentDriftGate();
 	/** Last file each leaf was switched for, so a later switch to editing is kept. */
 	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
+	private newRvDraft: NewRvIdentity | null = null;
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -175,7 +172,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 		this.addCommand({
 			id: 'archive-rv',
-			name: 'Archive RV (set Priority to 0)',
+			name: 'Archive or unarchive RV',
 			checkCallback: (checking) => {
 				const file = this.activeMarkdownFile();
 				if (file && !checking) this.confirmArchive(file);
@@ -193,18 +190,25 @@ export default class RVLocatorPlugin extends Plugin {
 		if (registered.some((ok) => !ok)) {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
+		this.registerView(MAP_SOON_VIEW_TYPE, (leaf) => new MapSoonView(leaf));
 
 		this.registerMarkdownPostProcessor((element, context) => {
 			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
 			decorateAttemptLog(element, hasCallout ? this.suggestionCalloutType() : undefined);
 			refreshStampAgeLabels(element);
-			decorateMapLink(element);
+			this.decorateOpenNote(element, context.sourcePath);
 			decorateVisitControls(
 				element,
 				() => context.getSectionInfo(element)?.lineStart ?? null,
 				(target, evt) => this.openVisitMenu(context.sourcePath, target, evt),
 			);
-			for (const delay of NOTES_FIT_DELAYS_MS) window.setTimeout(() => fitNotesBoxes(element), delay);
+			for (const delay of NOTES_FIT_DELAYS_MS) {
+				window.setTimeout(() => {
+					if (this.unloaded) return;
+					fitNotesBoxes(element);
+					this.decorateOpenNote(element, context.sourcePath);
+				}, delay);
+			}
 		});
 
 		this.registerDomEvent(document, 'input', (evt) => {
@@ -258,6 +262,16 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-center-visit-notes', on && this.settings.centerVisitNotes);
 		body.toggleClass('rv-center-suggestions', on && this.settings.centerSuggestions);
 		body.toggleClass('rv-attempt-log-wide', on && attemptLogFullWidth(this.settings));
+		body.toggleClass('rv-wide-quick-facts', on && this.settings.wideQuickFacts);
+		body.toggleClass('rv-wide-hubs', on && this.settings.wideHubsAddress);
+		body.toggleClass('rv-wide-visit-buttons', on && this.settings.wideVisitButtons);
+	}
+
+	/** Map earth, archive label, Quick Facts, and the shared Hub row. Meta Bind may remount, so this runs again. */
+	private decorateOpenNote(element: HTMLElement, path: string): void {
+		decorateMapLink(element, () => { void this.openMapSoon(); });
+		decorateArchiveButton(element, this.pathIsInactive(path));
+		decorateNoteChrome(element, path, this.noteChromeHost());
 	}
 
 	private onNoteOpened(file: TFile | null): void {
@@ -349,6 +363,11 @@ export default class RVLocatorPlugin extends Plugin {
 	 */
 	async createNewRv(): Promise<void> {
 		if (this.creatingNewRv) return;
+		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
+			new NewRvIdentityModal(this.app, (value) => resolve(value)).open();
+		});
+		if (!identity || this.unloaded) return;
+		this.newRvDraft = identity;
 		this.creatingNewRv = true;
 		try {
 			const templater = readTemplaterPlugin(this.app);
@@ -372,7 +391,15 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice(reason);
 		} finally {
 			this.creatingNewRv = false;
+			this.newRvDraft = null;
 		}
+	}
+
+	/** One-shot gender and optional name for the New RV template. Cleared after it is read. */
+	takeNewRvDraft(): NewRvIdentity | null {
+		const draft = this.newRvDraft;
+		this.newRvDraft = null;
+		return draft;
 	}
 
 	onunload(): void {
@@ -635,6 +662,130 @@ export default class RVLocatorPlugin extends Plugin {
 		return parseSnoozeUntil(readProperty(frontmatter, URGENCY_SNOOZE_PROPERTY));
 	}
 
+	private pathIsInactive(path: string): boolean {
+		const file = this.app.vault.getFileByPath(path);
+		return file ? this.noteIsInactive(file) : false;
+	}
+
+	private noteIsInactive(file: TFile): boolean {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority'));
+		return resolveStatus(readProperty(frontmatter, 'Status'), priority) === 'Inactive';
+	}
+
+	private noteChromeHost(): NoteChromeHost {
+		return {
+			frontmatter: (path) => {
+				const file = this.app.vault.getFileByPath(path);
+				if (!file) return null;
+				const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+				return frontmatter ? { ...frontmatter } : null;
+			},
+			settings: this.settings,
+			snoozeUntil: (path) => this.snoozeUntilFor(path),
+			setStatus: (path, status) => { void this.writeStatus(path, status); },
+			openUrgency: (path, name, event) => { this.promptUrgencyMenu(path, name, event); },
+			openPriority: (path, name) => { this.promptPriority(path, name); },
+			openMap: () => { void this.openMapSoon(); },
+			addHub: (path) => { this.promptAddHub(path); },
+			removeHub: (path, label) => { void this.removeHub(path, label); },
+		};
+	}
+
+	private async writeStatus(path: string, status: RvStatus): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const priority = finiteVisitCount(readProperty(data, 'Priority')) ?? 0;
+			const current = resolveStatus(readProperty(data, 'Status'), priority);
+			const next = applyStatusPriority({ status: current, priority }, { status });
+			assignProperty(data, 'Status', next.status);
+			assignProperty(data, 'Priority', next.priority);
+		});
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async writePriority(file: TFile, priority: number): Promise<void> {
+		const requested = Math.max(0, Math.min(5, Math.round(priority)));
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const currentPriority = finiteVisitCount(readProperty(data, 'Priority')) ?? 0;
+			const current = resolveStatus(readProperty(data, 'Status'), currentPriority);
+			const next = applyStatusPriority({ status: current, priority: currentPriority }, { priority: requested });
+			assignProperty(data, 'Status', next.status);
+			assignProperty(data, 'Priority', next.priority);
+		});
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private promptAddHub(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new HubFileSuggestModal(this.app, (picked) => {
+			void this.addHub(file, picked).catch((error: unknown) => new Notice(this.friendlyError(error)));
+		}).open();
+	}
+
+	private async addHub(file: TFile, picked: TFile): Promise<void> {
+		const label = picked.basename;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const current = readProperty(data, 'Hub');
+			const list: unknown[] = [];
+			if (Array.isArray(current)) {
+				for (const item of current) list.push(item);
+			} else if (current != null && current !== '') {
+				list.push(current);
+			}
+			if (list.some((item) => hubLabel(item) === label)) return;
+			list.push(`[[${label}]]`);
+			assignProperty(data, 'Hub', list);
+		});
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async removeHub(path: string, label: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const current = readProperty(data, 'Hub');
+			const list: unknown[] = [];
+			if (Array.isArray(current)) {
+				for (const item of current) {
+					if (hubLabel(item) !== label) list.push(item);
+				}
+			} else if (current != null && current !== '' && hubLabel(current) !== label) {
+				list.push(current);
+			}
+			assignProperty(data, 'Hub', list);
+		});
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	/** Fills a missing Status and renames the Hubs label. Does not guess Gender or overwrite Study. */
+	private async polishStatusAndHub(file: TFile): Promise<void> {
+		if (file.extension !== 'md' || this.isTemplateNote(file)) return;
+		let text = '';
+		try {
+			text = await this.app.vault.read(file);
+		} catch {
+			return;
+		}
+		const frontmatter = frontmatterFromMarkdown(text);
+		if (!frontmatter || !isRvDashboardNote(frontmatter)) return;
+		if (readProperty(frontmatter, 'Status') == null) {
+			await this.app.fileManager.processFrontMatter(file, (data) => {
+				const record = data as Record<string, unknown>;
+				if (readProperty(record, 'Status') != null) return;
+				assignProperty(record, 'Status', statusForNewNote(finiteVisitCount(readProperty(record, 'Priority'))));
+			});
+		}
+		if (!text.includes('**Hubs:**')) return;
+		await this.app.vault.process(file, (data) => data.replaceAll('**Hubs:**', '**Hub:**'));
+	}
+
 	promptUrgencySnooze(path: string, displayName: string): void {
 		const until = this.snoozeUntilFor(path);
 		const modal = new UrgencySnoozeModal(this.app, displayName, snoozeActive(until, new Date()), (choice) => {
@@ -687,6 +838,58 @@ export default class RVLocatorPlugin extends Plugin {
 		this.nearbySort = next;
 		void this.persist();
 		for (const callback of this.viewRefreshers) callback();
+	}
+
+	async setReturnScope(scope: ReturnScope): Promise<void> {
+		this.settings.returnScope = sanitizeReturnScope(scope);
+		await this.saveSettings();
+	}
+
+	async setGenderFilter(filter: GenderFilter): Promise<void> {
+		this.settings.genderFilter = sanitizeGenderFilter(filter);
+		await this.saveSettings();
+	}
+
+	/** Earth on a card or beside Address. The external route icon stays a maps link. */
+	async openMapSoon(): Promise<void> {
+		const leaf = this.app.workspace.getLeaf('tab');
+		await leaf.setViewState({ type: MAP_SOON_VIEW_TYPE, active: true });
+		void this.app.workspace.revealLeaf(leaf);
+	}
+
+	promptUrgencyMenu(path: string, _displayName: string, event: MouseEvent): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const inactive = this.noteIsInactive(file);
+		const menu = new Menu();
+		menu.addItem((item) => item.setTitle('Home').setIcon('door-open').onClick(() => {
+			void this.writeVisit(file, 'home').catch((error: unknown) => new Notice(this.friendlyError(error)));
+		}));
+		menu.addItem((item) => item.setTitle('Not home').setIcon('door-closed').onClick(() => {
+			void this.writeVisit(file, 'miss').catch((error: unknown) => new Notice(this.friendlyError(error)));
+		}));
+		menu.addItem((item) => item.setTitle('Log past visit').setIcon('rotate-ccw-clock').onClick(() => {
+			this.promptPastVisit(file);
+		}));
+		menu.addItem((item) => item
+			.setTitle(inactive ? 'Unarchive' : 'Archive')
+			.setIcon(inactive ? 'archive-restore' : 'archive')
+			.onClick(() => { this.confirmArchive(file); }));
+		menu.addSeparator();
+		menu.addItem((item) => item.setTitle('Snooze today').setIcon('moon').onClick(() => { void this.applySnooze(path, 'today'); }));
+		menu.addItem((item) => item.setTitle('Snooze 7 days').setIcon('moon').onClick(() => { void this.applySnooze(path, '7'); }));
+		menu.addItem((item) => item.setTitle('Snooze 14 days').setIcon('moon').onClick(() => { void this.applySnooze(path, '14'); }));
+		menu.showAtMouseEvent(event);
+	}
+
+	promptPriority(path: string, displayName: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const current = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? 0;
+		new PrioritySliderModal(this.app, displayName, current, (priority) => {
+			void this.writePriority(file, priority).catch((error: unknown) => new Notice(this.friendlyError(error)));
+		}).open();
 	}
 
 	requestBulkStop(): void {
@@ -894,15 +1097,20 @@ export default class RVLocatorPlugin extends Plugin {
 		const now = new Date();
 		const companion = outcome === 'home' ? await this.promptCompanion() : '';
 		let notesProperty: string | null = null;
+		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
 			const info = getFrontMatterInfo(data);
 			const head = data.slice(0, info.contentStart);
 			const body = data.slice(info.contentStart);
 			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
-			return head + applyVisitBody(body, outcome, now, companion);
+			const nextBody = applyVisitBody(body, outcome, now, companion);
+			visitsAfter = listVisits(nextBody);
+			return head + nextBody;
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			applyVisitFrontmatter(frontmatter as Record<string, unknown>, outcome, now, companion);
+			const data = frontmatter as Record<string, unknown>;
+			applyVisitFrontmatter(data, outcome, now, companion);
+			syncMet(data, visitsAfter, now);
 		});
 		await this.restabilizeCompanions(file);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
@@ -1031,7 +1239,7 @@ export default class RVLocatorPlugin extends Plugin {
 			: 'its Attempt Log line, and what it added to Visits and Last Attempted';
 		new ConfirmActionModal(this.app, {
 			title: 'Delete visit',
-			message: `Delete ${describeVisit(entry)}? This removes ${parts}. Met and Met With are not changed.`,
+			message: `Delete ${describeVisit(entry)}? This removes ${parts}. Met becomes the earliest visit that is not in the future. Met With is not changed.`,
 			confirmText: 'Delete visit',
 			warning: true,
 			onConfirm: () => {
@@ -1074,23 +1282,40 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	confirmArchive(file: TFile): void {
-		new ConfirmActionModal(this.app, {
+		const inactive = this.noteIsInactive(file);
+		new ConfirmActionModal(this.app, inactive ? {
+			title: 'Unarchive RV',
+			message: `Set “${file.basename}” back to Active with Priority 1? The note and its visits stay.`,
+			confirmText: 'Unarchive',
+			warning: false,
+			onConfirm: () => {
+				void this.archiveRv(file, false).catch((error: unknown) => new Notice(this.friendlyError(error)));
+			},
+		} : {
 			title: 'Archive RV',
-			message: `Set Priority on “${file.basename}” to 0? The note and its visits stay. It moves to Inactive, and you can raise Priority again at any time.`,
+			message: `Set Priority on “${file.basename}” to 0? The note and its visits stay. It moves to Inactive, and you can unarchive it at any time.`,
 			confirmText: 'Archive',
 			warning: true,
 			onConfirm: () => {
-				void this.archiveRv(file).catch((error: unknown) => new Notice(this.friendlyError(error)));
+				void this.archiveRv(file, true).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
 		}).open();
 	}
 
-	private async archiveRv(file: TFile): Promise<void> {
+	private async archiveRv(file: TFile, archive: boolean): Promise<void> {
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			assignProperty(frontmatter as Record<string, unknown>, 'Priority', 0);
+			const data = frontmatter as Record<string, unknown>;
+			const priority = finiteVisitCount(readProperty(data, 'Priority')) ?? 0;
+			const current = resolveStatus(readProperty(data, 'Status'), priority);
+			const next = applyStatusPriority(
+				{ status: current, priority },
+				archive ? { status: 'Inactive', priority: 0 } : { status: 'Active', priority: 1 },
+			);
+			assignProperty(data, 'Status', next.status);
+			assignProperty(data, 'Priority', next.priority);
 		});
 		for (const callback of this.viewRefreshers) callback();
-		new Notice(`Archived “${file.basename}”. Priority is 0.`);
+		new Notice(archive ? `Archived “${file.basename}”. Priority is 0.` : `Unarchived “${file.basename}”. Priority is 1.`);
 	}
 
 	/**
@@ -1392,6 +1617,7 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const file of this.app.vault.getMarkdownFiles()) {
 			if (this.unloaded) return;
 			await this.rewriteDigestFile(file, collapseLog);
+			if (collapseLog) await this.polishStatusAndHub(file);
 		}
 	}
 
@@ -1429,6 +1655,7 @@ export default class RVLocatorPlugin extends Plugin {
 			if (hasLog && hasVisit) {
 				await this.refreshAttemptDigest(current);
 				this.openInReadingView(current, true);
+				await this.focusVisitNotes(current, 'sVisit1Notes');
 				return;
 			}
 			if (attempt >= 2) return;
@@ -1500,9 +1727,7 @@ export default class RVLocatorPlugin extends Plugin {
 			modal.open();
 		});
 		if (next == null || next === priority) return;
-		await this.app.fileManager.processFrontMatter(file, (data) => {
-			assignProperty(data as Record<string, unknown>, 'Priority', next);
-		});
+		await this.writePriority(file, next);
 	}
 
 	private async loadPluginData(): Promise<void> {
@@ -1611,6 +1836,16 @@ function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): 
 		}
 	}
 	return null;
+}
+
+function hubLabel(value: unknown): string {
+	const text = typeof value === 'string' ? value.trim().replace(/^["']|["']$/g, '') : '';
+	const wiki = /^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/.exec(text);
+	if (!wiki) return text;
+	const alias = wiki[2]?.trim();
+	if (alias) return alias;
+	const target = (wiki[1] ?? '').trim();
+	return (target.split('/').pop() ?? target).replace(/\.md$/i, '');
 }
 
 function finiteVisitCount(value: unknown): number | null {
