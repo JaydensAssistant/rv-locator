@@ -84,6 +84,50 @@ export function abbreviateAddress(formatted: string): string {
 	return `${parts[0]}, ${parts[1]}`;
 }
 
+/** How many stored addresses the New RV chevron offers before a lookup. */
+export const RECENT_ADDRESS_LIMIT = 24;
+
+/**
+ * Newest addresses first. The same address, ignoring case and spacing, is kept once
+ * from the newest note.
+ */
+export function recentAddresses(
+	notes: readonly { address: string; recentAt: number }[],
+	limit = RECENT_ADDRESS_LIMIT,
+): string[] {
+	const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : RECENT_ADDRESS_LIMIT;
+	const sorted = [...notes].sort((a, b) => b.recentAt - a.recentAt);
+	const seen = new Set<string>();
+	const labels: string[] = [];
+	for (const note of sorted) {
+		const label = note.address.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+		if (!label) continue;
+		const key = normalizeAddress(label);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		labels.push(label);
+		if (labels.length >= cap) return labels;
+	}
+	return labels;
+}
+
+/**
+ * Address chevron before a lookup shows stored addresses, most recent first.
+ * A finished lookup replaces that list. Hits stay in lookup order.
+ */
+export function addressChevronLabels(
+	recent: readonly string[],
+	lookupHits: readonly string[],
+	query: string,
+): string[] {
+	const hits = lookupHits.map((item) => item.trim()).filter(Boolean);
+	if (hits.length > 0) return hits;
+	const labels = recent.map((item) => item.trim()).filter(Boolean);
+	const needle = query.trim().toLowerCase();
+	if (!needle) return labels;
+	return labels.filter((item) => item.toLowerCase().includes(needle));
+}
+
 /**
  * Enter or leaving the field selects a hit only when the text matches one.
  * Several remaining hits do not count as a choice.

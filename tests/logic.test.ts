@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
-import { abbreviateAddress, addressesMatchOneForOne, buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, refreshBodyMapLink } from '../src/address';
+import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne, buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
 import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, matchingCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
 import { CampaignModal } from '../src/campaign-modal';
@@ -1947,6 +1947,22 @@ async function storedFromPrompt(
 	if (!name) return '';
 	return formatStoredCompanion(name);
 }
+
+describe('address chevron before a lookup', () => {
+	it('opens the most recently used addresses until Geoapify hits replace them', () => {
+		const labels = recentAddresses([
+			{ address: '1 Old Street', recentAt: 1 },
+			{ address: '9 New Road', recentAt: 5 },
+			{ address: '9  New Road', recentAt: 4 },
+			{ address: '', recentAt: 9 },
+			{ address: '3 Middle Lane', recentAt: 3 },
+		]);
+		assert.deepEqual(labels, ['9 New Road', '3 Middle Lane', '1 Old Street']);
+		assert.deepEqual(addressChevronLabels(labels, [], ''), labels);
+		assert.deepEqual(addressChevronLabels(labels, [], 'middle'), ['3 Middle Lane']);
+		assert.deepEqual(addressChevronLabels(labels, ['10 Geoapify Way', '11 Geoapify Way'], ''), ['10 Geoapify Way', '11 Geoapify Way']);
+	});
+});
 
 describe('address lookup cadence', () => {
 	it('sends at six characters, then every five more, and waits out a short tail', () => {

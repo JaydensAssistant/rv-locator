@@ -1,6 +1,6 @@
 import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, googleMapsAddressLink, normalizeAddress, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, googleMapsAddressLink, normalizeAddress, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
@@ -482,6 +482,7 @@ export default class RVLocatorPlugin extends Plugin {
 			new NewRvIdentityModal(this.app, {
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
+				recentAddresses: this.recentAddressLabels(),
 				lookupAddress: (query) => this.suggestAddresses(query),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
 				media: [...MEDIA_TITLES, ...this.settings.customMedia],
@@ -510,6 +511,7 @@ export default class RVLocatorPlugin extends Plugin {
 				intro: 'Same choices as a new RV. The address starts from this note.',
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
+				recentAddresses: this.recentAddressLabels(),
 				lookupAddress: (query) => this.suggestAddresses(query),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
 				media: [...MEDIA_TITLES, ...this.settings.customMedia],
@@ -775,6 +777,23 @@ export default class RVLocatorPlugin extends Plugin {
 		this.settings.genderFilter = 'all';
 		this.settings.campaignListFilter = 'all';
 		void this.saveSettings();
+	}
+
+	private recentAddressLabels(): string[] {
+		const property = this.settings.addressProperty;
+		const notes = this.app.vault.getMarkdownFiles().map((file) => {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const record: Record<string, unknown> = {
+				'Last Spoke': cacheValue(frontmatter, 'Last Spoke'),
+				'Last Attempted': cacheValue(frontmatter, 'Last Attempted'),
+				Met: cacheValue(frontmatter, 'Met'),
+			};
+			return {
+				address: readAddress(frontmatter, property) ?? '',
+				recentAt: companionRecency(record, file.stat.mtime),
+			};
+		});
+		return recentAddresses(notes);
 	}
 
 	private recentCompanionNames(): string[] {

@@ -3,7 +3,7 @@ import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
-import { abbreviateAddress, addressesMatchOneForOne, matchingAddress } from './address';
+import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne, matchingAddress } from './address';
 import { companionChoices, matchingCompanion } from './companions';
 import { ADDRESS_LOOKUP_IDLE_MS, addressLookupDecision } from './lookup-cadence';
 import type { RvGender } from './status';
@@ -27,6 +27,8 @@ export interface NewRvModalOptions {
 	companions: readonly string[];
 	/** Geoapify hits for the address field. Empty when there is no key or no match. */
 	lookupAddress?: (query: string) => Promise<readonly GeocodeHit[]>;
+	/** Stored addresses, newest first. Shown by the chevron until a lookup returns hits. */
+	recentAddresses?: readonly string[];
 	title?: string;
 	intro?: string;
 	preset?: Partial<Pick<NewRvIdentity, 'gender' | 'name' | 'address' | 'companion' | 'priority'>>;
@@ -132,9 +134,10 @@ export class NewRvIdentityModal extends Modal {
 				this.addressList = contentEl.createEl('datalist', { attr: { id: listId } });
 				text.inputEl?.setAttribute('list', listId);
 				if (text.inputEl) {
-					mountAlwaysChevron(text.inputEl, () => this.addressResults.map((hit) => hit.formattedAddress), (picked) => {
+					mountAlwaysChevron(text.inputEl, () => this.addressChevronItems(), (picked) => {
 						const hit = this.addressResults.find((item) => item.formattedAddress === picked);
 						if (hit) this.selectAddress(hit);
+						else this.useRecentAddress(picked);
 					});
 				}
 			});
@@ -321,6 +324,26 @@ export class NewRvIdentityModal extends Modal {
 				attr: { value: hit.formattedAddress },
 			});
 		}
+	}
+
+	/** Recent addresses until Geoapify has hits. A lookup replaces the chevron list. */
+	private addressChevronItems(): string[] {
+		return addressChevronLabels(
+			this.options.recentAddresses ?? [],
+			this.addressResults.map((hit) => hit.formattedAddress),
+			this.address,
+		);
+	}
+
+	/** A stored address fills the field. It is not a Geoapify pick, so lookup can still confirm it. */
+	private useRecentAddress(value: string): void {
+		const label = value.replace(/\s+/g, ' ').trim();
+		if (!label) return;
+		this.address = label;
+		this.verifiedHit = null;
+		this.addressInput?.setValue(label);
+		const input = this.addressInput?.inputEl;
+		if (input instanceof HTMLInputElement) input.readOnly = false;
 	}
 
 	private selectAddress(hit: GeocodeHit): void {
