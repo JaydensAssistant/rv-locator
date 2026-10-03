@@ -1,4 +1,5 @@
 import { buildGeocodeUrl, parseGeocodeBody } from './address';
+import type { GeoapifyRegion } from './constants';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import type { GeocodeHit } from './types';
@@ -30,7 +31,12 @@ const MAX_RETRIES = 3;
  * Look up one address with direct fetch. Retries 429 and 5xx with backoff.
  * The request URL contains only the address plus Geoapify protocol fields.
  */
-export async function geocodeAddress(address: string, apiKey: string, deps: GeocodeDeps): Promise<GeocodeHit[]> {
+export async function geocodeAddress(
+	address: string,
+	apiKey: string,
+	deps: GeocodeDeps,
+	region: GeoapifyRegion = 'global',
+): Promise<GeocodeHit[]> {
 	let attempt = 0;
 	for (;;) {
 		if (deps.aborted()) {
@@ -38,7 +44,7 @@ export async function geocodeAddress(address: string, apiKey: string, deps: Geoc
 		}
 		await deps.pacer.wait(deps.sleep, () => deps.aborted());
 		try {
-			return await fetchGeocodeResults(address, apiKey, deps.fetchImpl);
+			return await fetchGeocodeResults(address, apiKey, deps.fetchImpl, region);
 		} catch (error) {
 			if (error instanceof CancelledError) throw error;
 			const wrapped = asGeocodeError(error, apiKey);
@@ -50,10 +56,15 @@ export async function geocodeAddress(address: string, apiKey: string, deps: Geoc
 	}
 }
 
-export async function fetchGeocodeResults(address: string, apiKey: string, fetchImpl: typeof fetch): Promise<GeocodeHit[]> {
+export async function fetchGeocodeResults(
+	address: string,
+	apiKey: string,
+	fetchImpl: typeof fetch,
+	region: GeoapifyRegion = 'global',
+): Promise<GeocodeHit[]> {
 	let url: string;
 	try {
-		url = buildGeocodeUrl(address, apiKey);
+		url = buildGeocodeUrl(address, apiKey, region);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Could not build the geocode request.';
 		throw new GeocodeRequestError(redactSecrets(message, apiKey), null, false);

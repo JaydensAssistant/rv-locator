@@ -466,14 +466,24 @@ export class VisitConfirmModal extends Modal {
 	}
 }
 
+export type CoverageDecision = 'yes' | 'no' | 'skip';
+
+export interface CompanionCampaignPrompt {
+	name: string;
+	onDecision: (decision: CoverageDecision) => void;
+}
+
 /** One companion. A typed name is offered beside recent Met With / Taken values. Skip stores nothing. */
 export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	private readonly gate: CompanionPromptGate;
+	private covered = false;
+	private decided = false;
 
 	constructor(
 		app: App,
 		private recent: readonly string[],
 		onDone: (name: string | null) => void,
+		private campaign: CompanionCampaignPrompt | null = null,
 	) {
 		super(app);
 		this.gate = createCompanionPromptGate(onDone);
@@ -494,11 +504,36 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
 		copy.setText('Adds one person to Taken and leaves Met With as it is. Skip changes neither, and the visit is still logged.');
 		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
+		if (this.campaign) {
+			const ask = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
+			ask.setText(`Cover this RV with ${this.campaign.name}?`);
+			const choice = this.modalEl.createDiv('rv-locator-suggest-actions');
+			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
+			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
+			no.classList.add('mod-cta');
+			yes.addEventListener('click', () => {
+				this.covered = true;
+				yes.classList.add('mod-cta');
+				no.classList.remove('mod-cta');
+			});
+			no.addEventListener('click', () => {
+				this.covered = false;
+				no.classList.add('mod-cta');
+				yes.classList.remove('mod-cta');
+			});
+		}
 		const skip = bar.createEl('button', { text: 'Skip' });
 		skip.addEventListener('click', () => {
+			this.finishCoverage('skip');
 			this.gate.skip();
 			this.close();
 		});
+	}
+
+	private finishCoverage(decision: CoverageDecision): void {
+		if (!this.campaign || this.decided) return;
+		this.decided = true;
+		this.campaign.onDecision(decision);
 	}
 
 	/**
@@ -509,6 +544,9 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	onClose(): void {
 		super.onClose();
 		this.gate.closed((run) => { window.setTimeout(run, 0); });
+		window.setTimeout(() => {
+			if (!this.decided) this.finishCoverage('skip');
+		}, 0);
 	}
 
 	getSuggestions(query: string): CompanionSuggestion[] {
@@ -520,6 +558,7 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	}
 
 	onChooseSuggestion(choice: CompanionSuggestion): void {
+		this.finishCoverage(this.covered ? 'yes' : 'no');
 		this.gate.choose(choice.value);
 		this.close();
 	}

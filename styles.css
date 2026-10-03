@@ -1691,10 +1691,15 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	gap: 0.4em;
 }
 
+.rv-qf-badges {
+	margin-inline-end: 0.15em;
+}
+
 .rv-qf-body {
 	display: flex;
 	flex-direction: column;
-	gap: 0.2em;
+	gap: 0;
+	padding-top: 0.55em;
 }
 
 .rv-qf-row {
@@ -1702,6 +1707,23 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	grid-template-columns: 1.25em 8.2em minmax(0, 1fr);
 	align-items: center;
 	column-gap: 0.4em;
+	padding-block: 0.28em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rv-qf-label {
+	justify-self: start;
+	text-align: left;
+}
+
+body.rv-center-dashboard .rv-qf-body,
+body.rv-center-dashboard .rv-qf-row,
+body.rv-center-dashboard .rv-qf-label {
+	text-align: left;
+}
+
+body.rv-center-dashboard .rv-qf-label {
+	justify-self: start;
 }
 
 .rv-qf-icon {
@@ -1734,25 +1756,43 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	display: none;
 }
 
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	grid-template-columns: var(--rv-dash-label) var(--rv-dash-field) var(--rv-dash-plus);
+	align-items: center;
+	column-gap: var(--rv-dash-gap);
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
 .rv-hub-row {
-	display: inline-flex;
+	display: flex;
+	flex-wrap: wrap;
 	align-items: center;
 	gap: 0.25em;
 	box-sizing: border-box;
-	width: var(--rv-dash-field);
-	max-width: var(--rv-dash-field);
+	width: auto;
+	max-width: 100%;
+	min-width: 0;
 	vertical-align: middle;
 }
 
 .rv-hub-chip {
 	display: inline-flex;
-	flex: 1 1 0;
+	flex: 0 1 auto;
 	align-items: center;
 	min-width: 0;
+	max-width: 100%;
 	overflow: hidden;
 	padding: 0 0.35em;
-	border: 1px solid var(--background-modifier-border);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 	border-radius: var(--radius-s, 4px);
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	color: inherit;
+	font: inherit;
+	text-decoration: none;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -1806,4 +1846,182 @@ body.rv-wide-hubs .rv-hub-row {
 
 .rv-map-soon {
 	padding: 1.5rem 1.25rem;
+}
+
+.rv-qf-when {
+	display: inline-flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	white-space: nowrap;
+}
+
+.rv-qf-when-date,
+.rv-qf-when-ago {
+	color: var(--text-faint);
+	font-size: 0.72em;
+	font-weight: var(--font-normal, 400);
+}
+
+.rv-qf-priority {
+	width: 7em;
+	max-width: 70%;
+	margin: 0;
+	vertical-align: middle;
+}
+
+.rv-qf-priority-num {
+	margin-left: 0.4em;
+}
+
+.rv-qf-taken-line {
+	display: inline-flex;
+	align-items: center;
+	max-width: min(46vw, 100%);
+	min-width: 0;
+}
+
+.rv-qf-taken-scroll {
+	display: inline-flex;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.rv-qf-taken {
+	white-space: nowrap;
+}
+
+.rv-qf-taken.is-met {
+	padding: 0 0.28em;
+	border: 1px solid color-mix(in srgb, var(--text-accent) 55%, transparent);
+	border-radius: var(--radius-s, 4px);
+	color: inherit;
+	text-decoration: none;
+}
+
+.rv-qf-badges .rv-attempt-override svg {
+	width: calc(var(--rv-control-size, 28px) * 0.55);
+	height: calc(var(--rv-control-size, 28px) * 0.55);
+}
+
+.rv-locator-glancable .rv-locator-card-name {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.rv-locator-glancable .rv-locator-place {
+	align-items: center;
+	gap: 4px;
+}
+
+.rv-locator-glancable .rv-locator-status-icon,
+.rv-locator-glancable .rv-locator-place-earth {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+	margin: 0;
+}
+
+.rv-locator-glancable .rv-locator-status-icon {
+	color: var(--text-normal);
+}
+
+.rv-locator-glancable .rv-locator-place-earth {
+	color: var(--text-faint);
+}
+
+.rv-locator-glancable .rv-locator-status-icon svg,
+.rv-locator-glancable .rv-locator-place-earth svg {
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+}
+
+.rv-locator-return-line {
+	display: flex;
+	align-items: center;
+	gap: 0.45em;
+	width: 100%;
+	margin-top: 2px;
+}
+
+.rv-locator-return-visits {
+	color: #fff;
+	font-weight: 700;
+}
+
+.rv-locator-return-bucket {
+	color: var(--rv-urgency-accent, var(--text-accent));
+	font-weight: 700;
+}
+
+.rv-locator-campaign-mark {
+	display: inline-flex;
+	margin-left: 1.25em;
+	color: var(--text-muted);
+}
+
+.rv-locator-campaign-mark svg {
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+}
+
+.rv-locator-toolbar-actions {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.rv-locator-toolbar-actions .rv-locator-new-rv {
+	margin-left: 0;
+}
+
+.rv-locator-toolbar-quiet {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-locator-toolbar-quiet svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-older-visits {
+	cursor: pointer;
+}
+
+.rv-older-hidden {
+	display: none;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	align-items: center;
+	column-gap: var(--rv-dash-gap);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	grid-template-columns: var(--rv-dash-label) var(--rv-dash-field) var(--rv-dash-plus);
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
 }

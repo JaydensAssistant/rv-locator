@@ -1,6 +1,6 @@
 import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
-import { refreshBodyMapLink } from './address';
+import { googleMapsAddressLink, refreshBodyMapLink } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
@@ -18,7 +18,13 @@ import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertV
 import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
+import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
+import { askCampaignCovered, CampaignModal } from './campaign-modal';
+import { hubLabel, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
+import { SlotOverrideModal } from './override-modal';
+import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
+import { layoutVisitNotes } from './visit-display';
 import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
@@ -29,9 +35,9 @@ import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggesti
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
-import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
+import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { readAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
+import { currentReturnBucket, readAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
@@ -101,6 +107,10 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last file each leaf was switched for, so a later switch to editing is kept. */
 	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
 	private newRvDraft: NewRvIdentity | null = null;
+	/** One campaign at a time. Null when none is saved. */
+	campaign: CampaignRecord | null = null;
+	/** Coverage answers collected beside the companion prompt, keyed by note path. */
+	private coverageDecisions = new Map<string, CoverageDecision>();
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -227,6 +237,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerDomEvent(document, 'mouseover', (evt) => longPress.hover(evt));
 		this.registerDomEvent(document, 'click', (evt) => longPress.swallow(evt), { capture: true });
 		this.registerDomEvent(document, 'contextmenu', (evt) => longPress.swallow(evt), { capture: true });
+		this.registerDomEvent(document, 'mouseover', (evt) => this.suppressPagePreview(evt), { capture: true });
 		this.applyLayoutClasses();
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
@@ -272,6 +283,43 @@ export default class RVLocatorPlugin extends Plugin {
 		decorateMapLink(element, () => { void this.openMapSoon(); });
 		decorateArchiveButton(element, this.pathIsInactive(path));
 		decorateNoteChrome(element, path, this.noteChromeHost());
+		this.layoutOpenVisits(element, path);
+	}
+
+	/**
+	 * Page Preview is off on the dashboard and Glancable unless the setting is on.
+	 * Capture stops the hover before the core plugin opens a preview.
+	 */
+	private suppressPagePreview(evt: MouseEvent): void {
+		if (this.settings.dashboardPagePreview) return;
+		const target = evt.target;
+		if (!(target instanceof Element)) return;
+		const link = target.closest('a.internal-link, a.rv-locator-file-link');
+		if (!link?.closest('.rv-locator-glancable, .rv-dashboard')) return;
+		evt.stopPropagation();
+	}
+
+	private layoutOpenVisits(element: HTMLElement, path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		void this.app.vault.cachedRead(file).then((markdown) => {
+			if (this.unloaded) return;
+			layoutVisitNotes(element, markdown, {
+				newestFirst: this.settings.visitsNewestFirst,
+				collapseOlder: this.settings.collapseOlderVisits,
+				limit: this.settings.visibleVisitCount,
+			});
+		});
+	}
+
+	/** Badge toggles and visit-order settings repaint notes that are already open. */
+	private refreshOpenNoteChrome(): void {
+		if (this.unloaded) return;
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || !view.file) continue;
+			this.decorateOpenNote(view.containerEl, view.file.path);
+		}
 	}
 
 	private onNoteOpened(file: TFile | null): void {
@@ -364,7 +412,10 @@ export default class RVLocatorPlugin extends Plugin {
 	async createNewRv(): Promise<void> {
 		if (this.creatingNewRv) return;
 		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
-			new NewRvIdentityModal(this.app, (value) => resolve(value)).open();
+			new NewRvIdentityModal(this.app, {
+				defaultPriority: this.settings.defaultNewRvPriority,
+				companions: this.recentCompanionNames(),
+			}, (value) => resolve(value)).open();
 		});
 		if (!identity || this.unloaded) return;
 		this.newRvDraft = identity;
@@ -462,9 +513,20 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Callers append the plain name to Taken only and leave Met With unchanged.
 	 * New writes do not create wikilinks.
 	 */
-	async promptCompanion(): Promise<string> {
+	async promptCompanion(path?: string): Promise<string> {
+		const campaign = path && this.shouldAskCoverage(path) ? this.campaign : null;
 		const picked = await new Promise<string | null>((resolve) => {
-			const modal = new CompanionSuggestModal(this.app, this.recentCompanionNames(), resolve);
+			const modal = new CompanionSuggestModal(
+				this.app,
+				this.recentCompanionNames(),
+				resolve,
+				campaign ? {
+					name: campaign.name,
+					onDecision: (decision) => {
+						if (path) this.coverageDecisions.set(path, decision);
+					},
+				} : null,
+			);
 			modal.open();
 		});
 		const name = picked?.trim() ?? '';
@@ -612,6 +674,7 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.persist();
 		this.digestKeyApplied = this.digestKey();
 		this.applyLayoutClasses();
+		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();
 		if (digestChanged) {
 			this.recolorOpenSuggestions();
@@ -649,6 +712,7 @@ export default class RVLocatorPlugin extends Plugin {
 			orientation: this.settings.digestOrientation,
 			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
+			overrides: this.slotOverridesFor(file),
 			now: new Date(),
 			abbreviate: this.settings.abbreviateDayparts,
 		});
@@ -684,11 +748,18 @@ export default class RVLocatorPlugin extends Plugin {
 			settings: this.settings,
 			snoozeUntil: (path) => this.snoozeUntilFor(path),
 			setStatus: (path, status) => { void this.writeStatus(path, status); },
+			setPriority: (path, priority) => {
+				const file = this.app.vault.getFileByPath(path);
+				if (file) void this.writePriority(file, priority);
+			},
 			openUrgency: (path, name, event) => { this.promptUrgencyMenu(path, name, event); },
 			openPriority: (path, name) => { this.promptPriority(path, name); },
-			openMap: () => { void this.openMapSoon(); },
+			openRoute: (path) => { void this.openRoute(path); },
+			openHub: (path, target) => { void this.app.workspace.openLinkText(target, path); },
 			addHub: (path) => { this.promptAddHub(path); },
 			removeHub: (path, label) => { void this.removeHub(path, label); },
+			moveHub: (path, label) => { void this.moveHub(path, label); },
+			openSlotOverride: (path) => { this.openSlotOverride(path); },
 		};
 	}
 
@@ -800,6 +871,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * A miss never asks. Home asks when Successful Visits hits a multiple of N.
 	 */
 	async noteVisitLogged(file: TFile, outcome?: VisitOutcome): Promise<void> {
+		if (outcome === 'home' || outcome === 'miss') await this.consumeCoverage(file.path, outcome);
 		await this.enqueueDigestRewrite(file);
 		await this.maybeNudgePriority(file, outcome);
 		if (outcome === 'home') await this.focusVisitNotes(file, null);
@@ -855,6 +927,125 @@ export default class RVLocatorPlugin extends Plugin {
 		const leaf = this.app.workspace.getLeaf('tab');
 		await leaf.setViewState({ type: MAP_SOON_VIEW_TYPE, active: true });
 		void this.app.workspace.revealLeaf(leaf);
+	}
+
+	/** Quick Facts route badge. Stored Map Link when it is a URL, otherwise a Google Maps search. */
+	async openRoute(path: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
+		const stored = readProperty(frontmatter, this.settings.mapLinkProperty);
+		const storedUrl = typeof stored === 'string' && /^https?:\/\//i.test(stored.trim()) ? stored.trim() : '';
+		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
+		const cityName = this.settings.cityProperty.trim() || 'City';
+		const city = readProperty(frontmatter, cityName);
+		const cityText = typeof city === 'string' ? city : '';
+		const url = storedUrl || (address ? googleMapsAddressLink(address, cityText) : '');
+		if (!url) {
+			new Notice('This note has no address to open in Google Maps.');
+			return;
+		}
+		window.open(url, '_blank', 'noopener');
+	}
+
+	openCampaignModal(): void {
+		new CampaignModal(this.app, this.campaign, (next) => {
+			this.campaign = next ? sanitizeCampaign({ ...next, covered: next.covered }) : null;
+			void this.persist().then(() => {
+				for (const callback of this.viewRefreshers) callback();
+			});
+		}).open();
+	}
+
+	/** `covered` or `open` while a campaign is active. Null when there is no active campaign. */
+	campaignMark(path: string): 'covered' | 'open' | null {
+		if (!campaignIsActive(this.campaign)) return null;
+		return isCovered(this.campaign, path) ? 'covered' : 'open';
+	}
+
+	/** Daypart bucket for the card's return line. Uses cached Attempt Log counts. */
+	cardReturnBucket(path: string): 'Try' | 'Avoid' | 'Unsure' | 'Untried' {
+		const file = this.app.vault.getFileByPath(path);
+		return currentReturnBucket({
+			buckets: this.cachedAttemptBuckets(path) ?? {},
+			grid: this.settings.availabilityGrid,
+			thresholds: this.digestThresholds(),
+			overrides: file ? this.slotOverridesFor(file) : [],
+		});
+	}
+
+	private shouldAskCoverage(path: string): boolean {
+		return campaignIsActive(this.campaign) && !isCovered(this.campaign, path);
+	}
+
+	private async consumeCoverage(path: string, outcome: VisitOutcome): Promise<void> {
+		if (outcome !== 'home') {
+			this.coverageDecisions.delete(path);
+			return;
+		}
+		const decision = this.coverageDecisions.get(path);
+		this.coverageDecisions.delete(path);
+		if (decision === 'yes') {
+			await this.markCovered(path);
+			return;
+		}
+		if (decision === 'no' || decision === 'skip') return;
+		if (!this.shouldAskCoverage(path) || !this.campaign) return;
+		const yes = await askCampaignCovered(this.app, this.campaign.name);
+		if (yes) await this.markCovered(path);
+	}
+
+	private async markCovered(path: string): Promise<void> {
+		if (!this.campaign || isCovered(this.campaign, path)) return;
+		this.campaign = withCovered(this.campaign, path);
+		await this.persist();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private slotOverridesFor(file: TFile): SlotOverride[] {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return parseSlotOverrides(readProperty(frontmatter, SLOT_OVERRIDE_PROPERTY));
+	}
+
+	private openSlotOverride(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new SlotOverrideModal(this.app, this.slotOverridesFor(file), (next) => {
+			void this.writeSlotOverrides(file, next);
+		}).open();
+	}
+
+	private async writeSlotOverrides(file: TFile, overrides: readonly SlotOverride[]): Promise<void> {
+		const lines = overrides.map((item) => formatSlotOverride(item));
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			if (lines.length === 0) removeProperty(data, SLOT_OVERRIDE_PROPERTY);
+			else assignProperty(data, SLOT_OVERRIDE_PROPERTY, lines);
+		});
+		await this.enqueueDigestRewrite(file);
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async moveHub(path: string, label: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		let moved = false;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const current = readProperty(data, 'Hub');
+			const list: unknown[] = [];
+			if (Array.isArray(current)) {
+				for (const item of current) list.push(item);
+			} else if (current != null && current !== '') {
+				list.push(current);
+			}
+			const next = moveHubLeft(list, label);
+			if (!next) return;
+			moved = true;
+			assignProperty(data, 'Hub', next);
+		});
+		if (moved) {
+			for (const callback of this.viewRefreshers) callback();
+		}
 	}
 
 	promptUrgencyMenu(path: string, _displayName: string, event: MouseEvent): void {
@@ -1095,7 +1286,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
 		const now = new Date();
-		const companion = outcome === 'home' ? await this.promptCompanion() : '';
+		const companion = outcome === 'home' ? await this.promptCompanion(file.path) : '';
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
@@ -1113,6 +1304,7 @@ export default class RVLocatorPlugin extends Plugin {
 			syncMet(data, visitsAfter, now);
 		});
 		await this.restabilizeCompanions(file);
+		await this.consumeCoverage(file.path, outcome);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
 		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
 		await this.afterVisitWrite(file, outcome, notesProperty);
@@ -1120,9 +1312,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Log past visit, from the priority badge, the note's button, or the command. */
 	promptPastVisit(file: TFile): void {
+		const campaign = this.shouldAskCoverage(file.path) ? this.campaign : null;
 		new VisitEditModal(this.app, {
 			title: `Log past visit on “${file.basename}”`,
 			recentCompanions: this.recentCompanionNames(),
+			campaignName: campaign?.name,
+			onCovered: (covered) => {
+				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
+			},
 			onSave: (facts) => {
 				void this.writePastVisit(file, facts).catch((error: unknown) => {
 					new Notice(this.friendlyError(error));
@@ -1147,6 +1344,7 @@ export default class RVLocatorPlugin extends Plugin {
 			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, { added: visit, remaining });
 		});
 		await this.restabilizeCompanions(file);
+		await this.consumeCoverage(file.path, visit.home ? 'home' : 'miss');
 		new Notice(`Logged ${describeVisit(visit)} on “${file.basename}”.`);
 		await this.afterVisitWrite(file, visit.home ? 'home' : 'miss', notesProperty);
 	}
@@ -1489,7 +1687,7 @@ export default class RVLocatorPlugin extends Plugin {
 			sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
 			pacer: this.pacer,
 			aborted,
-		});
+		}, this.settings.geoapifyRegion);
 		this.remember([address], results);
 		await this.persist();
 		return results;
@@ -1603,7 +1801,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const run = this.digestRewrite.then(async () => {
 			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
 			const type = this.suggestionCalloutType();
-			await this.rewriteVaultDigests(true);
+			await this.rewriteVaultDigests(this.digestPolish < 10);
 			if (this.unloaded) return;
 			this.digestPolish = DIGEST_POLISH_VERSION;
 			this.accentGate.markApplied(type);
@@ -1682,6 +1880,7 @@ export default class RVLocatorPlugin extends Plugin {
 					orientation: this.settings.digestOrientation,
 					days: this.settings.digestDays,
 					thresholds: this.digestThresholds(),
+					overrides: parseSlotOverrides(readProperty(frontmatterFromMarkdown(data), SLOT_OVERRIDE_PROPERTY)),
 					abbreviate: this.settings.abbreviateDayparts,
 				});
 				const rewritten = upsertAttemptDigest(next, digest, {
@@ -1733,6 +1932,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private async loadPluginData(): Promise<void> {
 		const data = await this.loadData() as StoredPluginData | null;
 		this.settings = mergeSettings(data?.settings);
+		this.campaign = sanitizeCampaign(data?.campaign);
 		this.nearbySort = sanitizeNearbySort(data?.nearbySort);
 		this.geocodeCache = sanitizeCache(data?.geocodeCache);
 		this.digestPolish = data?.digestPolish === DIGEST_POLISH_VERSION ? DIGEST_POLISH_VERSION : 0;
@@ -1770,6 +1970,7 @@ export default class RVLocatorPlugin extends Plugin {
 				nearbySort: this.nearbySort,
 				digestPolish: this.digestPolish,
 				suggestionTypeApplied: this.accentGate.applied,
+				campaign: this.campaign,
 			});
 		}).catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : 'Could not save plugin data.';
@@ -1836,16 +2037,6 @@ function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): 
 		}
 	}
 	return null;
-}
-
-function hubLabel(value: unknown): string {
-	const text = typeof value === 'string' ? value.trim().replace(/^["']|["']$/g, '') : '';
-	const wiki = /^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/.exec(text);
-	if (!wiki) return text;
-	const alias = wiki[2]?.trim();
-	if (alias) return alias;
-	const target = (wiki[1] ?? '').trim();
-	return (target.split('/').pop() ?? target).replace(/\.md$/i, '');
 }
 
 function finiteVisitCount(value: unknown): number | null {

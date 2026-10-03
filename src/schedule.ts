@@ -5,6 +5,7 @@
  */
 import { isDigestEndLine, isDigestStartLine } from './attempt-digest';
 import { stripStampAge } from './dates';
+import type { SlotOverride } from './slot-override';
 
 export const DAYPARTS = ['morning', 'afternoon', 'evening'] as const;
 
@@ -300,15 +301,18 @@ export function suggestReturnDigest(args: {
 	now?: Date;
 	/** Mor, Aft, Eve in the table instead of full daypart names. */
 	abbreviate?: boolean;
+	/** Per-note Try / Avoid marks. They win over the computed bucket. */
+	overrides?: readonly SlotOverride[];
 }): ReturnDigest {
 	const orientation = args.orientation === 'columns' ? 'columns' : 'rows';
 	const label = args.abbreviate === true ? daypartShortTitle : daypartTitle;
 	const scope: DigestDayScope = args.days === 'may' ? 'may' : 'all';
 	const thresholds = resolveThresholds(args.thresholds);
+	const overrides = args.overrides ?? [];
 	const mayDays = mayGoOutDays(args.grid);
 	if (mayDays.length === 0) {
 		const tried = daypartFacts(ALL_WEEKDAYS, args.buckets, args.grid);
-		const sentences = [...voiceLines(tried, thresholds), NO_SCHEDULE];
+		const sentences = [...voiceLines(tried, thresholds, overrides, args.buckets), NO_SCHEDULE];
 		const text = sentences.join('\n');
 		if (scope === 'may' && tried.length === 0) {
 			return { text, sentences, table: '', markdown: text };
@@ -323,7 +327,7 @@ export function suggestReturnDigest(args: {
 	const fill: CellFill = scope === 'all' ? 'count' : 'dash';
 	const dayparts = scope === 'all' ? DAYPARTS : undefined;
 	const table = tableFor(orientation, shown, facts, dayparts, fill, args.buckets, label);
-	const sentences = voiceLines(facts, thresholds);
+	const sentences = voiceLines(facts, thresholds, overrides, args.buckets);
 	const blocks = [table];
 	if (sentences.length > 0) blocks.push(sentences.join('\n'));
 	return {
@@ -470,19 +474,66 @@ function numberOr(value: number | undefined, fallback: number): number {
 	return value != null && Number.isFinite(value) ? value : fallback;
 }
 
-function voiceLines(facts: readonly SlotFact[], thresholds: DigestThresholds): string[] {
+function voiceLines(
+	facts: readonly SlotFact[],
+	thresholds: DigestThresholds,
+	overrides: readonly SlotOverride[] = [],
+	buckets: AttemptBuckets = {},
+): string[] {
+	const forced = new Map<string, 'try' | 'avoid'>();
+	const expanded = [...facts];
+	for (const override of overrides) {
+		const key = availabilityKey(override.weekday, override.daypart);
+		forced.set(key, override.bucket);
+		if (expanded.some((slot) => availabilityKey(slot.weekday, slot.daypart) === key)) continue;
+		const count = buckets[key] ?? { homes: 0, trials: 0 };
+		const trials = Math.max(0, count.trials);
+		const homes = Math.min(Math.max(0, count.homes), trials);
+		expanded.push({
+			weekday: override.weekday,
+			daypart: override.daypart,
+			availability: 'may',
+			homes,
+			trials,
+			rate: trials > 0 ? homes / trials : 0,
+			confidence: sampleConfidence(trials),
+			score: 0,
+		});
+	}
 	const grouped: Record<VoiceBucket, SlotFact[]> = { try: [], untried: [], unsure: [], avoid: [] };
-	for (const slot of facts) {
-		const bucket = classifySlot(slot, thresholds);
+	for (const slot of expanded) {
+		const key = availabilityKey(slot.weekday, slot.daypart);
+		const bucket = forced.get(key) ?? classifySlot(slot, thresholds);
 		if (bucket !== 'untried') grouped[bucket].push(slot);
 	}
 	const lines = [
 		avoidLine(grouped.avoid),
 		tryLine(grouped.try),
 		countedLine('Unsure', grouped.unsure),
-		untriedLine(facts),
+		untriedLine(expanded, forced),
 	];
-	return lines.filter((line): line is string => line != null);
+	return lines.filter((line): line is string => line != null).map((line) => `- ${line}`);
+}
+
+const BUCKET_LABEL = { try: 'Try', avoid: 'Avoid', unsure: 'Unsure', untried: 'Untried' } as const;
+
+/** Bucket for the weekday and daypart of `now`, after any Try / Avoid override. */
+export function currentReturnBucket(args: {
+	buckets: AttemptBuckets;
+	grid: AvailabilityGrid;
+	thresholds?: Partial<DigestThresholds>;
+	overrides?: readonly SlotOverride[];
+	now?: Date;
+}): 'Try' | 'Avoid' | 'Unsure' | 'Untried' {
+	const now = args.now ?? new Date();
+	const weekday = now.getDay();
+	const daypart = daypartAt(now);
+	const key = availabilityKey(weekday, daypart);
+	const forced = (args.overrides ?? []).find((item) => availabilityKey(item.weekday, item.daypart) === key);
+	if (forced) return BUCKET_LABEL[forced.bucket];
+	const slot = daypartFacts([weekday], args.buckets, args.grid).find((item) => item.daypart === daypart);
+	if (!slot) return 'Untried';
+	return BUCKET_LABEL[classifySlot(slot, resolveThresholds(args.thresholds))];
 }
 
 /**
@@ -514,8 +565,11 @@ function compareTry(a: SlotFact, b: SlotFact): number {
 	return b.trials - a.trials || a.weekday - b.weekday || daypartIndex(a.daypart) - daypartIndex(b.daypart);
 }
 
-function untriedLine(facts: readonly SlotFact[]): string | null {
-	const weekdays = [...new Set(facts.filter((slot) => slot.trials === 0 && slot.availability === 'may').map((slot) => slot.weekday))]
+function untriedLine(facts: readonly SlotFact[], forced: ReadonlyMap<string, 'try' | 'avoid'> = new Map()): string | null {
+	const weekdays = [...new Set(facts.filter((slot) => {
+		if (slot.trials !== 0 || slot.availability !== 'may') return false;
+		return !forced.has(availabilityKey(slot.weekday, slot.daypart));
+	}).map((slot) => slot.weekday))]
 		.sort((a, b) => a - b);
 	if (weekdays.length === 0) return null;
 	const bits = weekdays.map((weekday) => {

@@ -412,6 +412,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	private paintSortPresets(): void {
+		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		this.sortEl.empty();
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const current = this.localSort;
@@ -431,7 +432,24 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		}
 		if (this.mode === 'glancable') this.paintListFilters();
 		this.paintSortExtras();
-		const create = this.sortEl.createEl('button', {
+		const actions = this.mode === 'glancable'
+			? this.sortEl.createDiv('rv-locator-toolbar-actions')
+			: this.sortEl;
+		if (this.mode === 'glancable') {
+			const map = actions.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Map', title: 'Map' },
+			});
+			setIcon(map, 'earth');
+			map.addEventListener('click', () => { void this.plugin.openMapSoon(); });
+			const campaign = actions.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Campaign', title: 'Campaign' },
+			});
+			setIcon(campaign, 'flag');
+			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
+		}
+		const create = actions.createEl('button', {
 			cls: 'rv-locator-new-rv',
 			attr: {
 				type: 'button',
@@ -443,6 +461,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
 		});
+		this.sortButtonsEl.scrollLeft = savedScroll;
 	}
 
 	protected paintSortExtras(): void {

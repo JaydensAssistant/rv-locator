@@ -78,7 +78,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			name.setAttr('data-line', glancableLineId(0));
 			const statusIconEl = name.createSpan('rv-locator-status-icon');
 			setIcon(statusIconEl, statusIcon(row.status));
-			statusIconEl.setAttr('aria-label', row.status);
+			statusIconEl.setAttr('title', row.status);
+			statusIconEl.querySelector('svg')?.removeAttribute('aria-label');
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
 				text: row.name,
@@ -147,15 +148,42 @@ export class NearbyGlancableView extends NearbyBasesView {
 				: '';
 			this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
 		}
-		if (this.lineOn('visits')) {
-			const ratio = visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'));
+		const ratio = this.lineOn('visits')
+			? visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'))
+			: null;
+		if (ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-visits',
 				attr: { title: ratio.title },
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
+			this.paintCampaignMark(foot, row.path);
 		}
 		this.paintActions(card, rank, row, urgency, priority);
+		if (ratio && this.plugin.settings.showCardReturnStatus) {
+			const line = card.createDiv('rv-locator-return-line');
+			line.createSpan({ cls: 'rv-locator-return-visits', text: `# ${ratio.text}`, attr: { title: ratio.title } });
+			line.createSpan({
+				cls: 'rv-locator-return-bucket',
+				text: this.plugin.cardReturnBucket(row.path),
+			});
+			this.paintCampaignMark(line, row.path);
+		} else if (!ratio) {
+			this.paintCampaignMark(foot, row.path);
+		}
+	}
+
+	private paintCampaignMark(parent: HTMLElement, path: string): void {
+		const mark = this.plugin.campaignMark(path);
+		if (!mark) return;
+		const icon = parent.createSpan({
+			cls: 'rv-locator-campaign-mark',
+			attr: {
+				title: mark === 'covered' ? 'Covered this campaign' : 'Not covered this campaign',
+			},
+		});
+		setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
+		icon.querySelector('svg')?.removeAttribute('aria-label');
 	}
 
 	private paintActions(
@@ -294,7 +322,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private watchLayout(): void {
 		if (this.layoutObserver || typeof ResizeObserver === 'undefined') return;
-		this.layoutObserver = new ResizeObserver(() => this.applyColumnSnap());
+		this.layoutObserver = new ResizeObserver(() => {
+			this.applyColumnSnap();
+			if (this.plugin.settings.glancableFitCount !== 0) this.applyDensity();
+		});
 		this.layoutObserver.observe(this.scrollEl);
 		this.register(() => {
 			this.layoutObserver?.disconnect();

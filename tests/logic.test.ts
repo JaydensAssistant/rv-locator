@@ -40,10 +40,12 @@ const tacoma = {
 };
 
 describe('geocode request', () => {
-	it('uses the documented EU endpoint and sends only the address string', () => {
+	it('uses the global endpoint unless the region is EU', () => {
 		const url = new URL(buildGeocodeUrl('  7790 N Voyager Dr, Citrus Heights  ', 'secret-key'));
 		assert.equal(url.origin + url.pathname, GEOCODE_ENDPOINT);
-		assert.equal(url.host, 'api-eu.geoapify.com');
+		assert.equal(url.host, 'api.geoapify.com');
+		const eu = new URL(buildGeocodeUrl('7790 N Voyager Dr', 'secret-key', 'eu'));
+		assert.equal(eu.host, 'api-eu.geoapify.com');
 		assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'format', 'limit', 'text']);
 		assert.equal(url.searchParams.get('text'), '7790 N Voyager Dr, Citrus Heights');
 		assert.equal(url.searchParams.get('format'), 'json');
@@ -938,17 +940,17 @@ describe('picker confirm', () => {
 
 describe('new RV note title', () => {
 	it('uses the householder and a short street name', () => {
-		assert.equal(streetShortName('142 Maple Street, Orlando, FL'), 'Maple');
-		assert.equal(streetShortName('88 Cypress Ave'), 'Cypress');
-		assert.equal(streetShortName('10 Oak Hammock Lane, Orlando'), 'Oak Hammock');
-		assert.equal(streetShortName('7790 N Voyager Dr, Citrus Heights'), 'Voyager');
+		assert.equal(streetShortName('142 Maple Street, Orlando, FL'), 'Maple Street');
+		assert.equal(streetShortName('88 Cypress Ave'), 'Cypress Ave');
+		assert.equal(streetShortName('10 Oak Hammock Lane, Orlando'), 'Oak Hammock Lane');
+		assert.equal(streetShortName('7790 N Voyager Dr, Citrus Heights'), 'Voyager Dr');
 		assert.equal(streetShortName('1313 Broadway, Tacoma, WA'), 'Broadway');
-		assert.equal(streetShortName('142 maple street'), 'Maple');
-		assert.equal(rvNoteTitle('Alex', '142 Maple Street, Orlando'), 'Alex on Maple');
-		assert.equal(rvNoteTitle('Riley', '88 Cypress Ave'), 'Riley on Cypress');
-		assert.equal(rvNoteTitle('Sam', '10 Oak Hammock Ln'), 'Sam on Oak Hammock');
-		assert.equal(rvNoteTitle('A/B', '1 Main St'), 'A B on Main');
-		assert.equal(rvNoteTitle('', '142 Maple Street'), 'Maple');
+		assert.equal(streetShortName('142 maple street'), 'Maple Street');
+		assert.equal(rvNoteTitle('Alex', '142 Maple Street, Orlando'), 'Alex on Maple Street');
+		assert.equal(rvNoteTitle('Riley', '88 Cypress Ave'), 'Riley on Cypress Ave');
+		assert.equal(rvNoteTitle('Sam', '10 Oak Hammock Ln'), 'Sam on Oak Hammock Ln');
+		assert.equal(rvNoteTitle('A/B', '1 Main St'), 'A B on Main St');
+		assert.equal(rvNoteTitle('', '142 Maple Street'), 'Maple Street');
 		assert.equal(rvNoteTitle('Alex', ''), 'Alex');
 	});
 });
@@ -1256,7 +1258,7 @@ describe('extras sync', () => {
 	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
 		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
 		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
-		assert.equal(EXTRAS_SYNC_REF, 'v1.3.4');
+		assert.equal(EXTRAS_SYNC_REF, 'v1.3.5');
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
 		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
@@ -1299,7 +1301,7 @@ describe('extras sync', () => {
 		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
 		assert.equal(
 			url,
-			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.4/extras/templater-metabind/New%20RV.md',
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.5/extras/templater-metabind/New%20RV.md',
 		);
 		assert.throws(() => extrasFileUrl('../secrets.env'));
 		assert.equal(planExtrasWrite(false, false), 'create');
@@ -1320,9 +1322,9 @@ describe('extras sync', () => {
 			}
 			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
 		}, configDir);
-		assert.equal(plan.ref, 'v1.3.4');
+		assert.equal(plan.ref, 'v1.3.5');
 		assert.equal(calls.length, extrasDestinations(configDir).length);
-		assert.equal(calls.every((item) => item.includes('/v1.3.4/')), true);
+		assert.equal(calls.every((item) => item.includes('/v1.3.5/')), true);
 		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
 		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
 		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);

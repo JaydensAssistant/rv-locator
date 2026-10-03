@@ -1,5 +1,5 @@
 import { parseDisplayAddress } from './address-display';
-import { GEOCODE_ENDPOINT } from './constants';
+import { geocodeEndpoint, type GeoapifyRegion } from './constants';
 import type { GeocodeHit } from './types';
 
 export interface AddressParts {
@@ -37,7 +37,7 @@ export function addressForQuery(address: string): string {
  * Build a forward-geocode URL.
  * `text` is the address string only. Do not append names, phones, or note bodies.
  */
-export function buildGeocodeUrl(address: string, apiKey: string): string {
+export function buildGeocodeUrl(address: string, apiKey: string, region: GeoapifyRegion = 'global'): string {
 	const text = addressForQuery(address);
 	if (!text) {
 		throw new Error('Address is empty.');
@@ -45,7 +45,7 @@ export function buildGeocodeUrl(address: string, apiKey: string): string {
 	if (!apiKey.trim()) {
 		throw new Error('API key is empty.');
 	}
-	const url = new URL(GEOCODE_ENDPOINT);
+	const url = new URL(geocodeEndpoint(region));
 	url.searchParams.set('text', text);
 	url.searchParams.set('format', 'json');
 	url.searchParams.set('limit', '5');

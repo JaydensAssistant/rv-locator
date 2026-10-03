@@ -440,7 +440,7 @@ describe('disk proof', () => {
 		const stamp = formatExactVisitStamp(new Date(2026, 8, 9, 13, 38, 3));
 		assert.equal(stamp, 'Wed, 1:38pm — Sep 9, 2026');
 		const title = rvNoteTitle('Alex', address);
-		assert.equal(title, 'Alex on Maple');
+		assert.equal(title, 'Alex on Maple Street');
 		const file = join(dir, `${title}.md`);
 		const target = { path: file };
 		const hooks: Array<() => Promise<void>> = [];
@@ -493,8 +493,8 @@ describe('disk proof', () => {
 			config: { target_file: target },
 			hooks: { on_all_templates_executed: (callback: () => Promise<void>) => { hooks.push(callback); } },
 		});
-		assert.equal(renamed, 'Alex on Maple');
-		assert.equal(rv.title, 'Alex on Maple');
+		assert.equal(renamed, 'Alex on Maple Street');
+		assert.equal(rv.title, 'Alex on Maple Street');
 		assert.equal(rv.stamp, stamp);
 		assert.equal(rv.created, created);
 		assert.equal(rv.mapUrl, googleMapsAddressLink(address));
@@ -610,7 +610,7 @@ describe('disk proof', () => {
 		await pending;
 		const disk = readFileSync(file, 'utf8');
 		console.log(`\n----- NEW RV AFTER GEOCODE ${file} -----\n${disk}`);
-		assert.equal(file.endsWith('Alex on Maple.md'), true);
+		assert.equal(file.endsWith('Alex on Maple Street.md'), true);
 		assertLanded(disk, address);
 		assert.equal(disk.includes(`##### ${stamp}`), true);
 		assert.equal(disk.split('\n').filter((line) => line.startsWith(`##### ${stamp} `)).length, 1);
@@ -1000,7 +1000,7 @@ describe('disk proof', () => {
 		assert.equal(rv.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
 		assert.equal(rv.companionSuffix, ' with Sam');
 		assert.equal(rv.companionYaml.includes('[['), false);
-		assert.equal(rv.title, 'Ada on Oak');
+		assert.equal(rv.title, 'Ada on Oak Street');
 
 		const skipped = await loadNewRv({
 			...app,
@@ -1187,7 +1187,7 @@ describe('disk proof', () => {
 		assert.equal(textPrompts, 2);
 		assert.equal(prompts.length, 0);
 		assert.equal(linked.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
-		assert.equal(linked.title, 'Ada on Oak');
+		assert.equal(linked.title, 'Ada on Oak Street');
 
 		const plainPrompts = ['Ada', '10 Oak Street'];
 		const plain = await loadNewRv({

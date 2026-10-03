@@ -9,11 +9,12 @@
  * The drop-in template is `99 New RV.md` (older vaults may still use `New RV.md`). It calls:
  *   const rv = await tp.user.newRv(tp)
  *
- * After the householder and Address, it asks who they brought. One person.
- * That name is set on Met With (who was there when first meeting this
- * householder) and is the first Taken entry. Cancel leaves both blank.
+ * The New RV button collects gender, name, address, Met companion, and
+ * priority in one dialog. Running the template without that draft still
+ * asks. A blank name uses Man or Woman. The street suffix stays in the title.
+ * That companion is Met With and the first Taken entry. Skip leaves both blank.
  * Later Home visits append to Taken only and never change Met With.
- * Priority comes from RV Locator `defaultNewRvPriority` (0–5, default 4).
+ * Priority comes from the dialog, or `defaultNewRvPriority` (0–5, default 4).
  *
  * Street short names and the visit stamp mirror src/note-name.ts and
  * src/dates.ts formatGlancableVisitStamp (`Wed, 2pm — Sep 9, 2026`).
@@ -21,13 +22,6 @@
 const COMMAND_ID = "rv-locator:geocode-current-note";
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const STREET_SUFFIXES = new Set([
-  "street", "st", "avenue", "ave", "road", "rd", "drive", "dr", "lane", "ln",
-  "boulevard", "blvd", "court", "ct", "place", "pl", "circle", "cir", "way",
-  "trail", "trl", "parkway", "pkwy", "highway", "hwy", "terrace", "ter",
-  "loop", "alley", "aly", "plaza", "plz", "square", "sq", "run", "path",
-  "pike", "route", "rte", "expressway", "expy", "crossing", "xing", "point", "pt",
-]);
 const DIRECTIONALS = new Set([
   "n", "north", "s", "south", "e", "east", "w", "west",
   "ne", "northeast", "nw", "northwest", "se", "southeast", "sw", "southwest",
@@ -45,13 +39,6 @@ function titleWord(token) {
   return bare.charAt(0).toUpperCase() + bare.slice(1).toLowerCase();
 }
 
-function dropTrailingSuffix(tokens) {
-  if (tokens.length === 0) return [];
-  const last = tokenKey(tokens[tokens.length - 1] || "");
-  if (!STREET_SUFFIXES.has(last)) return tokens.slice();
-  return tokens.slice(0, -1);
-}
-
 function isUnitMarker(token) {
   return UNIT_MARKERS.has(tokenKey(token)) || token.startsWith("#");
 }
@@ -66,9 +53,8 @@ function significantStreetTokens(raw) {
   while (start < raw.length && DIRECTIONALS.has(tokenKey(raw[start] || ""))) start += 1;
   let tokens = raw.slice(start);
   tokens = dropUnit(tokens);
-  const trimmed = dropTrailingSuffix(tokens);
-  if (trimmed.length > 0) return trimmed;
-  return dropTrailingSuffix(dropUnit(raw));
+  if (tokens.length > 0) return tokens;
+  return dropUnit(raw);
 }
 
 function streetShortName(address) {
@@ -458,9 +444,15 @@ function takeNewRvDraft() {
   try {
     const draft = plugin.takeNewRvDraft();
     if (!draft || (draft.gender !== "Man" && draft.gender !== "Woman")) return null;
+    const priority = Number.isInteger(draft.priority) && draft.priority >= 0 && draft.priority <= 5
+      ? draft.priority
+      : null;
     return {
       gender: draft.gender,
       name: typeof draft.name === "string" ? draft.name : "",
+      address: typeof draft.address === "string" ? draft.address : null,
+      companion: typeof draft.companion === "string" ? draft.companion : null,
+      priority,
     };
   } catch {
     return null;
@@ -472,8 +464,11 @@ async function newRv(tp) {
   const draft = takeNewRvDraft();
   const gender = draft ? draft.gender : "";
   const name = sanitizeNoteName(draft ? draft.name : await promptText(tp, "Householder name"));
-  const address = (await promptText(tp, "Address")).replace(/\r?\n/g, " ").trim();
-  const companion = await askCompanion(tp);
+  const address = (draft && typeof draft.address === "string" ? draft.address : await promptText(tp, "Address")).replace(/\r?\n/g, " ").trim();
+  const companion = draft && typeof draft.companion === "string"
+    ? formatStoredCompanion(draft.companion)
+    : await askCompanion(tp);
+  const priority = draft && draft.priority != null ? draft.priority : newRvPriority();
   const street = sanitizeNoteName(streetShortName(address));
   const who = name || (gender === "Woman" ? "Woman" : gender === "Man" ? "Man" : "");
   let title = who && street ? `${who} on ${street}` : (who || street);
@@ -519,7 +514,7 @@ async function newRv(tp) {
     stamp,
     ago: stampAgeLabel(stamp, new Date()),
     title,
-    priority: newRvPriority(),
+    priority,
     companionYaml: companionFrontmatterBlock(companion),
     companionSuffix: companion ? ` with ${companion}` : "",
     gender,

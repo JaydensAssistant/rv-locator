@@ -32,6 +32,7 @@ import {
 	renderUrgencySettings,
 } from './settings-scoring';
 import { applyTemplateSettingChange, type TemplateRenameVault } from './template-rename';
+import { resetSettingsTab } from './settings-reset';
 import { attemptLogFullWidth } from './types';
 import { renderUrgencyPalette } from './urgency-palette-ui';
 
@@ -72,6 +73,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		else if (this.section === 'nearby') this.paintNearby(body);
 		else if (this.section === 'templates') this.paintTemplates(body, templateGeneration);
 		else this.paintAdvanced(body);
+		this.paintReset(body);
 	}
 
 	private paintSectionBar(containerEl: HTMLElement): void {
@@ -131,6 +133,19 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName('Geoapify region')
+			.setDesc('Global is the default. EU sends lookups to api-eu.geoapify.com only when you choose it here.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('global', 'Global');
+				dropdown.addOption('eu', 'EU');
+				dropdown.setValue(this.plugin.settings.geoapifyRegion);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.geoapifyRegion = value === 'eu' ? 'eu' : 'global';
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
 			.setName('Home counties')
 			.setDesc('One county per line. Empty means every match asks you to confirm. A fully confident hit is saved only when it is the only hit in one of these counties.')
 			.addTextArea((text) => {
@@ -156,8 +171,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Digest table')
 			.setDesc(this.plugin.settings.digestOrientation === 'columns'
-				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note. With Attempt Log width on Automatic, the Attempt Log is full width.'
-				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note. Days across also makes an Automatic-width Attempt Log full width.')
+				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note. It does not change Attempt Log width.'
+				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note. It does not change Attempt Log width.')
 			.addButton((button) => {
 				button.setButtonText('Swap rows and columns');
 				button.onClick(() => {
@@ -235,7 +250,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Attempt Log width')
-			.setDesc('Automatic is full width when the digest table has days as columns, and the dashboard column width otherwise.')
+			.setDesc('Full width is the default. Automatic stays full width too. Dashboard column is the narrow width. Swapping digest rows and columns does not change this.')
 			.addDropdown((dropdown) => {
 				dropdown.addOption('auto', `Automatic (now ${attemptLogFullWidth(this.plugin.settings) ? 'full width' : 'dashboard column'})`);
 				dropdown.addOption('full', 'Full width');
@@ -247,7 +262,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		const centers: ReadonlyArray<{ key: 'centerDashboard' | 'centerVisitNotes' | 'centerSuggestions'; name: string; desc: string }> = [
-			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, buttons, and Quick Facts.' },
+			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, and buttons. Quick Facts labels stay left aligned.' },
 			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'Centers the Visit Notes heading, each visit stamp, and the text in its notes box.' },
 			{ key: 'centerSuggestions', name: 'Center Return Suggestions', desc: 'Centers the Return Suggestions title and lines, the Attempt Log, its table, and its visit lines.' },
 		];
@@ -283,7 +298,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		const badges: ReadonlyArray<{ key: 'showUrgencyBadge' | 'showPriorityBadge' | 'showRouteBadge'; name: string; desc: string }> = [
 			{ key: 'showUrgencyBadge', name: 'Quick Facts urgency badge', desc: 'The urgency circle in the Quick Facts header. On by default. It opens Home, Not home, Log past visit, Archive, and snooze.' },
 			{ key: 'showPriorityBadge', name: 'Quick Facts priority badge', desc: 'The priority circle in the Quick Facts header. On by default. It opens a priority slider.' },
-			{ key: 'showRouteBadge', name: 'Quick Facts route badge', desc: 'The route circle in the Quick Facts header. On by default. It opens the map page.' },
+			{ key: 'showRouteBadge', name: 'Quick Facts route badge', desc: 'The route circle in the Quick Facts header. On by default. It opens the Google Maps link for that RV. It does not open the coming-soon map.' },
 		];
 		for (const badge of badges) {
 			new Setting(containerEl)
@@ -297,6 +312,77 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					});
 				});
 		}
+		new Setting(containerEl)
+			.setName('Newest visits first')
+			.setDesc('New visits render at the top and older visits move down. This is display order only. The note file stays in the order it was written.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.visitsNewestFirst);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.visitsNewestFirst = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Collapse older visits')
+			.setDesc('Only the most recent visits stay open. The rest sit under an Older Visits heading, collapsed, with a horizontal rule above it.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.collapseOlderVisits);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.collapseOlderVisits = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Visible visit notes')
+			.setDesc('How many of the most recent visit notes stay visible when older visits are collapsed. Default 3.')
+			.addSlider((slider) => {
+				slider.setLimits(1, 30, 1);
+				slider.setValue(this.plugin.settings.visibleVisitCount);
+				slider.setDynamicTooltip();
+				slider.onChange(async (value) => {
+					this.plugin.settings.visibleVisitCount = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Return status on cards')
+			.setDesc('Off by default. The bottom line of a Glancable card shows the visit count in bold white and the current daypart bucket (Avoid, Try, Unsure, or Untried) in the urgency color.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showCardReturnStatus);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.showCardReturnStatus = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Page preview on the dashboard')
+			.setDesc('Off by default. While this is off, hovering a title on the RV Dashboard or a Glancable card does not open Page Preview, even when that core plugin is enabled.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.dashboardPagePreview);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.dashboardPagePreview = value;
+					await this.plugin.saveSettings();
+				});
+			});
+	}
+
+	private paintReset(containerEl: HTMLElement): void {
+		const section = this.section;
+		const label = SETTINGS_SECTIONS.find((item) => item.id === section)?.label ?? 'this tab';
+		new Setting(containerEl)
+			.setName(`Reset ${label}`)
+			.setDesc(section === 'everyday'
+				? 'Resets only this tab. The Geoapify API key stays. Other tabs and the active campaign stay as they are.'
+				: 'Resets only this tab. Other tabs, the Geoapify API key, and the active campaign stay as they are.')
+			.addButton((button) => {
+				button.setButtonText('Reset this tab');
+				button.setWarning();
+				button.onClick(async () => {
+					this.plugin.settings = resetSettingsTab(this.plugin.settings, section);
+					await this.plugin.saveSettings();
+					this.display();
+				});
+			});
 	}
 
 	private paintUrgency(containerEl: HTMLElement): void {
@@ -513,7 +599,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		osmLink.setAttr('rel', 'noopener');
 		about.createEl('p', {
-			text: 'Lookups use Geoapify’s EU endpoint (api-eu.geoapify.com). Google Maps is only used to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
+			text: 'Lookups use Geoapify’s global endpoint (api.geoapify.com) unless Geoapify region is set to EU. Google Maps is only used to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
 		});
 	}
 

@@ -531,11 +531,12 @@ async function askCompanionFallback(tp) {
   return promptText(tp, "Who did they bring?");
 }
 
-async function askCompanion(tp) {
+async function askCompanion(tp, file) {
   const plugin = rvPlugin();
+  const path = file && typeof file.path === "string" ? file.path : "";
   if (plugin && typeof plugin.promptCompanion === "function") {
     try {
-      const value = await plugin.promptCompanion();
+      const value = path ? await plugin.promptCompanion(path) : await plugin.promptCompanion();
       return typeof value === "string" ? value.trim() : "";
     } catch {
       return "";
@@ -658,7 +659,7 @@ async function rvLog(tp, kind) {
   const whenIso = isoLocal(now);
   const whenLabel = displayWhen(now);
   const outcome = mode === "home" ? "success" : "not home";
-  const companion = mode === "home" ? await askCompanion(tp) : "";
+  const companion = mode === "home" ? await askCompanion(tp, file) : "";
 
   await app.fileManager.processFrontMatter(file, (fm) => {
     const addr = fm[ADDRESS_KEY];
