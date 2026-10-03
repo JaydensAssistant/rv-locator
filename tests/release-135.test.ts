@@ -131,6 +131,26 @@ describe('1.3.5 visit display order', () => {
 		const older = wrapped.sizer.children.find((node) => (node.textContent ?? '').includes('Mon, 9am'));
 		assert.equal(older?.classList.contains('rv-older-hidden'), false);
 	});
+
+	it('keeps Visit Notes above the stamps when a rule precedes that heading', () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = `### Visit Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`;
+		for (const shape of ['flat', 'wrapped'] as const) {
+			const tree = visitTree(stamps, shape, true);
+			layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+				newestFirst: true,
+				collapseOlder: true,
+				limit: 3,
+			});
+			assert.equal(markdown, `### Visit Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
+			assertVisitNotesStaysAbove(tree.sizer, ['Thu, 4pm', 'Wed, 3pm', 'Tue, 2pm']);
+		}
+	});
 });
 
 describe('1.3.5 page preview', () => {
@@ -141,13 +161,29 @@ describe('1.3.5 page preview', () => {
 	});
 });
 
-function visitTree(stamps: readonly string[], shape: 'flat' | 'wrapped'): { preview: DomEl; sizer: DomEl } {
+function visitTree(stamps: readonly string[], shape: 'flat' | 'wrapped', leadingRule = false): { preview: DomEl; sizer: DomEl } {
 	const doc = createDoc();
 	const preview = doc.createElement('div');
 	preview.className = 'markdown-preview-view';
 	const sizer = doc.createElement('div');
 	sizer.className = 'markdown-preview-section';
 	preview.appendChild(sizer);
+	if (leadingRule) {
+		const lead = doc.createElement('hr');
+		const notes = doc.createElement('h3');
+		notes.textContent = 'Visit Notes:';
+		if (shape === 'flat') {
+			sizer.appendChild(lead);
+			sizer.appendChild(notes);
+		} else {
+			const leadWrap = doc.createElement('div');
+			leadWrap.appendChild(lead);
+			const notesWrap = doc.createElement('div');
+			notesWrap.appendChild(notes);
+			sizer.appendChild(leadWrap);
+			sizer.appendChild(notesWrap);
+		}
+	}
 	for (const stamp of stamps) {
 		const heading = doc.createElement('h3');
 		heading.className = 'rv-visit-stamp';
@@ -213,6 +249,26 @@ function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: stri
 	assert.equal(sizer.children[olderAt]?.classList.contains('rv-older-hidden'), true);
 	const suggestions = labels.findIndex((label) => label.includes('Return Suggestions'));
 	assert.ok(suggestions > olderAt);
+}
+
+function assertVisitNotesStaysAbove(sizer: DomEl, visible: readonly string[]): void {
+	const labels = sizer.children.map((node) => node.textContent ?? '');
+	const notesAt = labels.findIndex((label) => /^visit notes:?$/i.test(label.trim()));
+	const olderAt = labels.indexOf('Older Visits');
+	const firstStamp = visible
+		.map((stamp) => labels.findIndex((label) => label.includes(stamp)))
+		.filter((at) => at >= 0)
+		.sort((a, b) => a - b)[0];
+	assert.ok(notesAt >= 0);
+	assert.ok(firstStamp != null && notesAt < firstStamp);
+	assert.ok(olderAt > notesAt);
+	const lead = sizer.children.slice(0, notesAt).find((node) => node.tagName === 'HR' || node.querySelector('hr'));
+	assert.ok(lead);
+	assert.equal(lead.classList.contains('rv-older-rule'), false);
+	const afterOlder = sizer.children.slice(olderAt + 1);
+	const trailing = afterOlder.find((node) => (node.tagName === 'HR' || node.querySelector('hr')) && !node.classList.contains('rv-older-rule'));
+	assert.ok(trailing);
+	assert.ok(sizer.children.indexOf(trailing) > olderAt);
 }
 
 describe('1.3.5 settings reset', () => {

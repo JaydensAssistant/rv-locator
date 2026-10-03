@@ -81,7 +81,7 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	const partition = partitionVisits(matched, options.newestFirst, options.collapseOlder, options.limit);
 	const parent = blocks[0]?.nodes[0]?.parentElement;
 	if (!parent) return;
-	const anchor = endAnchor(parent);
+	const anchor = endAnchor(parent, blocks);
 	const before = anchor ?? null;
 	for (const block of partition.visible) placeBlock(parent, block, before, false);
 	if (partition.older.length === 0) return;
@@ -211,11 +211,26 @@ function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitSt
 	});
 }
 
-/** Thematic break or Return Suggestions that should stay below Older Visits. */
-function endAnchor(parent: HTMLElement): HTMLElement | null {
+/**
+ * The break that follows the stamps, usually the rule above Return Suggestions.
+ * The rule above `### Visit Notes:` is earlier in the note. Anchoring there
+ * leaves that heading under Older Visits. The heading itself is not a stamp
+ * and is not moved.
+ */
+function endAnchor(parent: HTMLElement, blocks: readonly VisitBlock[]): HTMLElement | null {
+	const region: HTMLElement[] = [];
+	for (const block of blocks) {
+		for (const node of block.nodes) region.push(node);
+	}
+	let seenVisit = false;
 	for (const child of Array.from(parent.children)) {
 		if (!(child instanceof HTMLElement)) continue;
 		if (child.classList.contains('rv-older-rule') || child.classList.contains('rv-older-visits')) continue;
+		if (region.some((node) => node === child || child.contains(node))) {
+			seenVisit = true;
+			continue;
+		}
+		if (!seenVisit) continue;
 		if (isStop(child)) return child;
 	}
 	return null;
