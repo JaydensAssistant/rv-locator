@@ -170,18 +170,27 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 			: [heading, visitNotesField(property)];
 		const lines = next.split('\n');
 		const region = logRegion(lines);
-		const later = lines.findIndex((line, index) => {
-			if (inRegion(index, region)) return false;
-			const when = headingWhen(line);
-			return when != null && when.getTime() > at;
-		});
-		if (later >= 0) {
-			next = [...lines.slice(0, later), ...block, '', ...lines.slice(later)].join('\n');
-		} else if (options.notesBlock && options.notesBlock.length > 0) {
+		const headings: Array<{ index: number; when: number }> = [];
+		for (let index = 0; index < lines.length; index += 1) {
+			if (inRegion(index, region)) continue;
+			const when = headingWhen(lines[index] ?? '');
+			if (!when) continue;
+			headings.push({ index, when: when.getTime() });
+		}
+		const newer = headings.filter((item) => item.when >= at).length;
+		if (headings.length === 0) {
 			const placeholder = insertHomeHeading(next, stamp, property);
-			next = replaceInsertedBlock(placeholder, heading, visitNotesField(property), block);
+			next = options.notesBlock && options.notesBlock.length > 0
+				? replaceInsertedBlock(placeholder, heading, visitNotesField(property), block)
+				: placeholder;
+		} else if (newer >= headings.length) {
+			const last = headings[headings.length - 1];
+			const end = last ? notesBlockEnd(lines, last.index) : lines.length;
+			const gap = end < lines.length && (lines[end] ?? '') !== '' ? [''] : [];
+			next = [...lines.slice(0, end), ...block, '', ...gap, ...lines.slice(end)].join('\n');
 		} else {
-			next = insertHomeHeading(next, stamp, property);
+			const atLine = headings[newer]?.index ?? lines.length;
+			next = [...lines.slice(0, atLine), ...block, '', ...lines.slice(atLine)].join('\n');
 		}
 	}
 	const text = `${stamp} — ${visitPhrase(facts.home, facts.companion)}`;
