@@ -71,6 +71,21 @@ export interface VisitLayoutOptions {
 export function layoutVisitNotes(root: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
 	const preview = visitPreview(root);
 	if (!preview) return;
+	if (preview.dataset.rvLaying === '1') return;
+	preview.dataset.rvLaying = '1';
+	try {
+		layoutVisitNotesNow(preview, root, markdown, options);
+	} finally {
+		preview.dataset.rvLaying = '0';
+	}
+}
+
+function layoutVisitNotesNow(
+	preview: HTMLElement,
+	root: HTMLElement,
+	markdown: string,
+	options: VisitLayoutOptions,
+): void {
 	const stamps = stampHeads(preview);
 	if (stamps.length === 0) return;
 	const fileStamps = visitStampsInMarkdown(markdown);
@@ -83,6 +98,9 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	for (const block of matched) {
 		for (const node of block.nodes) node.classList.remove('rv-older-visit', 'rv-older-hidden');
 	}
+	preview.dataset.rvOlderExpected = older.length > 0 ? '1' : '0';
+	decorateRecentChevron(preview);
+	armRecentNotesRelayout(preview, root, markdown, options);
 	if (older.length === 0) return;
 	const first = older[0]?.nodes[0];
 	const parent = first?.parentElement;
@@ -129,6 +147,11 @@ interface VisitBlock extends VisitStampRef {
 }
 
 /** Same lucide chevron-right Obsidian draws on a collapsed heading. Open rotates it down. */
+export function mountHeadingChevron(mark: HTMLElement): void {
+	if (mark.querySelector('svg')) return;
+	appendHeadingChevron(mark);
+}
+
 function appendHeadingChevron(mark: HTMLElement): void {
 	const doc = mark.ownerDocument;
 	const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -147,6 +170,66 @@ function appendHeadingChevron(mark: HTMLElement): void {
 	path.setAttribute('d', 'm9 18 6-6-6-6');
 	svg.appendChild(path);
 	mark.appendChild(svg);
+}
+
+function decorateRecentChevron(preview: HTMLElement): void {
+	preview.querySelectorAll('h3').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (node.classList.contains('rv-older-visits')) return;
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (!/^(?:visit|recent) notes:?$/i.test(text) && !node.classList.contains('rv-visit-notes-heading')) return;
+		node.classList.add('rv-visit-notes-heading');
+		let mark = directChild(node, 'collapse-indicator');
+		if (!mark) {
+			mark = node.ownerDocument.createElement('span');
+			mark.className = 'collapse-indicator collapse-icon';
+			node.insertBefore(mark, node.children[0] ?? null);
+		}
+		mountHeadingChevron(mark);
+		node.classList.toggle('is-open', !node.classList.contains('is-collapsed'));
+	});
+}
+
+function directChild(parent: HTMLElement, className: string): HTMLElement | null {
+	for (const kid of Array.from(parent.children)) {
+		if (kid instanceof HTMLElement && kid.classList.contains(className)) return kid;
+	}
+	return null;
+}
+
+/**
+ * Collapsing Recent Notes rebuilds the section and drops the injected Older
+ * Visits heading. Put it back after that toggle, without looping on our own inserts.
+ */
+function armRecentNotesRelayout(
+	preview: HTMLElement,
+	root: HTMLElement,
+	markdown: string,
+	options: VisitLayoutOptions,
+): void {
+	if (preview.dataset.rvRecentWatch === '1') return;
+	preview.dataset.rvRecentWatch = '1';
+	const rerun = (): void => {
+		if (preview.dataset.rvLaying === '1') return;
+		if (preview.dataset.rvOlderExpected !== '1') return;
+		if (preview.querySelector('.rv-older-visits')) return;
+		layoutVisitNotes(root, markdown, options);
+	};
+	preview.addEventListener('click', (event) => {
+		const target = (event as { target?: { closest?: (selector: string) => HTMLElement | null } }).target;
+		const heading = target?.closest?.('h3');
+		if (!heading || heading.classList.contains('rv-older-visits')) return;
+		const title = (heading.textContent ?? '').replace(/\s+/g, ' ');
+		if (!/recent notes:?/i.test(title) && !heading.classList.contains('rv-visit-notes-heading')) return;
+		window.setTimeout(rerun, 40);
+	});
+	if (typeof MutationObserver === 'undefined') return;
+	try {
+		const observer = new MutationObserver(() => rerun());
+		observer.observe(preview, { childList: true, subtree: true });
+	} catch {
+		/* The layout test document is not a browser node. */
+	}
 }
 
 function visitPreview(root: HTMLElement): HTMLElement | null {
