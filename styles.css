@@ -2177,7 +2177,19 @@ body.rv-wide-hubs .rv-hub-row {
 	border: 0;
 	background: none;
 	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+	position: static;
+	top: auto;
+	opacity: 1 !important;
+	visibility: visible;
 	transform: none;
+}
+
+.markdown-preview-view h3.rv-older-visits > .collapse-indicator,
+.markdown-rendered h3.rv-older-visits > .collapse-indicator,
+h3.rv-older-visits > .collapse-indicator,
+h3.rv-older-visits > .collapse-indicator > svg {
+	opacity: 1 !important;
+	visibility: visible;
 }
 
 .rv-older-visits .collapse-indicator svg {
@@ -2186,6 +2198,8 @@ body.rv-wide-hubs .rv-hub-row {
 	height: var(--icon-size, 16px);
 	fill: none;
 	stroke: currentColor;
+	opacity: 1 !important;
+	visibility: visible;
 }
 
 .rv-older-visits.is-open .collapse-indicator {
