@@ -2,6 +2,7 @@ import { appendCompanionTaken, companionDisplayName, companionKey, takenItems } 
 import { formatGlancableStampFromRaw, stripStampAge } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 import { parseLogBullet, stampDateTime } from './schedule';
+import { shareFromLine, visitExtraMarkup } from './visit-share';
 import {
 	appendLogLine,
 	ensureAttemptLog,
@@ -25,6 +26,11 @@ export interface VisitFacts {
 	when: Date;
 	home: boolean;
 	companion: string;
+	publications?: string;
+	media?: string;
+	lesson?: string;
+	lessonFrom?: string;
+	lessonTo?: string;
 }
 
 /**
@@ -88,9 +94,11 @@ export function listVisits(body: string): VisitEntry[] {
 		if (!when) continue;
 		const notesProperty = NOTES_FIELD.exec(lines[index + 1] ?? '')?.[1] ?? null;
 		const partner = entries.find((entry) => entry.home && entry.headingLine == null && entry.bulletLine != null && entry.when.getTime() === when.getTime());
+		const share = shareFromLine(lines[index] ?? '');
 		if (partner) {
 			partner.headingLine = index;
 			partner.notesProperty = notesProperty;
+			Object.assign(partner, share);
 			continue;
 		}
 		entries.push({
@@ -101,6 +109,7 @@ export function listVisits(body: string): VisitEntry[] {
 			bulletLine: null,
 			headingLine: index,
 			notesProperty,
+			...share,
 		});
 	}
 	return entries
@@ -164,7 +173,14 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 	let next = ensureAttemptLog(body);
 	if (facts.home) {
 		const property = options.notesProperty || nextVisitNotesProperty(next);
-		const heading = `##### ${stamp}`;
+		const extra = visitExtraMarkup({
+			publications: facts.publications ?? '',
+			media: facts.media ?? '',
+			lesson: facts.lesson ?? '',
+			lessonFrom: facts.lessonFrom ?? '',
+			lessonTo: facts.lessonTo ?? '',
+		});
+		const heading = extra ? `##### ${stamp} ${extra}` : `##### ${stamp}`;
 		const block = options.notesBlock && options.notesBlock.length > 0
 			? [heading, ...options.notesBlock.slice(1)]
 			: [heading, visitNotesField(property)];
@@ -267,6 +283,8 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	shiftCount(frontmatter, 'Successful Visits', (added?.home ? 1 : 0) - (removed?.home ? 1 : 0));
 	moveLatest(frontmatter, 'Last Attempted', removed, after);
 	moveLatest(frontmatter, 'Last Spoke', removed?.home ? removed : null, after.filter((visit) => visit.home));
+	if (added?.publications?.trim()) assignProperty(frontmatter, 'Left Publications', added.publications.trim());
+	if (added?.media?.trim()) assignProperty(frontmatter, 'Shared Media', added.media.trim());
 	updateTaken(frontmatter, removed, added, after);
 	syncMet(frontmatter, after, new Date());
 	const property = change.removedNotesProperty?.trim();
@@ -375,7 +393,16 @@ export function describeVisit(entry: VisitFacts): string {
 
 /** Visit facts without the line bookkeeping. */
 export function visitFacts(entry: VisitFacts): VisitFacts {
-	return { when: entry.when, home: entry.home, companion: entry.companion };
+	return {
+		when: entry.when,
+		home: entry.home,
+		companion: entry.companion,
+		publications: entry.publications,
+		media: entry.media,
+		lesson: entry.lesson,
+		lessonFrom: entry.lessonFrom,
+		lessonTo: entry.lessonTo,
+	};
 }
 
 export interface VisitHint {

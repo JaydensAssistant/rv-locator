@@ -141,8 +141,8 @@ export interface RVLocatorSettings {
 	cardTitleNameOnly: boolean;
 	/**
 	 * Last spoke, last attempted, and met share one line, and the card badges
-	 * fit that stack. Off unless turned on. A vault that stored `compactCardDates`
-	 * still reads that key.
+	 * fit that stack. On when the key is missing. An explicit off stays off.
+	 * A vault that stored `compactCardDates` still reads that key.
 	 */
 	compactMode: boolean;
 	/** Note opened by the return-visit hub chip. Default Return Visits Hub. */
@@ -157,6 +157,20 @@ export interface RVLocatorSettings {
 	appendMetDateToFilename: boolean;
 	returnScope: ReturnScope;
 	genderFilter: GenderFilter;
+	/** Custom publication titles, added when someone types one that is not in the static list. */
+	customPublications: string[];
+	/** Custom media titles. */
+	customMedia: string[];
+	/** Custom lesson titles. Official lessons stay in the catalog. */
+	customLessons: string[];
+	/** Show the literature and media prompts on a study's at-home log. Off by default. */
+	showStudyLiterature: boolean;
+	/** Left-align return-suggestion bullets outside the attempt log. On by default. */
+	leftAlignSuggestionBullets: boolean;
+	/** Glanceable card icon scale. 1.2 is about 20% larger. */
+	glancableIconScale: number;
+	/** City and distance on their own line. Off by default. */
+	splitCityLine: boolean;
 }
 
 export type PriorityBand = 1 | 2 | 3 | 4 | 5;
@@ -207,12 +221,12 @@ export const DEFAULT_URGENCY_THRESHOLD_DAYS: PriorityDays = {
 	5: 4,
 };
 
-/** P5 < 3d, P4 < 4d, P3 < 7d, P2 < 14d, P1 < 6 weeks. */
+/** P5 is 3 days or less, P4 is 5, P3 is 7, P2 is 21, P1 is 63. The cliff is days inside the floor. */
 export const DEFAULT_IDEALITY_FLOOR_DAYS: PriorityDays = {
-	1: 42,
-	2: 14,
+	1: 63,
+	2: 21,
 	3: 7,
-	4: 4,
+	4: 5,
 	5: 3,
 };
 
@@ -331,7 +345,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	showCardReturnStatus: true,
 	cardReturnFormat: 'short',
 	cardTitleNameOnly: true,
-	compactMode: false,
+	compactMode: true,
 	returnHubNote: 'Return Visits Hub',
 	campaignListFilter: 'all',
 	dashboardPagePreview: false,
@@ -339,6 +353,13 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	appendMetDateToFilename: false,
 	returnScope: 'active',
 	genderFilter: 'all',
+	customPublications: [],
+	customMedia: [],
+	customLessons: [],
+	showStudyLiterature: false,
+	leftAlignSuggestionBullets: true,
+	glancableIconScale: 1.2,
+	splitCityLine: false,
 };
 
 export interface NearbySortPreference {
@@ -412,10 +433,14 @@ type SettingsInput = Partial<RVLocatorSettings> & {
 	compactCardDates?: boolean;
 };
 
-/** Missing stays off. An explicit compact mode wins. Otherwise the old compact-dates key is kept. */
+/**
+ * Missing means on. An explicit compact mode wins.
+ * An explicit old compact-dates value is kept, including an explicit off.
+ */
 export function compactModeFrom(input: SettingsInput): boolean {
 	if (typeof input.compactMode === 'boolean') return input.compactMode;
-	return input.compactCardDates === true;
+	if (typeof input.compactCardDates === 'boolean') return input.compactCardDates;
+	return true;
 }
 
 export function mergeSettings(partial: SettingsInput | null | undefined): RVLocatorSettings {
@@ -494,7 +519,29 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		appendMetDateToFilename: input.appendMetDateToFilename === true,
 		returnScope: sanitizeReturnScope(input.returnScope),
 		genderFilter: sanitizeGenderFilter(input.genderFilter),
+		customPublications: stringList(input.customPublications),
+		customMedia: stringList(input.customMedia),
+		customLessons: stringList(input.customLessons),
+		showStudyLiterature: input.showStudyLiterature === true,
+		leftAlignSuggestionBullets: input.leftAlignSuggestionBullets !== false,
+		glancableIconScale: boundedNumber(input.glancableIconScale, 0.5, 2.5, DEFAULT_SETTINGS.glancableIconScale),
+		splitCityLine: input.splitCityLine === true,
 	};
+}
+
+function stringList(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const item of value) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		const key = text.toLowerCase();
+		if (!text || seen.has(key)) continue;
+		seen.add(key);
+		out.push(text);
+	}
+	return out;
 }
 
 /**

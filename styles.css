@@ -101,10 +101,37 @@
 }
 
 .rv-locator-attr {
+	display: flex;
 	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.35em 1.25em;
 	padding: 6px 12px 8px;
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
+}
+
+.rv-locator-disclaimer {
+	flex: 1 1 16rem;
+	min-width: 0;
+	color: var(--text-muted);
+	text-align: left;
+}
+
+.rv-locator-attr-credits {
+	flex: 0 1 auto;
+	margin-left: auto;
+	text-align: right;
+}
+
+.rv-locator-settings .rv-locator-disclaimer {
+	margin: 0 0 0.8em;
+	padding: 0.7em 0.85em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
 }
 
 .rv-locator-empty-value {
@@ -319,6 +346,9 @@
 }
 
 .rv-locator-sort-preset {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
 	flex: 0 0 auto;
 	margin: 0;
 	padding: 4px 10px;
@@ -328,8 +358,22 @@
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font: inherit;
-	font-size: var(--font-ui-small);
+	font-size: var(--font-ui-smaller);
 	line-height: 1.2;
+}
+
+.rv-sort-icon {
+	display: inline-flex;
+	flex: 0 0 16px;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+}
+
+.rv-sort-icon svg {
+	width: 16px;
+	height: 16px;
 }
 
 .rv-locator-sort-preset.is-active {
@@ -619,8 +663,8 @@
 }
 
 .rv-locator-glancable .rv-locator-slot-icon svg {
-	width: calc(14px * var(--rv-font-scale, 1));
-	height: calc(14px * var(--rv-font-scale, 1));
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
 }
 
 .rv-locator-glancable .rv-locator-slot-text,
@@ -1075,7 +1119,11 @@ table.rv-locator-digest-table,
 .markdown-rendered :is(h3, h5) .rv-stamp-ago,
 .markdown-preview-view :is(h3, h5) .rv-stamp-ago,
 .cm-header .rv-stamp-ago,
-.rv-stamp-ago {
+.rv-stamp-ago,
+.markdown-rendered :is(h3, h5) .rv-stamp-date,
+.markdown-preview-view :is(h3, h5) .rv-stamp-date,
+.cm-header .rv-stamp-date,
+.rv-stamp-date {
 	margin-left: 0.45em;
 	color: var(--text-muted);
 	font-size: 0.62em;
@@ -1154,6 +1202,10 @@ table.rv-locator-digest-table,
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.45em 0.5em;
+}
+
+.rv-locator-companion-modal .rv-locator-suggest-actions.is-end {
+	justify-content: flex-end;
 }
 
 .modal .rv-field-host {
@@ -1778,6 +1830,31 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul,
 	text-align: center;
 }
 
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol),
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) :is(ul, ol) {
+	width: auto;
+	margin-inline: 0;
+	padding-inline-start: 1.2em;
+	list-style-position: outside;
+	text-align: left;
+}
+
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol) > li,
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) li {
+	padding-inline-start: 0;
+	list-style-position: outside;
+	text-align: left;
+}
+
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
+	width: max-content;
+	max-width: 100%;
+	margin-inline: auto;
+	padding-inline-start: 0;
+	list-style-position: inside;
+	text-align: center;
+}
+
 .rv-qf-badges {
 	display: inline-flex;
 	align-items: center;
@@ -1804,7 +1881,7 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul,
 
 .rv-qf-row {
 	display: grid;
-	grid-template-columns: 1.25em 8.2em minmax(0, 1fr);
+	grid-template-columns: 1.25em minmax(0, 8.2em) minmax(0, 1fr);
 	align-items: center;
 	column-gap: 0.4em;
 	padding-block: 0.28em;
@@ -2113,10 +2190,13 @@ body.rv-wide-hubs .rv-hub-row {
 
 .rv-qf-when {
 	display: inline-flex;
-	flex-wrap: nowrap;
+	flex-wrap: wrap;
 	align-items: baseline;
-	gap: 0.35em;
-	white-space: nowrap;
+	justify-content: flex-end;
+	gap: 0.15em 0.35em;
+	max-width: 100%;
+	min-width: 0;
+	white-space: normal;
 	cursor: pointer;
 }
 
@@ -2187,8 +2267,8 @@ body.rv-wide-hubs .rv-hub-row {
 	align-items: center;
 	justify-content: center;
 	box-sizing: border-box;
-	width: calc(14px * var(--rv-font-scale, 1));
-	height: calc(14px * var(--rv-font-scale, 1));
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
 	margin: 0;
 }
 
@@ -2202,8 +2282,8 @@ body.rv-wide-hubs .rv-hub-row {
 
 .rv-locator-glancable .rv-locator-status-icon svg,
 .rv-locator-glancable .rv-locator-place-earth svg {
-	width: calc(14px * var(--rv-font-scale, 1));
-	height: calc(14px * var(--rv-font-scale, 1));
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
 }
 
 .rv-locator-glancable .rv-locator-return-line {
@@ -2238,6 +2318,11 @@ body.rv-wide-hubs .rv-hub-row {
 	max-width: 100%;
 	flex: 0 1 auto;
 	justify-content: flex-start;
+}
+
+.rv-locator-glancable .rv-locator-when.is-compact .rv-locator-slot-text {
+	color: var(--text-normal);
+	font-weight: 700;
 }
 
 .rv-locator-glancable .rv-locator-date {
@@ -2467,4 +2552,235 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	width: 100%;
 	max-width: 100%;
 	box-sizing: border-box;
+}
+
+.rv-qf-label,
+.rv-qf-value {
+	min-width: 0;
+	max-width: 100%;
+}
+
+:is(h3, h5).rv-visit-stamp,
+.markdown-rendered :is(h3, h5).rv-visit-stamp {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.rv-visit-extra {
+	flex: 0 1 auto;
+	min-width: 2.2em;
+	max-width: 14em;
+	overflow: hidden;
+	color: inherit;
+	font-size: 1em;
+	font-weight: inherit;
+	letter-spacing: inherit;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+.rv-modal-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	margin-right: 0.35em;
+	color: var(--text-muted);
+	vertical-align: -0.15em;
+}
+
+.rv-modal-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-suggest-host {
+	position: relative;
+}
+
+.rv-suggest-chevron {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 1.6em;
+	height: 1.6em;
+	margin-left: 0.25em;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-suggest-chevron svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-suggest-panel {
+	position: absolute;
+	z-index: 30;
+	top: calc(100% + 2px);
+	right: 0;
+	left: 0;
+	max-height: 12em;
+	overflow: auto;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.rv-suggest-option {
+	display: block;
+	width: 100%;
+	padding: 0.35em 0.6em;
+	border: 0;
+	background: transparent;
+	color: var(--text-normal);
+	text-align: left;
+	cursor: pointer;
+}
+
+.rv-suggest-option:hover {
+	background: var(--background-modifier-hover);
+}
+
+.rv-map {
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.rv-map-bar {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+	padding: 0.4em 0.7em;
+}
+
+.rv-map-bar h2 {
+	flex: 1 1 auto;
+	margin: 0;
+	font-size: var(--font-ui-medium);
+}
+
+.rv-map-stage {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 16rem;
+	overflow: hidden;
+	background: var(--background-secondary);
+}
+
+.rv-map-tile {
+	position: absolute;
+	width: 256px;
+	height: 256px;
+	pointer-events: none;
+	user-select: none;
+}
+
+.rv-map-pins {
+	position: absolute;
+	inset: 0;
+}
+
+.rv-map-pin {
+	position: absolute;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	margin: 0;
+	padding: 0;
+	border: 2px solid var(--background-primary);
+	border-radius: 999px;
+	color: var(--text-on-accent, #fff);
+	font-size: 11px;
+	font-weight: 700;
+	line-height: 1;
+	transform: translate(-50%, -50%);
+	cursor: pointer;
+}
+
+.rv-map-pin.is-fresh {
+	width: 14px;
+	height: 14px;
+	font-size: 7px;
+	filter: saturate(0.5);
+}
+
+.rv-map-user {
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--background-primary);
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+.rv-map-card {
+	position: absolute;
+	z-index: 2;
+	display: flex;
+	flex-direction: column;
+	gap: 0.35em;
+	min-width: 10em;
+	max-width: 16em;
+	padding: 0.5em 0.6em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.rv-map-card-badges {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+}
+
+.rv-map-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.6em;
+	height: 1.6em;
+	padding: 0 0.3em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+}
+
+.rv-map-badge svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-map-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+}
+
+.rv-map-credit {
+	padding: 0.35em 0.7em 0.5em;
+	color: var(--text-faint);
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-map-credit a {
+	color: inherit;
 }

@@ -1,4 +1,8 @@
 import { Modal, Notice, Setting, SuggestModal, type App } from 'obsidian';
+import { emptyShare, type VisitShare } from './catalog';
+import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
+import { iconizeModal } from './modal-chrome';
+import { mountAlwaysChevron } from './suggest-field';
 import { dateInputValue, defaultPastVisitTime, describeVisit, hourLabel, isFutureVisit, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
 export interface VisitEditOptions {
@@ -12,6 +16,7 @@ export interface VisitEditOptions {
 	onSave: (facts: VisitFacts) => void;
 	/** Shown as Delete visit when set. */
 	onDelete?: () => void;
+	share?: ShareFieldOptions;
 }
 
 /**
@@ -26,6 +31,7 @@ export class VisitEditModal extends Modal {
 	private covered = false;
 	private companionSetting: Setting | null = null;
 	private campaignSetting: Setting | null = null;
+	private share: VisitShare = emptyShare();
 
 	constructor(app: App, private options: VisitEditOptions) {
 		super(app);
@@ -35,6 +41,13 @@ export class VisitEditModal extends Modal {
 		this.dateText = dateInputValue(rounded.date);
 		this.hour = rounded.hour;
 		this.companion = start.companion;
+		this.share = {
+			publications: start.publications ?? options.share?.initial.publications ?? '',
+			media: start.media ?? options.share?.initial.media ?? '',
+			lesson: start.lesson ?? options.share?.initial.lesson ?? '',
+			lessonFrom: start.lessonFrom ?? options.share?.initial.lessonFrom ?? '',
+			lessonTo: start.lessonTo ?? options.share?.initial.lessonTo ?? '',
+		};
 	}
 
 	onOpen(): void {
@@ -82,7 +95,19 @@ export class VisitEditModal extends Modal {
 				const list = contentEl.createEl('datalist', { attr: { id: listId } });
 				for (const name of this.options.recentCompanions) list.createEl('option', { attr: { value: name } });
 				text.inputEl.setAttribute('list', listId);
+				mountAlwaysChevron(text.inputEl, () => this.options.recentCompanions.filter((name) => {
+					const needle = this.companion.trim().toLowerCase();
+					return !needle || name.toLowerCase().includes(needle);
+				}), (picked) => {
+					this.companion = picked;
+					text.setValue(picked);
+				});
 			});
+		if (this.options.share) {
+			mountShareFields(contentEl, { ...this.options.share, initial: this.share }, (next) => {
+				this.share = next;
+			});
+		}
 		this.syncCompanion();
 		if (this.options.campaignName) {
 			this.campaignSetting = new Setting(contentEl)
@@ -115,6 +140,7 @@ export class VisitEditModal extends Modal {
 				button.setCta();
 				button.onClick(() => this.save());
 			});
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {
@@ -138,7 +164,61 @@ export class VisitEditModal extends Modal {
 		}
 		this.close();
 		if (this.home && this.options.campaignName) this.options.onCovered?.(this.covered);
-		this.options.onSave({ when, home: this.home, companion: this.home ? this.companion.trim() : '' });
+		this.options.onSave({
+			when,
+			home: this.home,
+			companion: this.home ? this.companion.trim() : '',
+			publications: this.share.publications.trim(),
+			media: this.share.media.trim(),
+			lesson: this.share.lesson.trim(),
+			lessonFrom: this.share.lessonFrom.trim(),
+			lessonTo: this.share.lessonTo.trim(),
+		});
+	}
+}
+
+/** Literature and media for a not-home log, which has no companion dialog. */
+export class LiteraturePromptModal extends Modal {
+	private share: VisitShare;
+	private settled = false;
+
+	constructor(
+		app: App,
+		private options: ShareFieldOptions,
+		private onDone: (share: VisitShare | false) => void,
+	) {
+		super(app);
+		this.share = { ...options.initial };
+	}
+
+	onOpen(): void {
+		this.setTitle('Log visit');
+		this.modalEl.addClass('rv-locator-modal');
+		this.contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'Optional. Leave both blank to log the visit without literature or media.',
+		});
+		mountShareFields(this.contentEl, this.options, (next) => { this.share = next; });
+		new Setting(this.contentEl)
+			.addButton((button) => {
+				button.setButtonText('Log visit');
+				button.setCta();
+				button.onClick(() => {
+					this.settled = true;
+					this.onDone(this.share);
+					this.close();
+				});
+			})
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			});
+		iconizeModal(this.contentEl);
+	}
+
+	onClose(): void {
+		if (!this.settled) this.onDone(false);
+		this.contentEl.empty();
 	}
 }
 
@@ -161,6 +241,13 @@ export class VisitPickModal extends SuggestModal<VisitEntry> {
 
 	onChooseSuggestion(entry: VisitEntry): void {
 		this.onPick(entry);
+	}
+
+	onOpen(): void {
+		void super.onOpen();
+		this.setTitle('Choose a visit');
+		this.modalEl.addClass('rv-locator-modal');
+		iconizeModal(this.modalEl);
 	}
 }
 
@@ -195,6 +282,7 @@ export class ConfirmActionModal extends Modal {
 					this.options.onConfirm();
 				});
 			});
+		iconizeModal(this.contentEl);
 	}
 
 	onClose(): void {

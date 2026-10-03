@@ -1,4 +1,8 @@
 import { Modal, Setting, type App } from 'obsidian';
+import { emptyShare, type VisitShare } from './catalog';
+import { mountShareFields } from './catalog-fields';
+import { iconizeModal } from './modal-chrome';
+import { mountAlwaysChevron } from './suggest-field';
 import { abbreviateAddress, addressesMatchOneForOne, matchingAddress } from './address';
 import { companionChoices, matchingCompanion } from './companions';
 import { ADDRESS_LOOKUP_IDLE_MS, addressLookupDecision } from './lookup-cadence';
@@ -14,6 +18,8 @@ export interface NewRvIdentity {
 	priority: number;
 	/** Set when they picked a Geoapify hit and the address still matches it. */
 	verifiedHit: GeocodeHit | null;
+	publications: string;
+	media: string;
 }
 
 export interface NewRvModalOptions {
@@ -24,6 +30,8 @@ export interface NewRvModalOptions {
 	title?: string;
 	intro?: string;
 	preset?: Partial<Pick<NewRvIdentity, 'gender' | 'name' | 'address' | 'companion' | 'priority'>>;
+	publications?: readonly string[];
+	media?: readonly string[];
 }
 
 interface TextControl {
@@ -52,6 +60,7 @@ export class NewRvIdentityModal extends Modal {
 	private sentQuery = '';
 	private lookupFlight: Promise<void> | null = null;
 	private queuedQuery: string | null = null;
+	private share: VisitShare = emptyShare();
 
 	constructor(
 		app: App,
@@ -122,6 +131,12 @@ export class NewRvIdentityModal extends Modal {
 				const listId = `rv-locator-addresses-${Date.now()}`;
 				this.addressList = contentEl.createEl('datalist', { attr: { id: listId } });
 				text.inputEl?.setAttribute('list', listId);
+				if (text.inputEl) {
+					mountAlwaysChevron(text.inputEl, () => this.addressResults.map((hit) => hit.formattedAddress), (picked) => {
+						const hit = this.addressResults.find((item) => item.formattedAddress === picked);
+						if (hit) this.selectAddress(hit);
+					});
+				}
 			});
 		new Setting(contentEl)
 			.setName('Companion')
@@ -136,6 +151,14 @@ export class NewRvIdentityModal extends Modal {
 					if (name.trim()) list.createEl('option', { attr: { value: name } });
 				}
 				text.inputEl?.setAttribute('list', listId);
+				if (text.inputEl) {
+					mountAlwaysChevron(text.inputEl, () => companionChoices(this.options.companions, this.companion).map((item) => item.label), (picked) => {
+						const match = companionChoices(this.options.companions, this.companion).find((item) => item.label === picked || item.value === picked);
+						this.companion = match?.value ?? picked;
+						text.setValue(this.companion);
+						this.companionPicked = true;
+					});
+				}
 				this.bindField(text, () => this.commitCompanionMatch(), (value) => {
 					this.companion = value;
 					const match = matchingCompanion(companionChoices(this.options.companions, value), value);
@@ -143,6 +166,15 @@ export class NewRvIdentityModal extends Modal {
 					text.inputEl?.classList.toggle('is-selected', this.companionPicked);
 				});
 			});
+		mountShareFields(contentEl, {
+			publications: this.options.publications ?? [],
+			media: this.options.media ?? [],
+			customLessons: [],
+			lessons: [],
+			showLiterature: true,
+			showLesson: false,
+			initial: this.share,
+		}, (next) => { this.share = next; });
 		new Setting(contentEl)
 			.setName('Priority')
 			.setDesc('Starts from the default priority setting.')
@@ -162,6 +194,7 @@ export class NewRvIdentityModal extends Modal {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.close());
 			});
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {
@@ -185,6 +218,8 @@ export class NewRvIdentityModal extends Modal {
 			companion: this.companion.trim(),
 			priority: this.priority,
 			verifiedHit: verified,
+			publications: this.share.publications.trim(),
+			media: this.share.media.trim(),
 		});
 		this.close();
 	}

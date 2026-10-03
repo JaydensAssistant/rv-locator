@@ -173,6 +173,8 @@ function paintFactsBody(
 	factDateRow(content, 'message-circle', 'Spoke', readProperty(data, 'Last Spoke'));
 	factDateRow(content, 'clock', 'Attempted', readProperty(data, 'Last Attempted'));
 	factDateRow(content, 'home', 'Met', readProperty(data, 'Met'));
+	factRow(content, 'book-open', 'Left Publications', textOf(readProperty(data, 'Left Publications')) || '—');
+	factRow(content, 'clapperboard', 'Shared Media', textOf(readProperty(data, 'Shared Media')) || '—');
 
 	const taken = textList(readProperty(data, 'Taken'));
 	const metWith = textOf(readProperty(data, 'Met With'));

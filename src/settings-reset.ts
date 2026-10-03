@@ -75,6 +75,13 @@ function applyEveryday(next: RVLocatorSettings): void {
 	next.cardReturnFormat = DEFAULT_SETTINGS.cardReturnFormat;
 	next.cardTitleNameOnly = DEFAULT_SETTINGS.cardTitleNameOnly;
 	next.compactMode = DEFAULT_SETTINGS.compactMode;
+	next.customPublications = [];
+	next.customMedia = [];
+	next.customLessons = [];
+	next.showStudyLiterature = DEFAULT_SETTINGS.showStudyLiterature;
+	next.leftAlignSuggestionBullets = DEFAULT_SETTINGS.leftAlignSuggestionBullets;
+	next.glancableIconScale = DEFAULT_SETTINGS.glancableIconScale;
+	next.splitCityLine = DEFAULT_SETTINGS.splitCityLine;
 	next.campaignListFilter = DEFAULT_SETTINGS.campaignListFilter;
 	next.dashboardPagePreview = DEFAULT_SETTINGS.dashboardPagePreview;
 }

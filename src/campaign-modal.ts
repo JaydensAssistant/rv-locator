@@ -1,5 +1,6 @@
 import { Modal, Setting, type App } from 'obsidian';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
+import { iconizeModal } from './modal-chrome';
 
 /** Name a campaign, or cancel the one that is already active. Only one is active. */
 export class CampaignModal extends Modal {
@@ -22,10 +23,15 @@ export class CampaignModal extends Modal {
 		this.modalEl.addClass('rv-locator-modal');
 		const { contentEl } = this;
 		const active = campaignIsActive(this.current);
+		if (active && this.current) {
+			this.name = this.current.name;
+			this.start = this.current.start;
+			this.end = this.current.end;
+		}
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
 			text: active
-				? 'One campaign is already active. Cancel it before starting another.'
+				? 'This campaign is active. End it before starting another.'
 				: 'One campaign at a time. The start date is today unless you change it.',
 		});
 		new Setting(contentEl)
@@ -33,7 +39,6 @@ export class CampaignModal extends Modal {
 			.addText((text) => {
 				text.setPlaceholder('Campaign name');
 				text.setValue(this.name);
-				text.setDisabled(active);
 				text.onChange((value) => { this.name = value; });
 			});
 		new Setting(contentEl)
@@ -41,7 +46,6 @@ export class CampaignModal extends Modal {
 			.addText((text) => {
 				text.inputEl.type = 'date';
 				text.setValue(this.start);
-				text.setDisabled(active);
 				text.onChange((value) => { this.start = value; });
 			});
 		new Setting(contentEl)
@@ -51,27 +55,20 @@ export class CampaignModal extends Modal {
 				text.inputEl.type = 'date';
 				text.setPlaceholder('');
 				text.setValue(this.end);
-				text.setDisabled(active);
 				text.onChange((value) => { this.end = value; });
 			});
 		new Setting(contentEl).addButton((button) => {
-			button.setButtonText('Start campaign');
-			button.setCta();
-			button.setDisabled(active);
-			button.onClick(() => this.startCampaign());
-		});
-		if (this.current) {
-			const end = this.current.end ? ` through ${this.current.end}` : '';
-			contentEl.createEl('p', {
-				cls: 'rv-locator-modal-copy',
-				text: `${active ? 'Active' : 'Saved'}: ${this.current.name}, from ${this.current.start}${end}. ${this.current.covered.length} covered.`,
-			});
-			new Setting(contentEl).addButton((button) => {
-				button.setButtonText('Cancel campaign');
+			if (active) {
+				button.setButtonText('End campaign');
 				button.setWarning();
 				button.onClick(() => this.askRemove());
-			});
-		}
+			} else {
+				button.setButtonText('Start campaign');
+				button.setCta();
+				button.onClick(() => this.startCampaign());
+			}
+		});
+		iconizeModal(contentEl);
 	}
 
 	/** The first click asks. The campaign stays until they confirm. */
@@ -138,6 +135,7 @@ export function askCampaignCovered(app: App, campaignName: string): Promise<bool
 					button.setButtonText('Not this time');
 					button.onClick(() => finish(false));
 				});
+			iconizeModal(modal.contentEl);
 		};
 		modal.onClose = () => {
 			modal.contentEl.empty();

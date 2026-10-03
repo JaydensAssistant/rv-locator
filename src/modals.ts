@@ -1,4 +1,8 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
+import { emptyShare, type VisitShare } from './catalog';
+import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
+import { iconizeModal } from './modal-chrome';
+import { mountAlwaysChevron } from './suggest-field';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
 import { companionChoices, matchingCompanion, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
@@ -45,6 +49,7 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 			? `Showing a saved lookup. Look up again sends the address to Geoapify. ${PRIVACY_NOTICE}`
 			: PRIVACY_NOTICE);
 		this.modalEl.addClass('rv-locator-modal');
+		iconizeModal(this.modalEl);
 	}
 
 	onClose(): void {
@@ -120,6 +125,13 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 
 	onChooseItem(item: TFolder): void {
 		this.onPick(item);
+	}
+
+	onOpen(): void {
+		void super.onOpen();
+		this.setTitle('Choose a folder');
+		this.modalEl.addClass('rv-locator-modal');
+		iconizeModal(this.modalEl);
 	}
 }
 
@@ -264,6 +276,7 @@ export class BulkGeocodeModal extends Modal {
 					this.close();
 				});
 			});
+		iconizeModal(contentEl);
 	}
 
 	private async refreshPreview(): Promise<void> {
@@ -404,6 +417,7 @@ export class SuccessfulVisitsModal extends Modal {
 					this.close();
 				});
 			});
+		iconizeModal(contentEl);
 	}
 }
 
@@ -451,6 +465,7 @@ export class VisitConfirmModal extends Modal {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.finish(null));
 			});
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {
@@ -500,19 +515,28 @@ export class CompanionSuggestModal extends Modal {
 	private companionPicked = false;
 	private companionInput: { setValue: (value: string) => void; inputEl?: HTMLElement } | null = null;
 
+	private share: VisitShare = emptyShare();
+
 	constructor(
 		app: App,
 		private recent: readonly string[],
 		onDone: (name: string | null | false) => void,
 		private campaign: CompanionCampaignPrompt | null = null,
+		private literature: (ShareFieldOptions & { onShare: (share: VisitShare) => void }) | null = null,
 	) {
 		super(app);
 		this.gate = createCompanionPromptGate(onDone);
+		if (literature) {
+			this.share = {
+				...literature.initial,
+				lessonFrom: literature.initial.lessonFrom || literature.initial.lessonTo,
+			};
+		}
 	}
 
 	onOpen(): void {
 		this.setTitle('Who came with you?');
-		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
@@ -541,7 +565,17 @@ export class CompanionSuggestModal extends Modal {
 					const match = matchingCompanion(this.getSuggestions(value), value);
 					this.markCompanion(match != null && match.value === value.trim());
 				});
+				mountAlwaysChevron(text.inputEl, () => this.getSuggestions(this.companion).map((item) => item.label), (picked) => {
+					const match = this.getSuggestions(this.companion).find((item) => item.label === picked || item.value === picked);
+					this.selectCompanion(match?.value ?? picked);
+				});
 			});
+		if (this.literature) {
+			mountShareFields(contentEl, this.literature, (next) => {
+				this.share = next;
+				this.literature?.onShare(next);
+			});
+		}
 		if (this.campaign) {
 			const pronoun = this.campaign.pronoun ?? 'them';
 			contentEl.createEl('p', {
@@ -563,7 +597,7 @@ export class CompanionSuggestModal extends Modal {
 				yes.classList.remove('mod-cta');
 			});
 		}
-		const bar = contentEl.createDiv('rv-locator-suggest-actions');
+		const bar = contentEl.createDiv('rv-locator-suggest-actions is-end');
 		const log = bar.createEl('button', { text: 'Log visit', attr: { type: 'button' } });
 		log.classList.add('mod-cta');
 		log.addEventListener('click', () => this.commitLog());
@@ -575,6 +609,7 @@ export class CompanionSuggestModal extends Modal {
 		this.containerEl.addEventListener('pointerdown', (event: PointerEvent) => {
 			this.onDimPointerDown(event.target);
 		});
+		iconizeModal(contentEl);
 	}
 
 	/** A press on the dim layer behind the dialog cancels. A press inside the dialog does not. */
@@ -625,6 +660,7 @@ export class CompanionSuggestModal extends Modal {
 	private commitLog(): void {
 		this.commitCompanionMatch();
 		this.finishCoverage(this.covered ? 'yes' : 'no');
+		this.literature?.onShare(this.share);
 		const name = this.companion.trim();
 		if (name) this.gate.choose(name);
 		else this.gate.skip();

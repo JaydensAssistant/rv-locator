@@ -250,6 +250,8 @@ export class Vault {
 
 export type App = object;
 
+export function setIcon(_parent: unknown, _iconId: string): void {}
+
 export function normalizePath(path: string): string {
 	return path.replace(/\\/g, '/');
 }

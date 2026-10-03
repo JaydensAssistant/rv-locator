@@ -110,9 +110,10 @@ function tagVisitNotesHeading(root: HTMLElement): void {
 export function decorateVisitControls(root: HTMLElement, sectionLine: () => number | null, open: VisitMenuOpener): void {
 	tagVisitNotesHeading(root);
 	for (const heading of stampHeadings(root)) {
-		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .${MORE_CLASS}, .heading-collapse-indicator`));
+		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator`));
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
+		markStampDate(heading);
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
@@ -135,6 +136,33 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 	}
 }
 
+/** The calendar date on a visit heading stays the small muted style. Literature stays full size. */
+function markStampDate(heading: HTMLElement): void {
+	if (heading.querySelector('.rv-stamp-date')) return;
+	const doc = heading.ownerDocument;
+	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
+	const walker = doc.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const text = node.textContent ?? '';
+		const match = /([—–-]\s+)([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/.exec(text);
+		const parent = node.parentElement;
+		if (match && match.index != null && parent) {
+			const start = match.index + (match[1]?.length ?? 0);
+			const date = match[2] ?? '';
+			const after = text.slice(start + date.length);
+			node.textContent = text.slice(0, start);
+			const span = doc.createElement('span');
+			span.className = 'rv-stamp-date';
+			span.textContent = date;
+			parent.insertBefore(span, node.nextSibling);
+			if (after) parent.insertBefore(doc.createTextNode(after), span.nextSibling);
+			return;
+		}
+		node = walker.nextNode();
+	}
+}
+
 /** The 🗺️ link beside Address becomes an earth button the size of the Hub plus. */
 export function decorateMapLink(root: HTMLElement, onOpen?: () => void): void {
 	root.querySelectorAll('.callout[data-callout="quote"] a').forEach((link) => {
@@ -144,7 +172,7 @@ export function decorateMapLink(root: HTMLElement, onOpen?: () => void): void {
 		if (gap && gap.nodeType === Node.TEXT_NODE && !(gap.textContent ?? '').trim()) gap.remove();
 		link.empty();
 		link.addClass(MAP_CLASS);
-		link.setAttribute('aria-label', 'Map, coming soon');
+		link.setAttribute('aria-label', 'Map');
 		setIcon(link, 'earth');
 		if (onOpen) {
 			link.addEventListener('click', (event) => {

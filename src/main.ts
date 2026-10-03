@@ -15,7 +15,10 @@ import { companionRecency, formatStoredCompanion, recentCompanionNames as collec
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
-import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
+import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
+import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, rememberCustom, renameCustom, renameLabelInMarkdown, type VisitShare } from './catalog';
+import type { ShareFieldOptions } from './catalog-fields';
+import { newestLessonEnd } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
@@ -26,7 +29,9 @@ import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { layoutVisitNotes } from './visit-display';
 import { pagePreviewDecision } from './page-preview';
-import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
+import { RvMapView, MAP_VIEW_TYPE } from './map-view';
+import type { MapPin } from './map-pins';
+import { buildMapPins } from './map-pins';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
@@ -42,7 +47,9 @@ import { currentReturnBucket, readAttemptLog, suggestReturnDigest, type AttemptB
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
-import { latLonFromUnknown } from './distance';
+import { latLonFromUnknown, validLatLon } from './distance';
+import { calendarDaysSince } from './dates';
+import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
@@ -228,7 +235,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (registered.some((ok) => !ok)) {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
-		this.registerView(MAP_SOON_VIEW_TYPE, (leaf) => new MapSoonView(leaf));
+		this.registerView(MAP_VIEW_TYPE, (leaf) => new RvMapView(leaf, this));
 
 		this.registerMarkdownPostProcessor((element, context) => {
 			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
@@ -304,11 +311,12 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-wide-quick-facts', on && this.settings.wideQuickFacts);
 		body.toggleClass('rv-wide-hubs', on && this.settings.wideHubsAddress);
 		body.toggleClass('rv-wide-visit-buttons', on && this.settings.wideVisitButtons);
+		body.toggleClass('rv-suggestions-outside-left', on && this.settings.leftAlignSuggestionBullets);
 	}
 
 	/** Map earth, archive label, Quick Facts, and the shared Hub row. Meta Bind may remount, so this runs again. */
 	private decorateOpenNote(element: HTMLElement, path: string): void {
-		decorateMapLink(element, () => { void this.openMapSoon(); });
+		decorateMapLink(element, () => { void this.openMapSoon(path); });
 		decorateArchiveButton(element, this.pathIsInactive(path));
 		decorateNoteChrome(element, path, this.noteChromeHost());
 		this.layoutOpenVisits(element, path);
@@ -475,6 +483,8 @@ export default class RVLocatorPlugin extends Plugin {
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
 				lookupAddress: (query) => this.suggestAddresses(query),
+				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
+				media: [...MEDIA_TITLES, ...this.settings.customMedia],
 			}, (value) => resolve(value)).open();
 		});
 		if (!identity || this.unloaded) return;
@@ -501,6 +511,8 @@ export default class RVLocatorPlugin extends Plugin {
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
 				lookupAddress: (query) => this.suggestAddresses(query),
+				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
+				media: [...MEDIA_TITLES, ...this.settings.customMedia],
 				preset: {
 					gender,
 					address,
@@ -562,6 +574,8 @@ export default class RVLocatorPlugin extends Plugin {
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
 			else if (created instanceof TFile) {
+				const draft = this.newRvDraft;
+				if (draft) await this.writeNewRvShare(created, draft);
 				await this.refreshAttemptDigest(created);
 				if (sourcePath) await this.linkHousehold(sourcePath, created);
 			}
@@ -573,6 +587,16 @@ export default class RVLocatorPlugin extends Plugin {
 			this.newRvDraft = null;
 			this.housemateSourcePath = null;
 		}
+	}
+
+	private async writeNewRvShare(file: TFile, identity: NewRvIdentity): Promise<void> {
+		if (!identity.publications && !identity.media) return;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			if (identity.publications) assignProperty(data, 'Left Publications', identity.publications);
+			if (identity.media) assignProperty(data, 'Shared Media', identity.media);
+		});
+		await this.rememberShare({ ...emptyShare(), publications: identity.publications, media: identity.media });
 	}
 
 	/** One-shot gender and optional name for the New RV template. Cleared after it is read. */
@@ -642,11 +666,15 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Callers append the plain name to Taken only and leave Met With unchanged.
 	 * New writes do not create wikilinks.
 	 */
-	async promptCompanion(path?: string): Promise<string | false> {
+	async promptCompanion(path?: string, shareBox?: { share: VisitShare }): Promise<string | false> {
 		await new Promise((resolve) => window.setTimeout(resolve, COMPANION_PROMPT_DELAY_MS));
 		const campaign = path && this.shouldAskCoverage(path) ? this.campaign : null;
 		const note = path ? this.app.vault.getFileByPath(path) : null;
-		const gender = note ? this.app.metadataCache.getFileCache(note)?.frontmatter?.Gender : '';
+		const frontmatter = note ? this.app.metadataCache.getFileCache(note)?.frontmatter : null;
+		const gender = readProperty(frontmatter, 'Gender');
+		const status = note ? resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) : null;
+		const study = status === 'Study';
+		const lessonFrom = path && study ? await this.newestLessonEnd(path) : '';
 		const picked = await new Promise<string | null | false>((resolve) => {
 			const modal = new CompanionSuggestModal(
 				this.app,
@@ -657,6 +685,12 @@ export default class RVLocatorPlugin extends Plugin {
 					pronoun: coveragePronoun(gender),
 					onDecision: (decision) => {
 						if (path) this.coverageDecisions.set(path, decision);
+					},
+				} : null,
+				path ? {
+					...this.shareFieldOptions(study, lessonFrom),
+					onShare: (share) => {
+						if (shareBox) shareBox.share = share;
 					},
 				} : null,
 			);
@@ -671,6 +705,76 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Quoted Taken / Met With wikilinks, after processFrontMatter may have flattened them. */
 	stabilizeCompanionFrontmatter(markdown: string): string {
 		return quoteCompanionFrontmatter(markdown);
+	}
+
+	private shareFieldOptions(study: boolean, lessonFrom = '', forceLiterature = false): ShareFieldOptions {
+		return {
+			publications: [...this.settings.customPublications, ...PUBLICATION_TITLES],
+			media: [...this.settings.customMedia, ...MEDIA_TITLES],
+			customLessons: this.settings.customLessons,
+			lessons: [...LESSONS],
+			showLiterature: forceLiterature || !study || this.settings.showStudyLiterature,
+			showLesson: study,
+			initial: { ...emptyShare(), lessonFrom },
+		};
+	}
+
+	private async newestLessonEnd(path: string): Promise<string> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return '';
+		try {
+			return newestLessonEnd(await this.app.vault.cachedRead(file));
+		} catch {
+			return '';
+		}
+	}
+
+	private async promptLiterature(_file: TFile): Promise<VisitShare | false> {
+		return new Promise((resolve) => {
+			new LiteraturePromptModal(this.app, this.shareFieldOptions(false), (share) => resolve(share)).open();
+		});
+	}
+
+	private async rememberShare(share: VisitShare): Promise<void> {
+		const publications = rememberCustom(this.settings.customPublications, share.publications, PUBLICATION_TITLES);
+		const media = rememberCustom(this.settings.customMedia, share.media, MEDIA_TITLES);
+		const lessons = rememberCustom(this.settings.customLessons, share.lesson, LESSONS.map((lesson) => lesson.title));
+		const changed = publications.length !== this.settings.customPublications.length
+			|| media.length !== this.settings.customMedia.length
+			|| lessons.length !== this.settings.customLessons.length;
+		if (!changed) return;
+		this.settings.customPublications = publications;
+		this.settings.customMedia = media;
+		this.settings.customLessons = lessons;
+		await this.saveSettings();
+	}
+
+	/** Rename a custom catalog entry and every note that already stores that name. */
+	async renameCatalogEntry(key: 'customPublications' | 'customMedia' | 'customLessons', from: string, to: string): Promise<void> {
+		const nextName = to.trim();
+		const previous = from.trim();
+		if (!nextName || nextName.toLowerCase() === previous.toLowerCase()) return;
+		this.settings[key] = renameCustom(this.settings[key], previous, nextName);
+		await this.saveSettings();
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			let markdown = '';
+			try {
+				markdown = await this.app.vault.read(file);
+			} catch {
+				continue;
+			}
+			const next = renameLabelInMarkdown(markdown, previous, nextName);
+			if (next !== markdown) await this.app.vault.modify(file, next);
+		}
+	}
+
+	/** Hub filters return to their defaults each time the hub view is created. */
+	resetHubFilters(): void {
+		if (this.settings.returnScope === 'active' && this.settings.genderFilter === 'all' && this.settings.campaignListFilter === 'all') return;
+		this.settings.returnScope = 'active';
+		this.settings.genderFilter = 'all';
+		this.settings.campaignListFilter = 'all';
+		void this.saveSettings();
 	}
 
 	private recentCompanionNames(): string[] {
@@ -1096,11 +1200,55 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.saveSettings();
 	}
 
-	/** Earth on a card or beside Address. The external route icon stays a maps link. */
-	async openMapSoon(): Promise<void> {
+	mapFocusPath: string | null = null;
+
+	/** Earth on a card, beside Address, or on the hub. The external route icon stays a maps link. */
+	async openMapSoon(path?: string): Promise<void> {
+		this.mapFocusPath = path ?? null;
+		const leaves = this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE);
+		const existing = leaves[0];
+		if (existing) {
+			await this.app.workspace.revealLeaf(existing);
+			const view = existing.view;
+			if (view instanceof RvMapView) view.recenter();
+			return;
+		}
 		const leaf = this.app.workspace.getLeaf('tab');
-		await leaf.setViewState({ type: MAP_SOON_VIEW_TYPE, active: true });
+		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
 		void this.app.workspace.revealLeaf(leaf);
+	}
+
+	listMapPins(): MapPin[] {
+		const colors = urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors);
+		const rows = this.app.vault.getMarkdownFiles().map((file) => {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
+			const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? 0;
+			const status = resolveStatus(readProperty(frontmatter, 'Status'), priority);
+			const spoke = readProperty(frontmatter, 'Last Spoke');
+			const raw = spoke instanceof Date ? spoke.toISOString() : typeof spoke === 'string' ? spoke : '';
+			return {
+				path: file.path,
+				name: file.basename,
+				lat: point?.lat ?? Number.NaN,
+				lon: point?.lon ?? Number.NaN,
+				priority,
+				days: raw ? calendarDaysSince(raw) : null,
+				inactive: status === 'Inactive',
+			};
+		});
+		return buildMapPins(rows, this.settings.idealityFloorDays, this.settings.urgencyThresholdDays, colors);
+	}
+
+	openMapNote(path: string): void {
+		void this.app.workspace.openLinkText(path, path, true);
+	}
+
+	currentMapFix(): { lat: number; lon: number } | null {
+		if (this.settings.distanceTest) {
+			return validLatLon(this.settings.testLatitude, this.settings.testLongitude);
+		}
+		return null;
 	}
 
 	/** Quick Facts route badge. Stored Map Link when it is a URL, otherwise a Google Maps search. */
@@ -1470,14 +1618,19 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
 		const now = new Date();
+		const shareBox = { share: emptyShare() };
 		let companion = '';
 		if (outcome === 'home') {
-			const picked = await this.promptCompanion(file.path);
+			const picked = await this.promptCompanion(file.path, shareBox);
 			if (picked === false) {
 				this.coverageDecisions.delete(file.path);
 				return;
 			}
 			companion = picked;
+		} else {
+			const share = await this.promptLiterature(file);
+			if (share === false) return;
+			shareBox.share = share;
 		}
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
@@ -1486,15 +1639,16 @@ export default class RVLocatorPlugin extends Plugin {
 			const head = data.slice(0, info.contentStart);
 			const body = data.slice(info.contentStart);
 			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
-			const nextBody = applyVisitBody(body, outcome, now, companion);
+			const nextBody = applyVisitBody(body, outcome, now, companion, shareBox.share);
 			visitsAfter = listVisits(nextBody);
 			return head + nextBody;
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
-			applyVisitFrontmatter(data, outcome, now, companion);
+			applyVisitFrontmatter(data, outcome, now, companion, shareBox.share);
 			syncMet(data, visitsAfter, now);
 		});
+		await this.rememberShare(shareBox.share);
 		await this.restabilizeCompanions(file);
 		await this.consumeCoverage(file.path, outcome);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
@@ -1505,10 +1659,13 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Log past visit, from the priority badge, the note's button, or the command. */
 	promptPastVisit(file: TFile): void {
 		const campaign = this.shouldAskCoverage(file.path) ? this.campaign : null;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		new VisitEditModal(this.app, {
 			title: `Log past visit on “${file.basename}”`,
 			recentCompanions: this.recentCompanionNames(),
 			campaignName: campaign?.name,
+			share: this.shareFieldOptions(study, '', true),
 			onCovered: (covered) => {
 				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
 			},
@@ -1536,6 +1693,13 @@ export default class RVLocatorPlugin extends Plugin {
 			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, { added: visit, remaining });
 		});
 		await this.restabilizeCompanions(file);
+		await this.rememberShare({
+			publications: visit.publications ?? '',
+			media: visit.media ?? '',
+			lesson: visit.lesson ?? '',
+			lessonFrom: visit.lessonFrom ?? '',
+			lessonTo: visit.lessonTo ?? '',
+		});
 		await this.consumeCoverage(file.path, visit.home ? 'home' : 'miss');
 		new Notice(`Logged ${describeVisit(visit)} on “${file.basename}”.`);
 		await this.afterVisitWrite(file, visit.home ? 'home' : 'miss', notesProperty);
@@ -1612,10 +1776,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private promptEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		new VisitEditModal(this.app, {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
+			share: this.shareFieldOptions(study, entry.lessonFrom ?? '', true),
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},

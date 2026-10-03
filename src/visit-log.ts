@@ -1,6 +1,8 @@
 import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
 import { calendarDaysSinceStamp, formatDaysAgo, formatExactVisitStamp, formatGlancableVisitStamp, stripStampAge } from './dates';
+import { emptyShare, type VisitShare } from './catalog';
+import { visitExtraMarkup, visitExtrasFromLine } from './visit-share';
 import { stampDateTime } from './schedule';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
@@ -59,6 +61,7 @@ export function applyVisitFrontmatter(
 	outcome: VisitOutcome,
 	now: Date,
 	companion?: string | null,
+	share: VisitShare = emptyShare(),
 ): void {
 	const address = readProperty(frontmatter, ADDRESS_KEY);
 	const hadAddress = Object.keys(frontmatter).some((key) => key.toLowerCase() === ADDRESS_KEY.toLowerCase());
@@ -73,6 +76,8 @@ export function applyVisitFrontmatter(
 			assignProperty(frontmatter, 'Taken', appendCompanionTaken(readProperty(frontmatter, 'Taken'), stored));
 		}
 	}
+	if (share.publications.trim()) assignProperty(frontmatter, 'Left Publications', share.publications.trim());
+	if (share.media.trim()) assignProperty(frontmatter, 'Shared Media', share.media.trim());
 	if (!hadAddress) {
 		removeProperty(frontmatter, ADDRESS_KEY);
 		return;
@@ -101,10 +106,10 @@ export function applyVisitFrontmatter(
  * to `#####`. Home and Not home refresh ages already on the note. Address is
  * not part of the body edit.
  */
-export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date, companion = ''): string {
+export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date, companion = '', share: VisitShare = emptyShare()): string {
 	const stamp = formatVisitStamp(now);
 	let next = ensureAttemptLog(body);
-	if (outcome === 'home') next = insertHomeHeading(next, stamp);
+	if (outcome === 'home') next = insertHomeHeading(next, stamp, undefined, share);
 	next = appendLogLine(next, `> - ${stamp} — ${visitPhrase(outcome === 'home', companion)}`);
 	next = refreshHomeStampAges(next, now);
 	next = ensureVisitNotesHeading(next);
@@ -379,10 +384,13 @@ function storedVisitDate(value: unknown): Date | null {
 function refreshStampLine(line: string, today: Date): string {
 	const match = STAMP_HEADING.exec(line);
 	if (!match) return line;
-	const stamp = stripStampAge(match[1] ?? '');
+	const raw = match[1] ?? '';
+	const extras = visitExtrasFromLine(raw);
+	const stamp = stripStampAge(raw);
 	const days = calendarDaysSinceStamp(stamp, today);
 	if (days == null) return line;
-	return `##### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
+	const tail = extras ? ` ${extras}` : '';
+	return `##### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>${tail}`;
 }
 
 /** One `### Recent Notes:` above the first visit stamp. `### Visit Notes:` is renamed. Notes with no stamp are left alone. */
@@ -492,11 +500,12 @@ export function ensureAttemptLog(body: string): string {
  * Older stamps stay below it in the file. A note with no stamp yet still
  * inserts just above Attempt Log, and the heading is added above that stamp.
  */
-export function insertHomeHeading(body: string, stamp: string, notesProperty?: string): string {
+export function insertHomeHeading(body: string, stamp: string, notesProperty?: string, share: VisitShare = emptyShare()): string {
 	const lines = body.split('\n').map((line) => (
 		line.trim() === LEGACY_VISIT_NOTES_HEADING ? line.replace(LEGACY_VISIT_NOTES_HEADING, VISIT_NOTES_HEADING) : line
 	));
-	const heading = `${STAMP_LEVEL} ${stamp}`;
+	const extra = visitExtraMarkup(share);
+	const heading = extra ? `${STAMP_LEVEL} ${stamp} ${extra}` : `${STAMP_LEVEL} ${stamp}`;
 	const field = visitNotesField(notesProperty ?? nextVisitNotesProperty(body));
 	const notesAt = lines.findIndex((line) => line.trim() === VISIT_NOTES_HEADING);
 	if (notesAt >= 0) {

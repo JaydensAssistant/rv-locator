@@ -1,5 +1,7 @@
 import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, setIcon, type App, type TextComponent } from 'obsidian';
-import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
+import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
+import { deleteCustom, rememberCustom } from './catalog';
+import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
 import { parseHomeCountyLines } from './home-base';
 import {
@@ -378,7 +380,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Compact mode')
-			.setDesc('Off unless turned on. Last Spoke, Last Attempted, and Met share one line: the symbol and how many days, with no weekday, time, or date. The circles on the right shrink to the lines that are showing.')
+			.setDesc('On unless turned off. Last Spoke, Last Attempted, and Met share one line: the symbol and how many days, with no weekday, time, or date. The circles on the right shrink to the lines that are showing. Day values are bold.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.compactMode);
 				toggle.onChange(async (value) => {
@@ -387,6 +389,51 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		new Setting(containerEl)
+			.setName('Literature on a study')
+			.setDesc('Off by default. A study\'s at-home log hides literature and media unless this is on. The lesson prompt stays.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showStudyLiterature);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.showStudyLiterature = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Left-align suggestion bullets')
+			.setDesc('On by default. Return-suggestion bullets outside the Attempt Log stay left-aligned even when Center Return Suggestions is on. The Attempt Log keeps its centered lines.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.leftAlignSuggestionBullets);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.leftAlignSuggestionBullets = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('City on its own line')
+			.setDesc('Off by default. City and distance move off the address line, with a building icon.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.splitCityLine);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.splitCityLine = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Card icon scale')
+			.setDesc('Glanceable card icons. 1.2 is about 20% larger than the original size.')
+			.addSlider((slider) => {
+				slider.setLimits(0.8, 2, 0.1);
+				slider.setValue(this.plugin.settings.glancableIconScale);
+				slider.setDynamicTooltip();
+				slider.onChange(async (value) => {
+					this.plugin.settings.glancableIconScale = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		this.renderCatalog(containerEl, 'Publications', 'customPublications');
+		this.renderCatalog(containerEl, 'Media', 'customMedia');
+		this.renderCatalog(containerEl, 'Lessons', 'customLessons');
+		new Setting(containerEl)
 			.setName('Page preview on the dashboard')
 			.setDesc('Off by default. While this is off, hovering a title on the RV Dashboard or a Glancable card does not open Page Preview, even when that core plugin is enabled.')
 			.addToggle((toggle) => {
@@ -394,6 +441,59 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				toggle.onChange(async (value) => {
 					this.plugin.settings.dashboardPagePreview = value;
 					await this.plugin.saveSettings();
+				});
+			});
+	}
+
+	private renderCatalog(
+		containerEl: HTMLElement,
+		label: string,
+		key: 'customPublications' | 'customMedia' | 'customLessons',
+	): void {
+		new Setting(containerEl).setName(label).setHeading();
+		containerEl.createEl('p', {
+			cls: 'setting-item-description',
+			text: 'The official list is empty until titles are added. Add a custom entry here, or type one while logging. Rename updates every note that stores that name. Delete removes it from future suggestions only.',
+		});
+		for (const name of this.plugin.settings[key]) {
+			new Setting(containerEl)
+				.setName(name)
+				.addButton((button) => {
+					button.setButtonText('Rename');
+					button.onClick(() => {
+						new CatalogRenameModal(this.app, name, (next) => {
+							void this.plugin.renameCatalogEntry(key, name, next).then(() => this.display());
+						}).open();
+					});
+				})
+				.addButton((button) => {
+					button.setButtonText('Delete');
+					button.setWarning();
+					button.onClick(async () => {
+						this.plugin.settings[key] = deleteCustom(this.plugin.settings[key], name);
+						await this.plugin.saveSettings();
+						this.display();
+					});
+				});
+		}
+		let draft = '';
+		new Setting(containerEl)
+			.setName('Add a custom entry')
+			.addText((text) => {
+				text.setPlaceholder(label);
+				text.onChange((value) => { draft = value; });
+			})
+			.addButton((button) => {
+				button.setButtonText('Add');
+				button.onClick(async () => {
+					const next = rememberCustom(this.plugin.settings[key], draft, []);
+					if (next.length === this.plugin.settings[key].length) {
+						new Notice('That entry is already in the list.');
+						return;
+					}
+					this.plugin.settings[key] = next;
+					await this.plugin.saveSettings();
+					this.display();
 				});
 			});
 	}
@@ -604,7 +704,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Distance testing').setHeading();
 		new Setting(containerEl)
 			.setName('Use test coordinates')
-			.setDesc('Nearby and Glancable use these coordinates instead of this device. A banner says so.')
+			.setDesc('Nearby and Glancable use these coordinates instead of this device. A toast says so, then goes away.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.distanceTest);
 				toggle.onChange(async (value) => {
@@ -632,6 +732,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('About').setHeading();
 
 		const about = containerEl.createDiv('rv-locator-about');
+		about.createEl('p', { cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
 		about.createEl('p', { text: `Map data ${OSM_ATTRIBUTION}` });
 		about.createEl('p', { text: GEOAPIFY_ATTRIBUTION });
 		about.createEl('p', { text: PRIVACY_NOTICE });
@@ -841,6 +942,41 @@ interface ExtrasPreviewRow extends ExtrasSyncFile {
 	exists: boolean;
 }
 
+class CatalogRenameModal extends Modal {
+	private nextName: string;
+
+	constructor(app: App, private current: string, private onRename: (next: string) => void) {
+		super(app);
+		this.nextName = current;
+	}
+
+	onOpen(): void {
+		this.setTitle('Rename');
+		this.modalEl.addClass('rv-locator-modal');
+		new Setting(this.contentEl)
+			.setName('Name')
+			.addText((text) => {
+				text.setValue(this.current);
+				text.onChange((value) => { this.nextName = value; });
+			});
+		new Setting(this.contentEl)
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			})
+			.addButton((button) => {
+				button.setButtonText('Rename');
+				button.setCta();
+				button.onClick(() => {
+					const next = this.nextName.trim();
+					this.close();
+					if (next && next.toLowerCase() !== this.current.trim().toLowerCase()) this.onRename(next);
+				});
+			});
+		iconizeModal(this.contentEl);
+	}
+}
+
 class ExtrasSyncConfirmModal extends Modal {
 	private overwriteExisting = false;
 
@@ -904,6 +1040,7 @@ class ExtrasSyncConfirmModal extends Modal {
 					this.onApply(overwrite);
 				});
 			});
+		iconizeModal(this.contentEl);
 	}
 }
 

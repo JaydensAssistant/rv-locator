@@ -2009,7 +2009,7 @@ describe('household hubs and card return status', () => {
 			covered: [],
 		}, (next) => { saved.push(next); });
 		modal.onOpen();
-		clickLabeled(modal.contentEl as unknown as Clickable, 'Cancel campaign');
+		clickLabeled(modal.contentEl as unknown as Clickable, 'End campaign');
 		assert.deepEqual(saved, []);
 		clickLabeled(modal.contentEl as unknown as Clickable, 'Remove');
 		assert.deepEqual(saved, [null]);

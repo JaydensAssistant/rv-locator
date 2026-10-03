@@ -13,6 +13,7 @@ import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from 
 import { urgencyColorsFor } from './urgency-palette';
 import { cardPersonTitle } from './note-name';
 import { cardReturnLead } from './schedule';
+import { formatGlanceableCounter } from './dates';
 import { statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
@@ -88,6 +89,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const showStreet = this.lineOn('street') && Boolean(row.addressStreet);
 		const showCity = this.lineOn('city') && Boolean(row.addressCity);
 		const showDistance = this.lineOn('distance');
+		const splitCity = this.plugin.settings.splitCityLine && showStreet && (showCity || showDistance);
 		if (showStreet || showCity || showDistance) {
 			const place = card.createDiv('rv-locator-place');
 			place.setAttr('data-line', glancableLineId(1));
@@ -96,7 +98,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			place.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				void this.plugin.openMapSoon();
+				void this.plugin.openMapSoon(row.path);
 			});
 			if (showStreet && row.addressStreet) {
 				place.createSpan({
@@ -105,17 +107,39 @@ export class NearbyGlancableView extends NearbyBasesView {
 					attr: { 'aria-label': row.addressText || row.addressStreet },
 				});
 			}
-			if (showCity && row.addressCity) {
+			const cityHost = splitCity ? card.createDiv('rv-locator-place rv-locator-city-line') : place;
+			if (splitCity) {
+				const building = cityHost.createSpan('rv-locator-place-earth');
+				setIcon(building, 'building-2');
+			}
+			if (showCity && row.addressCity && !splitCity) {
 				place.createSpan({
 					cls: 'rv-locator-city-lg',
 					text: row.addressCity,
 					attr: { 'aria-label': row.addressText || row.addressCity },
 				});
 			}
-			if (showDistance) {
+			if (showCity && row.addressCity && splitCity) {
+				cityHost.createSpan({
+					cls: 'rv-locator-city-lg',
+					text: row.addressCity,
+					attr: { 'aria-label': row.addressText || row.addressCity },
+				});
+			}
+			if (showDistance && !splitCity) {
 				const distance = this.distanceLabel(row);
 				const live = distance !== '—';
 				const distEl = place.createSpan({
+					cls: `rv-locator-distance-lg${live ? ' is-live' : ' is-missing'}`,
+					text: live ? `· ${distance}` : '· —',
+					attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
+				});
+				this.rememberDistance(key, distEl, row);
+			}
+			if (showDistance && splitCity) {
+				const distance = this.distanceLabel(row);
+				const live = distance !== '—';
+				const distEl = cityHost.createSpan({
 					cls: `rv-locator-distance-lg${live ? ' is-live' : ' is-missing'}`,
 					text: live ? `· ${distance}` : '· —',
 					attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
@@ -173,6 +197,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const lines: CompactLineKind[] = [];
 		if (this.lineOn('name')) lines.push('name');
 		if (showStreet || showCity || showDistance) lines.push('place');
+		if (splitCity) lines.push('place');
 		if (compactDates && (showSpoke || showAttempted || showMet)) lines.push('dates');
 		if (this.lineOn('met-with') || this.lineOn('visits')) lines.push('foot');
 		this.paintActions(card, rank, row, urgency, priority, compactDates ? lines : null);
@@ -261,7 +286,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		setIcon(iconEl, icon);
 		if (compact) {
 			const days = cell.daysSince;
-			slot.createSpan({ cls: 'rv-locator-slot-text', text: days == null ? '—' : `${days}d` });
+			slot.createSpan({ cls: 'rv-locator-slot-text', text: days == null ? '—' : formatGlanceableCounter(days) });
 			return;
 		}
 		if (cell.dow) {
@@ -321,6 +346,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.style.setProperty('--rv-pad-y', `${settings.glancablePaddingY}px`);
 		this.root.style.setProperty('--rv-pad-x', `${settings.glancablePaddingX}px`);
 		this.root.style.setProperty('--rv-font-scale', String(fitted));
+		this.root.style.setProperty('--rv-icon-scale', String(settings.glancableIconScale));
 		this.root.style.setProperty('--rv-control-size', `calc(28px * ${fitted})`);
 		this.root.style.setProperty(
 			'--rv-line-max',

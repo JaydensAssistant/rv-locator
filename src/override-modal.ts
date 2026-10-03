@@ -1,4 +1,5 @@
 import { Modal, Setting, type App } from 'obsidian';
+import { iconizeModal } from './modal-chrome';
 import { DAYPARTS, type Daypart } from './schedule';
 import {
 	formatSlotOverride,
@@ -80,6 +81,7 @@ export class SlotOverrideModal extends Modal {
 					});
 				});
 		}
+		iconizeModal(contentEl);
 	}
 
 	private save(bucket: 'try' | 'avoid'): void {

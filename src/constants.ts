@@ -37,5 +37,6 @@ export const CACHE_LIMIT = 2000;
 export const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
 export const GEOAPIFY_ATTRIBUTION = 'Powered by Geoapify';
 export const PRIVACY_NOTICE = 'Addresses are sent to Geoapify to look up coordinates.';
+export const NON_AFFILIATION_NOTICE = 'This plugin is not created, endorsed by, or managed in affiliation with the organization of Jehovah\'s Witnesses or any of their legal entities.';
 
 export const HOVER_SOURCE = 'rv-locator';

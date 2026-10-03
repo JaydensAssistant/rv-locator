@@ -22,10 +22,21 @@ export interface UrgencyPalette {
 	colors: UrgencyColors;
 }
 
+/**
+ * Default urgency colors follow the accent, in three wider steps than the
+ * five logging buttons (those step lightness by about 0.06).
+ */
+const ACCENT_URGENCY: UrgencyColors = [
+	'color-mix(in srgb, var(--interactive-accent) 22%, var(--background-primary))',
+	'color-mix(in srgb, var(--interactive-accent) 48%, var(--background-primary))',
+	'color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary))',
+	'var(--interactive-accent)',
+];
+
 const DEFAULT_PALETTE: UrgencyPalette = {
 	id: 'default',
-	label: 'Traffic light (default)',
-	colors: ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c'],
+	label: 'Accent (default)',
+	colors: ACCENT_URGENCY,
 };
 
 export const URGENCY_PALETTES: readonly UrgencyPalette[] = [
@@ -53,8 +64,9 @@ export const URGENCY_LEVEL_LABELS: readonly string[] = ['Below 1', '1 to 2', '2 
 
 const HEX = /^#[0-9a-f]{6}$/i;
 
+/** Hex seed for the custom pickers. The default palette itself is the accent mix. */
 export function defaultUrgencyColors(): UrgencyColors {
-	return [...DEFAULT_PALETTE.colors];
+	return ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c'];
 }
 
 export function sanitizeUrgencyPalette(value: unknown): UrgencyPaletteId {

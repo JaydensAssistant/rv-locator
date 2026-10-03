@@ -113,7 +113,12 @@ describe('urgency', () => {
 	});
 
 	it('offers urgency palettes and keeps custom colors as hex', () => {
-		assert.deepEqual(urgencyColorsFor('default', ['#000000', '#000000', '#000000', '#000000']), ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c']);
+		assert.deepEqual(urgencyColorsFor('default', ['#000000', '#000000', '#000000', '#000000']), [
+			'color-mix(in srgb, var(--interactive-accent) 22%, var(--background-primary))',
+			'color-mix(in srgb, var(--interactive-accent) 48%, var(--background-primary))',
+			'color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary))',
+			'var(--interactive-accent)',
+		]);
 		for (const id of ['pastel', 'purple', 'green', 'blue', 'pink', 'color-blind', 'sunset', 'accent'] as const) {
 			assert.equal(URGENCY_PALETTES.some((palette) => palette.id === id), true, id);
 			assert.equal(urgencyColorsFor(id, defaultUrgencyColors()).length, 4);
@@ -138,7 +143,7 @@ describe('urgency', () => {
 		assert.equal(mergeSettings({ centerSuggestions: false }).centerSuggestions, false);
 		assert.equal(merged.cardTitleNameOnly, true);
 		assert.equal(mergeSettings({ cardTitleNameOnly: false }).cardTitleNameOnly, false);
-		assert.equal(merged.compactMode, false);
+		assert.equal(merged.compactMode, true);
 		assert.equal(mergeSettings({ compactCardDates: true }).compactMode, true);
 		assert.equal(mergeSettings({ compactCardDates: false }).compactMode, false);
 		assert.equal(mergeSettings({ compactMode: false, compactCardDates: true }).compactMode, false);
@@ -187,7 +192,7 @@ describe('ideality', () => {
 			priority: 1,
 			miles: 1,
 			thresholds,
-			floors,
+			floors: { ...floors, 1: 21 },
 			territorySpan: span,
 		});
 		assert.ok(due != null && Math.abs(due - 1) < 0.01);
@@ -257,7 +262,7 @@ describe('ideality', () => {
 			floors,
 			territorySpan: span,
 		});
-		assert.ok(p4 != null && Math.abs(p4 - (4 / 63)) < 1e-9);
+		assert.ok(p4 != null && Math.abs(p4 - (16 / 315)) < 1e-9);
 		const custom = idealityScore({
 			days: 5,
 			priority: 5,

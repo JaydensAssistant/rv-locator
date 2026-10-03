@@ -1,7 +1,9 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
-import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, OSM_ATTRIBUTION } from './constants';
+import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
+import { formatGlanceableCounter } from './dates';
+import { Notice } from 'obsidian';
 import { domInstanceOf } from './dom';
 import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
 import { LivePosition, type GeoState } from './live-position';
@@ -18,6 +20,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected root: HTMLElement;
 	protected bannerEl!: HTMLElement;
 	protected bannerText!: HTMLElement;
+	private toastedBanner = '';
 	protected scrollEl!: HTMLElement;
 	protected sortEl!: HTMLElement;
 	/** Sort chips live here so they can scroll without moving the New button. */
@@ -67,6 +70,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		});
 		this.register(() => this.unsubSettings?.());
 		this.plugin.nudgeIncompleteSetup();
+		if (this.mode === 'glancable') this.plugin.resetHubFilters();
 	}
 
 	override onunload(): void {
@@ -201,11 +205,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (cell.rest) wrap.createSpan({ cls: 'rv-locator-cal', text: cell.rest });
 		if (cell.daysSince != null) {
 			const days = cell.daysSince;
-			const label = days === 1 ? '1 calendar day' : `${days} calendar days`;
 			parent.createSpan({
 				cls: 'rv-locator-days',
-				text: `${days}d`,
-				attr: { title: label },
+				text: formatGlanceableCounter(days),
+				attr: { title: formatGlanceableCounter(days) },
 			});
 		}
 	}
@@ -294,7 +297,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.sortEl = this.root.createDiv('rv-locator-sortbar');
 		this.scrollEl = this.root.createDiv('rv-locator-scroll');
 		const attr = this.root.createDiv('rv-locator-attr');
-		attr.setText(`${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}`);
+		attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
+		attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
 	}
 
 	private renderBanner(): void {
@@ -303,6 +307,14 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (!message) {
 			this.bannerEl.hide();
 			this.bannerEl.removeClass('is-test');
+			return;
+		}
+		if (message.test || message.error) {
+			this.bannerEl.hide();
+			if (this.toastedBanner !== message.text) {
+				this.toastedBanner = message.text;
+				new Notice(message.text, 4500);
+			}
 			return;
 		}
 		this.bannerText.setText(message.text);
@@ -420,14 +432,18 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
 			const active = current.property.toLowerCase() === preset.property.toLowerCase();
+			const label = sortPresetChipLabel(preset, active ? current.direction : null);
 			const button = this.sortButtonsEl.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
-				text: sortPresetChipLabel(preset, active ? current.direction : null),
 				attr: {
 					type: 'button',
 					'aria-pressed': active ? 'true' : 'false',
+					'aria-label': label,
 				},
 			});
+			const icon = button.createSpan('rv-sort-icon');
+			setIcon(icon, sortPresetIcon(preset.id));
+			button.createSpan({ cls: 'rv-sort-label', text: label });
 			button.addEventListener('click', () => {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
@@ -478,25 +494,28 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const campaignFilter = this.plugin.settings.campaignListFilter;
 		const campaignButton = this.sortButtonsEl.createEl('button', {
 			cls: `rv-locator-sort-preset is-filter${campaignFilter === 'all' ? '' : ' is-active'}`,
-			text: CAMPAIGN_LIST_LABEL[campaignFilter],
 			attr: { type: 'button', 'aria-label': CAMPAIGN_LIST_LABEL[campaignFilter] },
 		});
+		setIcon(campaignButton.createSpan('rv-sort-icon'), 'book-alert');
+		campaignButton.createSpan({ cls: 'rv-sort-label', text: CAMPAIGN_LIST_LABEL[campaignFilter] });
 		campaignButton.addEventListener('click', () => {
 			void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter));
 		});
 		const scopeButton = this.sortButtonsEl.createEl('button', {
 			cls: 'rv-locator-sort-preset is-filter',
-			text: RETURN_SCOPE_LABEL[scope],
 			attr: { type: 'button', 'aria-label': `Showing ${RETURN_SCOPE_LABEL[scope]}` },
 		});
+		setIcon(scopeButton.createSpan('rv-sort-icon'), 'users');
+		scopeButton.createSpan({ cls: 'rv-sort-label', text: RETURN_SCOPE_LABEL[scope] });
 		scopeButton.addEventListener('click', () => {
 			void this.plugin.setReturnScope(nextReturnScope(scope));
 		});
 		const genderButton = this.sortButtonsEl.createEl('button', {
 			cls: 'rv-locator-sort-preset is-filter',
-			text: GENDER_FILTER_LABEL[gender],
 			attr: { type: 'button', 'aria-label': `Showing ${GENDER_FILTER_LABEL[gender]}` },
 		});
+		setIcon(genderButton.createSpan('rv-sort-icon'), gender === 'women' ? 'user' : gender === 'men' ? 'user' : 'users');
+		genderButton.createSpan({ cls: 'rv-sort-label', text: GENDER_FILTER_LABEL[gender] });
 		genderButton.addEventListener('click', () => {
 			void this.plugin.setGenderFilter(nextGenderFilter(gender));
 		});
@@ -740,4 +759,18 @@ function replaceToken(raw: string, token: string, next: string): string {
 	const index = raw.indexOf(token);
 	if (index < 0) return next;
 	return raw.slice(0, index) + next + raw.slice(index + token.length);
+}
+
+function sortPresetIcon(id: string): string {
+	const icons: Record<string, string> = {
+		ideality: 'sparkles',
+		urgency: 'siren',
+		distance: 'ruler',
+		priority: 'gauge',
+		spoke: 'message-circle',
+		attempted: 'clock',
+		met: 'home',
+		city: 'building-2',
+	};
+	return icons[id] ?? 'arrow-up-down';
 }

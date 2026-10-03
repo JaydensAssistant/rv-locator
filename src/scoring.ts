@@ -205,11 +205,18 @@ export function idealityScore(args: {
 		weight = weighted;
 	}
 	let score = urgency * weight;
-	const floor = args.floors[args.priority];
-	if (Number.isFinite(floor) && floor > 0 && args.days < floor) {
+	if (insidePriorityFloor(args.days, args.priority, args.floors)) {
+		const floor = args.floors[args.priority];
 		score *= args.days / floor;
 	}
 	return score;
+}
+
+/** The ideality cliff. Inside this window a day is still "fresh" for that priority. */
+export function insidePriorityFloor(days: number, priority: number | null, floors: PriorityDays): boolean {
+	if (!isPriorityBand(priority)) return false;
+	const floor = floors[priority];
+	return Number.isFinite(floor) && floor > 0 && days < floor;
 }
 
 /**

@@ -1,4 +1,5 @@
 import { Modal, Setting, TFile, normalizePath, type App } from 'obsidian';
+import { iconizeModal } from './modal-chrome';
 import { extrasDestinations, type ExtrasPlacement } from './extras-sync';
 import { parseHomeCountyLines } from './home-base';
 import { TEMPLATER_PLUGIN_ID } from './new-rv-launch';
@@ -167,6 +168,7 @@ export class SetupWizardModal extends Modal {
 				button.setButtonText('Skip');
 				button.onClick(() => { this.showStep('colors'); });
 			});
+		iconizeModal(contentEl);
 	}
 
 	private renderColors(): void {
@@ -192,6 +194,7 @@ export class SetupWizardModal extends Modal {
 				button.setButtonText('Skip');
 				button.onClick(() => { this.showStep('plugins'); });
 			});
+		iconizeModal(contentEl);
 	}
 
 	private async saveColorsAndContinue(): Promise<void> {
@@ -238,6 +241,7 @@ export class SetupWizardModal extends Modal {
 		this.actionButton(actions, 'Update from GitHub', () => { this.actions.onPlaceExtras(); }, true);
 		this.actionButton(actions, 'Check again', () => { void this.render(); });
 		this.actionButton(actions, 'Done', () => { this.close(); });
+		iconizeModal(contentEl);
 	}
 
 	/** Full-width buttons so a typical Obsidian modal does not clip the row. */

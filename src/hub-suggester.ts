@@ -1,4 +1,5 @@
 import { FuzzySuggestModal, TFile, type App } from 'obsidian';
+import { iconizeModal } from './modal-chrome';
 
 /** Every markdown note in the vault. No Dataview query, so no Dataview toast. */
 export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
@@ -17,5 +18,12 @@ export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
 
 	onChooseItem(file: TFile): void {
 		this.onPick(file);
+	}
+
+	onOpen(): void {
+		void super.onOpen();
+		this.setTitle('Add a hub note');
+		this.modalEl.addClass('rv-locator-modal');
+		iconizeModal(this.modalEl);
 	}
 }
