@@ -11,6 +11,7 @@ import { formatSlotOverride, parseSlotOverrides, upsertSlotOverride } from '../s
 import { layoutTakenNames } from '../src/taken-row';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
 import { layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
+import { refreshHomeStampAges, restoreExactVisitClocks } from '../src/visit-log';
 import { createDoc, type DomEl } from './visit-dom';
 
 describe('1.3.5 dogfood helpers', () => {
@@ -178,6 +179,36 @@ describe('1.3.5 visit display order', () => {
 	});
 });
 
+describe('exact clocks on stamps already in the note', () => {
+	it('rewrites an hour-only stamp from Last Spoke and from a paired Attempt Log line', () => {
+		const note = [
+			'##### Tue, 10am — Sep 29, 2026',
+			'> - Tue, 10am — Sep 29, 2026 — success',
+			'##### Wed, 1am — Sep 30, 2026 <span class="rv-stamp-ago">Today</span>',
+			'> - Wed, 1:17am — Sep 30, 2026 — not home',
+			'##### Wed, 3am — Oct 1, 2026',
+		].join('\n');
+		const next = restoreExactVisitClocks(note, { 'Last Spoke': '2026-09-29T10:07:00' });
+		assert.equal(next.includes('Tue, 10am'), false);
+		assert.equal(next.includes('Tue, 10:07am — Sep 29, 2026'), true);
+		assert.equal(next.includes('Wed, 1am'), false);
+		assert.equal(next.includes('Wed, 1:17am — Sep 30, 2026'), true);
+		assert.equal(next.includes('##### Wed, 3am — Oct 1, 2026'), true);
+		const aged = refreshHomeStampAges(note, new Date(2026, 8, 30, 8, 0, 0));
+		assert.equal(aged.includes('Wed, 1:17am — Sep 30, 2026'), true);
+		assert.equal(aged.includes('Wed, 3am — Oct 1, 2026'), true);
+	});
+
+	it('leaves an hour-only stamp alone when two minutes would round to it', () => {
+		const note = '##### Tue, 10am — Sep 29, 2026';
+		const next = restoreExactVisitClocks(note, {
+			'Last Spoke': '2026-09-29T10:07:00',
+			'Last Attempted': '2026-09-29T10:21:00',
+		});
+		assert.equal(next, note);
+	});
+});
+
 describe('1.3.5 page preview', () => {
 	it('blocks dashboard hovers until the setting is on, then uses the core preview source', () => {
 		assert.deepEqual(pagePreviewDecision(false, true), { inScope: true, suppress: true, open: false });
@@ -258,6 +289,8 @@ function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: stri
 	assert.equal(heading?.classList.contains('callout'), false);
 	assert.equal(heading?.classList.contains('is-collapsed'), false);
 	assert.ok(heading?.querySelector('.collapse-indicator'));
+	assert.equal(heading?.querySelector('svg')?.getAttribute('class'), 'svg-icon lucide-chevron-right');
+	assert.equal(heading?.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
 	const rule = heading?.parentElement?.children[heading.parentElement.children.indexOf(heading) - 1];
 	assert.equal(rule?.tagName, 'HR');
 	assert.equal(rule?.classList.contains('rv-older-rule'), true);

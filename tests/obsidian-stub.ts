@@ -40,6 +40,12 @@ class FakeEl {
 		this.text = '';
 	}
 
+	contains(node: FakeEl | null): boolean {
+		if (!node) return false;
+		if (node === this) return true;
+		return this.children.some((child) => child === node || child.contains(node));
+	}
+
 	addEventListener(type: string, fn: (value?: string) => void): void {
 		const list = this.listeners.get(type) ?? [];
 		list.push(fn);

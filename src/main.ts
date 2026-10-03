@@ -13,7 +13,7 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
@@ -999,7 +999,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (outcome === 'home' || outcome === 'miss') await this.consumeCoverage(file.path, outcome);
 		await this.enqueueDigestRewrite(file);
 		await this.maybeNudgePriority(file, outcome);
-		if (outcome === 'home') await this.focusVisitNotes(file, null);
+		if (outcome === 'home') await this.focusVisitNotes(file, null, true);
 	}
 
 	/** Templater newRv calls this after the new note is on disk. */
@@ -1494,7 +1494,7 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.enqueueDigestRewrite(file);
 		for (const callback of this.viewRefreshers) callback();
 		await this.maybeNudgePriority(file, outcome);
-		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty);
+		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty, true);
 	}
 
 	private async restabilizeCompanions(file: TFile): Promise<void> {
@@ -1661,7 +1661,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * the caret at the end of its notes box. On iOS the keyboard may stay
 	 * down, because focus here does not come straight from a tap.
 	 */
-	private async focusVisitNotes(file: TFile, property: string | null): Promise<void> {
+	private async focusVisitNotes(file: TFile, property: string | null, keepPlace = false): Promise<void> {
 		if (this.unloaded) return;
 		const data = await this.app.vault.read(file);
 		const info = getFrontMatterInfo(data);
@@ -1677,9 +1677,11 @@ export default class RVLocatorPlugin extends Plugin {
 
 		let leaf = this.app.workspace.getLeavesOfType('markdown')
 			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
+		const alreadyOpen = keepPlace && leaf != null;
+		const heldScroll = alreadyOpen && leaf?.view instanceof MarkdownView ? readingScrollTops(leaf.view.containerEl) : [];
 		if (leaf) {
-			this.app.workspace.setActiveLeaf(leaf, { focus: true });
-			if (leaf.view instanceof MarkdownView) leaf.view.setEphemeralState({ line: fieldAt });
+			this.app.workspace.setActiveLeaf(leaf, { focus: !alreadyOpen });
+			if (alreadyOpen && leaf.view instanceof MarkdownView) restoreReadingScroll(leaf.view.containerEl, heldScroll);
 		} else {
 			leaf = this.app.workspace.getLeaf(false);
 			await leaf.openFile(file, { active: true, eState: { line: fieldAt } });
@@ -1693,16 +1695,18 @@ export default class RVLocatorPlugin extends Plugin {
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
 			const area = notesBoxAfterStamp(view.containerEl, stamp, ordinal);
 			if (!area) continue;
+			if (alreadyOpen) restoreReadingScroll(view.containerEl, heldScroll);
 			if (area.ownerDocument.activeElement === area) {
 				steady += 1;
 				continue;
 			}
 			steady = 0;
-			area.focus();
+			area.focus({ preventScroll: true });
 			const end = area.value.length;
 			area.setSelectionRange(end, end);
-			area.scrollIntoView({ block: 'center' });
+			if (!alreadyOpen) area.scrollIntoView({ block: 'center' });
 			fitNotesBox(area);
+			if (alreadyOpen) restoreReadingScroll(view.containerEl, heldScroll);
 		}
 	}
 
@@ -2009,6 +2013,7 @@ export default class RVLocatorPlugin extends Plugin {
 			await this.app.vault.process(current, (data) => {
 				const info = getFrontMatterInfo(data);
 				let next = data.slice(0, info.contentStart) + ensureVisitButtons(ensureDashboardLeadBlank(unfoldDashboard(data.slice(info.contentStart))));
+				next = restoreExactVisitClocks(next, frontmatterFromMarkdown(data));
 				next = refreshHomeStampAges(next, new Date());
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);
@@ -2166,6 +2171,20 @@ function highestNotesProperty(body: string): string | null {
 }
 
 /** The first textarea rendered after the `ordinal`th heading showing `stamp`. */
+const READING_SCROLL = '.markdown-preview-view, .cm-scroller';
+
+function readingScrollTops(root: HTMLElement): number[] {
+	return Array.from(root.querySelectorAll(READING_SCROLL)).map((node) => node instanceof HTMLElement ? node.scrollTop : 0);
+}
+
+function restoreReadingScroll(root: HTMLElement, tops: readonly number[]): void {
+	Array.from(root.querySelectorAll(READING_SCROLL)).forEach((node, index) => {
+		const top = tops[index];
+		if (top == null || !(node instanceof HTMLElement) || node.scrollTop === top) return;
+		node.scrollTop = top;
+	});
+}
+
 function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
 	const headings = Array.from(root.querySelectorAll('h3, h5, .cm-line.HyperMD-header'))
 		.filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').includes(stamp));

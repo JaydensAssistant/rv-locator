@@ -95,7 +95,8 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	if (!collapsed) heading.classList.add('is-open');
 	heading.dataset.heading = 'Older Visits';
 	const mark = parent.ownerDocument.createElement('span');
-	mark.className = 'collapse-indicator';
+	mark.className = 'collapse-indicator collapse-icon';
+	appendHeadingChevron(mark);
 	const label = parent.ownerDocument.createElement('span');
 	label.className = 'rv-older-label';
 	label.textContent = 'Older Visits';
@@ -125,6 +126,27 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 
 interface VisitBlock extends VisitStampRef {
 	nodes: HTMLElement[];
+}
+
+/** Same lucide chevron-right Obsidian draws on a collapsed heading. Open rotates it down. */
+function appendHeadingChevron(mark: HTMLElement): void {
+	const doc = mark.ownerDocument;
+	const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	svg.setAttribute('class', 'svg-icon lucide-chevron-right');
+	svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+	svg.setAttribute('width', '16');
+	svg.setAttribute('height', '16');
+	svg.setAttribute('viewBox', '0 0 24 24');
+	svg.setAttribute('fill', 'none');
+	svg.setAttribute('stroke', 'currentColor');
+	svg.setAttribute('stroke-width', '2');
+	svg.setAttribute('stroke-linecap', 'round');
+	svg.setAttribute('stroke-linejoin', 'round');
+	svg.setAttribute('aria-hidden', 'true');
+	const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path.setAttribute('d', 'm9 18 6-6-6-6');
+	svg.appendChild(path);
+	mark.appendChild(svg);
 }
 
 function visitPreview(root: HTMLElement): HTMLElement | null {

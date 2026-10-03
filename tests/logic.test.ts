@@ -1817,6 +1817,18 @@ describe('companion prompt', () => {
 		assert.deepEqual(escaped, []);
 		await waitTurn();
 		assert.deepEqual(escaped, [false]);
+
+		const dimmed: Array<string | null | false> = [];
+		const dimModal = new CompanionSuggestModal({} as never, ['Devin'], (name) => {
+			dimmed.push(name);
+		});
+		dimModal.onOpen();
+		dimModal.onDimPointerDown(dimModal.modalEl as unknown as EventTarget);
+		assert.deepEqual(dimmed, []);
+		dimModal.onDimPointerDown(null);
+		assert.deepEqual(dimmed, [false]);
+		await waitTurn();
+		assert.deepEqual(dimmed, [false]);
 	});
 
 	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {

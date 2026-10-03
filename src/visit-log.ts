@@ -1,6 +1,7 @@
 import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
-import { calendarDaysSinceStamp, formatDaysAgo, formatExactVisitStamp, stripStampAge } from './dates';
+import { calendarDaysSinceStamp, formatDaysAgo, formatExactVisitStamp, formatGlancableVisitStamp, stripStampAge } from './dates';
+import { stampDateTime } from './schedule';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 export type VisitOutcome = 'home' | 'miss';
@@ -261,18 +262,75 @@ const STAMP_HEADING = /^(?:###|#####)\s+(.+?)\s*$/;
  * The age is calendar days, not a Dataview query.
  */
 export function refreshHomeStampAges(body: string, today: Date): string {
-	const newline = body.includes('\r\n') ? '\r\n' : '\n';
-	const lines = body.split(/\r?\n/);
+	const sourced = restoreExactVisitClocks(body);
+	const newline = sourced.includes('\r\n') ? '\r\n' : '\n';
+	const lines = sourced.split(/\r?\n/);
 	let changed = false;
 	const next = lines.map((line) => {
 		const updated = refreshStampLine(line, today);
 		if (updated !== line) changed = true;
 		return updated;
 	});
-	if (!changed) return body;
+	if (!changed) return sourced;
 	const joined = next.join(newline);
-	if (body.endsWith('\n') && !joined.endsWith('\n')) return `${joined}\n`;
+	if ((body.endsWith('\n') || sourced.endsWith('\n')) && !joined.endsWith('\n')) return `${joined}\n`;
 	return joined;
+}
+
+const DATED_STAMP = /(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)\s+[—–-]\s+[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}/gi;
+
+/**
+ * Hour-only visit stamps (`Tue, 10am — Sep 29, 2026`) pick up the exact minute
+ * when that clock is still stored. Sources are a paired heading or Attempt Log
+ * line that already has minutes, and Last Spoke, Last Attempted, and Met.
+ * Two different minutes that round to the same hour are left alone.
+ * A stamp with no stored minute stays as written.
+ */
+export function restoreExactVisitClocks(markdown: string, frontmatter?: Record<string, unknown> | null): string {
+	const replacements = new Map<string, string | null>();
+	const remember = (when: Date): void => {
+		const rounded = formatGlancableVisitStamp(when);
+		const exact = formatExactVisitStamp(when);
+		if (rounded === exact) return;
+		if (!replacements.has(rounded)) {
+			replacements.set(rounded, exact);
+			return;
+		}
+		if (replacements.get(rounded) !== exact) replacements.set(rounded, null);
+	};
+	if (frontmatter) {
+		for (const name of ['Last Spoke', 'Last Attempted', 'Met']) {
+			const when = storedVisitDate(readProperty(frontmatter, name));
+			if (when) remember(when);
+		}
+	}
+	for (const match of markdown.matchAll(DATED_STAMP)) {
+		const text = match[0] ?? '';
+		if (!/\d:\d{2}/.test(text)) continue;
+		const when = stampDateTime(text);
+		if (when) remember(when);
+	}
+	let next = markdown;
+	for (const [rounded, exact] of replacements) {
+		if (!exact || !next.includes(rounded)) continue;
+		next = next.replaceAll(rounded, exact);
+	}
+	return next;
+}
+
+function storedVisitDate(value: unknown): Date | null {
+	const raw = value instanceof Date ? formatFrontmatterDateTime(value) : typeof value === 'string' ? value.trim() : '';
+	const match = /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?/.exec(raw);
+	if (!match) return null;
+	const date = new Date(
+		Number(match[1]),
+		Number(match[2]) - 1,
+		Number(match[3]),
+		Number(match[4]),
+		Number(match[5]),
+		Number(match[6] ?? 0),
+	);
+	return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function refreshStampLine(line: string, today: Date): string {

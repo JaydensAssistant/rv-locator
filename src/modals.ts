@@ -533,6 +533,17 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 			this.gate.cancel();
 			this.close();
 		});
+		this.containerEl.addEventListener('pointerdown', (event: PointerEvent) => {
+			this.onDimPointerDown(event.target);
+		});
+	}
+
+	/** A press on the dim layer behind the dialog cancels. A press inside the dialog does not. */
+	onDimPointerDown(target: EventTarget | null): void {
+		const modal = this.modalEl as unknown as { contains?: (node: EventTarget) => boolean };
+		if (target && modal.contains?.(target)) return;
+		this.gate.cancel();
+		this.close();
 	}
 
 	private finishCoverage(decision: CoverageDecision): void {

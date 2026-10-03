@@ -38,6 +38,10 @@ class DomDoc {
 	createElement(tag: string): DomEl {
 		return new DomEl(tag, this);
 	}
+
+	createElementNS(_namespace: string, tag: string): DomEl {
+		return new DomEl(tag, this);
+	}
 }
 
 export class DomEl {
@@ -49,6 +53,7 @@ export class DomEl {
 	private text = '';
 	private kids: DomEl[] = [];
 	private listeners = new Map<string, Listener[]>();
+	private attrs = new Map<string, string>();
 
 	constructor(tag: string, doc: DomDoc) {
 		this.tag = tag.toLowerCase();
@@ -155,6 +160,14 @@ export class DomEl {
 		};
 		walk(this);
 		return found;
+	}
+
+	setAttribute(name: string, value: string): void {
+		this.attrs.set(name, value);
+	}
+
+	getAttribute(name: string): string | null {
+		return this.attrs.get(name) ?? null;
 	}
 
 	addEventListener(type: string, listener: Listener): void {

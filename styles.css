@@ -1118,7 +1118,8 @@ table.rv-locator-digest-table,
 	padding: 0.35em 1.15em 0.9em;
 }
 
-.rv-locator-modal .rv-locator-suggest-actions {
+.rv-locator-modal .rv-locator-suggest-actions,
+.modal .rv-locator-suggest-actions {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.45em 0.5em;
@@ -1906,7 +1907,11 @@ body.rv-wide-hubs .rv-hub-line {
 	cursor: pointer;
 }
 
-.rv-address-input {
+.rv-address-input,
+.rv-dashboard input.rv-address-input,
+.markdown-preview-view input.rv-address-input,
+.markdown-rendered input.rv-address-input,
+.markdown-source-view input.rv-address-input {
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
@@ -1918,10 +1923,10 @@ body.rv-wide-hubs .rv-hub-line {
 	border-radius: var(--radius-s, 4px);
 	background: var(--background-modifier-form-field, var(--background-primary));
 	color: var(--text-normal);
-	font: inherit;
-	font-family: inherit;
-	font-size: inherit;
-	line-height: inherit;
+	font-family: var(--font-text) !important;
+	font-size: var(--font-text-size) !important;
+	font-weight: var(--font-normal, inherit);
+	line-height: var(--line-height-normal, 1.5);
 }
 
 .rv-address-hidden {
@@ -2094,7 +2099,7 @@ body.rv-wide-hubs .rv-hub-row {
 	min-width: 0;
 	overflow: hidden;
 	color: var(--text-muted);
-	font-size: 0.72em;
+	font-size: calc(12px * 0.72 * var(--rv-font-scale, 1));
 	font-weight: 400;
 	line-height: 1.15;
 	text-overflow: ellipsis;
@@ -2161,19 +2166,30 @@ body.rv-wide-hubs .rv-hub-row {
 }
 
 .rv-older-visits .collapse-indicator {
-	display: inline-block;
-	box-sizing: border-box;
-	width: 0.45em;
-	height: 0.45em;
-	margin-top: -0.15em;
-	border-top: 2px solid var(--text-faint);
-	border-right: 2px solid var(--text-faint);
-	transform: rotate(45deg);
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+	transform: none;
+}
+
+.rv-older-visits .collapse-indicator svg {
+	display: block;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	fill: none;
+	stroke: currentColor;
 }
 
 .rv-older-visits.is-open .collapse-indicator {
-	margin-top: 0.1em;
-	transform: rotate(135deg);
+	transform: rotate(90deg);
 }
 
 .rv-older-hidden {
