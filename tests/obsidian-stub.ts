@@ -200,7 +200,10 @@ class FakeText {
 	setDisabled(_disabled?: boolean): this { return this; }
 
 	onChange(fn: (value: string) => void): this {
-		this.inputEl.addEventListener('input', () => fn(this.value));
+		this.inputEl.addEventListener('input', (value) => {
+			if (typeof value === 'string') this.value = value;
+			fn(this.value);
+		});
 		return this;
 	}
 }
