@@ -42,8 +42,10 @@ export function fittedFontScale(containerPx: number, settings: DensityMeasure, c
 	return Math.min(2.5, Math.max(0.4, Math.round(fitted * 100) / 100));
 }
 
-export function glancableColumns(containerPx: number, settings: DensityMeasure): 1 | 2 {
+/** How many cards fit side by side. A wide pane is not capped at two. */
+export function glancableColumns(containerPx: number, settings: DensityMeasure): number {
 	if (!Number.isFinite(containerPx) || containerPx <= 0) return 1;
 	const card = estimatedGlancableCardPx(settings);
-	return containerPx >= card * 2 + GRID_GAP_PX ? 2 : 1;
+	if (!Number.isFinite(card) || card <= 0) return 1;
+	return Math.max(1, Math.floor((containerPx + GRID_GAP_PX) / (card + GRID_GAP_PX)));
 }

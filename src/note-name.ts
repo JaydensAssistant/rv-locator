@@ -39,6 +39,19 @@ export function rvNoteTitleFromIdentity(name: string, gender: string, address: s
 	return rvNoteTitle(who, address);
 }
 
+/**
+ * Card title. Name-only keeps the person in `Name on Street`, including a
+ * trailing met date. A title with no ` on ` stays whole so a street form
+ * can ellipsize at the end.
+ */
+export function cardPersonTitle(title: string, nameOnly: boolean): string {
+	const base = title.replace(/\s+\d{4}-\d{2}-\d{2}$/, '').trim();
+	if (!nameOnly) return title.trim();
+	const on = base.toLowerCase().indexOf(' on ');
+	if (on > 0) return base.slice(0, on).trim();
+	return base || title.trim();
+}
+
 /** `Man on Maple` + `2026-10-01T16:32:00` → `Man on Maple 2026-10-01`. */
 export function appendMetDateToFilename(title: string, metIso: string): string {
 	const base = sanitizeNoteName(title);
