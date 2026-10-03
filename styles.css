@@ -1752,10 +1752,15 @@ body.rv-center-dashboard .rv-qf-label {
 	font-weight: 650;
 }
 
-.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest) {
+.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest),
+.rv-hub-owned > br {
 	display: none;
 }
 
+/*
+  Hub and Address share one paragraph. The hub line spans that grid so the
+  chips stay on the hub row, and Address, its field, and the map stay on the next.
+*/
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
 	display: grid;
 	grid-template-columns: var(--rv-dash-label) var(--rv-dash-field) var(--rv-dash-plus);
@@ -1764,7 +1769,47 @@ body.rv-center-dashboard .rv-qf-label {
 }
 
 body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
 	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
+.rv-hub-line {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: var(--rv-dash-label) minmax(0, var(--rv-dash-field)) var(--rv-dash-plus);
+	align-items: center;
+	column-gap: var(--rv-dash-gap);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+body.rv-wide-hubs .rv-hub-line {
+	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
+@supports (grid-template-columns: subgrid) {
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+		grid-template-columns: subgrid;
+		column-gap: inherit;
+	}
+}
+
+.rv-hub-line > strong {
+	margin: 0;
+	white-space: nowrap;
+}
+
+.rv-hub-line > .rv-hub-add {
+	justify-self: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--rv-dash-plus);
+	min-width: var(--rv-dash-plus);
+	height: var(--input-height, 2em);
+	margin: 0;
+	padding: 0;
 }
 
 .rv-hub-row {
@@ -1779,22 +1824,40 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	vertical-align: middle;
 }
 
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
 .rv-hub-chip {
 	display: inline-flex;
 	flex: 0 1 auto;
 	align-items: center;
+	width: auto;
 	min-width: 0;
 	max-width: 100%;
+	margin: 0;
 	overflow: hidden;
 	padding: 0 0.35em;
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 	border-radius: var(--radius-s, 4px);
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
-	color: inherit;
+	background-image: none;
+	box-shadow: none;
+	color: var(--text-normal);
 	font: inherit;
+	font-weight: inherit;
+	line-height: inherit;
 	text-decoration: none;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+	cursor: pointer;
+}
+
+.rv-dashboard a.internal-link.rv-hub-chip:hover,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover,
+.rv-hub-chip:hover {
+	color: var(--text-normal);
+	text-decoration: none;
+	background-image: none;
 }
 
 .rv-hub-remove,
@@ -1813,7 +1876,7 @@ body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-lo
 	max-width: 100%;
 }
 
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong):not(.rv-hub-owned) {
 	display: flex;
 	align-items: center;
 	gap: var(--rv-dash-gap);
@@ -2011,17 +2074,15 @@ body.rv-wide-hubs .rv-hub-row {
 	display: none;
 }
 
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong) {
 	display: grid;
 	align-items: center;
 	column-gap: var(--rv-dash-gap);
-}
-
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
-	grid-template-columns: var(--rv-dash-label) var(--rv-dash-field) var(--rv-dash-plus);
-}
-
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
 	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned :is(input[type="text"], input:not([type])) {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 }

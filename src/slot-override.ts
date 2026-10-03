@@ -26,20 +26,24 @@ const DAYPART: Record<string, Daypart> = {
 
 const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
+/**
+ * Stored without a colon. `Tue evening: Avoid` is a YAML mapping (`key: value`),
+ * so a saved mark came back as an object and the suggestion line ignored it.
+ */
 export function formatSlotOverride(override: SlotOverride): string {
 	const day = WEEKDAY_SHORT[override.weekday] ?? 'Sun';
 	const bucket = override.bucket === 'avoid' ? 'Avoid' : 'Try';
-	return `${day} ${override.daypart}: ${bucket}`;
+	return `${day} ${override.daypart} ${bucket}`;
 }
 
-/** `Tue evening: Avoid` and the short daypart names. Unknown lines are dropped. */
+const SLOT_MARK = /^([A-Za-z]+)\s+([A-Za-z]+)\s*(?::\s*|\s+)(try|avoid)$/i;
+
+/** `Tue evening Avoid`, the older `Tue evening: Avoid`, and a YAML map of those. */
 export function parseSlotOverrides(value: unknown): SlotOverride[] {
-	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
 	const seen = new Set<string>();
 	const overrides: SlotOverride[] = [];
-	for (const item of source) {
-		const text = typeof item === 'string' ? item.trim() : '';
-		const match = /^([A-Za-z]+)\s+([A-Za-z]+)\s*:\s*(try|avoid)$/i.exec(text);
+	for (const text of overrideLines(value)) {
+		const match = SLOT_MARK.exec(text.trim());
 		if (!match) continue;
 		const weekday = WEEKDAY[(match[1] ?? '').toLowerCase()];
 		const daypart = DAYPART[(match[2] ?? '').toLowerCase()];
@@ -51,6 +55,24 @@ export function parseSlotOverrides(value: unknown): SlotOverride[] {
 		overrides.push({ weekday, daypart, bucket });
 	}
 	return overrides;
+}
+
+function overrideLines(value: unknown): string[] {
+	if (typeof value === 'string') {
+		const text = value.trim();
+		return text ? [text] : [];
+	}
+	if (typeof value === 'number' && Number.isFinite(value)) return [String(value)];
+	if (Array.isArray(value)) return value.flatMap((item) => overrideLines(item));
+	if (value && typeof value === 'object') {
+		const lines: string[] = [];
+		for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+			if (typeof item === 'string' || typeof item === 'number') lines.push(`${key} ${item}`.trim());
+			else for (const nested of overrideLines(item)) lines.push(`${key} ${nested}`.trim());
+		}
+		return lines;
+	}
+	return [];
 }
 
 export function upsertSlotOverride(current: readonly SlotOverride[], next: SlotOverride): SlotOverride[] {

@@ -1,4 +1,4 @@
-import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { googleMapsAddressLink, refreshBodyMapLink } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
@@ -25,6 +25,7 @@ import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { layoutVisitNotes } from './visit-display';
+import { pagePreviewDecision } from './page-preview';
 import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
@@ -78,6 +79,12 @@ const NOTES_FIT_DELAYS_MS = [0, 250, 1_000, 2_500] as const;
 /** How long to look for a new visit's notes box after the note re-renders. */
 const FOCUS_ATTEMPTS = 40;
 const FOCUS_STEP_MS = 100;
+/**
+ * The note's Home button is still dispatching its click when Templater asks
+ * for a companion. Opening in that turn lets the click land on the suggester
+ * and dismiss it, so the visit logs with nobody chosen.
+ */
+const COMPANION_PROMPT_DELAY_MS = 40;
 
 const NEARBY_LAYOUTS: readonly NearbyLayout[] = [
 	{ id: GLANCABLE_VIEW_TYPE, name: 'Return Visits', icon: 'smartphone', mode: 'glancable', scope: 'all' },
@@ -287,16 +294,47 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Page Preview is off on the dashboard and Glancable unless the setting is on.
-	 * Capture stops the hover before the core plugin opens a preview.
+	 * Page Preview stays off on the RV Dashboard and Glancable cards unless the
+	 * setting is on. On uses core's `preview` source. A custom hover source
+	 * does not open the core popover, and returning early left the hover closed.
 	 */
 	private suppressPagePreview(evt: MouseEvent): void {
-		if (this.settings.dashboardPagePreview) return;
 		const target = evt.target;
 		if (!(target instanceof Element)) return;
 		const link = target.closest('a.internal-link, a.rv-locator-file-link');
-		if (!link?.closest('.rv-locator-glancable, .rv-dashboard')) return;
+		const inScope = link instanceof HTMLAnchorElement && !!link.closest('.rv-locator-glancable, .rv-dashboard');
+		const decision = pagePreviewDecision(this.settings.dashboardPagePreview, inScope);
+		if (!decision.suppress || !(link instanceof HTMLAnchorElement)) return;
 		evt.stopPropagation();
+		if (!decision.open) return;
+		const raw = link.dataset.href || link.getAttribute('href') || '';
+		const linktext = raw.replace(/\.md$/i, '').trim();
+		if (!linktext) return;
+		const found = this.previewParent(link);
+		this.app.workspace.trigger('hover-link', {
+			event: evt,
+			source: 'preview',
+			hoverParent: found.parent,
+			targetEl: link,
+			linktext,
+			sourcePath: found.sourcePath,
+		});
+	}
+
+	/** The markdown view when the link is in a note, otherwise the leaf that holds it. */
+	private previewParent(link: Element): { parent: HoverParent; sourcePath: string } {
+		const found: { leaf: WorkspaceLeaf | null; el: HTMLElement | null } = { leaf: null, el: null };
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const el = leaf.view?.containerEl;
+			if (!el?.contains(link)) return;
+			if (found.el && !found.el.contains(el)) return;
+			found.el = el;
+			found.leaf = leaf;
+		});
+		const leaf = found.leaf;
+		if (leaf?.view instanceof MarkdownView) return { parent: leaf.view, sourcePath: leaf.view.file?.path ?? '' };
+		if (leaf) return { parent: leaf, sourcePath: '' };
+		return { parent: { hoverPopover: null }, sourcePath: '' };
 	}
 
 	private layoutOpenVisits(element: HTMLElement, path: string): void {
@@ -514,6 +552,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * New writes do not create wikilinks.
 	 */
 	async promptCompanion(path?: string): Promise<string> {
+		await new Promise((resolve) => window.setTimeout(resolve, COMPANION_PROMPT_DELAY_MS));
 		const campaign = path && this.shouldAskCoverage(path) ? this.campaign : null;
 		const picked = await new Promise<string | null>((resolve) => {
 			const modal = new CompanionSuggestModal(
@@ -1021,7 +1060,7 @@ export default class RVLocatorPlugin extends Plugin {
 			if (lines.length === 0) removeProperty(data, SLOT_OVERRIDE_PROPERTY);
 			else assignProperty(data, SLOT_OVERRIDE_PROPERTY, lines);
 		});
-		await this.enqueueDigestRewrite(file);
+		await this.enqueueDigestRewrite(file, overrides);
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -1824,8 +1863,8 @@ export default class RVLocatorPlugin extends Plugin {
 		return folder.length > 0 && (file.path === folder || file.path.startsWith(`${folder}/`));
 	}
 
-	private enqueueDigestRewrite(file: TFile): Promise<void> {
-		const run = this.digestRewrite.then(() => this.rewriteDigestFile(file));
+	private enqueueDigestRewrite(file: TFile, overrides?: readonly SlotOverride[]): Promise<void> {
+		const run = this.digestRewrite.then(() => this.rewriteDigestFile(file, false, overrides));
 		this.digestRewrite = run.catch(() => undefined);
 		return run;
 	}
@@ -1860,7 +1899,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async rewriteDigestFile(file: TFile, collapseLog = false): Promise<void> {
+	private async rewriteDigestFile(file: TFile, collapseLog = false, overrides?: readonly SlotOverride[]): Promise<void> {
 		if (file.extension !== 'md') return;
 		if (this.isTemplateNote(file)) return;
 		const current = this.app.vault.getFileByPath(file.path);
@@ -1873,6 +1912,7 @@ export default class RVLocatorPlugin extends Plugin {
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);
 				const log = readAttemptLog(next);
+				const saved = parseSlotOverrides(readProperty(frontmatterFromMarkdown(data), SLOT_OVERRIDE_PROPERTY));
 				const digest = suggestReturnDigest({
 					buckets: log.buckets,
 					entries: log.entries,
@@ -1880,7 +1920,7 @@ export default class RVLocatorPlugin extends Plugin {
 					orientation: this.settings.digestOrientation,
 					days: this.settings.digestDays,
 					thresholds: this.digestThresholds(),
-					overrides: parseSlotOverrides(readProperty(frontmatterFromMarkdown(data), SLOT_OVERRIDE_PROPERTY)),
+					overrides: overrides ?? saved,
 					abbreviate: this.settings.abbreviateDayparts,
 				});
 				const rewritten = upsertAttemptDigest(next, digest, {

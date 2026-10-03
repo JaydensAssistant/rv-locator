@@ -230,17 +230,29 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 	const paragraphs = root.matches('p') ? [root] : Array.from(root.querySelectorAll('p'));
 	for (const paragraph of paragraphs) {
 		if (!(paragraph instanceof HTMLElement)) continue;
-		const strong = paragraph.querySelector(':scope > strong');
-		const label = (strong?.textContent ?? '').replace(/:$/, '').trim().toLowerCase();
-		if (label !== 'hub' && label !== 'hubs') continue;
-		if (strong) strong.textContent = 'Hub:';
+		const hubLabel = labeledStrong(paragraph, 'hub');
+		if (!hubLabel) continue;
+		hubLabel.textContent = 'Hub:';
 		paragraph.addClass('rv-hub-owned');
-		let row = paragraph.querySelector(':scope > .rv-hub-row');
-		if (!(row instanceof HTMLElement)) row = paragraph.createSpan('rv-hub-row');
-		const foundAdd = paragraph.querySelector(':scope > .rv-hub-add');
+		const address = labeledStrong(paragraph, 'address');
+		let line = paragraph.querySelector(':scope > .rv-hub-line');
+		if (!(line instanceof HTMLElement)) {
+			line = paragraph.createSpan('rv-hub-line');
+			if (address?.parentElement === paragraph) paragraph.insertBefore(line, address);
+		}
+		if (hubLabel.parentElement !== line) line.insertBefore(hubLabel, line.firstChild);
+		let row = line.querySelector(':scope > .rv-hub-row');
+		if (!(row instanceof HTMLElement)) {
+			const stray = paragraph.querySelector(':scope > .rv-hub-row');
+			row = stray instanceof HTMLElement ? stray : line.createSpan('rv-hub-row');
+			if (row.parentElement !== line) line.appendChild(row);
+		}
+		const foundAdd = line.querySelector(':scope > .rv-hub-add') ?? paragraph.querySelector(':scope > .rv-hub-add');
 		const add = foundAdd instanceof HTMLElement
 			? foundAdd
-			: paragraph.createEl('button', { cls: 'rv-hub-add', attr: { type: 'button', 'aria-label': 'Add hub' } });
+			: line.createEl('button', { cls: 'rv-hub-add', attr: { type: 'button', 'aria-label': 'Add hub' } });
+		if (add.parentElement !== line) line.appendChild(add);
+		if (row.nextElementSibling !== add) line.insertBefore(row, add);
 		row.empty();
 		add.empty();
 		setIcon(add, 'plus');
@@ -253,8 +265,17 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		hubs.forEach((hub, index) => {
 			row.appendChild(hubChip(paragraph.ownerDocument, path, hub, index, host));
 		});
-		if (row.nextElementSibling !== add) paragraph.appendChild(add);
 	}
+}
+
+function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLElement | null {
+	const nodes = paragraph.querySelectorAll('strong');
+	for (const node of Array.from(nodes)) {
+		if (!(node instanceof HTMLElement)) continue;
+		const label = (node.textContent ?? '').replace(/:$/, '').trim().toLowerCase();
+		if (kind === 'hub' ? label === 'hub' || label === 'hubs' : label === 'address') return node;
+	}
+	return null;
 }
 
 function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: NoteChromeHost): HTMLAnchorElement {

@@ -79,9 +79,9 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	if (blocks.length === 0) return;
 	const matched = matchBlocks(blocks, fileStamps);
 	const partition = partitionVisits(matched, options.newestFirst, options.collapseOlder, options.limit);
-	const anchor = endAnchor(preview, blocks);
-	const parent = anchor?.parentElement ?? blocks[0]?.nodes[0]?.parentElement;
+	const parent = blocks[0]?.nodes[0]?.parentElement;
 	if (!parent) return;
+	const anchor = endAnchor(parent);
 	const before = anchor ?? null;
 	for (const block of partition.visible) placeBlock(parent, block, before, false);
 	if (partition.older.length === 0) return;
@@ -135,20 +135,29 @@ function stampHeads(preview: HTMLElement): HTMLElement[] {
 	return found;
 }
 
-function sectionEl(node: HTMLElement, preview: HTMLElement): HTMLElement {
-	const section = node.closest('.markdown-preview-section');
-	if (section instanceof HTMLElement && section !== preview && preview.contains(section)) return section;
+/**
+ * Obsidian 1.13 puts every block in one `.markdown-preview-section` sizer.
+ * The move unit is the highest ancestor that does not contain another stamp,
+ * so the walk is that unit's siblings and not the shared sizer.
+ */
+function visitMoveUnit(stamp: HTMLElement, stamps: readonly HTMLElement[], boundary: HTMLElement): HTMLElement {
+	let node = stamp;
+	while (node.parentElement && node.parentElement !== boundary && boundary.contains(node.parentElement)) {
+		const parent = node.parentElement;
+		if (stamps.some((other) => other !== stamp && parent.contains(other))) break;
+		node = parent;
+	}
 	return node;
 }
 
 function blocksFor(preview: HTMLElement, stamps: readonly HTMLElement[]): VisitBlock[] {
 	const blocks: VisitBlock[] = [];
+	const units = stamps.map((stamp) => visitMoveUnit(stamp, stamps, preview));
 	for (let index = 0; index < stamps.length; index += 1) {
 		const stamp = stamps[index];
-		if (!stamp) continue;
-		const start = sectionEl(stamp, preview);
-		const nextStamp = stamps[index + 1];
-		const end = nextStamp ? sectionEl(nextStamp, preview) : null;
+		const start = units[index];
+		if (!stamp || !start) continue;
+		const end = units[index + 1] ?? null;
 		const nodes: HTMLElement[] = [];
 		let cursor: HTMLElement | null = start;
 		while (cursor && cursor !== end) {
@@ -156,7 +165,7 @@ function blocksFor(preview: HTMLElement, stamps: readonly HTMLElement[]): VisitB
 				cursor = cursor.nextElementSibling instanceof HTMLElement ? cursor.nextElementSibling : null;
 				continue;
 			}
-			if (isStop(cursor)) break;
+			if (cursor !== start && isStop(cursor)) break;
 			nodes.push(cursor);
 			const next = cursor.nextElementSibling;
 			cursor = next instanceof HTMLElement ? next : null;
@@ -175,13 +184,14 @@ function blocksFor(preview: HTMLElement, stamps: readonly HTMLElement[]): VisitB
 }
 
 function isStop(node: HTMLElement): boolean {
-	if (node.querySelector('.rv-locator-return-suggestions, .callout[data-callout]')) {
-		const title = node.querySelector('.callout-title');
-		if ((title?.textContent ?? '').includes('Return Suggestions')) return true;
-		if (node.classList.contains('rv-locator-return-suggestions')) return true;
-	}
-	if (node.tagName === 'HR' && !node.classList.contains('rv-older-rule')) return true;
-	return false;
+	if (node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits')) return false;
+	if (node.classList.contains('rv-locator-return-suggestions')) return true;
+	const title = node.querySelector('.callout-title');
+	if ((title?.textContent ?? '').includes('Return Suggestions')) return true;
+	if (node.querySelector('.rv-locator-return-suggestions')) return true;
+	if (node.tagName === 'HR') return true;
+	const rule = node.querySelector('hr');
+	return rule instanceof HTMLElement && !rule.classList.contains('rv-older-rule');
 }
 
 function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitStampRef[]): VisitBlock[] {
@@ -201,32 +211,14 @@ function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitSt
 	});
 }
 
-function endAnchor(preview: HTMLElement, blocks: readonly VisitBlock[]): HTMLElement | null {
-	const first = blocks[0]?.nodes[0];
-	if (!first) return null;
-	const parent = first.parentElement;
-	if (!parent) return null;
-	let suggestions: HTMLElement | null = preview.querySelector('.rv-locator-return-suggestions');
-	if (!(suggestions instanceof HTMLElement)) {
-		preview.querySelectorAll('.callout').forEach((node) => {
-			if (suggestions || !(node instanceof HTMLElement)) return;
-			const title = node.querySelector('.callout-title');
-			if ((title?.textContent ?? '').includes('Return Suggestions')) suggestions = node;
-		});
+/** Thematic break or Return Suggestions that should stay below Older Visits. */
+function endAnchor(parent: HTMLElement): HTMLElement | null {
+	for (const child of Array.from(parent.children)) {
+		if (!(child instanceof HTMLElement)) continue;
+		if (child.classList.contains('rv-older-rule') || child.classList.contains('rv-older-visits')) continue;
+		if (isStop(child)) return child;
 	}
-	let anchor: HTMLElement | null = null;
-	if (suggestions instanceof HTMLElement) {
-		const section = sectionEl(suggestions, preview);
-		if (section.parentElement === parent) anchor = section;
-	}
-	const rules = parent.querySelectorAll('hr');
-	rules.forEach((rule) => {
-		if (!(rule instanceof HTMLElement) || rule.classList.contains('rv-older-rule')) return;
-		if (rule.parentElement !== parent) return;
-		if (anchor && rule.compareDocumentPosition(anchor) & Node.DOCUMENT_POSITION_FOLLOWING) anchor = rule;
-		if (!anchor) anchor = rule;
-	});
-	return anchor;
+	return null;
 }
 
 function placeBlock(parent: HTMLElement, block: VisitBlock, before: HTMLElement | null, hidden: boolean): void {

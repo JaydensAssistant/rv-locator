@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered } from '../src/campaign';
 import { hubRefs, moveHubLeft } from '../src/hub-row';
-import { currentReturnBucket, defaultAvailabilityGrid } from '../src/schedule';
+import { pagePreviewDecision } from '../src/page-preview';
+import { currentReturnBucket, defaultAvailabilityGrid, suggestReturnDigest } from '../src/schedule';
 import { resetSettingsTab } from '../src/settings-reset';
 import { formatSlotOverride, parseSlotOverrides, upsertSlotOverride } from '../src/slot-override';
 import { layoutTakenNames } from '../src/taken-row';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
-import { partitionVisits, type VisitStampRef } from '../src/visit-display';
+import { layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
+import { createDoc, type DomEl } from './visit-dom';
 
 describe('1.3.5 hub row', () => {
 	it('keeps every hub and moves one left without rewriting the first', () => {
@@ -47,12 +49,15 @@ describe('1.3.5 campaign', () => {
 
 describe('1.3.5 slot override', () => {
 	it('parses a daypart mark and lets it win the current bucket', () => {
-		const parsed = parseSlotOverrides(['Tue evening: Avoid', 'nope', 'Monday mor: Try']);
+		const parsed = parseSlotOverrides(['Tue evening: Avoid', 'nope', 'Monday mor: Try', 'Fri aft Avoid']);
 		assert.deepEqual(parsed, [
 			{ weekday: 2, daypart: 'evening', bucket: 'avoid' },
 			{ weekday: 1, daypart: 'morning', bucket: 'try' },
+			{ weekday: 5, daypart: 'afternoon', bucket: 'avoid' },
 		]);
-		assert.equal(formatSlotOverride(parsed[0]!), 'Tue evening: Avoid');
+		assert.equal(formatSlotOverride(parsed[0]!), 'Tue evening Avoid');
+		const fromYaml = parseSlotOverrides([{ 'Tue evening': 'Avoid' }, { 'Monday mor': 'Try' }]);
+		assert.deepEqual(fromYaml, parsed.slice(0, 2));
 		const grid = defaultAvailabilityGrid();
 		grid['2:evening'] = 'may';
 		const bucket = currentReturnBucket({
@@ -63,6 +68,20 @@ describe('1.3.5 slot override', () => {
 		});
 		assert.equal(bucket, 'Avoid');
 		assert.equal(upsertSlotOverride(parsed, { weekday: 2, daypart: 'evening', bucket: 'try' }).at(-1)?.bucket, 'try');
+		const forced = suggestReturnDigest({
+			buckets: { '2:evening': { homes: 2, trials: 3 } },
+			grid,
+			overrides: [{ weekday: 2, daypart: 'evening', bucket: 'avoid' }],
+		});
+		assert.equal(forced.sentences.some((line) => line.startsWith('- Try:') && line.includes('Tue evening')), false);
+		assert.match(forced.sentences.join('\n'), /^- Avoid: \*\*Tue evening \(2\/3\)\*\*/m);
+		const flipped = suggestReturnDigest({
+			buckets: { '2:evening': { homes: 0, trials: 4 } },
+			grid,
+			overrides: [{ weekday: 2, daypart: 'evening', bucket: 'try' }],
+		});
+		assert.match(flipped.sentences.join('\n'), /^- Try: \*\*Tue evening \(0\/4\)\*\*/m);
+		assert.equal(flipped.sentences.some((line) => line.startsWith('- Avoid:')), false);
 	});
 });
 
@@ -81,7 +100,120 @@ describe('1.3.5 visit display order', () => {
 		assert.deepEqual(oldest.visible.map((item) => item.text), ['first', 'second', 'third', 'fourth']);
 		assert.deepEqual(oldest.older, []);
 	});
+
+	it('reorders a shared preview section and collapses the rest under Older Visits', () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
+		const flat = visitTree(stamps, 'flat');
+		layoutVisitNotes(flat.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assert.equal(markdown, stamps.map((stamp) => `##### ${stamp}`).join('\n'));
+		assertOlderVisits(flat.sizer, ['Thu, 4pm', 'Wed, 3pm', 'Tue, 2pm'], 'Mon, 9am');
+
+		const wrapped = visitTree(stamps, 'wrapped');
+		layoutVisitNotes(wrapped.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assertOlderVisits(wrapped.sizer, ['Thu, 4pm', 'Wed, 3pm', 'Tue, 2pm'], 'Mon, 9am');
+		const heading = wrapped.sizer.querySelector('h2');
+		assert.ok(heading);
+		heading.click();
+		const older = wrapped.sizer.children.find((node) => (node.textContent ?? '').includes('Mon, 9am'));
+		assert.equal(older?.classList.contains('rv-older-hidden'), false);
+	});
 });
+
+describe('1.3.5 page preview', () => {
+	it('blocks dashboard hovers until the setting is on, then uses the core preview source', () => {
+		assert.deepEqual(pagePreviewDecision(false, true), { inScope: true, suppress: true, open: false });
+		assert.deepEqual(pagePreviewDecision(true, true), { inScope: true, suppress: true, open: true });
+		assert.deepEqual(pagePreviewDecision(true, false), { inScope: false, suppress: false, open: false });
+	});
+});
+
+function visitTree(stamps: readonly string[], shape: 'flat' | 'wrapped'): { preview: DomEl; sizer: DomEl } {
+	const doc = createDoc();
+	const preview = doc.createElement('div');
+	preview.className = 'markdown-preview-view';
+	const sizer = doc.createElement('div');
+	sizer.className = 'markdown-preview-section';
+	preview.appendChild(sizer);
+	for (const stamp of stamps) {
+		const heading = doc.createElement('h3');
+		heading.className = 'rv-visit-stamp';
+		heading.textContent = stamp;
+		const ago = doc.createElement('span');
+		ago.className = 'rv-stamp-ago';
+		ago.textContent = 'Today';
+		heading.appendChild(ago);
+		const note = doc.createElement('p');
+		note.textContent = stamp;
+		if (shape === 'flat') {
+			sizer.appendChild(heading);
+			sizer.appendChild(note);
+		} else {
+			const headWrap = doc.createElement('div');
+			headWrap.appendChild(heading);
+			const noteWrap = doc.createElement('div');
+			noteWrap.appendChild(note);
+			sizer.appendChild(headWrap);
+			sizer.appendChild(noteWrap);
+		}
+	}
+	const rule = doc.createElement('hr');
+	const callout = doc.createElement('div');
+	callout.className = 'callout';
+	const title = doc.createElement('div');
+	title.className = 'callout-title';
+	title.textContent = 'Return Suggestions';
+	callout.appendChild(title);
+	if (shape === 'flat') {
+		sizer.appendChild(rule);
+		sizer.appendChild(callout);
+	} else {
+		const ruleWrap = doc.createElement('div');
+		ruleWrap.appendChild(rule);
+		sizer.appendChild(ruleWrap);
+		sizer.appendChild(callout);
+	}
+	return { preview, sizer };
+}
+
+function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: string): void {
+	const heading = sizer.querySelector('h2');
+	assert.equal(heading?.tagName, 'H2');
+	assert.equal(heading?.textContent, 'Older Visits');
+	assert.equal(heading?.classList.contains('rv-older-visits'), true);
+	assert.equal(heading?.classList.contains('callout'), false);
+	assert.equal(heading?.classList.contains('is-collapsed'), true);
+	const rule = heading?.parentElement?.children[heading.parentElement.children.indexOf(heading) - 1];
+	assert.equal(rule?.tagName, 'HR');
+	assert.equal(rule?.classList.contains('rv-older-rule'), true);
+	const labels = sizer.children.map((node) => node.textContent ?? '');
+	const headingAt = labels.indexOf('Older Visits');
+	assert.ok(headingAt > 0);
+	for (const stamp of visible) {
+		const at = labels.findIndex((label) => label.includes(stamp));
+		assert.ok(at >= 0 && at < headingAt, stamp);
+		const node = sizer.children[at];
+		assert.equal(node?.classList.contains('rv-older-hidden'), false);
+	}
+	const olderAt = labels.findIndex((label) => label.includes(older));
+	assert.ok(olderAt > headingAt);
+	assert.equal(sizer.children[olderAt]?.classList.contains('rv-older-hidden'), true);
+	const suggestions = labels.findIndex((label) => label.includes('Return Suggestions'));
+	assert.ok(suggestions > olderAt);
+}
 
 describe('1.3.5 settings reset', () => {
 	it('resets one tab and leaves the API key and the other tabs', () => {
