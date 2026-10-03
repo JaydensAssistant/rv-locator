@@ -129,7 +129,7 @@ export interface RVLocatorSettings {
 	showRouteBadge: boolean;
 	/** New visits paint newest-first. Display only. On by default. */
 	visitsNewestFirst: boolean;
-	/** Visits after the newest few sit under ## Older Visits. On by default. */
+	/** Visits after the newest few sit under ### Older Visits. On by default. */
 	collapseOlderVisits: boolean;
 	/** How many of the newest visits stay outside Older Visits. Default 3. */
 	visibleVisitCount: number;

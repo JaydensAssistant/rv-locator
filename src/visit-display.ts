@@ -65,8 +65,8 @@ export interface VisitLayoutOptions {
 
 /**
  * Leave visit sections in file order. The newest notes are already at the
- * top of the note. Visits after the visible count sit under an `h2`
- * Older Visits, collapsed, without moving any stamp.
+ * top of the note. Visits after the visible count sit under an `h3`
+ * Older Visits, the same level as Recent Notes, collapsed, without moving any stamp.
  */
 export function layoutVisitNotes(root: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
 	const preview = visitPreview(root);
@@ -90,7 +90,7 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	const collapsed = preview.dataset.rvOlderOpen !== '1';
 	const rule = parent.ownerDocument.createElement('hr');
 	rule.className = 'rv-older-rule';
-	const heading = parent.ownerDocument.createElement('h2');
+	const heading = parent.ownerDocument.createElement('h3');
 	heading.className = 'rv-older-visits';
 	if (!collapsed) heading.classList.add('is-open');
 	heading.dataset.heading = 'Older Visits';

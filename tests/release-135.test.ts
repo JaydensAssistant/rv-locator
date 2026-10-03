@@ -147,13 +147,13 @@ describe('1.3.5 visit display order', () => {
 			limit: 3,
 		});
 		assertOlderVisits(wrapped.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
-		const heading = wrapped.sizer.querySelector('h2');
+		const heading = wrapped.sizer.querySelector('h3.rv-older-visits');
 		assert.ok(heading);
 		heading.click();
 		const older = wrapped.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
 		assert.equal(older?.classList.contains('rv-older-hidden'), false);
 		heading.click();
-		assert.equal(wrapped.sizer.querySelector('h2')?.textContent, 'Older Visits');
+		assert.equal(wrapped.sizer.querySelector('h3.rv-older-visits')?.textContent, 'Older Visits');
 		assert.equal(older?.classList.contains('rv-older-hidden'), true);
 		assert.equal(heading.classList.contains('is-collapsed'), false);
 	});
@@ -282,8 +282,8 @@ function visitTree(stamps: readonly string[], shape: 'flat' | 'wrapped', leading
 }
 
 function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: string): void {
-	const heading = sizer.querySelector('h2');
-	assert.equal(heading?.tagName, 'H2');
+	const heading = sizer.querySelector('h3.rv-older-visits');
+	assert.equal(heading?.tagName, 'H3');
 	assert.equal(heading?.textContent, 'Older Visits');
 	assert.equal(heading?.classList.contains('rv-older-visits'), true);
 	assert.equal(heading?.classList.contains('callout'), false);
