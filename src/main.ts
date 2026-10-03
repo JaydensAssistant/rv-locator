@@ -27,9 +27,9 @@ import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type Sl
 import { layoutVisitNotes } from './visit-display';
 import { pagePreviewDecision } from './page-preview';
 import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
-import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
+import { HousemateNameModal, NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
-import { applyStatusPriority, resolveStatus, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type GenderFilter, type ReturnScope, type RvStatus } from './status';
+import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { stripStampAge } from './dates';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
@@ -114,6 +114,10 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last file each leaf was switched for, so a later switch to editing is kept. */
 	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
 	private newRvDraft: NewRvIdentity | null = null;
+	/** Hub lists written before the metadata cache catches up, so the chip row updates immediately. */
+	private hubOverride = new Map<string, unknown>();
+	/** Address typed into the custom box before the cache catches up. */
+	private addressOverride = new Map<string, string>();
 	/** One campaign at a time. Null when none is saved. */
 	campaign: CampaignRecord | null = null;
 	/** Coverage answers collected beside the companion prompt, keyed by note path. */
@@ -193,6 +197,16 @@ export default class RVLocatorPlugin extends Plugin {
 			checkCallback: (checking) => {
 				const file = this.activeMarkdownFile();
 				if (file && !checking) this.confirmArchive(file);
+				return file != null;
+			},
+		});
+
+		this.addCommand({
+			id: 'add-housemate',
+			name: 'Add a housemate',
+			checkCallback: (checking) => {
+				const file = this.activeMarkdownFile();
+				if (file && !checking) void this.addHousemate(file);
 				return file != null;
 			},
 		});
@@ -453,10 +467,46 @@ export default class RVLocatorPlugin extends Plugin {
 			new NewRvIdentityModal(this.app, {
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
+				lookupAddress: (query) => this.suggestAddresses(query),
 			}, (value) => resolve(value)).open();
 		});
 		if (!identity || this.unloaded) return;
 		this.newRvDraft = identity;
+		await this.launchNewRvTemplate();
+	}
+
+	/** Another RV at the open note's address. The name is the only new field. */
+	async addHousemate(file: TFile): Promise<void> {
+		if (this.creatingNewRv) return;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
+		const gender = housemateGender(readProperty(frontmatter, 'Gender'));
+		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? this.settings.defaultNewRvPriority;
+		const name = await new Promise<string | null>((resolve) => {
+			new HousemateNameModal(this.app, resolve).open();
+		});
+		if (!name || this.unloaded) return;
+		this.newRvDraft = {
+			gender,
+			name,
+			address,
+			companion: '',
+			priority: Math.max(0, Math.min(5, Math.round(priority))),
+		};
+		await this.launchNewRvTemplate();
+	}
+
+	private async suggestAddresses(query: string): Promise<readonly string[]> {
+		if (!this.settings.geoapifyApiKey.trim()) return [];
+		try {
+			const hits = await this.lookupAddress(query, false);
+			return hits.map((hit) => hit.formattedAddress).filter((value) => value.trim().length > 0);
+		} catch {
+			return [];
+		}
+	}
+
+	private async launchNewRvTemplate(): Promise<void> {
 		this.creatingNewRv = true;
 		try {
 			const templater = readTemplaterPlugin(this.app);
@@ -551,10 +601,10 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Callers append the plain name to Taken only and leave Met With unchanged.
 	 * New writes do not create wikilinks.
 	 */
-	async promptCompanion(path?: string): Promise<string> {
+	async promptCompanion(path?: string): Promise<string | false> {
 		await new Promise((resolve) => window.setTimeout(resolve, COMPANION_PROMPT_DELAY_MS));
 		const campaign = path && this.shouldAskCoverage(path) ? this.campaign : null;
-		const picked = await new Promise<string | null>((resolve) => {
+		const picked = await new Promise<string | null | false>((resolve) => {
 			const modal = new CompanionSuggestModal(
 				this.app,
 				this.recentCompanionNames(),
@@ -568,6 +618,7 @@ export default class RVLocatorPlugin extends Plugin {
 			);
 			modal.open();
 		});
+		if (picked === false) return false;
 		const name = picked?.trim() ?? '';
 		if (!name) return '';
 		return formatStoredCompanion(name);
@@ -778,12 +829,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private noteChromeHost(): NoteChromeHost {
 		return {
-			frontmatter: (path) => {
-				const file = this.app.vault.getFileByPath(path);
-				if (!file) return null;
-				const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-				return frontmatter ? { ...frontmatter } : null;
-			},
+			frontmatter: (path) => this.noteFrontmatter(path),
 			settings: this.settings,
 			snoozeUntil: (path) => this.snoozeUntilFor(path),
 			setStatus: (path, status) => { void this.writeStatus(path, status); },
@@ -799,7 +845,43 @@ export default class RVLocatorPlugin extends Plugin {
 			removeHub: (path, label) => { void this.removeHub(path, label); },
 			moveHub: (path, label) => { void this.moveHub(path, label); },
 			openSlotOverride: (path) => { this.openSlotOverride(path); },
+			setAddress: (path, address) => { void this.writeAddress(path, address); },
 		};
+	}
+
+	private noteFrontmatter(path: string): Record<string, unknown> | null {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const data: Record<string, unknown> | null = frontmatter ? { ...frontmatter } : null;
+		if (this.hubOverride.has(path)) {
+			const hub = this.hubOverride.get(path);
+			const cached = hubLabelList(data ? readProperty(data, 'Hub') : null);
+			const fresh = hubLabelList(hub);
+			if (cached === fresh) this.hubOverride.delete(path);
+			else if (data) data.Hub = hub;
+			else return { Hub: hub };
+		}
+		if (this.addressOverride.has(path)) {
+			const address = this.addressOverride.get(path) ?? '';
+			const property = this.settings.addressProperty.trim() || 'Address';
+			const cached = readProperty(data, property);
+			const cachedText = typeof cached === 'string' ? cached : '';
+			if (cachedText === address) this.addressOverride.delete(path);
+			else if (data) data[property] = address;
+		}
+		return data;
+	}
+
+	private async writeAddress(path: string, address: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const property = this.settings.addressProperty.trim() || 'Address';
+		const next = address.replace(/\r?\n/g, ' ').trim();
+		this.addressOverride.set(path, next);
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			assignProperty(frontmatter as Record<string, unknown>, property, next);
+		});
 	}
 
 	private async writeStatus(path: string, status: RvStatus): Promise<void> {
@@ -851,7 +933,9 @@ export default class RVLocatorPlugin extends Plugin {
 			if (list.some((item) => hubLabel(item) === label)) return;
 			list.push(`[[${label}]]`);
 			assignProperty(data, 'Hub', list);
+			this.hubOverride.set(file.path, list.slice());
 		});
+		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -870,7 +954,9 @@ export default class RVLocatorPlugin extends Plugin {
 				list.push(current);
 			}
 			assignProperty(data, 'Hub', list);
+			this.hubOverride.set(file.path, list.slice());
 		});
+		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -958,6 +1044,11 @@ export default class RVLocatorPlugin extends Plugin {
 
 	async setGenderFilter(filter: GenderFilter): Promise<void> {
 		this.settings.genderFilter = sanitizeGenderFilter(filter);
+		await this.saveSettings();
+	}
+
+	async setCampaignListFilter(filter: CampaignListFilter): Promise<void> {
+		this.settings.campaignListFilter = sanitizeCampaignListFilter(filter);
 		await this.saveSettings();
 	}
 
@@ -1081,8 +1172,10 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!next) return;
 			moved = true;
 			assignProperty(data, 'Hub', next);
+			this.hubOverride.set(file.path, next.slice());
 		});
 		if (moved) {
+			this.refreshOpenNoteChrome();
 			for (const callback of this.viewRefreshers) callback();
 		}
 	}
@@ -1325,7 +1418,15 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
 		const now = new Date();
-		const companion = outcome === 'home' ? await this.promptCompanion(file.path) : '';
+		let companion = '';
+		if (outcome === 'home') {
+			const picked = await this.promptCompanion(file.path);
+			if (picked === false) {
+				this.coverageDecisions.delete(file.path);
+				return;
+			}
+			companion = picked;
+		}
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
@@ -2084,4 +2185,13 @@ function finiteVisitCount(value: unknown): number | null {
 	if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return null;
 	const parsed = Number(value.trim());
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function housemateGender(value: unknown): RvGender {
+	return value === 'Woman' ? 'Woman' : 'Man';
+}
+
+function hubLabelList(value: unknown): string {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	return source.map((item) => hubLabel(item)).join('\n');
 }

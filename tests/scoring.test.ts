@@ -97,7 +97,7 @@ describe('urgency', () => {
 		assert.deepEqual(urgencyMark(2, 4), { glyphs: '!!', band: 2 });
 		assert.deepEqual(urgencyMark(3, 4), { glyphs: '!!!', band: 3 });
 		assert.deepEqual(urgencyMark(8, 4), { glyphs: '!!!', band: 3 });
-		assert.deepEqual(urgencyMark(8, 0), { glyphs: '', band: 0 });
+		assert.deepEqual(urgencyMark(8, 0), { glyphs: '—', band: 0 });
 		assert.equal(urgencyAccentColor(0), '#1f8a4c');
 		assert.equal(urgencyAccentColor(1), '#d6a100');
 		assert.equal(urgencyAccentColor(2), '#e06a00');
@@ -695,8 +695,9 @@ describe('dayparts and return suggester', () => {
 		assert.equal(blue?.includes('> [!info] Return Suggestions'), true);
 		assert.equal(blue?.includes('> [!example] Return Suggestions'), false);
 		assert.equal(blue?.includes('> >- Mon, 9am — Sep 1, 2026 — success'), true);
-		assert.equal(ensureVisitNotesHeading('##### Tue, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">0 days ago</span>\n').startsWith('### Visit Notes:\n#####'), true);
-		assert.equal(ensureVisitNotesHeading('### Visit Notes:\n##### Tue, 2pm — Sep 9, 2026\n').split('### Visit Notes:').length, 2);
+		assert.equal(ensureVisitNotesHeading('##### Tue, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">0 days ago</span>\n').startsWith('### Recent Notes:\n#####'), true);
+		assert.equal(ensureVisitNotesHeading('### Visit Notes:\n##### Tue, 2pm — Sep 9, 2026\n').includes('### Visit Notes:'), false);
+		assert.equal(ensureVisitNotesHeading('### Visit Notes:\n##### Tue, 2pm — Sep 9, 2026\n').split('### Recent Notes:').length, 2);
 	});
 
 	it('places the suggester quote above Attempt Log and the table inside it', () => {
@@ -818,7 +819,7 @@ describe('dayparts and return suggester', () => {
 		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
 		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
 		assert.equal(urgencyMark(0.2, 4).band, 0);
-		assert.equal(urgencyMark(4, 0).glyphs, '');
+		assert.equal(urgencyMark(4, 0).glyphs, '—');
 	});
 
 	it('moves a raised Try threshold into Unsure and keeps the Avoid baseline', () => {
@@ -890,15 +891,9 @@ describe('RV note view', () => {
 		assert.equal(lines[1], '> [!quote] RV Dashboard');
 		const at = lines.indexOf('##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>');
 		assert.ok(at > 0);
-		assert.deepEqual(lines.slice(at - 3, at + 4), [
-			'##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>',
-			'`INPUT[textArea:sVisit1Notes]`',
-			'',
-			'##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>',
-			'`INPUT[textArea:sVisit2Notes]`',
-			'',
-			'---',
-		]);
+		assert.equal(lines[at - 1], '### Recent Notes:');
+		assert.equal(lines[at + 1], '`INPUT[textArea:sVisit2Notes]`');
+		assert.ok(lines.indexOf('##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>') > at);
 		assert.equal(applyVisitBody(next, 'miss', now).startsWith('\n> [!quote] RV Dashboard'), true);
 		assert.equal(ensureDashboardLeadBlank('\n> [!quote]+ RV Dashboard\n'), '\n> [!quote]+ RV Dashboard\n');
 		assert.equal(ensureDashboardLeadBlank('Plain note.\n'), 'Plain note.\n');

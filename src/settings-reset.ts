@@ -72,6 +72,7 @@ function applyEveryday(next: RVLocatorSettings): void {
 	next.collapseOlderVisits = DEFAULT_SETTINGS.collapseOlderVisits;
 	next.visibleVisitCount = DEFAULT_SETTINGS.visibleVisitCount;
 	next.showCardReturnStatus = DEFAULT_SETTINGS.showCardReturnStatus;
+	next.campaignListFilter = DEFAULT_SETTINGS.campaignListFilter;
 	next.dashboardPagePreview = DEFAULT_SETTINGS.dashboardPagePreview;
 }
 
@@ -92,6 +93,7 @@ function applyTemplates(next: RVLocatorSettings): void {
 	next.newRvTemplateFile = DEFAULT_SETTINGS.newRvTemplateFile;
 	next.homeLogTemplateFile = DEFAULT_SETTINGS.homeLogTemplateFile;
 	next.missLogTemplateFile = DEFAULT_SETTINGS.missLogTemplateFile;
+	next.returnHubNote = DEFAULT_SETTINGS.returnHubNote;
 }
 
 function applyAdvanced(next: RVLocatorSettings): void {

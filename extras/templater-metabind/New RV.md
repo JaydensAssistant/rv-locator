@@ -25,7 +25,7 @@ cssclasses:
 >**Hub:** `INPUT[inlineList:Hub]`
 >**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
 > 
-> `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`
+> `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`
 >
 > > [!rv]- Quick Facts
 > >
@@ -52,7 +52,7 @@ cssclasses:
 > >`INPUT[inlineList:Taken]`
 
 ---
-### Visit Notes:
+### Recent Notes:
 ##### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
 `INPUT[textArea:sVisit1Notes]`
 
@@ -111,6 +111,19 @@ hidden: true
 actions:
   - type: command
     command: rv-locator:log-past-visit
+```
+
+```meta-bind-button
+label: ""
+icon: user-plus
+tooltip: Add a housemate
+style: default
+class: rv-visit-btn
+id: rv-log-housemate
+hidden: true
+actions:
+  - type: command
+    command: rv-locator:add-housemate
 ```
 
 ```meta-bind-button

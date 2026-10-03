@@ -23,7 +23,8 @@ export function shouldNudgePriority(
 /** `> [!note]-`, `> [!note]+`, an unmarked title, and the nested `> > [!note]` form all count. */
 const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*Attempt Log[\t ]*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
-const VISIT_NOTES_HEADING = '### Visit Notes:';
+const VISIT_NOTES_HEADING = '### Recent Notes:';
+const LEGACY_VISIT_NOTES_HEADING = '### Visit Notes:';
 const ADDRESS_KEY = 'Address';
 /** Collapsed by default. An existing `+` or `-` on the note is left alone. */
 const CALLOUT_HEADER = '> [!note]- Attempt Log';
@@ -85,7 +86,8 @@ export function applyVisitFrontmatter(
  * A home visit inserts `##### <stamp>` just above Attempt Log, with a Meta Bind
  * textArea bound to the next `sVisitNNotes` property on the line below it.
  * A second Home in the same rounded hour still inserts another stamp.
- * `### Visit Notes:` is added once, above the first visit stamp. Notes
+ * `### Recent Notes:` is added once, above the first visit stamp. An older
+ * `### Visit Notes:` line is renamed. Notes
  * already written as plain text are left alone.
  * Both outcomes append a bullet inside the Attempt Log callout. A nested log
  * (`> > [!note]`) gets a nested bullet (`> >-`). A missing log is created
@@ -128,6 +130,7 @@ export const VISIT_BUTTON_FACES: Readonly<Record<string, { icon: string; tooltip
 	'rv-log-home': { icon: 'door-open', tooltip: 'Home' },
 	'rv-log-miss': { icon: 'door-closed', tooltip: 'Not home' },
 	'rv-log-past': { icon: 'rotate-ccw-clock', tooltip: 'Log past visit' },
+	'rv-log-housemate': { icon: 'user-plus', tooltip: 'Add a housemate' },
 	'rv-archive': { icon: 'archive', tooltip: 'Archive' },
 };
 
@@ -137,10 +140,17 @@ function faceLines(id: string): string[] {
 	return ['label: ""', `icon: ${face.icon}`, `tooltip: ${face.tooltip}`];
 }
 
+const VISIT_BUTTON_LINE = 'BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]';
+const VISIT_BUTTON_ROW = /^(>[\t ]*)`BUTTON\[[^\]]*rv-log-home[^\]]*rv-log-miss[^\]]*\]`[\t ]*$/;
+
 const VISIT_BUTTON_BLOCKS: ReadonlyArray<{ id: string; block: string }> = [
 	{
 		id: 'rv-log-past',
 		block: ['```meta-bind-button', ...faceLines('rv-log-past'), 'style: default', 'class: rv-visit-btn', 'id: rv-log-past', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:log-past-visit', '```'].join('\n'),
+	},
+	{
+		id: 'rv-log-housemate',
+		block: ['```meta-bind-button', ...faceLines('rv-log-housemate'), 'style: default', 'class: rv-visit-btn', 'id: rv-log-housemate', 'hidden: true', 'actions:', '  - type: command', '    command: rv-locator:add-housemate', '```'].join('\n'),
 	},
 	{
 		id: 'rv-archive',
@@ -189,17 +199,18 @@ export function iconizeVisitButtons(body: string): string {
 }
 
 /**
- * A note with the Home / Not home button line gets Log past visit and
- * Archive beside them, and their hidden button blocks at the end. Notes
- * without that line, or already on four buttons, are unchanged.
+ * A note with the Home / Not home button line gets Log past visit,
+ * Add a housemate, and Archive beside them, and their hidden button blocks
+ * at the end. A four-button line gains the housemate button. Notes without
+ * that line are unchanged.
  */
 export function ensureVisitButtons(body: string): string {
 	const newline = body.includes('\r\n') ? '\r\n' : '\n';
 	const lines = body.split(/\r?\n/);
-	const at = lines.findIndex((line) => TWO_BUTTON_LINE.test(line));
+	const at = lines.findIndex((line) => VISIT_BUTTON_ROW.test(line) || TWO_BUTTON_LINE.test(line));
 	if (at < 0) return iconizeVisitButtons(body);
-	const lead = TWO_BUTTON_LINE.exec(lines[at] ?? '')?.[1] ?? '> ';
-	lines[at] = `${lead}\`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]\``;
+	const lead = (VISIT_BUTTON_ROW.exec(lines[at] ?? '') ?? TWO_BUTTON_LINE.exec(lines[at] ?? ''))?.[1] ?? '> ';
+	lines[at] = `${lead}\`${VISIT_BUTTON_LINE}\``;
 	let next = lines.join(newline);
 	const missing = VISIT_BUTTON_BLOCKS.filter(({ id }) => !new RegExp(`^id:\\s*${id}\\s*$`, 'm').test(next));
 	if (missing.length === 0) return iconizeVisitButtons(next);
@@ -246,7 +257,7 @@ const STAMP_HEADING = /^(?:###|#####)\s+(.+?)\s*$/;
 
 /**
  * Rewrite every Glancable visit stamp so the inline age matches `today`.
- * `###` stamps are promoted to `#####`. `### Visit Notes:` is left alone.
+ * `###` stamps are promoted to `#####`. `### Recent Notes:` is left alone.
  * The age is calendar days, not a Dataview query.
  */
 export function refreshHomeStampAges(body: string, today: Date): string {
@@ -273,14 +284,25 @@ function refreshStampLine(line: string, today: Date): string {
 	return `##### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
 }
 
-/** One `### Visit Notes:` above the first visit stamp. Notes with no stamp are left alone. */
+/** One `### Recent Notes:` above the first visit stamp. `### Visit Notes:` is renamed. Notes with no stamp are left alone. */
 export function ensureVisitNotesHeading(body: string): string {
-	if (body.split(/\r?\n/).some((line) => line.trim() === VISIT_NOTES_HEADING)) return body;
 	const newline = body.includes('\r\n') ? '\r\n' : '\n';
 	const lines = body.split(/\r?\n/);
-	const stampAt = lines.findIndex((line) => isVisitStampLine(line));
-	if (stampAt < 0) return body;
-	const next = [...lines.slice(0, stampAt), VISIT_NOTES_HEADING, ...lines.slice(stampAt)];
+	let changed = false;
+	const renamed = lines.map((line) => {
+		if (line.trim() !== LEGACY_VISIT_NOTES_HEADING) return line;
+		changed = true;
+		return line.replace(LEGACY_VISIT_NOTES_HEADING, VISIT_NOTES_HEADING);
+	});
+	if (renamed.some((line) => line.trim() === VISIT_NOTES_HEADING)) {
+		if (!changed) return body;
+		const joined = renamed.join(newline);
+		if (body.endsWith('\n') && !joined.endsWith('\n')) return `${joined}\n`;
+		return joined;
+	}
+	const stampAt = renamed.findIndex((line) => isVisitStampLine(line));
+	if (stampAt < 0) return changed ? renamed.join(newline) : body;
+	const next = [...renamed.slice(0, stampAt), VISIT_NOTES_HEADING, ...renamed.slice(stampAt)];
 	const joined = next.join(newline);
 	if (body.endsWith('\n') && !joined.endsWith('\n')) return `${joined}\n`;
 	return joined;
@@ -290,6 +312,15 @@ export function isVisitStampLine(line: string): boolean {
 	const match = STAMP_HEADING.exec(line);
 	if (!match) return false;
 	return calendarDaysSinceStamp(stripStampAge(match[1] ?? ''), new Date()) != null;
+}
+
+/** `##`, `###`, or `#####` visit stamps. Used to place a new visit above older ones. `##` is not promoted. */
+function isStoredVisitLine(line: string): boolean {
+	const match = /^(?:##|###|#####)\s+(.+?)\s*$/.exec(line.replace(/\r$/, ''));
+	if (!match) return false;
+	const text = stripStampAge(match[1] ?? '').trim();
+	if (/^(?:visit|recent) notes:?$/i.test(text)) return false;
+	return calendarDaysSinceStamp(text, new Date()) != null;
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {
@@ -355,17 +386,33 @@ export function ensureAttemptLog(body: string): string {
 	return normalized;
 }
 
-/** Stamp and notes box just above the Attempt Log region, after every existing stamp. */
+/**
+ * Stamp and notes box at the top of the visit list, under Recent Notes.
+ * Older stamps stay below it in the file. A note with no stamp yet still
+ * inserts just above Attempt Log, and the heading is added above that stamp.
+ */
 export function insertHomeHeading(body: string, stamp: string, notesProperty?: string): string {
-	const lines = body.split('\n');
+	const lines = body.split('\n').map((line) => (
+		line.trim() === LEGACY_VISIT_NOTES_HEADING ? line.replace(LEGACY_VISIT_NOTES_HEADING, VISIT_NOTES_HEADING) : line
+	));
+	const heading = `${STAMP_LEVEL} ${stamp}`;
+	const field = visitNotesField(notesProperty ?? nextVisitNotesProperty(body));
+	const notesAt = lines.findIndex((line) => line.trim() === VISIT_NOTES_HEADING);
+	if (notesAt >= 0) {
+		let at = notesAt + 1;
+		if ((lines[at] ?? '').trim() === '') at += 1;
+		return [...lines.slice(0, at), heading, field, '', ...lines.slice(at)].join('\n');
+	}
+	const stampAt = lines.findIndex((line) => isStoredVisitLine(line));
+	if (stampAt >= 0) {
+		return [...lines.slice(0, stampAt), VISIT_NOTES_HEADING, heading, field, '', ...lines.slice(stampAt)].join('\n');
+	}
 	const found = findAttemptLog(lines);
-	if (!found || found.kind !== 'callout') return body;
+	if (!found || found.kind !== 'callout') return lines.join('\n');
 	const anchor = attemptLogAnchor(lines, found.index);
 	const before = lines.slice(0, anchor);
 	while (before.length > 0 && before[before.length - 1] === '') before.pop();
 	const after = lines.slice(anchor);
-	const heading = `${STAMP_LEVEL} ${stamp}`;
-	const field = visitNotesField(notesProperty ?? nextVisitNotesProperty(body));
 	const last = before[before.length - 1]?.trim() ?? '';
 	const lead = before.length === 0 || last === VISIT_NOTES_HEADING ? [] : [''];
 	return [...before, ...lead, heading, field, '', ...after].join('\n');

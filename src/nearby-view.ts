@@ -1,6 +1,6 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextGenderFilter, nextReturnScope } from './status';
+import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, OSM_ATTRIBUTION } from './constants';
 import { domInstanceOf } from './dom';
 import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
@@ -269,6 +269,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			scope: this.scope,
 			returnScope: this.mode === 'glancable' ? this.plugin.settings.returnScope : undefined,
 			genderFilter: this.mode === 'glancable' ? this.plugin.settings.genderFilter : undefined,
+			campaignListFilter: this.mode === 'glancable' ? this.plugin.settings.campaignListFilter : undefined,
+			campaignMark: (path) => this.plugin.campaignMark(path),
 			noteValue: (file, name) => readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, name),
 		});
 		this.columns = model.columns;
@@ -446,7 +448,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Campaign', title: 'Campaign' },
 			});
-			setIcon(campaign, 'flag');
+			setIcon(campaign, 'book-alert');
 			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
 		}
 		const create = actions.createEl('button', {
@@ -473,6 +475,15 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (!this.sortButtonsEl) return;
 		const scope = this.plugin.settings.returnScope;
 		const gender = this.plugin.settings.genderFilter;
+		const campaignFilter = this.plugin.settings.campaignListFilter;
+		const campaignButton = this.sortButtonsEl.createEl('button', {
+			cls: `rv-locator-sort-preset is-filter${campaignFilter === 'all' ? '' : ' is-active'}`,
+			text: CAMPAIGN_LIST_LABEL[campaignFilter],
+			attr: { type: 'button', 'aria-label': CAMPAIGN_LIST_LABEL[campaignFilter] },
+		});
+		campaignButton.addEventListener('click', () => {
+			void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter));
+		});
 		const scopeButton = this.sortButtonsEl.createEl('button', {
 			cls: 'rv-locator-sort-preset is-filter',
 			text: RETURN_SCOPE_LABEL[scope],

@@ -11,6 +11,7 @@ import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
+import { cardReturnLead } from './schedule';
 import { statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
@@ -65,26 +66,20 @@ export class NearbyGlancableView extends NearbyBasesView {
 		card.setAttr('data-urgency-band', String(band));
 		if (priority === 0) card.addClass('is-priority-zero');
 		card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority, urgencyColorsFor(this.plugin.settings.urgencyPalette, this.plugin.settings.urgencyCustomColors)));
-		const titleBits: string[] = [];
-		if (rank) {
-			card.setAttr('data-priority', rank);
-			titleBits.push(`Priority ${rank}`);
-		}
-		if (urgency != null) titleBits.push(`Urgency ${urgency.toFixed(2)}`);
-		if (titleBits.length > 0) card.setAttr('title', titleBits.join('. '));
-
+		if (rank) card.setAttr('data-priority', rank);
 		if (this.lineOn('name')) {
 			const name = card.createDiv('rv-locator-card-name');
 			name.setAttr('data-line', glancableLineId(0));
 			const statusIconEl = name.createSpan('rv-locator-status-icon');
 			setIcon(statusIconEl, statusIcon(row.status));
-			statusIconEl.setAttr('title', row.status);
+			statusIconEl.setAttr('aria-label', row.status);
 			statusIconEl.querySelector('svg')?.removeAttribute('aria-label');
+			this.paintCampaignMark(name, row.path);
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
 				text: row.name,
 				href: row.path,
-				title: row.name,
+				attr: { 'aria-label': row.name },
 			});
 			this.bindFileLink(link, row.path);
 		}
@@ -106,14 +101,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 				place.createSpan({
 					cls: 'rv-locator-card-street',
 					text: row.addressStreet,
-					title: row.addressText || row.addressStreet,
+					attr: { 'aria-label': row.addressText || row.addressStreet },
 				});
 			}
 			if (showCity && row.addressCity) {
 				place.createSpan({
 					cls: 'rv-locator-city-lg',
 					text: row.addressCity,
-					title: row.addressText || row.addressCity,
+					attr: { 'aria-label': row.addressText || row.addressCity },
 				});
 			}
 			if (showDistance) {
@@ -124,7 +119,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 					text: live ? `· ${distance}` : '· —',
 					attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
 				});
-				distEl.setAttr('title', live ? distance : 'No position');
 				this.rememberDistance(key, distEl, row);
 			}
 		}
@@ -154,33 +148,36 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-visits',
-				attr: { title: ratio.title },
+				attr: { 'aria-label': ratio.title },
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
-			this.paintCampaignMark(foot, row.path);
 		}
 		this.paintActions(card, rank, row, urgency, priority);
 		if (ratio && this.plugin.settings.showCardReturnStatus) {
 			const line = card.createDiv('rv-locator-return-line');
-			line.createSpan({ cls: 'rv-locator-return-visits', text: `# ${ratio.text}`, attr: { title: ratio.title } });
+			line.createSpan({
+				cls: 'rv-locator-return-visits',
+				text: `# ${ratio.text}`,
+				attr: { 'aria-label': ratio.title },
+			});
+			line.createSpan({
+				cls: 'rv-locator-return-when',
+				text: cardReturnLead(new Date()),
+			});
 			line.createSpan({
 				cls: 'rv-locator-return-bucket',
 				text: this.plugin.cardReturnBucket(row.path),
 			});
-			this.paintCampaignMark(line, row.path);
-		} else if (!ratio) {
-			this.paintCampaignMark(foot, row.path);
 		}
 	}
 
 	private paintCampaignMark(parent: HTMLElement, path: string): void {
 		const mark = this.plugin.campaignMark(path);
 		if (!mark) return;
+		const label = mark === 'covered' ? 'Covered this campaign' : 'Not covered this campaign';
 		const icon = parent.createSpan({
 			cls: 'rv-locator-campaign-mark',
-			attr: {
-				title: mark === 'covered' ? 'Covered this campaign' : 'Not covered this campaign',
-			},
+			attr: { 'aria-label': label },
 		});
 		setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
 		icon.querySelector('svg')?.removeAttribute('aria-label');
@@ -204,7 +201,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 			attr: {
 				type: 'button',
 				'data-band': String(marks.band),
-				title: urgencyTitle(urgency, priority),
 				'aria-label': urgencyTitle(urgency, priority),
 			},
 		});
@@ -220,7 +216,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 				text: rank,
 				attr: {
 					type: 'button',
-					title: `Priority ${rank}. Change priority.`,
 					'aria-label': `Priority ${rank}. Change priority`,
 				},
 			});
@@ -242,7 +237,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		const slot = parent.createSpan({
 			cls: 'rv-locator-slot',
-			attr: { title: cell.title || label, 'data-line': lineId },
+			attr: { 'aria-label': cell.title || label, 'data-line': lineId },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
@@ -256,7 +251,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private plainSlot(parent: HTMLElement, icon: string, text: string, title: string, empty: boolean, extra = '', lineId = ''): void {
 		const slot = parent.createSpan({
 			cls: `rv-locator-slot${empty ? ' is-empty' : ''}${extra ? ` ${extra}` : ''}`,
-			attr: { title, ...(lineId ? { 'data-line': lineId } : {}) },
+			attr: { 'aria-label': title, ...(lineId ? { 'data-line': lineId } : {}) },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
@@ -267,11 +262,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const link = parent.createEl('a', {
 			cls: 'rv-locator-map-pin',
 			href: cell.text,
-			title: cell.title || 'Open map',
 			attr: {
 				rel: 'noopener',
 				target: '_blank',
-				'aria-label': 'Open map',
+				'aria-label': cell.title || 'Open map',
 			},
 		});
 		setIcon(link, 'route');

@@ -1,15 +1,36 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered } from '../src/campaign';
-import { hubRefs, moveHubLeft } from '../src/hub-row';
+import { hubRefs, moveHubLeft, resolveReturnHub } from '../src/hub-row';
 import { pagePreviewDecision } from '../src/page-preview';
-import { currentReturnBucket, defaultAvailabilityGrid, suggestReturnDigest } from '../src/schedule';
+import { cardReturnLead, currentReturnBucket, defaultAvailabilityGrid, suggestReturnDigest } from '../src/schedule';
+import { nextCampaignListFilter } from '../src/status';
+import { urgencyBangShapes, urgencyMark } from '../src/scoring';
 import { resetSettingsTab } from '../src/settings-reset';
 import { formatSlotOverride, parseSlotOverrides, upsertSlotOverride } from '../src/slot-override';
 import { layoutTakenNames } from '../src/taken-row';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
 import { layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
 import { createDoc, type DomEl } from './visit-dom';
+
+describe('1.3.5 dogfood helpers', () => {
+	it('draws a dash for an archived priority and cycles the campaign list', () => {
+		assert.equal(urgencyMark(3, 0).glyphs, '—');
+		assert.equal(urgencyBangShapes('—')[0]?.kind, 'rect');
+		assert.equal(nextCampaignListFilter('all'), 'uncovered');
+		assert.equal(nextCampaignListFilter('uncovered'), 'covered');
+		assert.equal(nextCampaignListFilter('covered'), 'all');
+		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4)), 'Friday afternoon — ');
+		assert.deepEqual(resolveReturnHub({ target: 'Return Visits Hub', label: 'Return Visits Hub' }, 'Ministry Hub'), {
+			target: 'Ministry Hub',
+			label: 'Ministry Hub',
+		});
+		assert.deepEqual(resolveReturnHub({ target: 'North', label: 'North' }, 'Ministry Hub'), {
+			target: 'North',
+			label: 'North',
+		});
+	});
+});
 
 describe('1.3.5 hub row', () => {
 	it('keeps every hub and moves one left without rewriting the first', () => {
@@ -101,7 +122,7 @@ describe('1.3.5 visit display order', () => {
 		assert.deepEqual(oldest.older, []);
 	});
 
-	it('reorders a shared preview section and collapses the rest under Older Visits', () => {
+	it('keeps file order and collapses the rest under Older Visits', () => {
 		const stamps = [
 			'Mon, 9am — Sep 1, 2026',
 			'Tue, 2pm — Sep 2, 2026',
@@ -116,7 +137,7 @@ describe('1.3.5 visit display order', () => {
 			limit: 3,
 		});
 		assert.equal(markdown, stamps.map((stamp) => `##### ${stamp}`).join('\n'));
-		assertOlderVisits(flat.sizer, ['Thu, 4pm', 'Wed, 3pm', 'Tue, 2pm'], 'Mon, 9am');
+		assertOlderVisits(flat.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
 
 		const wrapped = visitTree(stamps, 'wrapped');
 		layoutVisitNotes(wrapped.preview as unknown as HTMLElement, markdown, {
@@ -124,12 +145,16 @@ describe('1.3.5 visit display order', () => {
 			collapseOlder: true,
 			limit: 3,
 		});
-		assertOlderVisits(wrapped.sizer, ['Thu, 4pm', 'Wed, 3pm', 'Tue, 2pm'], 'Mon, 9am');
+		assertOlderVisits(wrapped.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
 		const heading = wrapped.sizer.querySelector('h2');
 		assert.ok(heading);
 		heading.click();
-		const older = wrapped.sizer.children.find((node) => (node.textContent ?? '').includes('Mon, 9am'));
+		const older = wrapped.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
 		assert.equal(older?.classList.contains('rv-older-hidden'), false);
+		heading.click();
+		assert.equal(wrapped.sizer.querySelector('h2')?.textContent, 'Older Visits');
+		assert.equal(older?.classList.contains('rv-older-hidden'), true);
+		assert.equal(heading.classList.contains('is-collapsed'), false);
 	});
 
 	it('keeps Visit Notes above the stamps when a rule precedes that heading', () => {
@@ -148,7 +173,7 @@ describe('1.3.5 visit display order', () => {
 				limit: 3,
 			});
 			assert.equal(markdown, `### Visit Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
-			assertVisitNotesStaysAbove(tree.sizer, ['Thu, 4pm', 'Wed, 3pm', 'Tue, 2pm']);
+			assertVisitNotesStaysAbove(tree.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm']);
 		}
 	});
 });
@@ -231,7 +256,8 @@ function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: stri
 	assert.equal(heading?.textContent, 'Older Visits');
 	assert.equal(heading?.classList.contains('rv-older-visits'), true);
 	assert.equal(heading?.classList.contains('callout'), false);
-	assert.equal(heading?.classList.contains('is-collapsed'), true);
+	assert.equal(heading?.classList.contains('is-collapsed'), false);
+	assert.ok(heading?.querySelector('.collapse-indicator'));
 	const rule = heading?.parentElement?.children[heading.parentElement.children.indexOf(heading) - 1];
 	assert.equal(rule?.tagName, 'HR');
 	assert.equal(rule?.classList.contains('rv-older-rule'), true);

@@ -1093,7 +1093,7 @@ table.rv-locator-digest-table,
 
 .rv-locator-return-line {
 	margin: 0;
-	white-space: pre-wrap;
+	white-space: nowrap;
 }
 
 .rv-locator-suggest-title {
@@ -1112,6 +1112,16 @@ table.rv-locator-digest-table,
 .rv-locator-suggest-actions,
 .rv-locator-privacy {
 	padding: 8px 12px;
+}
+
+.rv-locator-modal > .rv-locator-modal-copy {
+	padding: 0.35em 1.15em 0.9em;
+}
+
+.rv-locator-modal .rv-locator-suggest-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.45em 0.5em;
 }
 
 .rv-locator-modal {
@@ -1312,7 +1322,7 @@ body.rv-wide-visit-buttons .mb-button-group.mb-button-group-inline:has(> .mb-but
 	width: 100%;
 }
 
-/* Four icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
+/* Five icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
 	flex: 1 1 0;
@@ -1363,21 +1373,26 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
   when the browser has it; color-mix is the fallback.
 */
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 78%, oklch(0.62 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.52, l, 0.68) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 82%, oklch(0.64 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.54, l, 0.68) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 62%, oklch(0.48 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.44, calc(l - 0.08), 0.6) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 70%, oklch(0.54 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.48, calc(l - 0.06), 0.62) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 48%, oklch(0.38 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.16), 0.52) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 58%, oklch(0.46 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.42, calc(l - 0.12), 0.56) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 46%, oklch(0.38 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.18), 0.5) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(5) > button.mb-button-inner {
 	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 36%, oklch(0.32 0 0));
 	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.3, calc(l - 0.24), 0.46) c h);
 }
@@ -1711,6 +1726,10 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	border-bottom: 1px solid var(--background-modifier-border);
 }
 
+.rv-qf-row.is-status {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
 .rv-qf-label {
 	justify-self: start;
 	text-align: left;
@@ -1810,6 +1829,21 @@ body.rv-wide-hubs .rv-hub-line {
 	height: var(--input-height, 2em);
 	margin: 0;
 	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--button-radius, var(--radius-s, 4px));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-hub-line > .rv-hub-add:hover {
+	color: var(--text-normal);
+}
+
+.rv-hub-line > .rv-hub-add svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
 }
 
 .rv-hub-row {
@@ -1818,9 +1852,10 @@ body.rv-wide-hubs .rv-hub-line {
 	align-items: center;
 	gap: 0.25em;
 	box-sizing: border-box;
-	width: auto;
+	width: 100%;
 	max-width: 100%;
 	min-width: 0;
+	min-height: var(--input-height, 2em);
 	vertical-align: middle;
 }
 
@@ -1842,11 +1877,12 @@ body.rv-wide-hubs .rv-hub-line {
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
 	background-image: none;
 	box-shadow: none;
-	color: var(--text-normal);
+	color: var(--text-accent);
 	font: inherit;
 	font-weight: inherit;
 	line-height: inherit;
-	text-decoration: none;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	cursor: pointer;
@@ -1855,13 +1891,12 @@ body.rv-wide-hubs .rv-hub-line {
 .rv-dashboard a.internal-link.rv-hub-chip:hover,
 .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover,
 .rv-hub-chip:hover {
-	color: var(--text-normal);
-	text-decoration: none;
+	color: var(--text-accent);
+	text-decoration: underline;
 	background-image: none;
 }
 
-.rv-hub-remove,
-.rv-hub-add {
+.rv-hub-remove {
 	flex: 0 0 auto;
 	margin: 0;
 	padding: 0 0.25em;
@@ -1869,6 +1904,28 @@ body.rv-wide-hubs .rv-hub-line {
 	background: transparent;
 	color: var(--text-muted);
 	cursor: pointer;
+}
+
+.rv-address-input {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	height: var(--input-height, 2em);
+	margin: 0;
+	padding: 2px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background: var(--background-modifier-form-field, var(--background-primary));
+	color: var(--text-normal);
+	font: inherit;
+	font-family: inherit;
+	font-size: inherit;
+	line-height: inherit;
+}
+
+.rv-address-hidden {
+	display: none !important;
 }
 
 body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
@@ -2005,27 +2062,57 @@ body.rv-wide-hubs .rv-hub-row {
 	height: calc(14px * var(--rv-font-scale, 1));
 }
 
-.rv-locator-return-line {
+.rv-locator-glancable .rv-locator-return-line {
 	display: flex;
-	align-items: center;
-	gap: 0.45em;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
 	width: 100%;
 	margin-top: 2px;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.rv-locator-return-visits,
+.rv-locator-return-bucket {
+	flex: 0 0 auto;
+	font-size: inherit;
+	font-weight: 600;
+	line-height: inherit;
 }
 
 .rv-locator-return-visits {
-	color: #fff;
-	font-weight: 700;
+	color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+.rv-locator-return-when {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: 0.72em;
+	font-weight: 400;
+	line-height: 1.15;
+	text-overflow: ellipsis;
 }
 
 .rv-locator-return-bucket {
 	color: var(--rv-urgency-accent, var(--text-accent));
-	font-weight: 700;
 }
 
-.rv-locator-campaign-mark {
+.rv-locator-glancable .rv-locator-card-name .rv-locator-campaign-mark {
 	display: inline-flex;
-	margin-left: 1.25em;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+	margin: 0 0.3em 0 0.2em;
 	color: var(--text-muted);
 }
 
@@ -2067,7 +2154,26 @@ body.rv-wide-hubs .rv-hub-row {
 }
 
 .rv-older-visits {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
 	cursor: pointer;
+}
+
+.rv-older-visits .collapse-indicator {
+	display: inline-block;
+	box-sizing: border-box;
+	width: 0.45em;
+	height: 0.45em;
+	margin-top: -0.15em;
+	border-top: 2px solid var(--text-faint);
+	border-right: 2px solid var(--text-faint);
+	transform: rotate(45deg);
+}
+
+.rv-older-visits.is-open .collapse-indicator {
+	margin-top: 0.1em;
+	transform: rotate(135deg);
 }
 
 .rv-older-hidden {

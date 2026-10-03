@@ -29,7 +29,7 @@ function note(): string {
 		'>**Address:** `INPUT[text:Address]` [🗺️](https://maps.example/x)',
 		'',
 		'---',
-		'### Visit Notes:',
+		'### Recent Notes:',
 		'##### Mon, 5pm — Sep 21, 2026 <span class="rv-stamp-ago">8 days ago</span>',
 		'`INPUT[textArea:sVisit1Notes]`',
 		'',
@@ -113,7 +113,7 @@ describe('visit editor', () => {
 		const body = insertVisit(note(), { when: new Date(2026, 8, 28, 9), home: true, companion: '' }, { now: NOW });
 		const lines = body.split('\n');
 		const at = lines.findIndex((line) => line.startsWith('##### Mon, 9am — Sep 28, 2026'));
-		assert.ok(at > lines.findIndex((line) => line.startsWith('##### Sat')));
+		assert.ok(at < lines.findIndex((line) => line.startsWith('##### Sat')));
 		assert.equal(lines[at + 1], '`INPUT[textArea:sVisit3Notes]`');
 		assert.ok(at < lines.indexOf('> [!example] Return Suggestions'));
 		assert.match(body, /> >- Mon, 9am — Sep 28, 2026 — success\n?$/);
@@ -132,7 +132,7 @@ describe('visit editor', () => {
 		assert.doesNotMatch(body, /Sep 21/);
 		assert.doesNotMatch(body, /sVisit1Notes/);
 		const lines = body.split('\n');
-		assert.equal(lines[lines.indexOf('### Visit Notes:') + 1]?.startsWith('##### Sat'), true);
+		assert.equal(lines[lines.indexOf('### Recent Notes:') + 1]?.startsWith('##### Sat'), true);
 		assert.equal(listVisits(body).length, 2);
 	});
 
@@ -376,7 +376,7 @@ describe('visit buttons', () => {
 
 	it('adds Log past visit and Archive to an older note once', () => {
 		const next = ensureVisitButtons(two);
-		assert.match(next, /^> `BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-archive\]`$/m);
+		assert.match(next, /^> `BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive\]`$/m);
 		assert.match(next, /id: rv-log-past\nhidden: true\nactions:\n {2}- type: command\n {4}command: rv-locator:log-past-visit\n```/);
 		assert.match(next, /command: rv-locator:archive-rv/);
 		assert.equal(ensureVisitButtons(next), next);

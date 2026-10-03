@@ -26,7 +26,7 @@ import {
 	type UrgencyColors,
 	type UrgencyPaletteId,
 } from './urgency-palette';
-import { sanitizeGenderFilter, sanitizeReturnScope, type GenderFilter, type ReturnScope } from './status';
+import { sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, type CampaignListFilter, type GenderFilter, type ReturnScope } from './status';
 
 export type DistanceUnit = 'miles' | 'kilometers';
 
@@ -135,6 +135,10 @@ export interface RVLocatorSettings {
 	visibleVisitCount: number;
 	/** Bottom line of a glancable card shows the current return bucket. Off by default. */
 	showCardReturnStatus: boolean;
+	/** Note opened by the return-visit hub chip. Default Return Visits Hub. */
+	returnHubNote: string;
+	/** Glancable campaign cycle: all, uncovered, covered. */
+	campaignListFilter: CampaignListFilter;
 	/** When on, the core Page Preview plugin may preview RV Dashboard titles. Off by default. */
 	dashboardPagePreview: boolean;
 	/** Folder for notes created with New RV. Empty keeps Templater's folder. */
@@ -315,6 +319,8 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	collapseOlderVisits: true,
 	visibleVisitCount: 3,
 	showCardReturnStatus: false,
+	returnHubNote: 'Return Visits Hub',
+	campaignListFilter: 'all',
 	dashboardPagePreview: false,
 	newRvFolder: '',
 	appendMetDateToFilename: false,
@@ -455,6 +461,10 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		collapseOlderVisits: input.collapseOlderVisits !== false,
 		visibleVisitCount: wholeInRange(input.visibleVisitCount, 1, 30, DEFAULT_SETTINGS.visibleVisitCount),
 		showCardReturnStatus: input.showCardReturnStatus === true,
+		returnHubNote: typeof input.returnHubNote === 'string' && input.returnHubNote.trim()
+			? input.returnHubNote.trim()
+			: DEFAULT_SETTINGS.returnHubNote,
+		campaignListFilter: sanitizeCampaignListFilter(input.campaignListFilter),
 		dashboardPagePreview: input.dashboardPagePreview === true,
 		newRvFolder: folderSetting(input.newRvFolder),
 		appendMetDateToFilename: input.appendMetDateToFilename === true,

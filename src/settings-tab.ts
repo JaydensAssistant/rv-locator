@@ -314,7 +314,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		}
 		new Setting(containerEl)
 			.setName('Newest visits first')
-			.setDesc('New visits render at the top and older visits move down. This is display order only. The note file stays in the order it was written.')
+			.setDesc('A new visit is written at the top of the note and older visits move down in the file. The screen follows that order.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.visitsNewestFirst);
 				toggle.onChange(async (value) => {
@@ -346,7 +346,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Return status on cards')
-			.setDesc('Off by default. The bottom line of a Glancable card shows the visit count in bold white and the current daypart bucket (Avoid, Try, Unsure, or Untried) in the urgency color.')
+			.setDesc('Off by default. The bottom line of a Glancable card shows the visit count and the current daypart bucket (Avoid, Try, Unsure, or Untried), the same size as the day and distance counters, with the weekday and daypart in front of the bucket.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.showCardReturnStatus);
 				toggle.onChange(async (value) => {
@@ -459,6 +459,17 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			(value) => { this.plugin.settings.homeLogTemplateFile = value; },
 			true,
 		);
+		new Setting(containerEl)
+			.setName('Return visit hub')
+			.setDesc('The hub chip in each note that points at Return Visits Hub opens this note instead. Other hubs stay as they are written.')
+			.addText((text) => {
+				text.setPlaceholder('Return Visits Hub');
+				text.setValue(this.plugin.settings.returnHubNote);
+				text.onChange(async (value) => {
+					this.plugin.settings.returnHubNote = value.trim() || 'Return Visits Hub';
+					await this.plugin.saveSettings();
+				});
+			});
 		this.templateFileSetting(
 			templateGeneration,
 			'Not home log template file',

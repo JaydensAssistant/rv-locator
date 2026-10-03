@@ -80,7 +80,8 @@ function tagVisitNotesHeading(root: HTMLElement): void {
 	const headings = root.matches('h3') ? [root] : Array.from(root.querySelectorAll('h3'));
 	for (const heading of headings) {
 		if (!domInstanceOf(heading, HTMLElement)) continue;
-		if (textWithout(heading, '.heading-collapse-indicator') === 'Visit Notes:') heading.addClass(NOTES_HEADING_CLASS);
+		const title = textWithout(heading, '.heading-collapse-indicator');
+		if (title === 'Visit Notes:' || title === 'Recent Notes:') heading.addClass(NOTES_HEADING_CLASS);
 	}
 }
 

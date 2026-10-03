@@ -982,7 +982,7 @@ describe('visit log', () => {
 		assert.equal(body, [
 			'Talked on the porch.',
 			'',
-			'### Visit Notes:',
+			'### Recent Notes:',
 			stampLine,
 			notesField,
 			'',
@@ -1046,7 +1046,7 @@ describe('visit log', () => {
 		].join('\n');
 		const more = applyVisitBody(expanded, 'home', now);
 		assert.equal(more, [
-			'### Visit Notes:',
+			'### Recent Notes:',
 			stampLine,
 			notesField,
 			'',
@@ -1762,7 +1762,7 @@ describe('companion prompt', () => {
 		assert.deepEqual(chosenFirst, ['Jordan Lee']);
 	});
 
-	it('skip and esc resolve empty once', async () => {
+	it('skip resolves empty and esc cancels', async () => {
 		const skipped: Array<string | null> = [];
 		const gate = createCompanionPromptGate((name) => { skipped.push(name); });
 		gate.skip();
@@ -1770,7 +1770,7 @@ describe('companion prompt', () => {
 		await waitTurn();
 		assert.deepEqual(skipped, [null]);
 
-		const escaped: Array<string | null> = [];
+		const escaped: Array<string | null | false> = [];
 		await new Promise<void>((resolve) => {
 			const esc = createCompanionPromptGate((name) => {
 				escaped.push(name);
@@ -1779,7 +1779,7 @@ describe('companion prompt', () => {
 			esc.closed((run) => { setTimeout(run, 0); });
 			assert.deepEqual(escaped, []);
 		});
-		assert.deepEqual(escaped, [null]);
+		assert.deepEqual(escaped, [false]);
 	});
 
 	it('modal delivers a typed Use row after close, and Skip leaves the prompt empty', async () => {
@@ -1809,14 +1809,14 @@ describe('companion prompt', () => {
 		await waitTurn();
 		assert.deepEqual(skipped, [null]);
 
-		const escaped: Array<string | null> = [];
+		const escaped: Array<string | null | false> = [];
 		const escModal = new CompanionSuggestModal({} as never, [], (name) => {
 			escaped.push(name);
 		});
 		escModal.onClose();
 		assert.deepEqual(escaped, []);
 		await waitTurn();
-		assert.deepEqual(escaped, [null]);
+		assert.deepEqual(escaped, [false]);
 	});
 
 	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {
@@ -1892,14 +1892,15 @@ function waitTurn(): Promise<void> {
 async function storedFromPrompt(
 	events: ReadonlyArray<'close' | { choose: string }>,
 ): Promise<string> {
-	const picked = await new Promise<string | null>((resolve) => {
+	const picked = await new Promise<string | null | false>((resolve) => {
 		const gate = createCompanionPromptGate(resolve);
 		for (const event of events) {
 			if (event === 'close') gate.closed((run) => { setTimeout(run, 0); });
 			else gate.choose(event.choose);
 		}
 	});
-	const name = picked?.trim() ?? '';
+	if (typeof picked !== 'string') return '';
+	const name = picked.trim();
 	if (!name) return '';
 	return formatStoredCompanion(name);
 }

@@ -534,8 +534,8 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('> [!rv]- 👤 RV Dashboard'), false);
 		assert.equal(createdText.includes('> [!info]-'), false);
 		assert.equal(createdText.includes('Log visit'), false);
-		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`'), true);
-		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 4);
+		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`'), true);
+		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 5);
 		assert.equal(createdText.includes('    command: rv-locator:log-past-visit\n'), true);
 		assert.equal(createdText.includes('    command: rv-locator:archive-rv\n'), true);
 		assert.equal(createdText.includes('Priority: 4\n'), true);
@@ -548,9 +548,9 @@ describe('disk proof', () => {
 		const hubsAt = createdText.indexOf('>**Hub:**');
 		const addressInputAt = createdText.indexOf('>**Address:** `INPUT[text:Address]`');
 		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
-		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`');
+		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`');
 		const factsAt = createdText.indexOf('> > [!rv]- Quick Facts');
-		const ruleAt = createdText.indexOf('\n---\n### Visit Notes:');
+		const ruleAt = createdText.indexOf('\n---\n### Recent Notes:');
 		const stampAt = createdText.indexOf(`##### ${stamp}`);
 		const suggestionsAt = createdText.indexOf('> [!example] Return Suggestions');
 		const digestAt = createdText.indexOf('> No May-go-out days');
@@ -566,7 +566,7 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met**'));
 		assert.ok(callout.indexOf('**Met**') < callout.indexOf('**Taken**'));
 		assert.equal(callout.includes('**Met With**'), false);
-		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
+		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
 		assert.equal(createdText.includes('Notes would go here'), false);
 		assert.match(createdText, /\n---\n\n> \[!quote\] RV Dashboard\n/);
 		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
@@ -574,7 +574,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.split('\n').filter((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`).length, 1);
 		const stampLine = createdText.split('\n').findIndex((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`);
 		const createdLines = createdText.split('\n');
-		assert.equal(createdLines[stampLine - 1], '### Visit Notes:');
+		assert.equal(createdLines[stampLine - 1], '### Recent Notes:');
 		assert.equal(createdLines[stampLine - 2], '---');
 		assert.equal(createdLines[stampLine + 1], '`INPUT[textArea:sVisit1Notes]`');
 		assert.equal(createdLines[stampLine + 2], '');
@@ -805,7 +805,7 @@ describe('disk proof', () => {
 		assert.equal(homeLines[homeLog - 1], '');
 		assert.equal(homeLines[homeLog - 2], '`INPUT[textArea:sVisit1Notes]`');
 		assert.match(homeLines[homeLog - 3] ?? '', /^##### .+<span class="rv-stamp-ago">Today<\/span>$/);
-		assert.equal(homeLines.includes('### Visit Notes:'), true);
+		assert.equal(homeLines.includes('### Recent Notes:'), true);
 		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
 		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
 		assert.equal(notices.at(-1), 'Logged success');
@@ -859,7 +859,7 @@ describe('disk proof', () => {
 		assert.deepEqual(secondHeadings, [firstHeadings[0], firstHeadings[0]]);
 		const secondLines = secondHome.split('\n');
 		const secondStamps = secondLines.flatMap((line, index) => line.startsWith('##### ') ? [index] : []);
-		assert.deepEqual(secondStamps.map((index) => secondLines[index + 1]), ['`INPUT[textArea:sVisit1Notes]`', '`INPUT[textArea:sVisit2Notes]`']);
+		assert.deepEqual(secondStamps.map((index) => secondLines[index + 1]), ['`INPUT[textArea:sVisit2Notes]`', '`INPUT[textArea:sVisit1Notes]`']);
 		assert.equal(secondLines[(secondStamps[1] ?? 0) - 1], '');
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
 		assert.equal(notices.at(-1), 'Logged success');
@@ -894,10 +894,10 @@ describe('disk proof', () => {
 		assert.equal(laterDisk.includes('Visits: 2'), true);
 		assert.equal(laterDisk.includes('Successful Visits: 2'), true);
 		const laterHeadings = laterDisk.split('\n').filter((line) => /^## /.test(line) || line.startsWith('##### '));
-		assert.equal(laterHeadings[0], '## Mon, 9am — Sep 1, 2026');
+		assert.equal(laterHeadings[0]?.startsWith('##### '), true);
 		assert.equal(laterHeadings.length, 2);
-		assert.equal(laterHeadings[1]?.startsWith('##### '), true);
-		assert.equal(laterDisk.includes('### Visit Notes:'), true);
+		assert.equal(laterHeadings[1], '## Mon, 9am — Sep 1, 2026');
+		assert.equal(laterDisk.includes('### Recent Notes:'), true);
 		assert.notEqual(laterHeadings[1], laterHeadings[0]);
 	});
 

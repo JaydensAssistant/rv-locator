@@ -5,6 +5,9 @@ export type ReturnScope = 'active' | 'rvs' | 'studies' | 'archive';
 
 export type GenderFilter = 'all' | 'men' | 'women';
 
+/** Glancable list cycle, to the left of Active. Three clicks return to all. */
+export type CampaignListFilter = 'all' | 'uncovered' | 'covered';
+
 export type RvGender = 'Man' | 'Woman';
 
 export const RETURN_SCOPE_ORDER: readonly ReturnScope[] = ['active', 'rvs', 'studies', 'archive'];
@@ -40,6 +43,23 @@ export function nextReturnScope(current: ReturnScope): ReturnScope {
 export function nextGenderFilter(current: GenderFilter): GenderFilter {
 	const index = GENDER_FILTER_ORDER.indexOf(current);
 	return GENDER_FILTER_ORDER[(index + 1) % GENDER_FILTER_ORDER.length] ?? 'all';
+}
+
+export const CAMPAIGN_LIST_ORDER: readonly CampaignListFilter[] = ['all', 'uncovered', 'covered'];
+
+export const CAMPAIGN_LIST_LABEL: Record<CampaignListFilter, string> = {
+	all: 'Campaign',
+	uncovered: 'Campaign uncovered',
+	covered: 'Campaign covered',
+};
+
+export function sanitizeCampaignListFilter(value: unknown): CampaignListFilter {
+	return value === 'uncovered' || value === 'covered' || value === 'all' ? value : 'all';
+}
+
+export function nextCampaignListFilter(current: CampaignListFilter): CampaignListFilter {
+	const index = CAMPAIGN_LIST_ORDER.indexOf(current);
+	return CAMPAIGN_LIST_ORDER[(index + 1) % CAMPAIGN_LIST_ORDER.length] ?? 'all';
 }
 
 export function sanitizeStatus(value: unknown): RvStatus | null {

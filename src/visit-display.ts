@@ -10,8 +10,8 @@ export interface VisitStampRef {
 const STAMP_HEADING = /^(?:###|#####)\s+(.+?)\s*$/;
 
 /**
- * Visit headings in file order. `### Visit Notes:` is not a visit.
- * The stored note is not rewritten; this is only the order to paint.
+ * Visit headings in file order. `### Recent Notes:` and `### Visit Notes:` are not visits.
+ * The stored note is not rewritten. The screen keeps this order.
  */
 export function visitStampsInMarkdown(markdown: string): VisitStampRef[] {
 	const stamps: VisitStampRef[] = [];
@@ -20,7 +20,7 @@ export function visitStampsInMarkdown(markdown: string): VisitStampRef[] {
 		const match = STAMP_HEADING.exec(line.replace(/\r$/, ''));
 		if (!match) continue;
 		const text = stripStampAge(match[1] ?? '').trim();
-		if (!text || /^visit notes:?$/i.test(text)) continue;
+		if (!text || /^(?:visit|recent) notes:?$/i.test(text)) continue;
 		const when = stampDateTime(text)?.getTime() ?? Number.NaN;
 		if (!Number.isFinite(when)) continue;
 		stamps.push({ text, when, fileIndex: stamps.length });
@@ -64,9 +64,9 @@ export interface VisitLayoutOptions {
 }
 
 /**
- * Reorder rendered visit sections so the latest notes sit at the top when
- * that setting is on, and park the rest under an `h2` Older Visits.
- * The file is not written.
+ * Leave visit sections in file order. The newest notes are already at the
+ * top of the note. Visits after the visible count sit under an `h2`
+ * Older Visits, collapsed, without moving any stamp.
  */
 export function layoutVisitNotes(root: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
 	const preview = visitPreview(root);
@@ -78,38 +78,49 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	const blocks = blocksFor(preview, stamps);
 	if (blocks.length === 0) return;
 	const matched = matchBlocks(blocks, fileStamps);
-	const partition = partitionVisits(matched, options.newestFirst, options.collapseOlder, options.limit);
-	const parent = blocks[0]?.nodes[0]?.parentElement;
-	if (!parent) return;
-	const anchor = endAnchor(parent, blocks);
-	const before = anchor ?? null;
-	for (const block of partition.visible) placeBlock(parent, block, before, false);
-	if (partition.older.length === 0) return;
+	const cap = options.collapseOlder ? Math.max(0, Math.floor(options.limit)) : matched.length;
+	const older = matched.slice(cap);
+	for (const block of matched) {
+		for (const node of block.nodes) node.classList.remove('rv-older-visit', 'rv-older-hidden');
+	}
+	if (older.length === 0) return;
+	const first = older[0]?.nodes[0];
+	const parent = first?.parentElement;
+	if (!first || !parent) return;
+	const collapsed = preview.dataset.rvOlderOpen !== '1';
 	const rule = parent.ownerDocument.createElement('hr');
 	rule.className = 'rv-older-rule';
 	const heading = parent.ownerDocument.createElement('h2');
 	heading.className = 'rv-older-visits';
+	if (!collapsed) heading.classList.add('is-open');
 	heading.dataset.heading = 'Older Visits';
-	heading.textContent = 'Older Visits';
-	const collapsed = preview.dataset.rvOlderOpen !== '1';
-	heading.classList.toggle('is-collapsed', collapsed);
-	if (before) parent.insertBefore(rule, before);
-	else parent.appendChild(rule);
-	if (before) parent.insertBefore(heading, before);
-	else parent.appendChild(heading);
-	for (const block of partition.older) placeBlock(parent, block, before, collapsed);
-	if (heading.dataset.rvBound === '1') return;
-	heading.dataset.rvBound = '1';
-	heading.addEventListener('click', (event) => {
+	const mark = parent.ownerDocument.createElement('span');
+	mark.className = 'collapse-indicator';
+	const label = parent.ownerDocument.createElement('span');
+	label.className = 'rv-older-label';
+	label.textContent = 'Older Visits';
+	heading.appendChild(mark);
+	heading.appendChild(label);
+	parent.insertBefore(rule, first);
+	parent.insertBefore(heading, first);
+	for (const block of older) {
+		for (const node of block.nodes) {
+			node.classList.add('rv-older-visit');
+			node.classList.toggle('rv-older-hidden', collapsed);
+		}
+	}
+	const toggle = (event: Event) => {
 		event.preventDefault();
+		if ('stopPropagation' in event && typeof event.stopPropagation === 'function') event.stopPropagation();
 		const open = preview.dataset.rvOlderOpen === '1';
 		preview.dataset.rvOlderOpen = open ? '0' : '1';
 		const nowCollapsed = preview.dataset.rvOlderOpen !== '1';
-		heading.classList.toggle('is-collapsed', nowCollapsed);
+		heading.classList.toggle('is-open', !nowCollapsed);
 		preview.querySelectorAll('.rv-older-visit').forEach((node) => {
 			if (node instanceof HTMLElement) node.classList.toggle('rv-older-hidden', nowCollapsed);
 		});
-	});
+	};
+	heading.addEventListener('click', toggle);
 }
 
 interface VisitBlock extends VisitStampRef {
@@ -129,7 +140,7 @@ function stampHeads(preview: HTMLElement): HTMLElement[] {
 		if (!(node instanceof HTMLElement)) return;
 		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
 		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		if (/^visit notes:?$/i.test(text)) return;
+		if (/^(?:visit|recent) notes:?$/i.test(text)) return;
 		if (node.classList.contains('rv-visit-stamp') || node.querySelector('.rv-stamp-ago')) found.push(node);
 	});
 	return found;
@@ -209,40 +220,6 @@ function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitSt
 			fileIndex: file?.fileIndex ?? index,
 		};
 	});
-}
-
-/**
- * The break that follows the stamps, usually the rule above Return Suggestions.
- * The rule above `### Visit Notes:` is earlier in the note. Anchoring there
- * leaves that heading under Older Visits. The heading itself is not a stamp
- * and is not moved.
- */
-function endAnchor(parent: HTMLElement, blocks: readonly VisitBlock[]): HTMLElement | null {
-	const region: HTMLElement[] = [];
-	for (const block of blocks) {
-		for (const node of block.nodes) region.push(node);
-	}
-	let seenVisit = false;
-	for (const child of Array.from(parent.children)) {
-		if (!(child instanceof HTMLElement)) continue;
-		if (child.classList.contains('rv-older-rule') || child.classList.contains('rv-older-visits')) continue;
-		if (region.some((node) => node === child || child.contains(node))) {
-			seenVisit = true;
-			continue;
-		}
-		if (!seenVisit) continue;
-		if (isStop(child)) return child;
-	}
-	return null;
-}
-
-function placeBlock(parent: HTMLElement, block: VisitBlock, before: HTMLElement | null, hidden: boolean): void {
-	for (const node of block.nodes) {
-		node.classList.toggle('rv-older-visit', hidden);
-		node.classList.toggle('rv-older-hidden', hidden);
-		if (before && before.parentElement === parent) parent.insertBefore(node, before);
-		else parent.appendChild(node);
-	}
 }
 
 function clearOlderChrome(preview: HTMLElement): void {

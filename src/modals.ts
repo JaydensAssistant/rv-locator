@@ -476,13 +476,13 @@ export interface CompanionCampaignPrompt {
 /** One companion. A typed name is offered beside recent Met With / Taken values. Skip stores nothing. */
 export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	private readonly gate: CompanionPromptGate;
-	private covered = false;
+	private covered = true;
 	private decided = false;
 
 	constructor(
 		app: App,
 		private recent: readonly string[],
-		onDone: (name: string | null) => void,
+		onDone: (name: string | null | false) => void,
 		private campaign: CompanionCampaignPrompt | null = null,
 	) {
 		super(app);
@@ -498,11 +498,11 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 		this.setInstructions([
 			{ command: '↑↓', purpose: 'to navigate' },
 			{ command: '↵', purpose: 'to choose one person' },
-			{ command: 'esc', purpose: 'to skip' },
+			{ command: 'esc', purpose: 'to cancel' },
 		]);
 		this.modalEl.addClass('rv-locator-modal');
 		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
-		copy.setText('Adds one person to Taken and leaves Met With as it is. Skip changes neither, and the visit is still logged.');
+		copy.setText('Adds one person to Taken and leaves Met With as it is. Skip changes neither, and the visit is still logged. Cancel does not log the visit.');
 		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
 		if (this.campaign) {
 			const ask = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
@@ -510,7 +510,7 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 			const choice = this.modalEl.createDiv('rv-locator-suggest-actions');
 			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
 			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
-			no.classList.add('mod-cta');
+			yes.classList.add('mod-cta');
 			yes.addEventListener('click', () => {
 				this.covered = true;
 				yes.classList.add('mod-cta');
@@ -526,6 +526,11 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 		skip.addEventListener('click', () => {
 			this.finishCoverage('skip');
 			this.gate.skip();
+			this.close();
+		});
+		const cancel = bar.createEl('button', { text: 'Cancel' });
+		cancel.addEventListener('click', () => {
+			this.gate.cancel();
 			this.close();
 		});
 	}
@@ -544,9 +549,6 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	onClose(): void {
 		super.onClose();
 		this.gate.closed((run) => { window.setTimeout(run, 0); });
-		window.setTimeout(() => {
-			if (!this.decided) this.finishCoverage('skip');
-		}, 0);
 	}
 
 	getSuggestions(query: string): CompanionSuggestion[] {

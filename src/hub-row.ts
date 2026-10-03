@@ -1,3 +1,17 @@
+/** The hub every new note stores until a setting points the chip somewhere else. */
+export const DEFAULT_RETURN_HUB = 'Return Visits Hub';
+
+/**
+ * The return-visit chip follows the setting. Any other hub keeps its stored target.
+ * A note that still says Return Visits Hub opens the configured note.
+ */
+export function resolveReturnHub(ref: HubRef, configured: string): HubRef {
+	const target = configured.trim() || DEFAULT_RETURN_HUB;
+	const base = (ref.target.split('/').pop() ?? ref.target).replace(/\.md$/i, '');
+	if (base !== DEFAULT_RETURN_HUB && base !== target && ref.label !== DEFAULT_RETURN_HUB) return ref;
+	return { target, label: (target.split('/').pop() ?? target).replace(/\.md$/i, '') };
+}
+
 export interface HubRef {
 	/** Wikilink target, including a folder when the note stores one. */
 	target: string;

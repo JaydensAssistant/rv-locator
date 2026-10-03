@@ -1,7 +1,7 @@
 import { Menu, setIcon } from 'obsidian';
 import { calendarDaysSince, formatDaysAgo, formatDriveDate } from './dates';
 import { readProperty } from './frontmatter';
-import { hubRefs, type HubRef } from './hub-row';
+import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
 import { mountUrgencyGlyph } from './glancable-view';
@@ -24,6 +24,7 @@ export interface NoteChromeHost {
 	removeHub(path: string, label: string): void;
 	moveHub(path: string, label: string): void;
 	openSlotOverride(path: string): void;
+	setAddress(path: string, address: string): void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -133,6 +134,7 @@ function paintFactsBody(
 	content.empty();
 	content.addClass('rv-qf-body');
 	const statusRow = factRow(content, statusIcon(status), 'Status', '');
+	statusRow.addClass('is-status');
 	const statusValue = statusRow.querySelector('.rv-qf-value');
 	const select = (statusValue instanceof HTMLElement ? statusValue : statusRow).createEl('select', { cls: 'rv-qf-control' });
 	for (const option of ['Active', 'Study', 'Inactive'] as const) {
@@ -262,10 +264,45 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 			host.addHub(path);
 		};
 		const hubs = hubRefs(readProperty(data, 'Hub'));
+		const returnHub = host.settings.returnHubNote;
 		hubs.forEach((hub, index) => {
-			row.appendChild(hubChip(paragraph.ownerDocument, path, hub, index, host));
+			row.appendChild(hubChip(paragraph.ownerDocument, path, resolveReturnHub(hub, returnHub), index, host));
 		});
+		decorateAddress(paragraph, path, data, host);
 	}
+}
+
+function ensureAddressInput(paragraph: HTMLElement): HTMLInputElement {
+	const found = paragraph.querySelector(':scope > input.rv-address-input');
+	if (found instanceof HTMLInputElement) return found;
+	const created = paragraph.ownerDocument.createElement('input');
+	created.className = 'rv-address-input';
+	created.type = 'text';
+	created.setAttribute('aria-label', 'Address');
+	const map = paragraph.querySelector(':scope > a.rv-map-button');
+	if (map) paragraph.insertBefore(created, map);
+	else paragraph.appendChild(created);
+	return created;
+}
+
+function decorateAddress(paragraph: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	const address = labeledStrong(paragraph, 'address');
+	if (!address) return;
+	address.textContent = 'Address:';
+	const property = host.settings.addressProperty.trim() || 'Address';
+	const input = ensureAddressInput(paragraph);
+	for (const child of Array.from(paragraph.children)) {
+		if (!(child instanceof HTMLElement)) continue;
+		if (child === address || child === input) continue;
+		if (child.classList.contains('rv-hub-line') || child.classList.contains('rv-map-button') || child.tagName === 'STRONG') continue;
+		child.classList.add('rv-address-hidden');
+	}
+	const stored = textOf(readProperty(data, property));
+	const focused = paragraph.ownerDocument.activeElement === input;
+	if (!focused) input.value = stored;
+	const write = () => host.setAddress(path, input.value);
+	input.onchange = write;
+	input.onblur = write;
 }
 
 function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLElement | null {
