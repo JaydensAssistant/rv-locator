@@ -152,9 +152,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		this.paintActions(card, rank, row, urgency, priority);
 		if (ratio && this.plugin.settings.showCardReturnStatus) {
-			const line = card.createDiv('rv-locator-return-line');
+			const line = foot.createSpan('rv-locator-return-inline');
 			line.createSpan({
 				cls: 'rv-locator-return-visits',
 				text: `# ${ratio.text}`,
@@ -169,6 +168,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				text: this.plugin.cardReturnBucket(row.path),
 			});
 		}
+		this.paintActions(card, rank, row, urgency, priority);
 	}
 
 	private paintCampaignMark(parent: HTMLElement, path: string): void {

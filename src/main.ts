@@ -1,6 +1,6 @@
 import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
-import { googleMapsAddressLink, refreshBodyMapLink } from './address';
+import { addressesMatchOneForOne, googleMapsAddressLink, normalizeAddress, refreshBodyMapLink, type GeocodeBias } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
@@ -10,7 +10,7 @@ import {
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
-import { decideGeocodePick } from './home-base';
+import { decideGeocodePick, preferHomeRegion } from './home-base';
 import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
@@ -20,14 +20,14 @@ import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIc
 import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
-import { hubLabel, moveHubLeft } from './hub-row';
+import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { layoutVisitNotes } from './visit-display';
 import { pagePreviewDecision } from './page-preview';
 import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
-import { HousemateNameModal, NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
+import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
@@ -42,6 +42,7 @@ import { currentReturnBucket, readAttemptLog, suggestReturnDigest, type AttemptB
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
+import { latLonFromUnknown } from './distance';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
@@ -114,6 +115,12 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last file each leaf was switched for, so a later switch to editing is kept. */
 	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
 	private newRvDraft: NewRvIdentity | null = null;
+	/** Picked Geoapify hit whose formatted address was submitted unchanged. */
+	private verifiedNewRvHit: GeocodeHit | null = null;
+	/** Set while Add a housemate is creating a note. The template skips geocode. */
+	housemateSourcePath: string | null = null;
+	private homeBiasKey = '';
+	private homeBiasPoint: GeocodeBias | null = null;
 	/** Hub lists written before the metadata cache catches up, so the chip row updates immediately. */
 	private hubOverride = new Map<string, unknown>();
 	/** Address typed into the custom box before the cache catches up. */
@@ -472,38 +479,67 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		if (!identity || this.unloaded) return;
 		this.newRvDraft = identity;
+		this.housemateSourcePath = null;
+		const verified = identity.verifiedHit;
+		this.verifiedNewRvHit = verified && addressesMatchOneForOne(identity.address, verified.formattedAddress)
+			? verified
+			: null;
 		await this.launchNewRvTemplate();
 	}
 
-	/** Another RV at the open note's address. The name is the only new field. */
+	/** Another RV at this address. Same choices as New RV. The address starts filled in. */
 	async addHousemate(file: TFile): Promise<void> {
 		if (this.creatingNewRv) return;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
 		const gender = housemateGender(readProperty(frontmatter, 'Gender'));
 		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? this.settings.defaultNewRvPriority;
-		const name = await new Promise<string | null>((resolve) => {
-			new HousemateNameModal(this.app, resolve).open();
+		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
+			new NewRvIdentityModal(this.app, {
+				title: 'Add a housemate',
+				intro: 'Same choices as a new RV. The address starts from this note.',
+				defaultPriority: this.settings.defaultNewRvPriority,
+				companions: this.recentCompanionNames(),
+				lookupAddress: (query) => this.suggestAddresses(query),
+				preset: {
+					gender,
+					address,
+					priority: Math.max(0, Math.min(5, Math.round(priority))),
+				},
+			}, (value) => resolve(value)).open();
 		});
-		if (!name || this.unloaded) return;
-		this.newRvDraft = {
-			gender,
-			name,
-			address,
-			companion: '',
-			priority: Math.max(0, Math.min(5, Math.round(priority))),
-		};
+		if (!identity || this.unloaded) return;
+		this.newRvDraft = identity;
+		this.verifiedNewRvHit = null;
+		this.housemateSourcePath = file.path;
 		await this.launchNewRvTemplate();
 	}
 
-	private async suggestAddresses(query: string): Promise<readonly string[]> {
+	private async suggestAddresses(query: string): Promise<readonly GeocodeHit[]> {
 		if (!this.settings.geoapifyApiKey.trim()) return [];
 		try {
-			const hits = await this.lookupAddress(query, false);
-			return hits.map((hit) => hit.formattedAddress).filter((value) => value.trim().length > 0);
+			const bias = await this.homeProximity();
+			const hits = await this.lookupAddress(query, true, () => false, bias);
+			return preferHomeRegion(hits, this.settings.homeCounties);
 		} catch {
 			return [];
 		}
+	}
+
+	/** One unbiased lookup of the first home county, reused as a soft proximity bias. */
+	private async homeProximity(): Promise<GeocodeBias | null> {
+		const primary = this.settings.homeCounties.map((line) => line.trim()).find((line) => line.length > 0) ?? '';
+		if (!primary || !this.settings.geoapifyApiKey.trim()) return null;
+		if (this.homeBiasKey === primary) return this.homeBiasPoint;
+		this.homeBiasKey = primary;
+		try {
+			const hits = await this.lookupAddress(primary, false);
+			const hit = hits[0];
+			this.homeBiasPoint = hit ? { lat: hit.lat, lon: hit.lon } : null;
+		} catch {
+			this.homeBiasPoint = null;
+		}
+		return this.homeBiasPoint;
 	}
 
 	private async launchNewRvTemplate(): Promise<void> {
@@ -522,15 +558,20 @@ export default class RVLocatorPlugin extends Plugin {
 				new Notice(message ?? 'Templater could not start New RV.');
 				return;
 			}
+			const sourcePath = this.housemateSourcePath;
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
-			else if (created instanceof TFile) await this.refreshAttemptDigest(created);
+			else if (created instanceof TFile) {
+				await this.refreshAttemptDigest(created);
+				if (sourcePath) await this.linkHousehold(sourcePath, created);
+			}
 		} catch (error) {
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
 			new Notice(reason);
 		} finally {
 			this.creatingNewRv = false;
 			this.newRvDraft = null;
+			this.housemateSourcePath = null;
 		}
 	}
 
@@ -1352,6 +1393,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async geocodeCurrent(): Promise<void> {
+		if (this.housemateSourcePath) return;
 		const file = this.app.workspace.getActiveFile();
 		if (!file || file.extension !== 'md') {
 			new Notice('Open a note to look up its address.');
@@ -1385,6 +1427,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): Promise<void> {
+		const verified = this.verifiedNewRvHit;
+		this.verifiedNewRvHit = null;
+		if (verified && addressesMatchOneForOne(address, verified.formattedAddress)) {
+			const fresh = hits.find((hit) => addressesMatchOneForOne(hit.formattedAddress, verified.formattedAddress));
+			await this.writeHit(file, address, fresh ?? verified, fresh ? hits : [verified, ...hits]);
+			return;
+		}
 		const decision = decideGeocodePick(hits, this.settings.homeCounties);
 		if (decision.hit) {
 			await this.writeHit(file, address, decision.hit, hits);
@@ -1819,8 +1868,13 @@ export default class RVLocatorPlugin extends Plugin {
 		if (notify) new Notice(`Saved coordinates on “${file.basename}”. Address was not changed.`);
 	}
 
-	async lookupAddress(address: string, ignoreCache: boolean, aborted: () => boolean = () => false): Promise<GeocodeHit[]> {
-		if (!ignoreCache) {
+	async lookupAddress(
+		address: string,
+		ignoreCache: boolean,
+		aborted: () => boolean = () => false,
+		bias?: GeocodeBias | null,
+	): Promise<GeocodeHit[]> {
+		if (!ignoreCache && !bias) {
 			const cached = getCached(this.geocodeCache, address);
 			if (cached) return cached;
 		}
@@ -1830,10 +1884,74 @@ export default class RVLocatorPlugin extends Plugin {
 			sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
 			pacer: this.pacer,
 			aborted,
-		}, this.settings.geoapifyRegion);
-		this.remember([address], results);
-		await this.persist();
+		}, this.settings.geoapifyRegion, bias);
+		if (!bias) {
+			this.remember([address], results);
+			await this.persist();
+		}
 		return results;
+	}
+
+	/**
+	 * Link every note at this address to the others, and copy the source note's
+	 * already confirmed location onto the new note. Does not geocode.
+	 */
+	private async linkHousehold(sourcePath: string, created: TFile): Promise<void> {
+		const source = this.app.vault.getFileByPath(sourcePath);
+		if (!source) return;
+		const sourceFrontmatter = await this.freshFrontmatter(source);
+		const createdFrontmatter = await this.freshFrontmatter(created);
+		const sourceAddress = readAddress(sourceFrontmatter, this.settings.addressProperty) ?? '';
+		const createdAddress = readAddress(createdFrontmatter, this.settings.addressProperty) ?? '';
+		const samePlace = sourceAddress.length > 0 && addressesMatchOneForOne(createdAddress, sourceAddress);
+		if (samePlace) await this.copyConfirmedLocation(created, sourceFrontmatter);
+		const key = normalizeAddress(createdAddress);
+		const files = key
+			? this.app.vault.getMarkdownFiles().filter((file) => {
+				const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+				const noteAddress = readAddress(frontmatter, this.settings.addressProperty) ?? '';
+				return normalizeAddress(noteAddress) === key;
+			})
+			: [];
+		if (!files.some((file) => file.path === created.path)) files.push(created);
+		if (samePlace && !files.some((file) => file.path === source.path)) files.push(source);
+		const names = files.map((file) => file.basename);
+		for (const file of files) {
+			const others = names.filter((name) => name !== file.basename);
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				const data = frontmatter as Record<string, unknown>;
+				const next = mergeHouseholdHubs(readProperty(data, 'Hub'), others);
+				assignProperty(data, 'Hub', next);
+				this.hubOverride.set(file.path, next.slice());
+			});
+		}
+		this.refreshOpenNoteChrome();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async copyConfirmedLocation(
+		created: TFile,
+		sourceFrontmatter: Record<string, unknown> | null,
+	): Promise<void> {
+		if (!sourceFrontmatter) return;
+		const names = locationCopyNames(this.settings);
+		await this.app.fileManager.processFrontMatter(created, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			for (const name of names) {
+				const value = readProperty(sourceFrontmatter, name);
+				if (value == null || value === '') continue;
+				assignProperty(data, name, value);
+			}
+		});
+		const point = latLonFromUnknown(readProperty(sourceFrontmatter, this.settings.locationProperty));
+		if (!point) return;
+		const pair = locationPair(point);
+		await this.app.vault.process(created, (data) => ensureQuotedLocationList(
+			data,
+			this.settings.locationProperty,
+			pair,
+			this.settings.addressProperty,
+		));
 	}
 
 	private friendlyError(error: unknown): string {
@@ -2189,6 +2307,30 @@ function finiteVisitCount(value: unknown): number | null {
 	if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return null;
 	const parsed = Number(value.trim());
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function locationCopyNames(settings: RVLocatorSettings): string[] {
+	const names = [
+		'City',
+		settings.cityProperty,
+		settings.countyProperty,
+		settings.stateProperty,
+		settings.postcodeProperty,
+		settings.countryProperty,
+		settings.mapLinkProperty,
+	];
+	const address = settings.addressProperty.trim().toLowerCase();
+	const location = settings.locationProperty.trim().toLowerCase();
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const name of names) {
+		const trimmed = name.trim();
+		const key = trimmed.toLowerCase();
+		if (!trimmed || key === address || key === location || seen.has(key)) continue;
+		seen.add(key);
+		out.push(trimmed);
+	}
+	return out;
 }
 
 function housemateGender(value: unknown): RvGender {

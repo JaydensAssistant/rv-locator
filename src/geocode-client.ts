@@ -1,4 +1,4 @@
-import { buildGeocodeUrl, parseGeocodeBody } from './address';
+import { buildGeocodeUrl, parseGeocodeBody, type GeocodeBias } from './address';
 import type { GeoapifyRegion } from './constants';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -36,6 +36,7 @@ export async function geocodeAddress(
 	apiKey: string,
 	deps: GeocodeDeps,
 	region: GeoapifyRegion = 'global',
+	bias?: GeocodeBias | null,
 ): Promise<GeocodeHit[]> {
 	let attempt = 0;
 	for (;;) {
@@ -44,7 +45,7 @@ export async function geocodeAddress(
 		}
 		await deps.pacer.wait(deps.sleep, () => deps.aborted());
 		try {
-			return await fetchGeocodeResults(address, apiKey, deps.fetchImpl, region);
+			return await fetchGeocodeResults(address, apiKey, deps.fetchImpl, region, bias);
 		} catch (error) {
 			if (error instanceof CancelledError) throw error;
 			const wrapped = asGeocodeError(error, apiKey);
@@ -61,10 +62,11 @@ export async function fetchGeocodeResults(
 	apiKey: string,
 	fetchImpl: typeof fetch,
 	region: GeoapifyRegion = 'global',
+	bias?: GeocodeBias | null,
 ): Promise<GeocodeHit[]> {
 	let url: string;
 	try {
-		url = buildGeocodeUrl(address, apiKey, region);
+		url = buildGeocodeUrl(address, apiKey, region, bias);
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Could not build the geocode request.';
 		throw new GeocodeRequestError(redactSecrets(message, apiKey), null, false);

@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
-import { buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, refreshBodyMapLink } from '../src/address';
+import { abbreviateAddress, addressesMatchOneForOne, buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, refreshBodyMapLink } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
-import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
+import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, matchingCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
+import { CampaignModal } from '../src/campaign-modal';
 import { CompanionSuggestModal } from '../src/modals';
 import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
@@ -18,7 +19,7 @@ import { getCached, rememberResults, trimCache } from '../src/cache';
 import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
 import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatGlancableStampFromRaw, formatGlancableVisitStamp, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
-import { decideGeocodePick, isFullConfidence, parseHomeCountyLines } from '../src/home-base';
+import { decideGeocodePick, isFullConfidence, parseHomeCountyLines, preferHomeRegion } from '../src/home-base';
 import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
@@ -26,6 +27,8 @@ import { RequestPacer } from '../src/pacer';
 import { redactSecrets } from '../src/redact';
 import { compareNullableNumber, cycleSort, sortRows, sortRowsBy } from '../src/sort';
 import { rvNoteTitle, streetShortName } from '../src/note-name';
+import { mergeHouseholdHubs } from '../src/hub-row';
+import { addressLookupDecision } from '../src/lookup-cadence';
 import { DEFAULT_SETTINGS, mergeSettings, sanitizeNearbySort, type GeocodeHit, type RVLocatorSettings } from '../src/types';
 
 const tacoma = {
@@ -53,6 +56,10 @@ describe('geocode request', () => {
 		assert.equal(GEOCODE_ENDPOINT.includes('nominatim'), false);
 		assert.equal(GEOCODE_ENDPOINT.includes('googleapis'), false);
 		assert.equal(url.searchParams.get('text')?.includes('Alana'), false);
+		const biased = new URL(buildGeocodeUrl('123 Main Street', 'secret-key', 'global', { lat: 34.05, lon: -118.25 }));
+		assert.equal(biased.host, 'api.geoapify.com');
+		assert.equal(biased.searchParams.get('bias'), 'proximity:-118.25,34.05');
+		assert.equal(biased.searchParams.get('filter'), null);
 	});
 
 	it('formats the most specific address from returned parts', () => {
@@ -1804,7 +1811,7 @@ describe('companion prompt', () => {
 			skipped.push(name);
 		});
 		skipModal.onOpen();
-		clickLabeled(skipModal.modalEl as unknown as Clickable, 'Skip');
+		clickLabeled(skipModal.contentEl as unknown as Clickable, 'Skip');
 		assert.deepEqual(skipped, [null]);
 		await waitTurn();
 		assert.deepEqual(skipped, [null]);
@@ -1829,6 +1836,26 @@ describe('companion prompt', () => {
 		assert.deepEqual(dimmed, [false]);
 		await waitTurn();
 		assert.deepEqual(dimmed, [false]);
+	});
+
+	it('highlights a companion without logging, then logs after the coverage choice', async () => {
+		const seen: Array<string | null | false> = [];
+		const decisions: string[] = [];
+		const modal = new CompanionSuggestModal({} as never, ['Devin', 'Mia'], (name) => {
+			seen.push(name);
+		}, {
+			name: 'Spring',
+			onDecision: (decision) => { decisions.push(decision); },
+		});
+		modal.onOpen();
+		clickLabeled(modal.contentEl as unknown as Clickable, 'Devin');
+		assert.deepEqual(seen, []);
+		assert.deepEqual(decisions, []);
+		clickLabeled(modal.contentEl as unknown as Clickable, 'Log visit');
+		assert.deepEqual(seen, ['Devin']);
+		assert.deepEqual(decisions, ['yes']);
+		await waitTurn();
+		assert.deepEqual(seen, ['Devin']);
 	});
 
 	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {
@@ -1916,6 +1943,82 @@ async function storedFromPrompt(
 	if (!name) return '';
 	return formatStoredCompanion(name);
 }
+
+describe('address lookup cadence', () => {
+	it('sends at six characters, then every five more, and waits out a short tail', () => {
+		assert.equal(addressLookupDecision(0, 5), 'wait');
+		assert.equal(addressLookupDecision(0, 6), 'now');
+		assert.equal(addressLookupDecision(6, 10), 'idle');
+		assert.equal(addressLookupDecision(6, 11), 'now');
+		assert.equal(addressLookupDecision(11, 14), 'idle');
+		assert.equal(addressLookupDecision(11, 16), 'now');
+	});
+
+	it('matches an address one for one and prefers the home region without dropping the rest', () => {
+		assert.equal(addressesMatchOneForOne('123 Main Street, Los Angeles', '123  Main Street, Los Angeles'), true);
+		assert.equal(addressesMatchOneForOne('123 Main Street', '123 Main St'), false);
+		assert.equal(abbreviateAddress('123 Main Street, Los Angeles, CA 90012, USA'), '123 Main Street, Los Angeles');
+		const hits = [
+			{ formattedAddress: '123 Main Street, Springfield, IL', city: 'Springfield', state: 'Illinois' },
+			{ formattedAddress: '123 Main Street, Los Angeles, CA', city: 'Los Angeles', county: 'Los Angeles County', state: 'California' },
+		];
+		const ordered = preferHomeRegion(hits, ['Los Angeles, California']);
+		assert.equal(ordered[0]?.city, 'Los Angeles');
+		assert.equal(ordered[1]?.city, 'Springfield');
+		assert.equal(preferHomeRegion(hits, []).length, 2);
+	});
+
+	it('selects a companion only when the typed name matches one suggestion', () => {
+		const choices = companionChoices(['Jordan Lee', 'Joan'], 'Jo');
+		assert.equal(matchingCompanion(choices, 'Jo'), null);
+		assert.equal(matchingCompanion(companionChoices(['Jordan Lee', 'Sam Ortiz'], 'Sam'), 'Sam')?.value, 'Sam Ortiz');
+		assert.equal(matchingCompanion(companionChoices(['Jordan Lee'], 'Jordan Lee'), 'jordan lee')?.value, 'Jordan Lee');
+	});
+});
+
+describe('household hubs and card return status', () => {
+	it('links everyone at the address and keeps the return hub', () => {
+		assert.deepEqual(
+			mergeHouseholdHubs(['[[Return Visits Hub]]'], ['Ada', 'Bo']),
+			['[[Return Visits Hub]]', '[[Ada]]', '[[Bo]]'],
+		);
+		assert.deepEqual(mergeHouseholdHubs(['[[Ada]]', '[[Return Visits Hub]]'], ['Ada', 'Bo']), [
+			'[[Ada]]',
+			'[[Return Visits Hub]]',
+			'[[Bo]]',
+		]);
+	});
+
+	it('turns return status on when the key is absent and keeps an explicit off', () => {
+		assert.equal(DEFAULT_SETTINGS.showCardReturnStatus, true);
+		assert.equal(mergeSettings({}).showCardReturnStatus, true);
+		assert.equal(mergeSettings({ showCardReturnStatus: true }).showCardReturnStatus, true);
+		assert.equal(mergeSettings({ showCardReturnStatus: false }).showCardReturnStatus, false);
+	});
+
+	it('asks before removing a campaign', () => {
+		const saved: Array<unknown> = [];
+		const modal = new CampaignModal({} as never, {
+			name: 'Spring',
+			start: '2026-10-01',
+			end: '',
+			covered: [],
+		}, (next) => { saved.push(next); });
+		modal.onOpen();
+		clickLabeled(modal.contentEl as unknown as Clickable, 'Cancel campaign');
+		assert.deepEqual(saved, []);
+		clickLabeled(modal.contentEl as unknown as Clickable, 'Remove');
+		assert.deepEqual(saved, [null]);
+	});
+
+	it('drops icon and color from the New RV template frontmatter', () => {
+		const template = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
+		const frontmatter = template.split('---')[1] ?? '';
+		assert.equal(/^\s*icon\s*:/m.test(frontmatter), false);
+		assert.equal(/^\s*color\s*:/m.test(frontmatter), false);
+		assert.equal(template.includes('icon: door-open'), true);
+	});
+});
 
 describe('setup wizard', () => {
 	it('reports missing plugins and folders without treating the suggestion row as a failure', () => {

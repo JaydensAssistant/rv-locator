@@ -228,6 +228,12 @@ function refreshCreatedDigest(file) {
   }
 }
 
+function isHousemateCreate() {
+  const plugin = rvPlugin();
+  const path = plugin && plugin.housemateSourcePath;
+  return typeof path === "string" && path.length > 0;
+}
+
 function scheduleGeocode(tp, address) {
   const run = async () => {
     const file = resolveFile(tp) || app.workspace.getActiveFile();
@@ -505,7 +511,7 @@ async function newRv(tp) {
     }
   }
 
-  scheduleGeocode(tp, address);
+  if (!isHousemateCreate()) scheduleGeocode(tp, address);
 
   return {
     addressYaml: yamlQuoted(address),

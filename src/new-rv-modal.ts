@@ -1,73 +1,40 @@
 import { Modal, Setting, type App } from 'obsidian';
-import { companionChoices } from './companions';
+import { abbreviateAddress, addressesMatchOneForOne, matchingAddress } from './address';
+import { companionChoices, listedCompanions, matchingCompanion } from './companions';
+import { ADDRESS_LOOKUP_IDLE_MS, addressLookupDecision } from './lookup-cadence';
 import type { RvGender } from './status';
+import type { GeocodeHit } from './types';
 
 export interface NewRvIdentity {
 	gender: RvGender;
 	name: string;
 	address: string;
-	/** Empty when they skip the Met companion. */
+	/** Empty when they leave the companion blank. */
 	companion: string;
 	priority: number;
+	/** Set when they picked a Geoapify hit and the address still matches it. */
+	verifiedHit: GeocodeHit | null;
 }
 
 export interface NewRvModalOptions {
 	defaultPriority: number;
 	companions: readonly string[];
 	/** Geoapify hits for the address field. Empty when there is no key or no match. */
-	lookupAddress?: (query: string) => Promise<readonly string[]>;
+	lookupAddress?: (query: string) => Promise<readonly GeocodeHit[]>;
+	title?: string;
+	intro?: string;
+	preset?: Partial<Pick<NewRvIdentity, 'gender' | 'name' | 'address' | 'companion' | 'priority'>>;
+}
+
+interface TextControl {
+	setValue: (value: string) => void;
+	inputEl?: HTMLElement;
 }
 
 /**
  * One dialog: gender, name, address, Met companion, and priority.
- * The name starts empty. A blank name still uses Man or Woman in the title.
+ * Companion is optional. Create with it blank leaves Met With and Taken blank.
  */
-/** Name for a second RV at the same address. Cancel returns null. */
-export class HousemateNameModal extends Modal {
-	private name = '';
-	private settled = false;
-
-	constructor(app: App, private onDone: (name: string | null) => void) {
-		super(app);
-	}
-
-	onOpen(): void {
-		this.setTitle('Add a housemate');
-		const { contentEl } = this;
-		contentEl.createEl('p', {
-			cls: 'rv-locator-modal-copy',
-			text: 'Creates another RV note at this address.',
-		});
-		new Setting(contentEl)
-			.setName('Name')
-			.addText((text) => {
-				text.setPlaceholder('Name');
-				text.onChange((value) => { this.name = value; });
-			});
-		new Setting(contentEl)
-			.addButton((button) => {
-				button.setButtonText('Create');
-				button.setCta();
-				button.onClick(() => {
-					const name = this.name.trim();
-					if (!name) return;
-					this.settled = true;
-					this.onDone(name);
-					this.close();
-				});
-			})
-			.addButton((button) => {
-				button.setButtonText('Cancel');
-				button.onClick(() => this.close());
-			});
-	}
-
-	onClose(): void {
-		if (!this.settled) this.onDone(null);
-		this.contentEl.empty();
-	}
-}
-
 export class NewRvIdentityModal extends Modal {
 	private gender: RvGender = 'Man';
 	private name = '';
@@ -75,10 +42,17 @@ export class NewRvIdentityModal extends Modal {
 	private companion = '';
 	private priority: number;
 	private settled = false;
+	private companionPicked = false;
+	private verifiedHit: GeocodeHit | null = null;
 	private suggestions: HTMLElement | null = null;
 	private addressHits: HTMLElement | null = null;
-	private addressTimer = 0;
-	private addressInput: { setValue: (value: string) => void } | null = null;
+	private addressResults: GeocodeHit[] = [];
+	private addressInput: TextControl | null = null;
+	private companionInput: TextControl | null = null;
+	private idleTimer = 0;
+	private sentQuery = '';
+	private lookupFlight: Promise<void> | null = null;
+	private queuedQuery: string | null = null;
 
 	constructor(
 		app: App,
@@ -86,21 +60,26 @@ export class NewRvIdentityModal extends Modal {
 		private onDone: (identity: NewRvIdentity | null) => void,
 	) {
 		super(app);
-		const priority = options.defaultPriority;
+		const preset = options.preset;
+		if (preset?.gender === 'Woman' || preset?.gender === 'Man') this.gender = preset.gender;
+		this.name = preset?.name ?? '';
+		this.address = preset?.address ?? '';
+		this.companion = preset?.companion ?? '';
+		const priority = preset?.priority ?? options.defaultPriority;
 		this.priority = Number.isInteger(priority) ? Math.max(0, Math.min(5, priority)) : 4;
 	}
 
 	onOpen(): void {
-		this.setTitle('New RV');
+		this.setTitle(this.options.title ?? 'New RV');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Man or Woman, a name if you have one, the address, who was met, and a priority. A blank name uses the gender in the note title.',
+			text: this.options.intro ?? 'Choose man or woman, a name if you have one, the address, and a priority. Companion is optional.',
 		});
 		const gender = new Setting(contentEl).setName('Man / Woman');
 		gender.addButton((button) => {
 			button.setButtonText('Man');
-			button.setCta();
+			if (this.gender === 'Man') button.setCta();
 			button.onClick(() => {
 				this.gender = 'Man';
 				this.paintGender(gender);
@@ -108,6 +87,7 @@ export class NewRvIdentityModal extends Modal {
 		});
 		gender.addButton((button) => {
 			button.setButtonText('Woman');
+			if (this.gender === 'Woman') button.setCta();
 			button.onClick(() => {
 				this.gender = 'Woman';
 				this.paintGender(gender);
@@ -118,33 +98,40 @@ export class NewRvIdentityModal extends Modal {
 			.setDesc('Optional. Leave blank to title the note Man on Street or Woman on Street.')
 			.addText((text) => {
 				text.setPlaceholder('Name (optional)');
-				text.setValue('');
+				text.setValue(this.name);
 				text.onChange((value) => { this.name = value; });
 			});
 		new Setting(contentEl)
 			.setName('Address')
-			.setDesc('Type a few words. Pick a Geoapify match to fill the address.')
+			.setDesc('Street address. A match can appear under the box.')
 			.addText((text) => {
 				text.setPlaceholder('Street address');
+				text.setValue(this.address);
 				this.addressInput = text;
-				text.onChange((value) => {
+				this.bindField(text, () => this.commitAddressMatch(), (value) => {
 					this.address = value;
+					this.forgetVerification(value);
 					this.scheduleAddressLookup(value);
 				});
+				this.addressHits = this.mountHits(text, contentEl);
 			});
-		this.addressHits = contentEl.createDiv('rv-locator-suggest-actions rv-address-hits');
+		if (!this.addressHits) this.addressHits = contentEl.createDiv('rv-inline-hits');
 		new Setting(contentEl)
-			.setName('Met companion')
-			.setDesc('Who was there the first time. Skip leaves Met With and Taken blank.')
+			.setName('Companion')
+			.setDesc('Optional. Leave blank and press Create to skip.')
 			.addText((text) => {
-				text.setPlaceholder('Search companions');
-				text.onChange((value) => {
+				text.setPlaceholder('Companion (optional)');
+				text.setValue(this.companion);
+				this.companionInput = text;
+				this.bindField(text, () => this.commitCompanionMatch(), (value) => {
 					this.companion = value;
+					this.companionPicked = false;
 					this.paintSuggestions(value);
 				});
+				this.suggestions = this.mountHits(text, contentEl);
 			});
-		this.suggestions = contentEl.createDiv('rv-locator-suggest-actions');
-		this.paintSuggestions('');
+		if (!this.suggestions) this.suggestions = contentEl.createDiv('rv-inline-hits');
+		this.paintSuggestions(this.companion);
 		new Setting(contentEl)
 			.setName('Priority')
 			.setDesc('Starts from the default priority setting.')
@@ -158,21 +145,7 @@ export class NewRvIdentityModal extends Modal {
 			.addButton((button) => {
 				button.setButtonText('Create');
 				button.setCta();
-				button.onClick(() => {
-					this.settled = true;
-					this.onDone({
-						gender: this.gender,
-						name: this.name.trim(),
-						address: this.address.replace(/\r?\n/g, ' ').trim(),
-						companion: this.companion.trim(),
-						priority: this.priority,
-					});
-					this.close();
-				});
-			})
-			.addButton((button) => {
-				button.setButtonText('Skip companion');
-				button.onClick(() => { this.companion = ''; this.paintSuggestions(''); });
+				button.onClick(() => this.finish());
 			})
 			.addButton((button) => {
 				button.setButtonText('Cancel');
@@ -181,8 +154,28 @@ export class NewRvIdentityModal extends Modal {
 	}
 
 	onClose(): void {
+		window.clearTimeout(this.idleTimer);
 		if (!this.settled) this.onDone(null);
 		this.contentEl.empty();
+	}
+
+	private finish(): void {
+		this.commitAddressMatch();
+		this.commitCompanionMatch();
+		const address = this.address.replace(/\r?\n/g, ' ').trim();
+		const verified = this.verifiedHit && addressesMatchOneForOne(address, this.verifiedHit.formattedAddress)
+			? this.verifiedHit
+			: null;
+		this.settled = true;
+		this.onDone({
+			gender: this.gender,
+			name: this.name.trim(),
+			address,
+			companion: this.companion.trim(),
+			priority: this.priority,
+			verifiedHit: verified,
+		});
+		this.close();
 	}
 
 	private paintGender(setting: Setting): void {
@@ -192,57 +185,144 @@ export class NewRvIdentityModal extends Modal {
 		});
 	}
 
-	private scheduleAddressLookup(value: string): void {
-		window.clearTimeout(this.addressTimer);
-		const query = value.trim();
-		const host = this.addressHits;
-		if (!host) return;
-		host.empty();
-		if (query.length < 3 || !this.options.lookupAddress) return;
-		this.addressTimer = window.setTimeout(() => {
-			void this.paintAddressHits(query);
-		}, 280);
+	private bindField(text: TextControl, commit: () => void, onChange: (value: string) => void): void {
+		text.inputEl?.addEventListener('keydown', (event) => {
+			if ((event as KeyboardEvent).key !== 'Enter') return;
+			event.preventDefault();
+			commit();
+		});
+		text.inputEl?.addEventListener('blur', () => commit());
+		const control = text as TextControl & { onChange?: (fn: (value: string) => void) => void };
+		control.onChange?.(onChange);
 	}
 
-	private async paintAddressHits(query: string): Promise<void> {
-		const host = this.addressHits;
+	private mountHits(text: TextControl, fallback: HTMLElement): HTMLElement {
+		const host = text.inputEl?.parentElement;
+		if (host) {
+			host.addClass('rv-field-host');
+			return host.createDiv('rv-inline-hits');
+		}
+		return fallback.createDiv('rv-inline-hits');
+	}
+
+	private forgetVerification(value: string): void {
+		if (!this.verifiedHit) return;
+		if (!addressesMatchOneForOne(value, this.verifiedHit.formattedAddress)) this.verifiedHit = null;
+	}
+
+	private scheduleAddressLookup(value: string): void {
+		window.clearTimeout(this.idleTimer);
+		const query = value.trim();
+		const decision = addressLookupDecision(this.sentQuery.length, query.length);
+		if (decision === 'wait') {
+			this.addressResults = [];
+			this.paintAddressHits();
+			return;
+		}
+		if (decision === 'now') {
+			this.enqueueAddress(query);
+			return;
+		}
+		this.idleTimer = window.setTimeout(() => this.enqueueAddress(query), ADDRESS_LOOKUP_IDLE_MS);
+	}
+
+	private enqueueAddress(query: string): void {
+		const current = query.trim();
+		if (addressLookupDecision(0, current.length) === 'wait') return;
+		if (this.lookupFlight) {
+			this.queuedQuery = current;
+			return;
+		}
+		if (current === this.sentQuery) return;
+		this.lookupFlight = this.fetchAddress(current).finally(() => {
+			this.lookupFlight = null;
+			const next = this.queuedQuery;
+			this.queuedQuery = null;
+			if (!next || next === current || this.address.trim() !== next) return;
+			const decision = addressLookupDecision(current.length, next.length);
+			if (decision === 'now') this.enqueueAddress(next);
+			else if (decision === 'idle') {
+				this.idleTimer = window.setTimeout(() => this.enqueueAddress(next), ADDRESS_LOOKUP_IDLE_MS);
+			}
+		});
+	}
+
+	private async fetchAddress(query: string): Promise<void> {
 		const lookup = this.options.lookupAddress;
-		if (!host || !lookup) return;
-		if (this.address.trim() !== query) return;
-		let hits: readonly string[] = [];
+		if (!lookup) return;
+		this.sentQuery = query;
+		let hits: readonly GeocodeHit[] = [];
 		try {
 			hits = await lookup(query);
 		} catch {
 			hits = [];
 		}
 		if (this.address.trim() !== query) return;
-		host.empty();
 		const seen = new Set<string>();
+		this.addressResults = [];
 		for (const hit of hits) {
-			const label = hit.replace(/\s+/g, ' ').trim();
+			const label = hit.formattedAddress.replace(/\s+/g, ' ').trim();
 			if (!label || seen.has(label)) continue;
 			seen.add(label);
-			const button = host.createEl('button', { text: label, attr: { type: 'button' } });
-			button.addEventListener('click', () => {
-				this.address = label;
-				this.addressInput?.setValue(label);
-				host.empty();
-			});
-			if (seen.size >= 6) break;
+			this.addressResults.push({ ...hit, formattedAddress: label });
 		}
+		this.paintAddressHits();
+	}
+
+	private paintAddressHits(): void {
+		const host = this.addressHits;
+		if (!host) return;
+		host.empty();
+		for (const hit of this.addressResults.slice(0, 2)) {
+			const selected = this.verifiedHit != null && addressesMatchOneForOne(hit.formattedAddress, this.verifiedHit.formattedAddress);
+			const button = host.createEl('button', {
+				text: abbreviateAddress(hit.formattedAddress),
+				attr: { type: 'button', title: hit.formattedAddress },
+			});
+			if (selected) button.classList.add('mod-cta', 'is-selected');
+			button.addEventListener('mousedown', (event) => event.preventDefault());
+			button.addEventListener('click', () => this.selectAddress(hit));
+		}
+	}
+
+	private selectAddress(hit: GeocodeHit): void {
+		const label = hit.formattedAddress.replace(/\s+/g, ' ').trim();
+		this.address = label;
+		this.verifiedHit = { ...hit, formattedAddress: label };
+		this.addressInput?.setValue(label);
+		this.paintAddressHits();
+	}
+
+	private commitAddressMatch(): void {
+		const match = matchingAddress(this.addressResults, this.address);
+		if (!match) return;
+		this.selectAddress(match);
 	}
 
 	private paintSuggestions(query: string): void {
 		const host = this.suggestions;
 		if (!host) return;
 		host.empty();
-		for (const choice of companionChoices(this.options.companions, query).slice(0, 6)) {
+		const choices = listedCompanions(companionChoices(this.options.companions, query)).slice(0, 2);
+		for (const choice of choices) {
 			const button = host.createEl('button', { text: choice.label, attr: { type: 'button' } });
-			button.addEventListener('click', () => {
-				this.companion = choice.value;
-				host.empty();
-				host.createEl('span', { text: choice.value });
-			});
+			if (this.companionPicked && choice.value === this.companion) button.classList.add('mod-cta', 'is-selected');
+			button.addEventListener('mousedown', (event) => event.preventDefault());
+			button.addEventListener('click', () => this.selectCompanion(choice.value));
 		}
+	}
+
+	private selectCompanion(value: string): void {
+		this.companion = value;
+		this.companionPicked = true;
+		this.companionInput?.setValue(value);
+		this.paintSuggestions(value);
+	}
+
+	private commitCompanionMatch(): void {
+		if (this.companionPicked) return;
+		const match = matchingCompanion(companionChoices(this.options.companions, this.companion), this.companion);
+		if (!match) return;
+		this.selectCompanion(match.value);
 	}
 }

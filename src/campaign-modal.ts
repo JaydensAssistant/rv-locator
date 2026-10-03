@@ -7,6 +7,7 @@ export class CampaignModal extends Modal {
 	private start = localDay();
 	private end = '';
 	private saved = false;
+	private confirming = false;
 
 	constructor(
 		app: App,
@@ -68,13 +69,31 @@ export class CampaignModal extends Modal {
 			new Setting(contentEl).addButton((button) => {
 				button.setButtonText('Cancel campaign');
 				button.setWarning();
-				button.onClick(() => {
-					this.saved = true;
-					this.onSave(null);
-					this.close();
-				});
+				button.onClick(() => this.askRemove());
 			});
 		}
+	}
+
+	/** The first click asks. The campaign stays until they confirm. */
+	private askRemove(): void {
+		if (this.confirming) return;
+		this.confirming = true;
+		const { contentEl } = this;
+		const ask = contentEl.createDiv({ cls: 'rv-locator-modal-copy' });
+		ask.setText('Remove this campaign?');
+		const actions = contentEl.createDiv('rv-locator-suggest-actions');
+		const remove = actions.createEl('button', { text: 'Remove', attr: { type: 'button' } });
+		remove.addEventListener('click', () => {
+			this.saved = true;
+			this.onSave(null);
+			this.close();
+		});
+		const keep = actions.createEl('button', { text: 'Keep', attr: { type: 'button' } });
+		keep.addEventListener('click', () => {
+			this.confirming = false;
+			ask.empty();
+			actions.empty();
+		});
 	}
 
 	onClose(): void {

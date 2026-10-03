@@ -12,8 +12,6 @@ Last Attempted: "<% rv.created %>"
 <% rv.companionYaml %>
 Visits: 1
 Successful Visits: 1
-icon: door-open
-color: purple
 Hub:
   - "[[Return Visits Hub]]"
 cssclasses:

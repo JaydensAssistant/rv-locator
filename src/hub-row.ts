@@ -51,6 +51,27 @@ export function hubRefs(value: unknown): HubRef[] {
  * Move the hub with this label one place toward the start.
  * Returns null when it is already first or missing, so the note is not rewritten.
  */
+/**
+ * Keep every hub already on the note, then add a wikilink for each other person
+ * at the same address. A name already listed is not added again.
+ */
+export function mergeHouseholdHubs(current: unknown, otherNames: readonly string[]): unknown[] {
+	const list: unknown[] = [];
+	if (Array.isArray(current)) {
+		for (const item of current) list.push(item);
+	} else if (current != null && current !== '') {
+		list.push(current);
+	}
+	const seen = new Set(list.map((item) => hubLabel(item)));
+	for (const name of otherNames) {
+		const label = name.trim();
+		if (!label || seen.has(label)) continue;
+		seen.add(label);
+		list.push(`[[${label}]]`);
+	}
+	return list;
+}
+
 export function moveHubLeft(items: readonly unknown[], label: string): unknown[] | null {
 	const index = items.findIndex((item) => hubLabel(item) === label);
 	if (index <= 0) return null;

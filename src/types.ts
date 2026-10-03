@@ -318,7 +318,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	visitsNewestFirst: true,
 	collapseOlderVisits: true,
 	visibleVisitCount: 3,
-	showCardReturnStatus: false,
+	showCardReturnStatus: true,
 	returnHubNote: 'Return Visits Hub',
 	campaignListFilter: 'all',
 	dashboardPagePreview: false,
@@ -460,7 +460,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		visitsNewestFirst: input.visitsNewestFirst !== false,
 		collapseOlderVisits: input.collapseOlderVisits !== false,
 		visibleVisitCount: wholeInRange(input.visibleVisitCount, 1, 30, DEFAULT_SETTINGS.visibleVisitCount),
-		showCardReturnStatus: input.showCardReturnStatus === true,
+		showCardReturnStatus: input.showCardReturnStatus !== false,
 		returnHubNote: typeof input.returnHubNote === 'string' && input.returnHubNote.trim()
 			? input.returnHubNote.trim()
 			: DEFAULT_SETTINGS.returnHubNote,

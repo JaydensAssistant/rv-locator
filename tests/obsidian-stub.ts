@@ -4,14 +4,22 @@ class FakeEl {
 	children: FakeEl[] = [];
 	text = '';
 	tag = 'div';
-	private listeners = new Map<string, Array<(value?: string) => void>>();
+	parentElement: FakeEl | null = null;
+	classList = {
+		add: (_token?: string) => {},
+		remove: (_token?: string) => {},
+		toggle: (_token?: string, _force?: boolean) => false,
+		contains: (_token?: string) => false,
+	};
+	private listeners = new Map<string, Array<(value?: unknown) => void>>();
 
-	addClass(_cls?: string): void {}
+	addClass(_cls?: string): this { return this; }
 
 	setAttribute(_name: string, _value: string): void {}
 
 	createDiv(spec?: string | { cls?: string; text?: string }): FakeEl {
 		const el = new FakeEl();
+		el.parentElement = this;
 		if (spec && typeof spec === 'object' && spec.text) el.text = spec.text;
 		this.children.push(el);
 		return el;
@@ -26,6 +34,7 @@ class FakeEl {
 	createEl(tag: string, spec?: { text?: string; cls?: string }): FakeEl {
 		const el = new FakeEl();
 		el.tag = tag;
+		el.parentElement = this;
 		el.text = spec?.text ?? '';
 		this.children.push(el);
 		return el;
@@ -46,7 +55,7 @@ class FakeEl {
 		return this.children.some((child) => child === node || child.contains(node));
 	}
 
-	addEventListener(type: string, fn: (value?: string) => void): void {
+	addEventListener(type: string, fn: (value?: unknown) => void): void {
 		const list = this.listeners.get(type) ?? [];
 		list.push(fn);
 		this.listeners.set(type, list);
@@ -56,7 +65,7 @@ class FakeEl {
 		for (const fn of this.listeners.get('click') ?? []) fn();
 	}
 
-	emit(type: string, value?: string): void {
+	emit(type: string, value?: unknown): void {
 		if (value !== undefined) this.text = value;
 		for (const fn of this.listeners.get(type) ?? []) fn(value);
 	}
@@ -72,6 +81,10 @@ class FakeButton {
 	}
 
 	setCta(): this { return this; }
+
+	setWarning(): this { return this; }
+
+	setDisabled(_disabled?: boolean): this { return this; }
 
 	onClick(fn: () => void): this {
 		this.clickFn = fn;
@@ -166,6 +179,32 @@ class FakeColor {
 	onChange(_fn: (value: string) => void): this { return this; }
 }
 
+class FakeText {
+	value = '';
+	inputEl: FakeEl;
+
+	constructor(parent?: FakeEl) {
+		this.inputEl = new FakeEl();
+		this.inputEl.tag = 'input';
+		this.inputEl.parentElement = parent ?? null;
+		parent?.children.push(this.inputEl);
+	}
+
+	setValue(value: string): this {
+		this.value = value;
+		return this;
+	}
+
+	setPlaceholder(_placeholder: string): this { return this; }
+
+	setDisabled(_disabled?: boolean): this { return this; }
+
+	onChange(fn: (value: string) => void): this {
+		this.inputEl.addEventListener('input', () => fn(this.value));
+		return this;
+	}
+}
+
 export class Setting {
 	controlEl = new FakeEl();
 	constructor(private el?: FakeEl) {}
@@ -193,7 +232,10 @@ export class Setting {
 	}
 	addDropdown(_cb: (dropdown: unknown) => void): this { return this; }
 	addToggle(_cb: (toggle: unknown) => void): this { return this; }
-	addText(_cb: (text: unknown) => void): this { return this; }
+	addText(cb: (text: FakeText) => void): this {
+		cb(new FakeText(this.el));
+		return this;
+	}
 }
 
 export class TFile {}

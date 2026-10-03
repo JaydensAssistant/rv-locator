@@ -1,6 +1,6 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
-import { companionChoices, type CompanionSuggestion } from './companions';
+import { companionChoices, listedCompanions, matchingCompanion, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
 import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
@@ -473,11 +473,19 @@ export interface CompanionCampaignPrompt {
 	onDecision: (decision: CoverageDecision) => void;
 }
 
-/** One companion. A typed name is offered beside recent Met With / Taken values. Skip stores nothing. */
-export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
+/**
+ * Companion for an at-home visit. Picking a name only highlights it.
+ * The visit is logged when they press Log visit or Skip, after the coverage
+ * choice when a campaign is active. Cancel and a click outside do not log.
+ */
+export class CompanionSuggestModal extends Modal {
 	private readonly gate: CompanionPromptGate;
 	private covered = true;
 	private decided = false;
+	private companion = '';
+	private companionPicked = false;
+	private suggestions: HTMLElement | null = null;
+	private companionInput: { setValue: (value: string) => void } | null = null;
 
 	constructor(
 		app: App,
@@ -487,27 +495,47 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	) {
 		super(app);
 		this.gate = createCompanionPromptGate(onDone);
-		this.emptyStateText = 'Type a name, or choose Skip. Skip leaves Met With and Taken unchanged.';
-		this.limit = 30;
 	}
 
 	onOpen(): void {
-		void super.onOpen();
-		this.setTitle('Who did they bring?');
-		this.setPlaceholder('Recent companion, or a new name');
-		this.setInstructions([
-			{ command: '↑↓', purpose: 'to navigate' },
-			{ command: '↵', purpose: 'to choose one person' },
-			{ command: 'esc', purpose: 'to cancel' },
-		]);
+		this.setTitle('Who came with you?');
 		this.modalEl.addClass('rv-locator-modal');
-		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
-		copy.setText('Adds one person to Taken and leaves Met With as it is. Skip changes neither, and the visit is still logged. Cancel does not log the visit.');
-		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
+		const { contentEl } = this;
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'Optional. Choose a companion if someone came along, then log the visit. Cancel does not log it.',
+		});
+		new Setting(contentEl)
+			.setName('Companion')
+			.setDesc('Optional.')
+			.addText((text) => {
+				text.setPlaceholder('Companion (optional)');
+				this.companionInput = text;
+				text.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
+					if (event.key !== 'Enter') return;
+					event.preventDefault();
+					this.commitCompanionMatch();
+				});
+				text.inputEl.addEventListener('blur', () => this.commitCompanionMatch());
+				text.onChange((value) => {
+					this.companion = value;
+					this.companionPicked = false;
+					this.paintSuggestions(value);
+				});
+				const host = text.inputEl.parentElement;
+				if (host) {
+					host.addClass('rv-field-host');
+					this.suggestions = host.createDiv('rv-inline-hits');
+				}
+			});
+		if (!this.suggestions) this.suggestions = contentEl.createDiv('rv-inline-hits');
+		this.paintSuggestions('');
 		if (this.campaign) {
-			const ask = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
-			ask.setText(`Cover this RV with ${this.campaign.name}?`);
-			const choice = this.modalEl.createDiv('rv-locator-suggest-actions');
+			contentEl.createEl('p', {
+				cls: 'rv-locator-modal-copy',
+				text: `Did you cover them with ${this.campaign.name}?`,
+			});
+			const choice = contentEl.createDiv('rv-locator-suggest-actions');
 			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
 			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
 			yes.classList.add('mod-cta');
@@ -522,13 +550,17 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 				yes.classList.remove('mod-cta');
 			});
 		}
-		const skip = bar.createEl('button', { text: 'Skip' });
+		const bar = contentEl.createDiv('rv-locator-suggest-actions');
+		const log = bar.createEl('button', { text: 'Log visit', attr: { type: 'button' } });
+		log.classList.add('mod-cta');
+		log.addEventListener('click', () => this.commitLog());
+		const skip = bar.createEl('button', { text: 'Skip', attr: { type: 'button' } });
 		skip.addEventListener('click', () => {
 			this.finishCoverage('skip');
 			this.gate.skip();
 			this.close();
 		});
-		const cancel = bar.createEl('button', { text: 'Cancel' });
+		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 		cancel.addEventListener('click', () => {
 			this.gate.cancel();
 			this.close();
@@ -553,27 +585,59 @@ export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
 	}
 
 	/**
-	 * SuggestModal closes before it reports the chosen row. Resolving a skip
-	 * here would drop that name. The dismiss waits so a choice in this turn wins.
-	 * Esc still skips, after the wait.
+	 * Esc closes the dialog before a choice. The dismiss waits so a choice in
+	 * this turn still wins. A click outside cancels and does not log.
 	 */
 	onClose(): void {
-		super.onClose();
 		this.gate.closed((run) => { window.setTimeout(run, 0); });
+		this.contentEl.empty();
 	}
 
 	getSuggestions(query: string): CompanionSuggestion[] {
 		return companionChoices(this.recent, query);
 	}
 
-	renderSuggestion(choice: CompanionSuggestion, el: HTMLElement): void {
-		el.setText(choice.label);
+	private paintSuggestions(query: string): void {
+		const host = this.suggestions;
+		if (!host) return;
+		host.empty();
+		const choices = listedCompanions(this.getSuggestions(query)).slice(0, 2);
+		for (const choice of choices) {
+			const button = host.createEl('button', { text: choice.label, attr: { type: 'button' } });
+			if (this.companionPicked && choice.value === this.companion) button.classList.add('mod-cta', 'is-selected');
+			button.addEventListener('mousedown', (event) => event.preventDefault());
+			button.addEventListener('click', () => this.selectCompanion(choice.value));
+		}
 	}
 
-	onChooseSuggestion(choice: CompanionSuggestion): void {
+	private selectCompanion(value: string): void {
+		this.companion = value;
+		this.companionPicked = true;
+		this.companionInput?.setValue(value);
+		this.paintSuggestions(value);
+	}
+
+	private commitCompanionMatch(): void {
+		if (this.companionPicked) return;
+		const match = matchingCompanion(this.getSuggestions(this.companion), this.companion);
+		if (!match) return;
+		this.selectCompanion(match.value);
+	}
+
+	private commitLog(): void {
+		this.commitCompanionMatch();
 		this.finishCoverage(this.covered ? 'yes' : 'no');
-		this.gate.choose(choice.value);
+		const name = this.companion.trim();
+		if (name) this.gate.choose(name);
+		else this.gate.skip();
 		this.close();
+	}
+
+	/** A finished choice. Highlighting a companion does not call this. */
+	onChooseSuggestion(choice: CompanionSuggestion): void {
+		this.companion = choice.value;
+		this.companionPicked = true;
+		this.commitLog();
 	}
 }
 

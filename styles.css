@@ -1125,6 +1125,43 @@ table.rv-locator-digest-table,
 	gap: 0.45em 0.5em;
 }
 
+.modal .rv-field-host {
+	position: relative;
+}
+
+.modal .rv-inline-hits {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(100% + 1px);
+	z-index: 5;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 0.35em;
+	height: 1.35em;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.modal .rv-inline-hits button {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 1.35em;
+	margin: 0;
+	padding: 0 0.35em;
+	overflow: hidden;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35em;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.modal .setting-item:has(.rv-inline-hits),
+.modal .setting-item-control:has(.rv-inline-hits) {
+	overflow: visible;
+}
+
 .rv-locator-modal {
 	width: min(560px, calc(100vw - 24px));
 }
@@ -1807,6 +1844,24 @@ body.rv-wide-hubs .rv-hub-line {
 	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
 }
 
+body.rv-wide-hubs .rv-hub-row {
+	display: flex;
+	flex-wrap: nowrap;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .rv-hub-chip {
+	flex: 1 1 0;
+	width: 0;
+	min-width: 0;
+	max-width: none;
+}
+
 @supports (grid-template-columns: subgrid) {
 	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
 		grid-template-columns: subgrid;
@@ -2082,6 +2137,23 @@ body.rv-wide-hubs .rv-hub-row {
 	white-space: nowrap;
 }
 
+.rv-locator-glancable .rv-locator-card-foot .rv-locator-return-inline {
+	display: inline-flex;
+	flex: 0 1 auto;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	width: auto;
+	max-width: 100%;
+	margin: 0;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
 .rv-locator-return-visits,
 .rv-locator-return-bucket {
 	flex: 0 0 auto;
@@ -2091,7 +2163,8 @@ body.rv-wide-hubs .rv-hub-row {
 }
 
 .rv-locator-return-visits {
-	color: var(--rv-urgency-accent, var(--text-accent));
+	color: var(--text-normal);
+	font-weight: 700;
 }
 
 .rv-locator-return-when {
