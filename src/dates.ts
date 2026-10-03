@@ -59,6 +59,15 @@ export function isWeekdayProperty(propertyName: string, displayName: string, con
  * Accepts `2026-09-09`, `2026-09-09T13:38:03`, `2026-09-20T10:44`, `2026-09-18 16:45`, and `2026-03-28 11:20`.
  * `Met` uses the same shapes as `Last Spoke`. It is never a boolean.
  */
+/** Calendar day from {@link parseFlexibleDate}, plus the clock when the text has one. */
+export function parseDriveInstant(raw: string): Date | null {
+	const date = parseFlexibleDate(raw);
+	if (!date) return null;
+	const clock = parseClock(raw);
+	if (!clock) return date;
+	return new Date(date.getFullYear(), date.getMonth(), date.getDate(), clock.hour, clock.minute, 0, 0);
+}
+
 export function parseFlexibleDate(input: string): Date | null {
 	const text = input.trim();
 	if (!text) return null;

@@ -74,7 +74,7 @@ function applyEveryday(next: RVLocatorSettings): void {
 	next.showCardReturnStatus = DEFAULT_SETTINGS.showCardReturnStatus;
 	next.cardReturnFormat = DEFAULT_SETTINGS.cardReturnFormat;
 	next.cardTitleNameOnly = DEFAULT_SETTINGS.cardTitleNameOnly;
-	next.compactCardDates = DEFAULT_SETTINGS.compactCardDates;
+	next.compactMode = DEFAULT_SETTINGS.compactMode;
 	next.campaignListFilter = DEFAULT_SETTINGS.campaignListFilter;
 	next.dashboardPagePreview = DEFAULT_SETTINGS.dashboardPagePreview;
 }

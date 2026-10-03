@@ -1,5 +1,8 @@
 import { Menu, setIcon } from 'obsidian';
-import { calendarDaysSince, formatDaysAgo, formatDriveDate } from './dates';
+import { attemptLogCallouts } from './attempt-digest';
+import { pickDayJump, type DayJumpCandidate } from './day-jump';
+import { calendarDaysSince, formatDaysAgo, formatDriveDate, parseDriveInstant } from './dates';
+import { parseLogBullet, stampDateTime } from './schedule';
 import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
@@ -194,6 +197,101 @@ function factDateRow(parent: HTMLElement, icon: string, label: string, value: un
 	when.createSpan({ cls: 'rv-qf-when-date', text: display.rest });
 	if (days != null) when.createSpan({ cls: 'rv-qf-when-ago', text: formatDaysAgo(days) });
 	when.setAttr('title', display.title || raw);
+	const instant = parseDriveInstant(raw);
+	if (!instant) return;
+	when.setAttr('role', 'link');
+	when.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		jumpToQuickFactDay(when, instant);
+	});
+}
+
+interface DayJumpTarget extends DayJumpCandidate {
+	el: HTMLElement;
+}
+
+function jumpToQuickFactDay(anchor: HTMLElement, when: Date): void {
+	const preview = anchor.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered');
+	const root = preview instanceof HTMLElement ? preview : anchor.ownerDocument.body;
+	if (!(root instanceof HTMLElement)) return;
+	const pick = pickDayJump(when, collectDayJumps(root));
+	if (!pick) return;
+	const target = pick.kind === 'notes' ? visitNotesTarget(pick.el) : pick.el;
+	revealJumpTarget(target, root);
+	target.scrollIntoView({ block: 'center' });
+}
+
+function collectDayJumps(root: HTMLElement): DayJumpTarget[] {
+	const found: DayJumpTarget[] = [];
+	root.querySelectorAll('h3, h5').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (/^(?:visit|recent) notes:?$/i.test(text)) return;
+		const when = stampDateTime(text);
+		if (!when) return;
+		found.push({ when, home: true, kind: 'notes', el: node });
+	});
+	for (const callout of attemptLogCallouts(root)) {
+		callout.querySelectorAll('li').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			const bullet = parseLogBullet(`- ${node.textContent ?? ''}`);
+			if (!bullet) return;
+			found.push({ when: bullet.when, home: bullet.home, kind: 'attempt', el: node });
+		});
+	}
+	return found;
+}
+
+function visitNotesTarget(stamp: HTMLElement): HTMLElement {
+	const start = stamp.closest('.el-h3, .el-h5') ?? stamp;
+	let look: Element | null = start.nextElementSibling;
+	while (look) {
+		if (look.querySelector('h3.rv-visit-stamp, h5.rv-visit-stamp, .rv-stamp-ago')) break;
+		const area = look instanceof HTMLTextAreaElement ? look : look.querySelector('textarea');
+		if (area instanceof HTMLElement) return area;
+		look = look.nextElementSibling;
+	}
+	return stamp;
+}
+
+function revealJumpTarget(target: HTMLElement, root: HTMLElement): void {
+	let node: HTMLElement | null = target;
+	while (node && node !== root) {
+		if (node.classList.contains('callout')) node.classList.remove('is-collapsed');
+		if (node.style?.display === 'none') node.style.removeProperty('display');
+		node = node.parentElement;
+	}
+	const notes = root.querySelector('h3.rv-visit-notes-heading');
+	const host = notes?.parentElement;
+	if (notes instanceof HTMLElement && host instanceof HTMLElement && host.classList.contains('is-collapsed') && !host.contains(target)) {
+		let inRecent = false;
+		let cursor = host.nextElementSibling;
+		while (cursor instanceof HTMLElement) {
+			if (cursor.classList.contains('rv-older-visits-wrap') || cursor.classList.contains('rv-notes-fold-stop')) break;
+			if (cursor === target || cursor.contains(target)) inRecent = true;
+			cursor = cursor.nextElementSibling;
+		}
+		if (inRecent) {
+			host.classList.remove('is-collapsed');
+			notes.classList.add('is-open');
+			let again = host.nextElementSibling;
+			while (again instanceof HTMLElement) {
+				if (again.classList.contains('rv-older-visits-wrap') || again.classList.contains('rv-notes-fold-stop')) break;
+				if (again.style?.display === 'none') again.style.removeProperty('display');
+				again = again.nextElementSibling;
+			}
+		}
+	}
+	if (!target.classList.contains('rv-older-hidden') && !target.closest('.rv-older-hidden')) return;
+	root.dataset.rvOlderOpen = '1';
+	root.querySelectorAll('.rv-older-hidden').forEach((el) => {
+		if (el instanceof HTMLElement) el.classList.remove('rv-older-hidden');
+	});
+	root.querySelectorAll('.rv-older-visits').forEach((el) => {
+		if (el instanceof HTMLElement) el.classList.add('is-open');
+	});
 }
 
 function paintTaken(row: HTMLElement, names: readonly string[], metWith: string): void {

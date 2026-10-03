@@ -7,7 +7,7 @@ import { isRvDashboardNote, refreshStampAgeLabels } from '../src/rv-note-view';
 import { formatDaysAgo, stampAgeFromHeadingText } from '../src/dates';
 import { classifyChromeControl } from '../src/glancable-chrome';
 import { IDEALITY_COLUMN_ID } from '../src/constants';
-import { glancableColumns } from '../src/glancable-density';
+import { compactBadgePx, glancableColumns } from '../src/glancable-density';
 import { displayedUrgency, likelihoodForNow } from '../src/row-score';
 import {
 	IDEALITY_ALPHA,
@@ -131,14 +131,18 @@ describe('urgency', () => {
 		assert.equal(merged.abbreviateDayparts, true);
 		assert.equal(merged.attemptLogWidth, 'full');
 		assert.equal(merged.centerDashboard, true);
-		assert.equal(merged.centerVisitNotes, true);
+		assert.equal(merged.centerVisitNotes, false);
 		assert.equal(merged.centerSuggestions, true);
+		assert.equal(mergeSettings({ centerVisitNotes: true }).centerVisitNotes, true);
 		assert.equal(mergeSettings({ centerVisitNotes: false }).centerVisitNotes, false);
 		assert.equal(mergeSettings({ centerSuggestions: false }).centerSuggestions, false);
 		assert.equal(merged.cardTitleNameOnly, true);
 		assert.equal(mergeSettings({ cardTitleNameOnly: false }).cardTitleNameOnly, false);
-		assert.equal(merged.compactCardDates, false);
-		assert.equal(mergeSettings({ compactCardDates: true }).compactCardDates, true);
+		assert.equal(merged.compactMode, false);
+		assert.equal(mergeSettings({ compactCardDates: true }).compactMode, true);
+		assert.equal(mergeSettings({ compactCardDates: false }).compactMode, false);
+		assert.equal(mergeSettings({ compactMode: false, compactCardDates: true }).compactMode, false);
+		assert.equal(mergeSettings({ compactMode: true, compactCardDates: false }).compactMode, true);
 		assert.equal(merged.cardReturnFormat, 'short');
 		assert.equal(mergeSettings({ cardReturnFormat: 'long' }).cardReturnFormat, 'long');
 		assert.equal(merged.wideQuickFacts, true);
@@ -1006,6 +1010,8 @@ describe('settings defaults', () => {
 		assert.equal(glancableColumns(360, settings), 1);
 		assert.equal(glancableColumns(679, settings), 1);
 		assert.equal(glancableColumns(680, settings), 2);
+		assert.equal(compactBadgePx(1, 8, ['name', 'place', 'dates', 'foot'], 3), 28);
+		assert.ok(compactBadgePx(1, 8, ['name', 'foot'], 3) < 28);
 		assert.ok(glancableColumns(2000, settings) > 2);
 		const cramped = mergeSettings({
 			glancableMaxLineChars: 10,

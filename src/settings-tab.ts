@@ -377,12 +377,12 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		new Setting(containerEl)
-			.setName('Compact card dates')
-			.setDesc('Off unless turned on. Last Spoke, Last Attempted, and Met share one line: the symbol and how many days, with no weekday, time, or date.')
+			.setName('Compact mode')
+			.setDesc('Off unless turned on. Last Spoke, Last Attempted, and Met share one line: the symbol and how many days, with no weekday, time, or date. The circles on the right shrink to the lines that are showing.')
 			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.compactCardDates);
+				toggle.setValue(this.plugin.settings.compactMode);
 				toggle.onChange(async (value) => {
-					this.plugin.settings.compactCardDates = value;
+					this.plugin.settings.compactMode = value;
 					await this.plugin.saveSettings();
 				});
 			});

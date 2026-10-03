@@ -139,8 +139,12 @@ export interface RVLocatorSettings {
 	cardReturnFormat: 'short' | 'long';
 	/** Card title is the person's name. On when the key is absent. */
 	cardTitleNameOnly: boolean;
-	/** Last spoke, last attempted, and met share one line of symbols and day counts. Off unless turned on. */
-	compactCardDates: boolean;
+	/**
+	 * Last spoke, last attempted, and met share one line, and the card badges
+	 * fit that stack. Off unless turned on. A vault that stored `compactCardDates`
+	 * still reads that key.
+	 */
+	compactMode: boolean;
 	/** Note opened by the return-visit hub chip. Default Return Visits Hub. */
 	returnHubNote: string;
 	/** Glancable campaign cycle: all, uncovered, covered. */
@@ -302,7 +306,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	wideHubsAddress: true,
 	wideVisitButtons: true,
 	centerDashboard: true,
-	centerVisitNotes: true,
+	centerVisitNotes: false,
 	centerSuggestions: true,
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
@@ -327,7 +331,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	showCardReturnStatus: true,
 	cardReturnFormat: 'short',
 	cardTitleNameOnly: true,
-	compactCardDates: false,
+	compactMode: false,
 	returnHubNote: 'Return Visits Hub',
 	campaignListFilter: 'all',
 	dashboardPagePreview: false,
@@ -404,7 +408,15 @@ export interface LatLon {
 type SettingsInput = Partial<RVLocatorSettings> & {
 	/** Previous string setting. "Last Spc" is rewritten to the real key `Last Spoke`. */
 	weekdayDateProperties?: unknown;
+	/** Compact dates, renamed to {@link RVLocatorSettings.compactMode}. */
+	compactCardDates?: boolean;
 };
+
+/** Missing stays off. An explicit compact mode wins. Otherwise the old compact-dates key is kept. */
+export function compactModeFrom(input: SettingsInput): boolean {
+	if (typeof input.compactMode === 'boolean') return input.compactMode;
+	return input.compactCardDates === true;
+}
 
 export function mergeSettings(partial: SettingsInput | null | undefined): RVLocatorSettings {
 	const input = partial ?? {};
@@ -447,7 +459,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		wideHubsAddress: input.wideHubsAddress !== false,
 		wideVisitButtons: input.wideVisitButtons !== false,
 		centerDashboard: input.centerDashboard !== false,
-		centerVisitNotes: input.centerVisitNotes !== false,
+		centerVisitNotes: input.centerVisitNotes === true,
 		centerSuggestions: input.centerSuggestions !== false,
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
@@ -472,7 +484,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		showCardReturnStatus: input.showCardReturnStatus !== false,
 		cardReturnFormat: input.cardReturnFormat === 'long' ? 'long' : 'short',
 		cardTitleNameOnly: input.cardTitleNameOnly !== false,
-		compactCardDates: input.compactCardDates === true,
+		compactMode: compactModeFrom(input),
 		returnHubNote: typeof input.returnHubNote === 'string' && input.returnHubNote.trim()
 			? input.returnHubNote.trim()
 			: DEFAULT_SETTINGS.returnHubNote,

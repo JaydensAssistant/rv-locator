@@ -466,6 +466,11 @@
 	min-height: calc(var(--rv-badge-count, 1) * var(--rv-control-size, 28px) + (var(--rv-badge-count, 1) + 1) * 0.45em);
 }
 
+/* Compact mode sizes the badges to the text stack. The min-height above would add a blank line. */
+.rv-locator-glancable .rv-locator-card.has-actions.is-compact-mode {
+	min-height: 0;
+}
+
 .rv-locator-glancable .rv-locator-card.is-priority-zero {
 	--rv-urgency-accent: var(--text-faint);
 }
@@ -548,7 +553,7 @@
 }
 
 .rv-locator-glancable .rv-locator-card-street {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-width: 0;
 	max-width: 100%;
 	margin: 0;
@@ -1020,11 +1025,11 @@ table.rv-locator-digest-table,
 }
 
 .callout.rv-locator-attempt-log > .callout-title {
-	min-height: calc(var(--rv-control-size, 28px) + 0.35em);
+	align-items: center;
 }
 
 .callout.rv-locator-attempt-log:not(.is-collapsed) > .callout-content {
-	padding-top: calc(var(--rv-control-size, 28px) * 0.45);
+	padding-top: calc(var(--rv-control-size, 28px) * 0.45 + 0.35em);
 }
 
 /*
@@ -1752,7 +1757,21 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	text-align: center;
 }
 
-body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(ul, ol, li),
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(ul, ol) {
+	width: max-content;
+	max-width: 100%;
+	margin-inline: auto;
+	padding-inline-start: 0;
+	list-style-position: inside;
+	text-align: left;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions li {
+	padding-inline-start: 0;
+	list-style-position: inside;
+	text-align: left;
+}
+
 body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
 	padding-inline-start: 0;
 	list-style-position: inside;
@@ -2098,6 +2117,7 @@ body.rv-wide-hubs .rv-hub-row {
 	align-items: baseline;
 	gap: 0.35em;
 	white-space: nowrap;
+	cursor: pointer;
 }
 
 .rv-qf-when-date,
@@ -2212,9 +2232,28 @@ body.rv-wide-hubs .rv-hub-row {
 	gap: 0.65em;
 }
 
+.rv-locator-glancable .rv-locator-when > .rv-locator-slot,
 .rv-locator-glancable .rv-locator-when.is-compact > .rv-locator-slot {
 	width: auto;
+	max-width: 100%;
 	flex: 0 1 auto;
+	justify-content: flex-start;
+}
+
+.rv-locator-glancable .rv-locator-date {
+	flex: 0 1 auto;
+}
+
+.rv-locator-glancable .rv-locator-card,
+.rv-locator-glancable .rv-locator-place,
+.rv-locator-glancable .rv-locator-when,
+.rv-locator-glancable .rv-locator-card-foot,
+.rv-locator-glancable .rv-locator-city-lg,
+.rv-locator-glancable .rv-locator-distance-lg,
+.rv-locator-glancable .rv-locator-days,
+.rv-locator-glancable .rv-locator-date {
+	text-align: left;
+	justify-content: flex-start;
 }
 
 .rv-locator-glancable .rv-locator-card-foot .rv-locator-return-inline {
@@ -2385,8 +2424,15 @@ h3.rv-visit-notes-heading > .collapse-indicator > svg {
 }
 
 /* Same chevron-right as Older Visits: down while open, right while collapsed.
-   Obsidian puts is-collapsed on the heading wrapper, not the h3. */
+   Obsidian puts is-collapsed on the heading wrapper, not the h3.
+   The indicator stays in the flex row so the 0.35em gap matches Older Visits. */
 h3.rv-visit-notes-heading > .collapse-indicator {
+	position: static !important;
+	top: auto !important;
+	inset: auto !important;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	margin: 0 !important;
 	transform: rotate(90deg) !important;
 }
 
@@ -2397,6 +2443,16 @@ h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
 
 .rv-older-hidden {
 	display: none;
+}
+
+.rv-notes-fold-stop {
+	height: 0;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	pointer-events: none;
 }
 
 body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong) {

@@ -111,7 +111,12 @@ export class NewRvIdentityModal extends Modal {
 					this.address = value;
 					this.forgetVerification(value);
 					const exact = this.addressResults.find((hit) => addressesMatchOneForOne(value, hit.formattedAddress));
-					if (exact) this.verifiedHit = { ...exact, formattedAddress: exact.formattedAddress.replace(/\s+/g, ' ').trim() };
+					if (exact) {
+						this.verifiedHit = { ...exact, formattedAddress: exact.formattedAddress.replace(/\s+/g, ' ').trim() };
+						this.releaseAddressList();
+						return;
+					}
+					this.attachAddressList();
 					this.scheduleAddressLookup(value);
 				});
 				const listId = `rv-locator-addresses-${Date.now()}`;
@@ -269,6 +274,11 @@ export class NewRvIdentityModal extends Modal {
 	private paintAddressHits(): void {
 		const list = this.addressList;
 		if (!list) return;
+		if (this.verifiedHit && addressesMatchOneForOne(this.address, this.verifiedHit.formattedAddress)) {
+			this.releaseAddressList();
+			return;
+		}
+		this.attachAddressList();
 		list.empty();
 		for (const hit of this.addressResults) {
 			list.createEl('option', {
@@ -282,14 +292,36 @@ export class NewRvIdentityModal extends Modal {
 		const label = hit.formattedAddress.replace(/\s+/g, ' ').trim();
 		this.address = label;
 		this.verifiedHit = { ...hit, formattedAddress: label };
-		this.addressInput?.setValue(label);
-		this.paintAddressHits();
+		const shown = this.addressInput?.inputEl instanceof HTMLInputElement ? this.addressInput.inputEl.value : undefined;
+		if (shown !== label) this.addressInput?.setValue(label);
+		const input = this.addressInput?.inputEl;
+		if (input instanceof HTMLInputElement) input.readOnly = false;
+		this.releaseAddressList();
 	}
 
 	private commitAddressMatch(): void {
+		if (this.verifiedHit && addressesMatchOneForOne(this.address, this.verifiedHit.formattedAddress)) {
+			this.releaseAddressList();
+			return;
+		}
 		const match = matchingAddress(this.addressResults, this.address);
 		if (!match) return;
 		this.selectAddress(match);
+	}
+
+	/** A picked address is ordinary text. The dropdown comes back when the text is no longer that pick. */
+	private releaseAddressList(): void {
+		this.addressList?.empty();
+		const input = this.addressInput?.inputEl;
+		input?.removeAttribute('list');
+		if (input instanceof HTMLInputElement) input.readOnly = false;
+	}
+
+	private attachAddressList(): void {
+		const input = this.addressInput?.inputEl;
+		const list = this.addressList;
+		if (!input || !list?.id) return;
+		if (input.getAttribute('list') !== list.id) input.setAttribute('list', list.id);
 	}
 
 	private selectCompanion(value: string): void {

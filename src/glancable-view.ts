@@ -2,7 +2,7 @@ import { setIcon, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
-import { fittedFontScale, glancableColumns } from './glancable-density';
+import { compactBadgePx, fittedFontScale, glancableColumns, type CompactLineKind } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
@@ -127,7 +127,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const showSpoke = this.lineOn('last-spoke');
 		const showAttempted = this.lineOn('last-attempted');
 		const showMet = this.lineOn('met');
-		const compactDates = this.plugin.settings.compactCardDates;
+		const compactDates = this.plugin.settings.compactMode;
 		if (showSpoke || showAttempted || showMet) {
 			const when = card.createDiv(compactDates ? 'rv-locator-when is-compact' : 'rv-locator-when');
 			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2), compactDates);
@@ -170,7 +170,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 				text: this.plugin.cardReturnBucket(row.path),
 			});
 		}
-		this.paintActions(card, rank, row, urgency, priority);
+		const lines: CompactLineKind[] = [];
+		if (this.lineOn('name')) lines.push('name');
+		if (showStreet || showCity || showDistance) lines.push('place');
+		if (compactDates && (showSpoke || showAttempted || showMet)) lines.push('dates');
+		if (this.lineOn('met-with') || this.lineOn('visits')) lines.push('foot');
+		this.paintActions(card, rank, row, urgency, priority, compactDates ? lines : null);
 	}
 
 	private paintCampaignMark(parent: HTMLElement, path: string): void {
@@ -191,6 +196,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		row: RowModel,
 		urgency: number | null,
 		priority: number | null,
+		compactLines: readonly CompactLineKind[] | null,
 	): void {
 		const showRank = rank != null;
 		const map = this.mapCell(row);
@@ -201,6 +207,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (showMap && map) badges += 1;
 		parent.style.setProperty('--rv-badge-count', String(badges));
 		parent.addClass('has-actions');
+		if (compactLines) {
+			parent.addClass('is-compact-mode');
+			const scale = Number(this.root.style.getPropertyValue('--rv-font-scale')) || 1;
+			const size = compactBadgePx(scale, this.plugin.settings.glancablePaddingY, compactLines, badges);
+			parent.style.setProperty('--rv-control-size', `${size}px`);
+		}
 		const actions = parent.createSpan('rv-locator-card-actions');
 		const urgencyButton = actions.createEl('button', {
 			cls: 'rv-locator-urgency',

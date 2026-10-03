@@ -3,6 +3,35 @@
  * (34ch of meta text, today's horizontal padding, and the action rail).
  * A shorter line or a smaller font snaps to two columns in a narrower pane.
  */
+const CARD_LINE_GAP_PX = 3;
+
+/** Rendered height of one glancable line before the font scale, from styles.css. */
+const COMPACT_LINE_PX: Record<CompactLineKind, number> = {
+	name: 20 * 1.15,
+	place: 13 * 1.25,
+	dates: 12 * 1.2,
+	foot: 13 * 1.25,
+};
+
+export type CompactLineKind = 'name' | 'place' | 'dates' | 'foot';
+
+/**
+ * Badge diameter that fits inside the lines actually on the card.
+ * Four default lines hold the natural 28px circle. Fewer lines scale it down.
+ */
+export function compactBadgePx(fontScale: number, padY: number, lines: readonly CompactLineKind[], badgeCount: number): number {
+	const scale = Number.isFinite(fontScale) && fontScale > 0 ? fontScale : 1;
+	const count = Math.max(1, Math.floor(badgeCount));
+	const text = lines.reduce((sum, kind) => sum + (COMPACT_LINE_PX[kind] ?? 16) * scale, 0);
+	const gaps = Math.max(0, lines.length - 1) * CARD_LINE_GAP_PX;
+	const stack = Math.max(0, padY) * 2 + text + gaps;
+	const natural = 28 * scale;
+	const slack = Math.max(0, count - 1) * 2;
+	const fit = (stack - slack) / count;
+	if (!Number.isFinite(fit) || fit <= 0) return Math.round(natural * 10) / 10;
+	return Math.round(Math.min(natural, Math.max(8, fit)) * 10) / 10;
+}
+
 const DEFAULT_TEXT_CHARS = 34;
 const CHAR_PX = 7.4;
 const ACTION_RAIL_PX = 64;

@@ -11,6 +11,7 @@ import { urgencyBangShapes, urgencyMark } from '../src/scoring';
 import { resetSettingsTab } from '../src/settings-reset';
 import { formatSlotOverride, parseSlotOverrides, upsertSlotOverride } from '../src/slot-override';
 import { layoutTakenNames } from '../src/taken-row';
+import { pickDayJump } from '../src/day-jump';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
 import { layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
 import { refreshHomeStampAges, restoreExactVisitClocks } from '../src/visit-log';
@@ -233,7 +234,8 @@ describe('1.3.5 visit display order', () => {
 		notes.click();
 		assert.equal(notes.classList.contains('is-open'), false);
 		await new Promise((resolve) => setTimeout(resolve, 150));
-		assert.equal(tree.sizer.querySelector('h3.rv-older-visits'), null);
+		assert.ok(tree.sizer.querySelector('h3.rv-older-visits'));
+		assert.equal(tree.sizer.querySelector('.callout')?.textContent?.includes('Return Suggestions'), true);
 		wrap.classList.remove('is-collapsed');
 		notes.click();
 		await new Promise((resolve) => setTimeout(resolve, 150));
@@ -241,6 +243,31 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(notes.classList.contains('is-open'), true);
 		assert.equal(notes.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
 		assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
+	});
+
+	it('keeps Older Visits while a visit notes box is focused', () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`;
+		const tree = visitTree(stamps, 'flat');
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		const area = tree.preview.ownerDocument.createElement('textarea');
+		tree.sizer.appendChild(area);
+		(tree.preview.ownerDocument as { activeElement?: unknown }).activeElement = area;
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assert.equal(tree.sizer.querySelector('h3.rv-older-visits')?.textContent, 'Older Visits');
 	});
 });
 
@@ -353,6 +380,7 @@ function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: stri
 	assert.equal(heading?.classList.contains('rv-older-visits'), true);
 	assert.equal(heading?.classList.contains('callout'), false);
 	assert.equal(heading?.classList.contains('is-collapsed'), false);
+	assert.equal(heading?.parentElement?.classList.contains('el-h3'), true);
 	assert.ok(heading?.querySelector('.collapse-indicator'));
 	assert.equal(heading?.querySelector('svg')?.getAttribute('class'), 'svg-icon lucide-chevron-right');
 	assert.equal(heading?.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
@@ -394,6 +422,23 @@ function assertVisitNotesStaysAbove(sizer: DomEl, visible: readonly string[]): v
 	assert.ok(trailing);
 	assert.ok(sizer.children.indexOf(trailing) > olderAt);
 }
+
+describe('1.3.5 quick fact jump', () => {
+	it('sends a home day to visit notes and a miss to the attempt log', () => {
+		const home = new Date(2026, 8, 29, 10, 0, 0);
+		const miss = new Date(2026, 8, 29, 17, 0, 0);
+		const other = new Date(2026, 8, 28, 9, 0, 0);
+		const items = [
+			{ when: home, home: true, kind: 'notes' as const, id: 'notes' },
+			{ when: home, home: true, kind: 'attempt' as const, id: 'home-line' },
+			{ when: miss, home: false, kind: 'attempt' as const, id: 'miss-line' },
+			{ when: other, home: true, kind: 'notes' as const, id: 'yesterday' },
+		];
+		assert.equal(pickDayJump(home, items)?.id, 'notes');
+		assert.equal(pickDayJump(miss, items)?.id, 'miss-line');
+		assert.equal(pickDayJump(new Date(2026, 8, 1, 12, 0, 0), items), null);
+	});
+});
 
 describe('1.3.5 settings reset', () => {
 	it('resets one tab and leaves the API key and the other tabs', () => {

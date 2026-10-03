@@ -87,11 +87,14 @@ function layoutVisitNotesNow(
 ): void {
 	armRecentNotesRelayout(preview, markdown, options);
 	decorateRecentChevron(preview);
-	if (recentNotesCollapsed(preview)) return;
 	const stamps = stampHeads(preview);
 	const fileStamps = visitStampsInMarkdown(markdown);
 	if (stamps.length === 0) return;
 	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
+	if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
+		releaseRecentNotesTail(preview);
+		return;
+	}
 	clearOlderChrome(preview);
 	const blocks = blocksFor(preview, stamps);
 	if (blocks.length === 0) return;
@@ -102,11 +105,17 @@ function layoutVisitNotesNow(
 		for (const node of block.nodes) node.classList.remove('rv-older-visit', 'rv-older-hidden');
 	}
 	preview.dataset.rvOlderExpected = older.length > 0 ? '1' : '0';
-	if (older.length === 0) return;
+	if (older.length === 0) {
+		ensureSuggestionStop(preview);
+		releaseRecentNotesTail(preview);
+		return;
+	}
 	const first = older[0]?.nodes[0];
 	const parent = first?.parentElement;
 	if (!first || !parent) return;
 	const collapsed = preview.dataset.rvOlderOpen !== '1';
+	const wrap = parent.ownerDocument.createElement('div');
+	wrap.className = 'el-h3 rv-older-visits-wrap';
 	const rule = parent.ownerDocument.createElement('hr');
 	rule.className = 'rv-older-rule';
 	const heading = parent.ownerDocument.createElement('h3');
@@ -121,8 +130,9 @@ function layoutVisitNotesNow(
 	label.textContent = 'Older Visits';
 	heading.appendChild(mark);
 	heading.appendChild(label);
-	parent.insertBefore(rule, first);
-	parent.insertBefore(heading, first);
+	wrap.appendChild(rule);
+	wrap.appendChild(heading);
+	parent.insertBefore(wrap, first);
 	for (const block of older) {
 		for (const node of block.nodes) {
 			node.classList.add('rv-older-visit');
@@ -141,6 +151,7 @@ function layoutVisitNotesNow(
 		});
 	};
 	heading.addEventListener('click', toggle);
+	releaseRecentNotesTail(preview);
 }
 
 interface VisitBlock extends VisitStampRef {
@@ -206,18 +217,6 @@ function headingIsCollapsed(heading: HTMLElement): boolean {
 	return host !== heading && host.classList.contains('is-collapsed');
 }
 
-function recentNotesCollapsed(preview: HTMLElement): boolean {
-	let collapsed = false;
-	preview.querySelectorAll('h3').forEach((node) => {
-		if (!(node instanceof HTMLElement) || collapsed) return;
-		if (node.classList.contains('rv-older-visits')) return;
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		if (!/^(?:visit|recent) notes:?$/i.test(text) && !node.classList.contains('rv-visit-notes-heading')) return;
-		if (headingIsCollapsed(node)) collapsed = true;
-	});
-	return collapsed;
-}
-
 function bindRecentNotesToggle(preview: HTMLElement, heading: HTMLElement): void {
 	if (heading.dataset.rvToggleBound === '1') return;
 	heading.dataset.rvToggleBound = '1';
@@ -281,8 +280,14 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	let later: ReturnType<typeof globalThis.setTimeout> | undefined;
 	const rerun = (): void => {
 		if (preview.dataset.rvLaying === '1') return;
-		if (recentNotesCollapsed(preview)) return;
-		if (!olderChromeMissing(preview, state.markdown, state.options)) return;
+		if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
+			releaseRecentNotesTail(preview);
+			return;
+		}
+		if (!olderChromeMissing(preview, state.markdown, state.options)) {
+			releaseRecentNotesTail(preview);
+			return;
+		}
 		layoutVisitNotes(preview, state.markdown, state.options);
 	};
 	const schedule = (): void => {
@@ -361,7 +366,7 @@ function blocksFor(preview: HTMLElement, stamps: readonly HTMLElement[]): VisitB
 		const nodes: HTMLElement[] = [];
 		let cursor: HTMLElement | null = start;
 		while (cursor && cursor !== end) {
-			if (cursor.classList.contains('rv-older-rule') || cursor.classList.contains('rv-older-visits')) {
+			if (cursor.classList.contains('rv-older-rule') || cursor.classList.contains('rv-older-visits') || cursor.classList.contains('rv-older-visits-wrap')) {
 				cursor = cursor.nextElementSibling instanceof HTMLElement ? cursor.nextElementSibling : null;
 				continue;
 			}
@@ -384,7 +389,7 @@ function blocksFor(preview: HTMLElement, stamps: readonly HTMLElement[]): VisitB
 }
 
 function isStop(node: HTMLElement): boolean {
-	if (node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits')) return false;
+	if (node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-wrap')) return false;
 	if (node.classList.contains('rv-locator-return-suggestions')) return true;
 	const title = node.querySelector('.callout-title');
 	if ((title?.textContent ?? '').includes('Return Suggestions')) return true;
@@ -411,8 +416,99 @@ function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitSt
 	});
 }
 
+function visitNotesTyping(preview: HTMLElement): boolean {
+	const doc = preview.ownerDocument as { activeElement?: Element | null } | null;
+	const active = doc?.activeElement;
+	if (!(active instanceof HTMLElement)) return false;
+	if (active.tagName !== 'TEXTAREA') return false;
+	return preview.contains(active);
+}
+
+/** Recent Notes collapse stops at the Older Visits heading. Anything from there on stays shown. */
+function releaseRecentNotesTail(preview: HTMLElement): void {
+	const heading = recentNotesHeading(preview);
+	if (!heading) return;
+	const host = collapseHost(heading);
+	let cursor = host.nextElementSibling;
+	let tail = false;
+	while (cursor instanceof HTMLElement) {
+		if (!tail && isOlderTail(cursor)) tail = true;
+		if (tail) clearInlineHidden(cursor);
+		cursor = cursor.nextElementSibling;
+	}
+}
+
+function recentNotesHeading(preview: HTMLElement): HTMLElement | null {
+	let found: HTMLElement | null = null;
+	preview.querySelectorAll('h3').forEach((node) => {
+		if (found || !(node instanceof HTMLElement) || node.classList.contains('rv-older-visits')) return;
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (/^(?:visit|recent) notes:?$/i.test(text) || node.classList.contains('rv-visit-notes-heading')) found = node;
+	});
+	return found;
+}
+
+function isOlderTail(node: HTMLElement): boolean {
+	if (node.classList.contains('rv-notes-fold-stop') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visit')) return true;
+	if (node.classList.contains('rv-locator-return-suggestions')) return true;
+	if (node.querySelector('.rv-older-visits, .rv-older-rule, .rv-locator-return-suggestions')) return true;
+	const title = node.querySelector('.callout-title');
+	return (title?.textContent ?? '').includes('Return Suggestions');
+}
+
+function clearInlineHidden(node: HTMLElement): void {
+	const style = (node as HTMLElement & { style?: { display?: string; removeProperty?: (name: string) => void } }).style;
+	if (!style || style.display !== 'none') return;
+	if (typeof style.removeProperty === 'function') style.removeProperty('display');
+	else style.display = '';
+}
+
+function ensureSuggestionStop(preview: HTMLElement): void {
+	if (preview.querySelector('.rv-older-visits-wrap')) return;
+	const callout = suggestionCallout(preview);
+	if (!callout) return;
+	const boundary = climbToSection(callout, preview);
+	const parent = boundary.parentElement;
+	if (!parent) return;
+	let anchor = boundary;
+	const previous = boundary.previousElementSibling;
+	if (previous instanceof HTMLElement && !previous.classList.contains('rv-older-rule') && !previous.classList.contains('rv-notes-fold-stop') && (previous.tagName === 'HR' || Boolean(previous.querySelector('hr')))) {
+		anchor = previous;
+	}
+	const existing = Array.from(parent.children).find((node) => node instanceof HTMLElement && node.classList.contains('rv-notes-fold-stop'));
+	if (existing instanceof HTMLElement) {
+		if (existing.nextElementSibling !== anchor) parent.insertBefore(existing, anchor);
+		return;
+	}
+	const stop = parent.ownerDocument.createElement('div');
+	stop.className = 'el-h3 rv-notes-fold-stop';
+	stop.setAttribute('aria-hidden', 'true');
+	parent.insertBefore(stop, anchor);
+}
+
+function suggestionCallout(preview: HTMLElement): HTMLElement | null {
+	const nodes = preview.querySelectorAll('.callout, .rv-locator-return-suggestions');
+	for (const node of Array.from(nodes)) {
+		if (!(node instanceof HTMLElement)) continue;
+		if (node.classList.contains('rv-locator-return-suggestions')) return node;
+		const title = node.querySelector('.callout-title');
+		if ((title?.textContent ?? '').includes('Return Suggestions')) return node;
+	}
+	return null;
+}
+
+function climbToSection(node: HTMLElement, preview: HTMLElement): HTMLElement {
+	let current = node;
+	while (current.parentElement && current.parentElement !== preview && preview.contains(current.parentElement)) {
+		const parent = current.parentElement;
+		if (parent.classList.contains('markdown-preview-section') || parent.classList.contains('markdown-preview-sizer')) break;
+		current = parent;
+	}
+	return current;
+}
+
 function clearOlderChrome(preview: HTMLElement): void {
-	preview.querySelectorAll('.rv-older-rule, .rv-older-visits').forEach((node) => node.remove());
+	preview.querySelectorAll('.rv-older-rule, .rv-older-visits, .rv-older-visits-wrap, .rv-notes-fold-stop').forEach((node) => node.remove());
 	preview.querySelectorAll('.rv-older-visit').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		node.classList.remove('rv-older-visit', 'rv-older-hidden');
