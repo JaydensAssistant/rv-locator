@@ -5,13 +5,14 @@ import { hubRefs, moveHubLeft, resolveReturnHub } from '../src/hub-row';
 import { pagePreviewDecision } from '../src/page-preview';
 import { cardPersonTitle } from '../src/note-name';
 import { coveragePronoun, coverageQuestion } from '../src/modals';
-import { cardReturnLead, currentReturnBucket, defaultAvailabilityGrid, suggestReturnDigest } from '../src/schedule';
+import { cardReturnLead, currentReturnBucket, defaultAvailabilityGrid, stampDateTime, suggestReturnDigest } from '../src/schedule';
 import { nextCampaignListFilter } from '../src/status';
 import { urgencyBangShapes, urgencyMark } from '../src/scoring';
 import { resetSettingsTab } from '../src/settings-reset';
 import { formatSlotOverride, parseSlotOverrides, upsertSlotOverride } from '../src/slot-override';
 import { layoutTakenNames } from '../src/taken-row';
 import { pickDayJump } from '../src/day-jump';
+import { visibleStampText } from '../src/dates';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
 import { layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
 import { refreshHomeStampAges, restoreExactVisitClocks } from '../src/visit-log';
@@ -245,6 +246,78 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
 	});
 
+	it('keeps Older Visits and Return Suggestions when collapse removes the tail', async () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`;
+		const tree = visitTree(stamps, 'flat');
+		const doc = tree.preview.ownerDocument;
+		const wrap = doc.createElement('div');
+		wrap.className = 'el-h3';
+		const notes = doc.createElement('h3');
+		notes.textContent = 'Recent Notes:';
+		wrap.appendChild(notes);
+		tree.sizer.insertBefore(wrap, tree.sizer.children[0] ?? null);
+		const footer = doc.createElement('div');
+		footer.className = 'mod-footer';
+		tree.sizer.appendChild(footer);
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assertOlderVisits(tree.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
+		let cursor = wrap.nextElementSibling;
+		while (cursor && cursor !== footer) {
+			const next = cursor.nextElementSibling;
+			cursor.remove();
+			cursor = next;
+		}
+		assert.equal(wrap.nextElementSibling, footer);
+		wrap.classList.add('is-collapsed');
+		notes.click();
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		const older = tree.sizer.querySelector('h3.rv-older-visits');
+		const suggestions = tree.sizer.querySelector('.callout');
+		assert.equal(older?.textContent, 'Older Visits');
+		assert.equal(older?.parentElement != null, true);
+		assert.equal(suggestions?.textContent?.includes('Return Suggestions'), true);
+		assert.equal(suggestions?.parentElement != null, true);
+		assert.notEqual(wrap.nextElementSibling, footer);
+		assert.ok(tree.sizer.children.indexOf(footer) > tree.sizer.children.indexOf(older?.parentElement as DomEl));
+		assert.equal(tree.sizer.querySelectorAll('h3.rv-older-visits').length, 1);
+		assert.equal(tree.sizer.querySelectorAll('.callout').length, 1);
+		const olderBody = tree.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
+		assert.ok(olderBody);
+		assert.ok(tree.sizer.children.indexOf(olderBody) < tree.sizer.children.indexOf(footer));
+		wrap.classList.remove('is-collapsed');
+		notes.click();
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		assert.equal(tree.sizer.querySelectorAll('h3.rv-older-visits').length, 1);
+		assert.equal(tree.sizer.querySelectorAll('.callout').length, 1);
+		assert.equal(tree.sizer.querySelector('.callout')?.textContent?.includes('Return Suggestions'), true);
+		assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
+	});
+
+	it('gives an empty Older Visits stop a heading so the fold can end', () => {
+		const stamps = ['Mon, 9am — Sep 1, 2026'];
+		const markdown = `### Recent Notes:\n##### ${stamps[0]}`;
+		const tree = visitTree(stamps, 'flat');
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		const stop = tree.sizer.querySelector('.rv-notes-fold-stop');
+		assert.equal(stop?.classList.contains('el-h3'), true);
+		assert.equal(stop?.children[0]?.tagName, 'H3');
+		assert.equal(tree.sizer.querySelector('.callout')?.textContent?.includes('Return Suggestions'), true);
+	});
+
 	it('keeps Older Visits while a visit notes box is focused', () => {
 		const stamps = [
 			'Mon, 9am — Sep 1, 2026',
@@ -384,7 +457,10 @@ function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: stri
 	assert.ok(heading?.querySelector('.collapse-indicator'));
 	assert.equal(heading?.querySelector('svg')?.getAttribute('class'), 'svg-icon lucide-chevron-right');
 	assert.equal(heading?.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
-	const rule = heading?.parentElement?.children[heading.parentElement.children.indexOf(heading) - 1];
+	const wrap = heading?.parentElement;
+	assert.equal(wrap?.children[0], heading);
+	const siblings = wrap?.parentElement?.children ?? [];
+	const rule = siblings[siblings.indexOf(wrap as DomEl) - 1];
 	assert.equal(rule?.tagName, 'HR');
 	assert.equal(rule?.classList.contains('rv-older-rule'), true);
 	const labels = sizer.children.map((node) => node.textContent ?? '');
@@ -437,6 +513,29 @@ describe('1.3.5 quick fact jump', () => {
 		assert.equal(pickDayJump(home, items)?.id, 'notes');
 		assert.equal(pickDayJump(miss, items)?.id, 'miss-line');
 		assert.equal(pickDayJump(new Date(2026, 8, 1, 12, 0, 0), items), null);
+	});
+
+	it('reads a visit heading after the rendered age and prefers those notes on a home day', () => {
+		const aged = visibleStampText('Sat, 6:38am — Oct 3, 2026 Today');
+		const when = stampDateTime(aged);
+		assert.equal(when?.getFullYear(), 2026);
+		assert.equal(when?.getMonth(), 9);
+		assert.equal(when?.getDate(), 3);
+		assert.equal(when?.getHours(), 6);
+		assert.equal(when?.getMinutes(), 38);
+		assert.equal(stampDateTime('Sat, 6:38am — Oct 3, 2026 20 days ago')?.getDate(), 3);
+		const spoke = new Date(2026, 9, 3, 0, 0, 0);
+		const notes = new Date(2026, 9, 3, 7, 0, 0);
+		const success = new Date(2026, 9, 3, 6, 38, 0);
+		assert.equal(pickDayJump(spoke, [
+			{ when: notes, home: true, kind: 'notes' as const, id: 'notes' },
+			{ when: success, home: true, kind: 'attempt' as const, id: 'success-line' },
+		])?.id, 'notes');
+		const attempted = new Date(2026, 8, 23, 10, 22, 0);
+		assert.equal(pickDayJump(attempted, [
+			{ when: new Date(2026, 8, 23, 9, 0, 0), home: true, kind: 'notes' as const, id: 'morning-notes' },
+			{ when: attempted, home: false, kind: 'attempt' as const, id: 'miss-line' },
+		])?.id, 'miss-line');
 	});
 });
 

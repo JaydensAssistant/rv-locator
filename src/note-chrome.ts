@@ -1,7 +1,7 @@
 import { Menu, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
 import { pickDayJump, type DayJumpCandidate } from './day-jump';
-import { calendarDaysSince, formatDaysAgo, formatDriveDate, parseDriveInstant } from './dates';
+import { calendarDaysSince, formatDaysAgo, formatDriveDate, parseDriveInstant, visibleStampText } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
 import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
@@ -227,7 +227,7 @@ function collectDayJumps(root: HTMLElement): DayJumpTarget[] {
 	root.querySelectorAll('h3, h5').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		const text = headingStampText(node);
 		if (/^(?:visit|recent) notes:?$/i.test(text)) return;
 		const when = stampDateTime(text);
 		if (!when) return;
@@ -242,6 +242,15 @@ function collectDayJumps(root: HTMLElement): DayJumpTarget[] {
 		});
 	}
 	return found;
+}
+
+function headingStampText(node: HTMLElement): string {
+	const copy = node.cloneNode(true);
+	if (copy instanceof HTMLElement) {
+		copy.querySelectorAll('.rv-stamp-ago, .rv-visit-more, .heading-collapse-indicator, .collapse-indicator').forEach((child) => child.remove());
+		return visibleStampText(copy.textContent ?? '');
+	}
+	return visibleStampText(node.textContent ?? '');
 }
 
 function visitNotesTarget(stamp: HTMLElement): HTMLElement {

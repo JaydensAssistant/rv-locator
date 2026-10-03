@@ -89,10 +89,14 @@ function layoutVisitNotesNow(
 	decorateRecentChevron(preview);
 	const stamps = stampHeads(preview);
 	const fileStamps = visitStampsInMarkdown(markdown);
-	if (stamps.length === 0) return;
+	if (stamps.length === 0) {
+		restoreRecentTail(preview);
+		return;
+	}
 	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
 	if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
 		releaseRecentNotesTail(preview);
+		rememberRecentTail(preview);
 		return;
 	}
 	clearOlderChrome(preview);
@@ -108,6 +112,7 @@ function layoutVisitNotesNow(
 	if (older.length === 0) {
 		ensureSuggestionStop(preview);
 		releaseRecentNotesTail(preview);
+		rememberRecentTail(preview);
 		return;
 	}
 	const first = older[0]?.nodes[0];
@@ -130,8 +135,8 @@ function layoutVisitNotesNow(
 	label.textContent = 'Older Visits';
 	heading.appendChild(mark);
 	heading.appendChild(label);
-	wrap.appendChild(rule);
 	wrap.appendChild(heading);
+	parent.insertBefore(rule, first);
 	parent.insertBefore(wrap, first);
 	for (const block of older) {
 		for (const node of block.nodes) {
@@ -152,6 +157,7 @@ function layoutVisitNotesNow(
 	};
 	heading.addEventListener('click', toggle);
 	releaseRecentNotesTail(preview);
+	rememberRecentTail(preview);
 }
 
 interface VisitBlock extends VisitStampRef {
@@ -279,13 +285,16 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	let soon: ReturnType<typeof globalThis.setTimeout> | undefined;
 	let later: ReturnType<typeof globalThis.setTimeout> | undefined;
 	const rerun = (): void => {
+		restoreRecentTail(preview);
 		if (preview.dataset.rvLaying === '1') return;
 		if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
 			releaseRecentNotesTail(preview);
+			rememberRecentTail(preview);
 			return;
 		}
 		if (!olderChromeMissing(preview, state.markdown, state.options)) {
 			releaseRecentNotesTail(preview);
+			rememberRecentTail(preview);
 			return;
 		}
 		layoutVisitNotes(preview, state.markdown, state.options);
@@ -298,18 +307,31 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	};
 	recentSchedules.set(preview, schedule);
 	preview.dataset.rvRecentWatch = '1';
-	preview.addEventListener('click', (event) => {
+	const onRecentNotes = (event: Event): boolean => {
 		const target = (event as { target?: { closest?: (selector: string) => HTMLElement | null } }).target;
 		const heading = target?.closest?.('h3');
-		if (!heading || heading.classList.contains('rv-older-visits')) return;
+		if (!heading || heading.classList.contains('rv-older-visits')) return false;
 		const title = (heading.textContent ?? '').replace(/\s+/g, ' ');
-		if (!/recent notes:?/i.test(title) && !heading.classList.contains('rv-visit-notes-heading')) return;
+		return /recent notes:?/i.test(title) || heading.classList.contains('rv-visit-notes-heading');
+	};
+	preview.addEventListener('pointerdown', (event) => {
+		if (!onRecentNotes(event)) return;
+		rememberRecentTail(preview);
+	}, true);
+	preview.addEventListener('click', (event) => {
+		if (!onRecentNotes(event)) return;
+		const target = (event as { target?: { closest?: (selector: string) => HTMLElement | null } }).target;
+		const heading = target?.closest?.('h3');
+		if (!heading) return;
 		heading.classList.toggle('is-open', !headingIsCollapsed(heading));
 		schedule();
 	});
 	if (typeof MutationObserver === 'undefined') return;
 	try {
-		const observer = new MutationObserver(() => schedule());
+		const observer = new MutationObserver(() => {
+			restoreRecentTail(preview);
+			schedule();
+		});
 		observer.observe(preview, {
 			childList: true,
 			subtree: true,
@@ -456,6 +478,66 @@ function isOlderTail(node: HTMLElement): boolean {
 	return (title?.textContent ?? '').includes('Return Suggestions');
 }
 
+const recentTails = new WeakMap<HTMLElement, HTMLElement[]>();
+
+/**
+ * Recent Notes collapse detaches every following sibling until the footer.
+ * The saved tail is Older Visits through Return Suggestions, taken while
+ * those nodes are still in the note. An empty walk must not replace it.
+ */
+function rememberRecentTail(preview: HTMLElement): void {
+	const heading = recentNotesHeading(preview);
+	if (!heading) return;
+	const host = collapseHost(heading);
+	const parent = host.parentElement;
+	if (!parent) return;
+	const footer = sectionFooter(parent);
+	const nodes: HTMLElement[] = [];
+	let started = false;
+	let cursor = host.nextElementSibling;
+	while (cursor instanceof HTMLElement && cursor !== footer) {
+		if (!started && isOlderTail(cursor)) started = true;
+		if (started) nodes.push(cursor);
+		cursor = cursor.nextElementSibling;
+	}
+	if (nodes.length === 0 || nodes.some((node) => node.parentElement == null)) return;
+	recentTails.set(preview, nodes);
+}
+
+/** Put a detached Older Visits / Return Suggestions tail back in front of the footer. */
+function restoreRecentTail(preview: HTMLElement): void {
+	const heading = recentNotesHeading(preview);
+	if (!heading) return;
+	const host = collapseHost(heading);
+	if (!host.classList.contains('is-collapsed')) return;
+	const saved = recentTails.get(preview);
+	if (!saved || saved.length === 0) return;
+	const tailGone = saved.some((node) => node.parentElement == null && isTailAnchor(node));
+	if (!tailGone) return;
+	const parent = host.parentElement;
+	if (!parent) return;
+	const footer = sectionFooter(parent);
+	const anchor = footer && footer.parentElement === parent ? footer : null;
+	const missing = saved.filter((node) => node.parentElement == null);
+	if (missing.length === 0) return;
+	for (const node of missing) parent.insertBefore(node, anchor);
+}
+
+function isTailAnchor(node: HTMLElement): boolean {
+	if (node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-notes-fold-stop')) return true;
+	if (node.classList.contains('rv-locator-return-suggestions')) return true;
+	const title = node.querySelector('.callout-title');
+	return (title?.textContent ?? '').includes('Return Suggestions');
+}
+
+function sectionFooter(parent: HTMLElement): HTMLElement | null {
+	for (const kid of Array.from(parent.children)) {
+		if (!(kid instanceof HTMLElement)) continue;
+		if (kid.classList.contains('mod-footer') || kid.classList.contains('embedded-backlinks')) return kid;
+	}
+	return null;
+}
+
 function clearInlineHidden(node: HTMLElement): void {
 	const style = (node as HTMLElement & { style?: { display?: string; removeProperty?: (name: string) => void } }).style;
 	if (!style || style.display !== 'none') return;
@@ -477,13 +559,24 @@ function ensureSuggestionStop(preview: HTMLElement): void {
 	}
 	const existing = Array.from(parent.children).find((node) => node instanceof HTMLElement && node.classList.contains('rv-notes-fold-stop'));
 	if (existing instanceof HTMLElement) {
+		ensureFoldStopHeading(existing);
 		if (existing.nextElementSibling !== anchor) parent.insertBefore(existing, anchor);
 		return;
 	}
 	const stop = parent.ownerDocument.createElement('div');
 	stop.className = 'el-h3 rv-notes-fold-stop';
 	stop.setAttribute('aria-hidden', 'true');
+	ensureFoldStopHeading(stop);
 	parent.insertBefore(stop, anchor);
+}
+
+function ensureFoldStopHeading(stop: HTMLElement): void {
+	const first = stop.children[0];
+	if (first instanceof HTMLElement && /^H[1-6]$/.test(first.tagName)) return;
+	const heading = stop.ownerDocument.createElement('h3');
+	heading.className = 'rv-fold-stop-heading';
+	heading.setAttribute('aria-hidden', 'true');
+	stop.insertBefore(heading, first instanceof HTMLElement ? first : null);
 }
 
 function suggestionCallout(preview: HTMLElement): HTMLElement | null {

@@ -93,6 +93,17 @@ export function stripStampAge(text: string): string {
 	return text.replace(STAMP_AGE_SUFFIX, '').trim();
 }
 
+const STAMP_AGE_WORDS = /\s+(?:Today|\d+ days? ago)\s*$/i;
+
+/** Stamp heading text with the rendered age (`Today`, `3 days ago`) removed. */
+export function visibleStampText(text: string): string {
+	let next = text.replace(/\s+/g, ' ').trim();
+	for (let pass = 0; pass < 3 && STAMP_AGE_WORDS.test(next); pass += 1) {
+		next = next.replace(STAMP_AGE_WORDS, '').trim();
+	}
+	return next;
+}
+
 /**
  * Calendar days from a Glancable visit stamp (`Wed, 2pm — Sep 9, 2026`) to `today`.
  * The clock on the stamp is ignored. A stamp dated tomorrow (hour rounding) is 0.

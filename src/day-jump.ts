@@ -4,22 +4,25 @@ export interface DayJumpCandidate {
 	kind: 'notes' | 'attempt';
 }
 
-/** The visit on that day. Home lands on visit notes. A miss lands on the attempt-log line. */
+/** The visit on that day. A home lands on visit notes. A miss lands on the attempt-log line. */
 export function pickDayJump<T extends DayJumpCandidate>(when: Date, items: readonly T[]): T | null {
 	const day = items.filter((item) => sameLocalDay(item.when, when));
 	if (day.length === 0) return null;
-	day.sort((a, b) => {
+	const closest = nearest(day, when);
+	if (!closest) return null;
+	if (closest.home) return nearest(day.filter((item) => item.kind === 'notes' && item.home), when) ?? closest;
+	return nearest(day.filter((item) => item.kind === 'attempt' && !item.home), when) ?? closest;
+}
+
+function nearest<T extends DayJumpCandidate>(items: readonly T[], when: Date): T | null {
+	if (items.length === 0) return null;
+	return [...items].sort((a, b) => {
 		const diff = Math.abs(a.when.getTime() - when.getTime()) - Math.abs(b.when.getTime() - when.getTime());
 		if (diff !== 0) return diff;
 		if (a.kind === 'notes' && b.kind !== 'notes') return -1;
 		if (b.kind === 'notes' && a.kind !== 'notes') return 1;
 		return 0;
-	});
-	const best = day[0];
-	if (!best) return null;
-	const near = (item: T) => Math.abs(item.when.getTime() - best.when.getTime()) <= 60 * 60 * 1000;
-	if (best.home) return day.find((item) => item.kind === 'notes' && item.home && near(item)) ?? best;
-	return day.find((item) => item.kind === 'attempt' && !item.home && near(item)) ?? best;
+	})[0] ?? null;
 }
 
 function sameLocalDay(left: Date, right: Date): boolean {

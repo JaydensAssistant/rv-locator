@@ -4,7 +4,7 @@
  * Boundaries are local time. Evening starts at 4:30.
  */
 import { isDigestEndLine, isDigestStartLine } from './attempt-digest';
-import { stripStampAge } from './dates';
+import { stripStampAge, visibleStampText } from './dates';
 import type { SlotOverride } from './slot-override';
 
 export const DAYPARTS = ['morning', 'afternoon', 'evening'] as const;
@@ -715,7 +715,7 @@ export function parseLogBullet(line: string): LogBullet | null {
 
 /** `Tue, 5pm — Sep 29, 2026` as a local Date on that hour. Null for anything else. */
 export function stampDateTime(stamp: string): Date | null {
-	const match = STAMP_BODY.exec(stripStampAge(stamp).trim());
+	const match = STAMP_BODY.exec(visibleStampText(stripStampAge(stamp)));
 	if (!match) return null;
 	const clock = clock24(Number(match[2]), match[3] ? Number(match[3]) : 0, (match[4] ?? '').toLowerCase());
 	const date = parseStampDate(match[5] ?? '');
