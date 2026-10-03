@@ -131,8 +131,16 @@ describe('urgency', () => {
 		assert.equal(merged.abbreviateDayparts, true);
 		assert.equal(merged.attemptLogWidth, 'full');
 		assert.equal(merged.centerDashboard, true);
-		assert.equal(merged.centerVisitNotes, false);
-		assert.equal(merged.centerSuggestions, false);
+		assert.equal(merged.centerVisitNotes, true);
+		assert.equal(merged.centerSuggestions, true);
+		assert.equal(mergeSettings({ centerVisitNotes: false }).centerVisitNotes, false);
+		assert.equal(mergeSettings({ centerSuggestions: false }).centerSuggestions, false);
+		assert.equal(merged.cardTitleNameOnly, true);
+		assert.equal(mergeSettings({ cardTitleNameOnly: false }).cardTitleNameOnly, false);
+		assert.equal(merged.compactCardDates, false);
+		assert.equal(mergeSettings({ compactCardDates: true }).compactCardDates, true);
+		assert.equal(merged.cardReturnFormat, 'short');
+		assert.equal(mergeSettings({ cardReturnFormat: 'long' }).cardReturnFormat, 'long');
 		assert.equal(merged.wideQuickFacts, true);
 		assert.equal(merged.geoapifyRegion, 'global');
 		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'auto', digestOrientation: 'rows' }), true);
@@ -998,12 +1006,13 @@ describe('settings defaults', () => {
 		assert.equal(glancableColumns(360, settings), 1);
 		assert.equal(glancableColumns(679, settings), 1);
 		assert.equal(glancableColumns(680, settings), 2);
+		assert.ok(glancableColumns(2000, settings) > 2);
 		const cramped = mergeSettings({
 			glancableMaxLineChars: 10,
 			glancableFontScale: 0.6,
 			glancablePaddingX: 0,
 		});
-		assert.equal(glancableColumns(420, cramped), 2);
+		assert.ok(glancableColumns(420, cramped) > 2);
 
 		const graphs = settingsGraphs(settings);
 		assert.equal(graphs.likelihood, '');

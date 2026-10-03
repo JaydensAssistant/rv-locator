@@ -91,10 +91,26 @@ export function migrateAvailabilityGrid(value: unknown): AvailabilityGrid {
 
 const FULL_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
-/** Card prefix in front of the return bucket. `Friday afternoon — `. */
-export function cardReturnLead(date: Date): string {
-	const day = FULL_WEEKDAYS[date.getDay()] ?? '';
-	return `${day} ${daypartAt(date)} — `;
+export type CardReturnFormat = 'short' | 'long';
+
+const DAYPART_ABBREV: Record<Daypart, string> = {
+	morning: 'mor',
+	afternoon: 'aft',
+	evening: 'eve',
+};
+
+/**
+ * Card prefix in front of the return bucket.
+ * Short is `Sat mor`. Long is `Friday afternoon — `.
+ */
+export function cardReturnLead(date: Date, format: CardReturnFormat = 'short'): string {
+	if (format === 'long') {
+		const day = FULL_WEEKDAYS[date.getDay()] ?? '';
+		return `${day} ${daypartAt(date)} — `;
+	}
+	const day = WEEKDAY_SHORT[date.getDay()] ?? '';
+	const part = DAYPART_ABBREV[daypartAt(date)];
+	return `${day} ${part}`;
 }
 
 export function daypartAt(date: Date): Daypart {

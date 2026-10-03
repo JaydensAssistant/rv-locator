@@ -199,11 +199,14 @@ export function iconizeVisitButtons(body: string): string {
 	return changed ? out.join(newline) : body;
 }
 
+const HOISTED_BUTTON_IDS = ['rv-log-home', 'rv-log-miss', 'rv-log-past', 'rv-log-housemate', 'rv-archive'] as const;
+
 /**
  * A note with the Home / Not home button line gets Log past visit,
- * Add a housemate, and Archive beside them, and their hidden button blocks
- * at the end. A four-button line gains the housemate button. Notes without
- * that line are unchanged.
+ * Add a housemate, and Archive beside them. Their hidden button blocks
+ * sit at the top of the body so the ids exist before the button line renders.
+ * A four-button line gains the housemate button. Notes without that line
+ * are unchanged.
  */
 export function ensureVisitButtons(body: string): string {
 	const newline = body.includes('\r\n') ? '\r\n' : '\n';
@@ -212,13 +215,53 @@ export function ensureVisitButtons(body: string): string {
 	if (at < 0) return iconizeVisitButtons(body);
 	const lead = (VISIT_BUTTON_ROW.exec(lines[at] ?? '') ?? TWO_BUTTON_LINE.exec(lines[at] ?? ''))?.[1] ?? '> ';
 	lines[at] = `${lead}\`${VISIT_BUTTON_LINE}\``;
-	let next = lines.join(newline);
-	const missing = VISIT_BUTTON_BLOCKS.filter(({ id }) => !new RegExp(`^id:\\s*${id}\\s*$`, 'm').test(next));
-	if (missing.length === 0) return iconizeVisitButtons(next);
-	const trailing = /\s*$/.exec(next)?.[0] ?? '';
-	next = next.slice(0, next.length - trailing.length);
-	const blocks = missing.map(({ block }) => block.split('\n').join(newline)).join(`${newline}${newline}`);
-	return iconizeVisitButtons(`${next}${newline}${newline}${blocks}${newline}`);
+	const split = splitHoistedButtons(lines);
+	const present = new Set(split.blocks.map(buttonBlockId));
+	for (const spec of VISIT_BUTTON_BLOCKS) {
+		if (!present.has(spec.id)) split.blocks.push(spec.block.split('\n'));
+	}
+	split.blocks.sort((left, right) => hoistRank(buttonBlockId(left)) - hoistRank(buttonBlockId(right)));
+	const kept = trimEdgeBlanks(split.kept);
+	const hoisted = split.blocks.flatMap((block, index) => (index === 0 ? block : ['', ...block]));
+	const joined = [...hoisted, '', ...kept].join(newline);
+	const trailing = body.endsWith('\n') || body.endsWith('\r\n') ? newline : '';
+	return iconizeVisitButtons(joined.endsWith(newline) ? joined : `${joined}${trailing}`);
+}
+
+function hoistRank(id: string): number {
+	const rank = HOISTED_BUTTON_IDS.indexOf(id as (typeof HOISTED_BUTTON_IDS)[number]);
+	return rank < 0 ? HOISTED_BUTTON_IDS.length : rank;
+}
+
+function buttonBlockId(block: readonly string[]): string {
+	return block.map((item) => /^id:\s*(\S+)\s*$/.exec(item)?.[1]).find((value) => value != null) ?? '';
+}
+
+function splitHoistedButtons(lines: readonly string[]): { kept: string[]; blocks: string[][] } {
+	const kept: string[] = [];
+	const blocks: string[][] = [];
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? '';
+		if (!BUTTON_FENCE.test(line)) {
+			kept.push(line);
+			continue;
+		}
+		let end = index + 1;
+		while (end < lines.length && !/^```[\t ]*$/.test(lines[end] ?? '')) end += 1;
+		const chunk = lines.slice(index, Math.min(end + 1, lines.length));
+		if (HOISTED_BUTTON_IDS.includes(buttonBlockId(chunk) as (typeof HOISTED_BUTTON_IDS)[number])) blocks.push(chunk);
+		else kept.push(...chunk);
+		index = end;
+	}
+	return { kept, blocks };
+}
+
+function trimEdgeBlanks(lines: readonly string[]): string[] {
+	let start = 0;
+	let end = lines.length;
+	while (start < end && (lines[start] ?? '').trim() === '') start += 1;
+	while (end > start && (lines[end - 1] ?? '').trim() === '') end -= 1;
+	return lines.slice(start, end);
 }
 
 /** `success`, `success with Devin`, or `not home`. The companion is only kept on a Home. */

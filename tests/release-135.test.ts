@@ -3,6 +3,8 @@ import { describe, it } from 'node:test';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered } from '../src/campaign';
 import { hubRefs, moveHubLeft, resolveReturnHub } from '../src/hub-row';
 import { pagePreviewDecision } from '../src/page-preview';
+import { cardPersonTitle } from '../src/note-name';
+import { coveragePronoun, coverageQuestion } from '../src/modals';
 import { cardReturnLead, currentReturnBucket, defaultAvailabilityGrid, suggestReturnDigest } from '../src/schedule';
 import { nextCampaignListFilter } from '../src/status';
 import { urgencyBangShapes, urgencyMark } from '../src/scoring';
@@ -21,7 +23,18 @@ describe('1.3.5 dogfood helpers', () => {
 		assert.equal(nextCampaignListFilter('all'), 'uncovered');
 		assert.equal(nextCampaignListFilter('uncovered'), 'covered');
 		assert.equal(nextCampaignListFilter('covered'), 'all');
-		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4)), 'Friday afternoon — ');
+		assert.equal(cardPersonTitle('Ada on Maple Street', true), 'Ada');
+		assert.equal(cardPersonTitle('Ada on Maple Street 2026-10-03', true), 'Ada');
+		assert.equal(cardPersonTitle('Man on Maple Street', true), 'Man');
+		assert.equal(cardPersonTitle('Maple Street', true), 'Maple Street');
+		assert.equal(cardPersonTitle('Ada on Maple Street', false), 'Ada on Maple Street');
+		assert.equal(coveragePronoun('Woman'), 'her');
+		assert.equal(coveragePronoun('Man'), 'him');
+		assert.equal(coveragePronoun(''), 'them');
+		assert.equal(coverageQuestion('her', 'Spring'), 'Did you cover her with the Spring campaign?');
+		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4)), 'Fri aft');
+		assert.equal(cardReturnLead(new Date(2026, 9, 3, 9, 0), 'short'), 'Sat mor');
+		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4), 'long'), 'Friday afternoon — ');
 		assert.deepEqual(resolveReturnHub({ target: 'Return Visits Hub', label: 'Return Visits Hub' }, 'Ministry Hub'), {
 			target: 'Ministry Hub',
 			label: 'Ministry Hub',

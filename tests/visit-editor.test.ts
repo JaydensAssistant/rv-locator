@@ -155,12 +155,41 @@ describe('visit editor', () => {
 		const body = editVisit(note(), entry, { when: new Date(2026, 8, 20, 14), home: true, companion: 'Ana' }, NOW);
 		const lines = body.split('\n');
 		const stamps = lines.filter((line) => line.startsWith('#####')).map((line) => line.replace(/ <span.*$/, ''));
-		assert.deepEqual(stamps, ['##### Sun, 2pm — Sep 20, 2026', '##### Mon, 5pm — Sep 21, 2026']);
+		assert.deepEqual(stamps, ['##### Mon, 5pm — Sep 21, 2026', '##### Sun, 2pm — Sep 20, 2026']);
 		const at = lines.findIndex((line) => line.startsWith('##### Sun'));
 		assert.equal(lines[at + 1], '`INPUT[textArea:sVisit2Notes]`');
 		assert.match(body, /> >- Sun, 2pm — Sep 20, 2026 — success with Ana\n> >- Mon, 5pm/);
 		assert.doesNotMatch(body, /Devin/);
-		assert.match(body, /`INPUT\[textArea:sVisit1Notes\]`\n\n---/);
+		assert.match(body, /`INPUT\[textArea:sVisit1Notes\]`/);
+		assert.match(body, /`INPUT\[textArea:sVisit2Notes\]`/);
+	});
+
+	it('moves an edited newer stamp below an older one that is still newer', () => {
+		const body = [
+			'### Recent Notes:',
+			'##### Sat, 10am — Oct 3, 2026',
+			'`INPUT[textArea:sVisit2Notes]`',
+			'',
+			'##### Thu, 9am — Oct 1, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'> [!example] Return Suggestions',
+			'> > [!note]- Attempt Log',
+			'> >- Thu, 9am — Oct 1, 2026 — success',
+			'> >- Sat, 10am — Oct 3, 2026 — success',
+		].join('\n');
+		const entry = listVisits(body).find((visit) => visit.stamp.includes('Oct 3'));
+		assert.ok(entry);
+		const next = editVisit(body, entry, { when: new Date(2026, 8, 30, 10), home: true, companion: '' }, new Date(2026, 9, 3, 12));
+		const stamps = next.split('\n').filter((line) => line.startsWith('#####')).map((line) => line.replace(/ <span.*$/, ''));
+		assert.deepEqual(stamps, [
+			'##### Thu, 9am — Oct 1, 2026',
+			'##### Wed, 10am — Sep 30, 2026',
+		]);
+		const oct1 = next.indexOf('##### Thu, 9am — Oct 1, 2026');
+		const sep30 = next.indexOf('##### Wed, 10am — Sep 30, 2026');
+		assert.ok(oct1 >= 0 && sep30 > oct1);
+		assert.match(next, /`INPUT\[textArea:sVisit2Notes\]`/);
 	});
 
 	it('edits a Not home into a Home with a new notes box', () => {

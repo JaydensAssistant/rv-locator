@@ -568,8 +568,10 @@ describe('disk proof', () => {
 		assert.equal(callout.includes('**Met With**'), false);
 		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
 		assert.equal(createdText.includes('Notes would go here'), false);
-		assert.match(createdText, /\n---\n\n> \[!quote\] RV Dashboard\n/);
-		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
+		assert.match(createdText, /\n---\n\n```meta-bind-button\n/);
+		const archiveAt = createdText.indexOf('id: rv-archive');
+		const dashAt = createdText.indexOf('> [!quote] RV Dashboard');
+		assert.ok(archiveAt > 0 && createdText.indexOf('id: rv-log-home') < dashAt && archiveAt < dashAt && dashAt < buttonAt);
 		assert.equal(createdText.includes(`##### ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`).length, 1);
 		const stampLine = createdText.split('\n').findIndex((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`);

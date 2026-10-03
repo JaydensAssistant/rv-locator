@@ -1811,7 +1811,8 @@ describe('companion prompt', () => {
 			skipped.push(name);
 		});
 		skipModal.onOpen();
-		clickLabeled(skipModal.contentEl as unknown as Clickable, 'Skip');
+		assert.throws(() => clickLabeled(skipModal.contentEl as unknown as Clickable, 'Skip'));
+		clickLabeled(skipModal.contentEl as unknown as Clickable, 'Log visit');
 		assert.deepEqual(skipped, [null]);
 		await waitTurn();
 		assert.deepEqual(skipped, [null]);
@@ -1848,7 +1849,10 @@ describe('companion prompt', () => {
 			onDecision: (decision) => { decisions.push(decision); },
 		});
 		modal.onOpen();
-		clickLabeled(modal.contentEl as unknown as Clickable, 'Devin');
+		const copy = collectText(modal.contentEl as unknown as Clickable);
+		assert.equal(copy.includes('Did you cover them with the Spring campaign?'), true);
+		const input = findTagged(modal.contentEl as unknown as Clickable, 'input');
+		input.emit('input', 'Devin');
 		assert.deepEqual(seen, []);
 		assert.deepEqual(decisions, []);
 		clickLabeled(modal.contentEl as unknown as Clickable, 'Log visit');

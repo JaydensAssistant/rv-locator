@@ -463,6 +463,7 @@
 
 .rv-locator-glancable .rv-locator-card.has-actions {
 	padding-right: calc(var(--rv-pad-x, 10px) + var(--rv-control-size, 28px) + 14px);
+	min-height: calc(var(--rv-badge-count, 1) * var(--rv-control-size, 28px) + (var(--rv-badge-count, 1) + 1) * 0.45em);
 }
 
 .rv-locator-glancable .rv-locator-card.is-priority-zero {
@@ -471,11 +472,13 @@
 
 .rv-locator-glancable .rv-locator-place {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: baseline;
 	gap: 2px 8px;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
 .rv-locator-glancable .rv-locator-card-name {
@@ -493,10 +496,15 @@
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
 	color: var(--text-normal);
 	font-size: inherit;
 	font-weight: 700;
 	line-height: inherit;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link:hover {
@@ -540,7 +548,7 @@
 }
 
 .rv-locator-glancable .rv-locator-card-street {
-	flex: 0 1 auto;
+	flex: 1 1 auto;
 	min-width: 0;
 	max-width: 100%;
 	margin: 0;
@@ -571,23 +579,27 @@
 
 .rv-locator-glancable .rv-locator-card-foot {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
-	gap: 4px 10px;
+	gap: 0.35em;
 	max-width: 100%;
 	margin: 0;
 	min-width: 0;
+	overflow: hidden;
 }
 
 .rv-locator-glancable .rv-locator-slot {
 	display: inline-flex;
+	flex-wrap: nowrap;
 	align-items: center;
 	gap: 4px;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
 	color: var(--text-muted);
 	font-size: calc(12px * var(--rv-font-scale, 1));
 	line-height: 1.2;
+	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
 }
 
@@ -640,9 +652,9 @@
 
 .rv-locator-glancable .rv-locator-card-actions {
 	position: absolute;
-	top: var(--rv-pad-y, 8px);
+	top: 0;
 	right: var(--rv-pad-x, 10px);
-	bottom: var(--rv-pad-y, 8px);
+	bottom: 0;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -651,12 +663,18 @@
 	margin: 0;
 }
 
+.rv-locator-glancable .rv-locator-card-actions > * {
+	flex: 0 0 auto;
+}
+
 .rv-locator-date {
 	display: inline-flex;
+	flex: 1 1 auto;
 	align-items: baseline;
 	gap: 0.4em;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
 	vertical-align: baseline;
 }
 
@@ -999,6 +1017,14 @@ table.rv-locator-digest-table,
 .callout.rv-locator-attempt-log .callout-icon {
 	background-color: transparent;
 	color: var(--text-muted);
+}
+
+.callout.rv-locator-attempt-log > .callout-title {
+	min-height: calc(var(--rv-control-size, 28px) + 0.35em);
+}
+
+.callout.rv-locator-attempt-log:not(.is-collapsed) > .callout-content {
+	padding-top: calc(var(--rv-control-size, 28px) * 0.45);
 }
 
 /*
@@ -1706,7 +1732,7 @@ body.rv-center-visit-notes .rv-dashboard :is(h3.rv-visit-notes-heading, h5.rv-vi
 }
 
 body.rv-center-visit-notes .rv-dashboard textarea {
-	text-align: center;
+	text-align: start;
 }
 
 body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-title {
@@ -1726,9 +1752,11 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	text-align: center;
 }
 
-body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions ul {
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(ul, ol, li),
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
 	padding-inline-start: 0;
 	list-style-position: inside;
+	text-align: center;
 }
 
 .rv-qf-badges {
@@ -1856,10 +1884,12 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
 body.rv-wide-hubs .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
 body.rv-wide-hubs .rv-hub-chip {
+	box-sizing: border-box;
 	flex: 1 1 0;
 	width: 0;
 	min-width: 0;
 	max-width: none;
+	padding-inline: 0.35em;
 }
 
 @supports (grid-template-columns: subgrid) {
@@ -1925,9 +1955,11 @@ body.rv-wide-hubs .rv-hub-chip {
 	width: auto;
 	min-width: 0;
 	max-width: 100%;
+	box-sizing: border-box;
 	margin: 0;
 	overflow: hidden;
-	padding: 0 0.35em;
+	padding-block: 0;
+	padding-inline: 0.35em;
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 	border-radius: var(--radius-s, 4px);
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
@@ -2088,7 +2120,7 @@ body.rv-wide-hubs .rv-hub-row {
 .rv-locator-glancable .rv-locator-card-name {
 	display: flex;
 	align-items: center;
-	gap: 4px;
+	gap: 2px;
 }
 
 .rv-locator-glancable .rv-locator-place {
@@ -2137,9 +2169,25 @@ body.rv-wide-hubs .rv-hub-row {
 	white-space: nowrap;
 }
 
+.rv-locator-glancable .rv-locator-card-foot > .rv-locator-slot {
+	flex: 1 1 auto;
+}
+
+.rv-locator-glancable .rv-locator-when.is-compact {
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.65em;
+}
+
+.rv-locator-glancable .rv-locator-when.is-compact > .rv-locator-slot {
+	width: auto;
+	flex: 0 1 auto;
+}
+
 .rv-locator-glancable .rv-locator-card-foot .rv-locator-return-inline {
 	display: inline-flex;
-	flex: 0 1 auto;
+	flex: 0 0 auto;
 	flex-wrap: nowrap;
 	align-items: baseline;
 	gap: 0.35em;
@@ -2190,7 +2238,7 @@ body.rv-wide-hubs .rv-hub-row {
 	box-sizing: border-box;
 	width: calc(14px * var(--rv-font-scale, 1));
 	height: calc(14px * var(--rv-font-scale, 1));
-	margin: 0 0.3em 0 0.2em;
+	margin: 0;
 	color: var(--text-muted);
 }
 
@@ -2277,6 +2325,38 @@ h3.rv-older-visits > .collapse-indicator > svg {
 
 .rv-older-visits.is-open .collapse-indicator {
 	transform: rotate(90deg);
+}
+
+h3.rv-visit-notes-heading {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	cursor: pointer;
+}
+
+h3.rv-visit-notes-heading > .collapse-indicator,
+h3.rv-visit-notes-heading > .collapse-indicator > svg {
+	display: inline-flex;
+	flex: 0 0 auto;
+	opacity: 1 !important;
+	visibility: visible;
+	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+}
+
+h3.rv-visit-notes-heading > .collapse-indicator > svg {
+	display: block;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	fill: none;
+	stroke: currentColor;
+}
+
+h3.rv-visit-notes-heading.is-open:not(.is-collapsed) > .collapse-indicator {
+	transform: rotate(90deg);
+}
+
+h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
+	transform: none;
 }
 
 .rv-older-hidden {

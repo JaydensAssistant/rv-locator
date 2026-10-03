@@ -263,7 +263,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		const centers: ReadonlyArray<{ key: 'centerDashboard' | 'centerVisitNotes' | 'centerSuggestions'; name: string; desc: string }> = [
 			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, and buttons. Quick Facts labels stay left aligned.' },
-			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'Centers the Visit Notes heading, each visit stamp, and the text in its notes box.' },
+			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'Centers the Visit Notes heading and each visit stamp. The words in the notes box stay left aligned.' },
 			{ key: 'centerSuggestions', name: 'Center Return Suggestions', desc: 'Centers the Return Suggestions title and lines, the Attempt Log, its table, and its visit lines.' },
 		];
 		for (const center of centers) {
@@ -346,11 +346,43 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Return status on cards')
-			.setDesc('Off by default. The bottom line of a Glancable card shows the visit count and the current daypart bucket (Avoid, Try, Unsure, or Untried), the same size as the day and distance counters, with the weekday and daypart in front of the bucket.')
+			.setDesc('On unless it was turned off. The bottom line of a Glancable card shows the visit count and the current daypart bucket (Avoid, Try, Unsure, or Untried), with the weekday and daypart in front of the bucket.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.showCardReturnStatus);
 				toggle.onChange(async (value) => {
 					this.plugin.settings.showCardReturnStatus = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Return status format')
+			.setDesc('Short is the default, like Sat mor. Long keeps the full weekday and daypart, like Friday afternoon.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('short', 'Short (Sat mor)');
+				dropdown.addOption('long', 'Long (Friday afternoon)');
+				dropdown.setValue(this.plugin.settings.cardReturnFormat);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.cardReturnFormat = value === 'long' ? 'long' : 'short';
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Name only on cards')
+			.setDesc('On unless it was turned off. The card title is the person\'s name. Off shows Name on Street.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.cardTitleNameOnly);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.cardTitleNameOnly = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Compact card dates')
+			.setDesc('Off unless turned on. Last Spoke, Last Attempted, and Met share one line: the symbol and how many days, with no weekday, time, or date.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.compactCardDates);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.compactCardDates = value;
 					await this.plugin.saveSettings();
 				});
 			});

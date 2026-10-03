@@ -36,7 +36,7 @@ import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggesti
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
-import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice, type CoverageDecision } from './modals';
+import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
 import { currentReturnBucket, readAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
@@ -645,6 +645,8 @@ export default class RVLocatorPlugin extends Plugin {
 	async promptCompanion(path?: string): Promise<string | false> {
 		await new Promise((resolve) => window.setTimeout(resolve, COMPANION_PROMPT_DELAY_MS));
 		const campaign = path && this.shouldAskCoverage(path) ? this.campaign : null;
+		const note = path ? this.app.vault.getFileByPath(path) : null;
+		const gender = note ? this.app.metadataCache.getFileCache(note)?.frontmatter?.Gender : '';
 		const picked = await new Promise<string | null | false>((resolve) => {
 			const modal = new CompanionSuggestModal(
 				this.app,
@@ -652,6 +654,7 @@ export default class RVLocatorPlugin extends Plugin {
 				resolve,
 				campaign ? {
 					name: campaign.name,
+					pronoun: coveragePronoun(gender),
 					onDecision: (decision) => {
 						if (path) this.coverageDecisions.set(path, decision);
 					},
@@ -1538,12 +1541,12 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.afterVisitWrite(file, visit.home ? 'home' : 'miss', notesProperty);
 	}
 
-	/** Digest, priority nudge, then the caret in the new notes box. */
+	/** Digest, open the new notes box, then the priority nudge. */
 	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
 		await this.enqueueDigestRewrite(file);
 		for (const callback of this.viewRefreshers) callback();
-		await this.maybeNudgePriority(file, outcome);
 		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty);
+		await this.maybeNudgePriority(file, outcome);
 	}
 
 	private async restabilizeCompanions(file: TFile): Promise<void> {
