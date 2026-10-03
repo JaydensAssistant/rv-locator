@@ -133,8 +133,14 @@ export interface RVLocatorSettings {
 	collapseOlderVisits: boolean;
 	/** How many of the newest visits stay outside Older Visits. Default 3. */
 	visibleVisitCount: number;
-	/** Bottom line of a glancable card shows the current return bucket. Off by default. */
+	/** Bottom line of a glancable card shows the current return bucket. On when the key is absent. */
 	showCardReturnStatus: boolean;
+	/** `short` is `Sat mor`. `long` is `Friday afternoon — `. Short when the key is absent. */
+	cardReturnFormat: 'short' | 'long';
+	/** Card title is the person's name. On when the key is absent. */
+	cardTitleNameOnly: boolean;
+	/** Last spoke, last attempted, and met share one line of symbols and day counts. Off unless turned on. */
+	compactCardDates: boolean;
 	/** Note opened by the return-visit hub chip. Default Return Visits Hub. */
 	returnHubNote: string;
 	/** Glancable campaign cycle: all, uncovered, covered. */
@@ -296,8 +302,8 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	wideHubsAddress: true,
 	wideVisitButtons: true,
 	centerDashboard: true,
-	centerVisitNotes: false,
-	centerSuggestions: false,
+	centerVisitNotes: true,
+	centerSuggestions: true,
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
@@ -319,6 +325,9 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	collapseOlderVisits: true,
 	visibleVisitCount: 3,
 	showCardReturnStatus: true,
+	cardReturnFormat: 'short',
+	cardTitleNameOnly: true,
+	compactCardDates: false,
 	returnHubNote: 'Return Visits Hub',
 	campaignListFilter: 'all',
 	dashboardPagePreview: false,
@@ -438,8 +447,8 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		wideHubsAddress: input.wideHubsAddress !== false,
 		wideVisitButtons: input.wideVisitButtons !== false,
 		centerDashboard: input.centerDashboard !== false,
-		centerVisitNotes: input.centerVisitNotes === true,
-		centerSuggestions: input.centerSuggestions === true,
+		centerVisitNotes: input.centerVisitNotes !== false,
+		centerSuggestions: input.centerSuggestions !== false,
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
@@ -461,6 +470,9 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		collapseOlderVisits: input.collapseOlderVisits !== false,
 		visibleVisitCount: wholeInRange(input.visibleVisitCount, 1, 30, DEFAULT_SETTINGS.visibleVisitCount),
 		showCardReturnStatus: input.showCardReturnStatus !== false,
+		cardReturnFormat: input.cardReturnFormat === 'long' ? 'long' : 'short',
+		cardTitleNameOnly: input.cardTitleNameOnly !== false,
+		compactCardDates: input.compactCardDates === true,
 		returnHubNote: typeof input.returnHubNote === 'string' && input.returnHubNote.trim()
 			? input.returnHubNote.trim()
 			: DEFAULT_SETTINGS.returnHubNote,
