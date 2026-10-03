@@ -97,7 +97,8 @@ function tagVisitNotesHeading(root: HTMLElement): void {
 				heading.insertBefore(mark, heading.firstChild);
 			}
 			mountHeadingChevron(mark);
-			heading.toggleClass('is-open', !heading.hasClass('is-collapsed'));
+			const parentCollapsed = heading.parentElement?.hasClass('is-collapsed') === true;
+			heading.toggleClass('is-open', !heading.hasClass('is-collapsed') && !parentCollapsed);
 		}
 	}
 }

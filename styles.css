@@ -1971,9 +1971,18 @@ body.rv-wide-hubs .rv-hub-chip {
 	line-height: inherit;
 	text-decoration: underline;
 	text-underline-offset: 0.12em;
-	text-overflow: ellipsis;
 	white-space: nowrap;
 	cursor: pointer;
+}
+
+.rv-hub-chip > .rv-hub-chip-label {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .rv-dashboard a.internal-link.rv-hub-chip:hover,
@@ -2170,7 +2179,7 @@ body.rv-wide-hubs .rv-hub-row {
 }
 
 .rv-locator-glancable .rv-locator-card-foot > .rv-locator-slot {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 }
 
 .rv-locator-glancable .rv-locator-when.is-compact {
@@ -2349,14 +2358,18 @@ h3.rv-visit-notes-heading > .collapse-indicator > svg {
 	height: var(--icon-size, 16px);
 	fill: none;
 	stroke: currentColor;
+	transform: none !important;
 }
 
-h3.rv-visit-notes-heading.is-open:not(.is-collapsed) > .collapse-indicator {
-	transform: rotate(90deg);
+/* Same chevron-right as Older Visits: down while open, right while collapsed.
+   Obsidian puts is-collapsed on the heading wrapper, not the h3. */
+h3.rv-visit-notes-heading > .collapse-indicator {
+	transform: rotate(90deg) !important;
 }
 
+.is-collapsed > h3.rv-visit-notes-heading > .collapse-indicator,
 h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
-	transform: none;
+	transform: none !important;
 }
 
 .rv-older-hidden {

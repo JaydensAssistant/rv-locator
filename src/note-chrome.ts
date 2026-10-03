@@ -318,7 +318,10 @@ function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLEle
 function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: NoteChromeHost): HTMLAnchorElement {
 	const link = doc.createElement('a');
 	link.className = 'internal-link rv-hub-chip';
-	link.textContent = hub.label;
+	const label = doc.createElement('span');
+	label.className = 'rv-hub-chip-label';
+	label.textContent = hub.label;
+	link.appendChild(label);
 	link.href = hub.target;
 	link.dataset.href = hub.target;
 	link.title = hub.label;

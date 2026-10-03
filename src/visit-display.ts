@@ -74,7 +74,7 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	if (preview.dataset.rvLaying === '1') return;
 	preview.dataset.rvLaying = '1';
 	try {
-		layoutVisitNotesNow(preview, root, markdown, options);
+		layoutVisitNotesNow(preview, markdown, options);
 	} finally {
 		preview.dataset.rvLaying = '0';
 	}
@@ -82,13 +82,16 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 
 function layoutVisitNotesNow(
 	preview: HTMLElement,
-	root: HTMLElement,
 	markdown: string,
 	options: VisitLayoutOptions,
 ): void {
+	armRecentNotesRelayout(preview, markdown, options);
+	decorateRecentChevron(preview);
+	if (recentNotesCollapsed(preview)) return;
 	const stamps = stampHeads(preview);
-	if (stamps.length === 0) return;
 	const fileStamps = visitStampsInMarkdown(markdown);
+	if (stamps.length === 0) return;
+	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
 	clearOlderChrome(preview);
 	const blocks = blocksFor(preview, stamps);
 	if (blocks.length === 0) return;
@@ -99,8 +102,6 @@ function layoutVisitNotesNow(
 		for (const node of block.nodes) node.classList.remove('rv-older-visit', 'rv-older-hidden');
 	}
 	preview.dataset.rvOlderExpected = older.length > 0 ? '1' : '0';
-	decorateRecentChevron(preview);
-	armRecentNotesRelayout(preview, root, markdown, options);
 	if (older.length === 0) return;
 	const first = older[0]?.nodes[0];
 	const parent = first?.parentElement;
@@ -146,9 +147,9 @@ interface VisitBlock extends VisitStampRef {
 	nodes: HTMLElement[];
 }
 
-/** Same lucide chevron-right Obsidian draws on a collapsed heading. Open rotates it down. */
+/** Same lucide chevron-right as Older Visits. Replaces Obsidian's own chevron. Open rotates it down. */
 export function mountHeadingChevron(mark: HTMLElement): void {
-	if (mark.querySelector('svg')) return;
+	mark.querySelectorAll('svg').forEach((node) => node.remove());
 	appendHeadingChevron(mark);
 }
 
@@ -186,8 +187,53 @@ function decorateRecentChevron(preview: HTMLElement): void {
 			node.insertBefore(mark, node.children[0] ?? null);
 		}
 		mountHeadingChevron(mark);
-		node.classList.toggle('is-open', !node.classList.contains('is-collapsed'));
+		node.classList.toggle('is-open', !headingIsCollapsed(node));
+		bindRecentNotesToggle(preview, node);
 	});
+}
+
+function collapseHost(heading: HTMLElement): HTMLElement {
+	const parent = heading.parentElement;
+	if (!parent) return heading;
+	const wrapper = ['el-h1', 'el-h2', 'el-h3', 'el-h4', 'el-h5', 'el-h6'].some((name) => parent.classList.contains(name));
+	if (wrapper || parent.classList.contains('is-collapsed')) return parent;
+	return heading;
+}
+
+function headingIsCollapsed(heading: HTMLElement): boolean {
+	if (heading.classList.contains('is-collapsed')) return true;
+	const host = collapseHost(heading);
+	return host !== heading && host.classList.contains('is-collapsed');
+}
+
+function recentNotesCollapsed(preview: HTMLElement): boolean {
+	let collapsed = false;
+	preview.querySelectorAll('h3').forEach((node) => {
+		if (!(node instanceof HTMLElement) || collapsed) return;
+		if (node.classList.contains('rv-older-visits')) return;
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (!/^(?:visit|recent) notes:?$/i.test(text) && !node.classList.contains('rv-visit-notes-heading')) return;
+		if (headingIsCollapsed(node)) collapsed = true;
+	});
+	return collapsed;
+}
+
+function bindRecentNotesToggle(preview: HTMLElement, heading: HTMLElement): void {
+	if (heading.dataset.rvToggleBound === '1') return;
+	heading.dataset.rvToggleBound = '1';
+	const sync = (): void => {
+		heading.classList.toggle('is-open', !headingIsCollapsed(heading));
+		scheduleRecentRelayout(preview);
+	};
+	heading.addEventListener('click', sync);
+	const host = collapseHost(heading);
+	if (host === heading || typeof MutationObserver === 'undefined') return;
+	try {
+		const observer = new MutationObserver(sync);
+		observer.observe(host, { attributes: true, attributeFilter: ['class'] });
+	} catch {
+		/* The layout test document is not a browser node. */
+	}
 }
 
 function directChild(parent: HTMLElement, className: string): HTMLElement | null {
@@ -197,36 +243,74 @@ function directChild(parent: HTMLElement, className: string): HTMLElement | null
 	return null;
 }
 
+interface RecentWatch {
+	markdown: string;
+	options: VisitLayoutOptions;
+}
+
+const recentWatches = new WeakMap<HTMLElement, RecentWatch>();
+const recentSchedules = new WeakMap<HTMLElement, () => void>();
+
 /**
  * Collapsing Recent Notes rebuilds the section and drops the injected Older
- * Visits heading. Put it back after that toggle, without looping on our own inserts.
+ * Visits heading. Put it back on the live preview after that toggle.
+ * A short stamp list (the fold is mid-rebuild) must not clear the chrome.
  */
-function armRecentNotesRelayout(
-	preview: HTMLElement,
-	root: HTMLElement,
-	markdown: string,
-	options: VisitLayoutOptions,
-): void {
-	if (preview.dataset.rvRecentWatch === '1') return;
-	preview.dataset.rvRecentWatch = '1';
+function olderChromeMissing(preview: HTMLElement, markdown: string, options: VisitLayoutOptions): boolean {
+	if (!options.collapseOlder) return false;
+	const fileStamps = visitStampsInMarkdown(markdown);
+	const cap = Math.max(0, Math.floor(options.limit));
+	if (fileStamps.length <= cap) return false;
+	return preview.querySelector('.rv-older-visits') == null;
+}
+
+function scheduleRecentRelayout(preview: HTMLElement): void {
+	recentSchedules.get(preview)?.();
+}
+
+function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
+	const existing = recentWatches.get(preview);
+	if (existing) {
+		existing.markdown = markdown;
+		existing.options = options;
+		return;
+	}
+	const state: RecentWatch = { markdown, options };
+	recentWatches.set(preview, state);
+	let soon: ReturnType<typeof globalThis.setTimeout> | undefined;
+	let later: ReturnType<typeof globalThis.setTimeout> | undefined;
 	const rerun = (): void => {
 		if (preview.dataset.rvLaying === '1') return;
-		if (preview.dataset.rvOlderExpected !== '1') return;
-		if (preview.querySelector('.rv-older-visits')) return;
-		layoutVisitNotes(root, markdown, options);
+		if (recentNotesCollapsed(preview)) return;
+		if (!olderChromeMissing(preview, state.markdown, state.options)) return;
+		layoutVisitNotes(preview, state.markdown, state.options);
 	};
+	const schedule = (): void => {
+		if (soon !== undefined) globalThis.clearTimeout(soon);
+		if (later !== undefined) globalThis.clearTimeout(later);
+		soon = globalThis.setTimeout(rerun, 60);
+		later = globalThis.setTimeout(rerun, 240);
+	};
+	recentSchedules.set(preview, schedule);
+	preview.dataset.rvRecentWatch = '1';
 	preview.addEventListener('click', (event) => {
 		const target = (event as { target?: { closest?: (selector: string) => HTMLElement | null } }).target;
 		const heading = target?.closest?.('h3');
 		if (!heading || heading.classList.contains('rv-older-visits')) return;
 		const title = (heading.textContent ?? '').replace(/\s+/g, ' ');
 		if (!/recent notes:?/i.test(title) && !heading.classList.contains('rv-visit-notes-heading')) return;
-		window.setTimeout(rerun, 40);
+		heading.classList.toggle('is-open', !headingIsCollapsed(heading));
+		schedule();
 	});
 	if (typeof MutationObserver === 'undefined') return;
 	try {
-		const observer = new MutationObserver(() => rerun());
-		observer.observe(preview, { childList: true, subtree: true });
+		const observer = new MutationObserver(() => schedule());
+		observer.observe(preview, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['class'],
+		});
 	} catch {
 		/* The layout test document is not a browser node. */
 	}

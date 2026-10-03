@@ -190,6 +190,58 @@ describe('1.3.5 visit display order', () => {
 			assertVisitNotesStaysAbove(tree.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm']);
 		}
 	});
+
+	it('keeps Older Visits after Recent Notes collapses and reopens', async () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`;
+		const tree = visitTree(stamps, 'flat');
+		const doc = tree.preview.ownerDocument;
+		const wrap = doc.createElement('div');
+		wrap.className = 'el-h3';
+		const notes = doc.createElement('h3');
+		notes.textContent = 'Recent Notes:';
+		const mark = doc.createElement('span');
+		mark.className = 'collapse-indicator collapse-icon';
+		const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		svg.setAttribute('class', 'svg-icon lucide-chevron-down');
+		const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+		path.setAttribute('d', 'M3 8L12 17L21 8');
+		svg.appendChild(path);
+		mark.appendChild(svg);
+		notes.appendChild(mark);
+		wrap.appendChild(notes);
+		tree.sizer.insertBefore(wrap, tree.sizer.children[0] ?? null);
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assertOlderVisits(tree.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
+		assert.equal(notes.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
+		assert.equal(notes.classList.contains('is-open'), true);
+		assert.equal(svg.parentElement, null);
+		tree.preview.querySelectorAll('.rv-older-visits, .rv-older-rule').forEach((node) => node.remove());
+		tree.preview.querySelectorAll('.rv-older-visit').forEach((node) => {
+			node.classList.remove('rv-older-visit', 'rv-older-hidden');
+		});
+		wrap.classList.add('is-collapsed');
+		notes.click();
+		assert.equal(notes.classList.contains('is-open'), false);
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		assert.equal(tree.sizer.querySelector('h3.rv-older-visits'), null);
+		wrap.classList.remove('is-collapsed');
+		notes.click();
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		assertOlderVisits(tree.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
+		assert.equal(notes.classList.contains('is-open'), true);
+		assert.equal(notes.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
+		assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
+	});
 });
 
 describe('exact clocks on stamps already in the note', () => {
