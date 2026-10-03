@@ -1,6 +1,6 @@
 import { Modal, Setting, type App } from 'obsidian';
 import { abbreviateAddress, addressesMatchOneForOne, matchingAddress } from './address';
-import { companionChoices, listedCompanions, matchingCompanion } from './companions';
+import { companionChoices, matchingCompanion } from './companions';
 import { ADDRESS_LOOKUP_IDLE_MS, addressLookupDecision } from './lookup-cadence';
 import type { RvGender } from './status';
 import type { GeocodeHit } from './types';
@@ -44,8 +44,7 @@ export class NewRvIdentityModal extends Modal {
 	private settled = false;
 	private companionPicked = false;
 	private verifiedHit: GeocodeHit | null = null;
-	private suggestions: HTMLElement | null = null;
-	private addressHits: HTMLElement | null = null;
+	private addressList: HTMLElement | null = null;
 	private addressResults: GeocodeHit[] = [];
 	private addressInput: TextControl | null = null;
 	private companionInput: TextControl | null = null;
@@ -103,7 +102,7 @@ export class NewRvIdentityModal extends Modal {
 			});
 		new Setting(contentEl)
 			.setName('Address')
-			.setDesc('Street address. A match can appear under the box.')
+			.setDesc('Street address. Matches appear in the address list.')
 			.addText((text) => {
 				text.setPlaceholder('Street address');
 				text.setValue(this.address);
@@ -111,11 +110,14 @@ export class NewRvIdentityModal extends Modal {
 				this.bindField(text, () => this.commitAddressMatch(), (value) => {
 					this.address = value;
 					this.forgetVerification(value);
+					const exact = this.addressResults.find((hit) => addressesMatchOneForOne(value, hit.formattedAddress));
+					if (exact) this.verifiedHit = { ...exact, formattedAddress: exact.formattedAddress.replace(/\s+/g, ' ').trim() };
 					this.scheduleAddressLookup(value);
 				});
-				this.addressHits = this.mountHits(text, contentEl);
+				const listId = `rv-locator-addresses-${Date.now()}`;
+				this.addressList = contentEl.createEl('datalist', { attr: { id: listId } });
+				text.inputEl?.setAttribute('list', listId);
 			});
-		if (!this.addressHits) this.addressHits = contentEl.createDiv('rv-inline-hits');
 		new Setting(contentEl)
 			.setName('Companion')
 			.setDesc('Optional. Leave blank and press Create to skip.')
@@ -123,15 +125,19 @@ export class NewRvIdentityModal extends Modal {
 				text.setPlaceholder('Companion (optional)');
 				text.setValue(this.companion);
 				this.companionInput = text;
+				const listId = `rv-locator-companions-${Date.now()}`;
+				const list = contentEl.createEl('datalist', { attr: { id: listId } });
+				for (const name of this.options.companions) {
+					if (name.trim()) list.createEl('option', { attr: { value: name } });
+				}
+				text.inputEl?.setAttribute('list', listId);
 				this.bindField(text, () => this.commitCompanionMatch(), (value) => {
 					this.companion = value;
-					this.companionPicked = false;
-					this.paintSuggestions(value);
+					const match = matchingCompanion(companionChoices(this.options.companions, value), value);
+					this.companionPicked = match != null && match.value === value.trim();
+					text.inputEl?.classList.toggle('is-selected', this.companionPicked);
 				});
-				this.suggestions = this.mountHits(text, contentEl);
 			});
-		if (!this.suggestions) this.suggestions = contentEl.createDiv('rv-inline-hits');
-		this.paintSuggestions(this.companion);
 		new Setting(contentEl)
 			.setName('Priority')
 			.setDesc('Starts from the default priority setting.')
@@ -194,15 +200,6 @@ export class NewRvIdentityModal extends Modal {
 		text.inputEl?.addEventListener('blur', () => commit());
 		const control = text as TextControl & { onChange?: (fn: (value: string) => void) => void };
 		control.onChange?.(onChange);
-	}
-
-	private mountHits(text: TextControl, fallback: HTMLElement): HTMLElement {
-		const host = text.inputEl?.parentElement;
-		if (host) {
-			host.addClass('rv-field-host');
-			return host.createDiv('rv-inline-hits');
-		}
-		return fallback.createDiv('rv-inline-hits');
 	}
 
 	private forgetVerification(value: string): void {
@@ -270,18 +267,14 @@ export class NewRvIdentityModal extends Modal {
 	}
 
 	private paintAddressHits(): void {
-		const host = this.addressHits;
-		if (!host) return;
-		host.empty();
-		for (const hit of this.addressResults.slice(0, 2)) {
-			const selected = this.verifiedHit != null && addressesMatchOneForOne(hit.formattedAddress, this.verifiedHit.formattedAddress);
-			const button = host.createEl('button', {
+		const list = this.addressList;
+		if (!list) return;
+		list.empty();
+		for (const hit of this.addressResults) {
+			list.createEl('option', {
 				text: abbreviateAddress(hit.formattedAddress),
-				attr: { type: 'button', title: hit.formattedAddress },
+				attr: { value: hit.formattedAddress },
 			});
-			if (selected) button.classList.add('mod-cta', 'is-selected');
-			button.addEventListener('mousedown', (event) => event.preventDefault());
-			button.addEventListener('click', () => this.selectAddress(hit));
 		}
 	}
 
@@ -299,24 +292,11 @@ export class NewRvIdentityModal extends Modal {
 		this.selectAddress(match);
 	}
 
-	private paintSuggestions(query: string): void {
-		const host = this.suggestions;
-		if (!host) return;
-		host.empty();
-		const choices = listedCompanions(companionChoices(this.options.companions, query)).slice(0, 2);
-		for (const choice of choices) {
-			const button = host.createEl('button', { text: choice.label, attr: { type: 'button' } });
-			if (this.companionPicked && choice.value === this.companion) button.classList.add('mod-cta', 'is-selected');
-			button.addEventListener('mousedown', (event) => event.preventDefault());
-			button.addEventListener('click', () => this.selectCompanion(choice.value));
-		}
-	}
-
 	private selectCompanion(value: string): void {
 		this.companion = value;
 		this.companionPicked = true;
 		this.companionInput?.setValue(value);
-		this.paintSuggestions(value);
+		this.companionInput?.inputEl?.classList.toggle('is-selected', true);
 	}
 
 	private commitCompanionMatch(): void {
