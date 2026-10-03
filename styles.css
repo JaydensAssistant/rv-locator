@@ -1889,7 +1889,7 @@ body.rv-wide-hubs .rv-hub-chip {
 	width: 0;
 	min-width: 0;
 	max-width: none;
-	padding-inline: 0.35em;
+	padding-inline: var(--rv-hub-chip-inset, 0.35em);
 }
 
 @supports (grid-template-columns: subgrid) {
@@ -1949,6 +1949,7 @@ body.rv-wide-hubs .rv-hub-chip {
 .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
 .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
 .rv-hub-chip {
+	position: relative;
 	display: inline-flex;
 	flex: 0 1 auto;
 	align-items: center;
@@ -1959,7 +1960,8 @@ body.rv-wide-hubs .rv-hub-chip {
 	margin: 0;
 	overflow: hidden;
 	padding-block: 0;
-	padding-inline: 0.35em;
+	--rv-hub-chip-inset: 0.35em;
+	padding-inline: var(--rv-hub-chip-inset);
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 	border-radius: var(--radius-s, 4px);
 	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
@@ -1981,8 +1983,29 @@ body.rv-wide-hubs .rv-hub-chip {
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
-	text-overflow: ellipsis;
+	text-overflow: clip;
 	white-space: nowrap;
+}
+
+.rv-hub-chip.is-overflow > .rv-hub-chip-label {
+	-webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 1.2em), transparent calc(100% - 0.45em));
+	mask-image: linear-gradient(90deg, #000 calc(100% - 1.2em), transparent calc(100% - 0.45em));
+}
+
+.rv-hub-chip > .rv-hub-chip-ellipsis {
+	display: none;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: var(--rv-hub-chip-inset, 0.35em);
+	align-items: center;
+	pointer-events: none;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+}
+
+.rv-hub-chip.is-overflow > .rv-hub-chip-ellipsis {
+	display: flex;
 }
 
 .rv-dashboard a.internal-link.rv-hub-chip:hover,

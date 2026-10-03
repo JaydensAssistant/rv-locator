@@ -268,6 +268,7 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		hubs.forEach((hub, index) => {
 			row.appendChild(hubChip(paragraph.ownerDocument, path, resolveReturnHub(hub, returnHub), index, host));
 		});
+		armHubOverflow(row);
 		decorateAddress(paragraph, path, data, host);
 	}
 }
@@ -315,6 +316,31 @@ function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLEle
 	return null;
 }
 
+function fitHubOverflow(row: HTMLElement): void {
+	row.querySelectorAll('.rv-hub-chip').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const label = node.querySelector('.rv-hub-chip-label');
+		if (!(label instanceof HTMLElement)) return;
+		node.classList.toggle('is-overflow', label.scrollWidth - label.clientWidth > 1);
+	});
+}
+
+function armHubOverflow(row: Element): void {
+	if (!(row instanceof HTMLElement)) return;
+	fitHubOverflow(row);
+	if (row.dataset.rvHubOverflow === '1') return;
+	row.dataset.rvHubOverflow = '1';
+	const again = (): void => fitHubOverflow(row);
+	globalThis.setTimeout(again, 0);
+	if (typeof ResizeObserver === 'undefined') return;
+	try {
+		const observer = new ResizeObserver(again);
+		observer.observe(row);
+	} catch {
+		/* The row is not a browser node. */
+	}
+}
+
 function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: NoteChromeHost): HTMLAnchorElement {
 	const link = doc.createElement('a');
 	link.className = 'internal-link rv-hub-chip';
@@ -322,6 +348,11 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 	label.className = 'rv-hub-chip-label';
 	label.textContent = hub.label;
 	link.appendChild(label);
+	const ellipsis = doc.createElement('span');
+	ellipsis.className = 'rv-hub-chip-ellipsis';
+	ellipsis.textContent = '…';
+	ellipsis.setAttribute('aria-hidden', 'true');
+	link.appendChild(ellipsis);
 	link.href = hub.target;
 	link.dataset.href = hub.target;
 	link.title = hub.label;
