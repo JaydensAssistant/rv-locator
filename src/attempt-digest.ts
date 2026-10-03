@@ -40,8 +40,9 @@ const LEGACY_DIGEST_END = '<!-- /rv-locator-digest -->';
  * 9 turns the four visit buttons into icons with tooltips and writes the
  * Mor, Aft, Eve table headers.
  * 10 fills a missing Status from Priority and renames the Hubs label to Hub.
+ * 11 rewrites each return bucket as its own bullet line.
  */
-export const DIGEST_POLISH_VERSION = 10;
+export const DIGEST_POLISH_VERSION = 11;
 
 export function isDigestStartLine(line: string): boolean {
 	return line.includes(DIGEST_START) || line.includes(LEGACY_DIGEST_START);
@@ -179,11 +180,16 @@ export function decorateAttemptLog(root: HTMLElement, suggestionType?: string): 
 }
 
 /** Class for one suggester line. Untried is checked before Try. */
+function voiceBody(text: string): string {
+	return text.replace(/^[-*]\s+/, '').trim();
+}
+
 export function digestVoiceClass(text: string): string | null {
-	if (/^Avoid\b/.test(text)) return 'is-avoid';
-	if (/^Untried\b/.test(text)) return 'is-untried';
-	if (/^Unsure\b/.test(text)) return 'is-unsure';
-	if (/^Try\b/.test(text)) return 'is-try';
+	const body = voiceBody(text);
+	if (/^Avoid\b/.test(body)) return 'is-avoid';
+	if (/^Untried\b/.test(body)) return 'is-untried';
+	if (/^Unsure\b/.test(body)) return 'is-unsure';
+	if (/^Try\b/.test(body)) return 'is-try';
 	if (/— (?:Home|Not home)$/.test(text)) return 'is-history';
 	return null;
 }
@@ -213,7 +219,8 @@ function quoteLines(parts: DigestNoteParts): string[] {
 }
 
 function isSuggesterText(text: string): boolean {
-	return /^(?:Avoid|Try|Unsure|Untried)\b/.test(text) || text === 'No May-go-out days';
+	const body = text.replace(/^[-*]\s+/, '').trim();
+	return /^(?:Avoid|Try|Unsure|Untried)\b/.test(body) || body === 'No May-go-out days';
 }
 
 function isVoiceQuoteLine(line: string): boolean {

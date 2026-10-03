@@ -6,6 +6,9 @@ export interface VisitEditOptions {
 	/** Prefilled visit when editing. A new past visit starts on Home, now. */
 	initial?: VisitFacts | null;
 	recentCompanions: readonly string[];
+	/** When set, a home visit can mark the RV covered for this campaign. */
+	campaignName?: string;
+	onCovered?: (covered: boolean) => void;
 	onSave: (facts: VisitFacts) => void;
 	/** Shown as Delete visit when set. */
 	onDelete?: () => void;
@@ -20,7 +23,9 @@ export class VisitEditModal extends Modal {
 	private dateText = '';
 	private hour = 12;
 	private companion = '';
+	private covered = false;
 	private companionSetting: Setting | null = null;
+	private campaignSetting: Setting | null = null;
 
 	constructor(app: App, private options: VisitEditOptions) {
 		super(app);
@@ -79,6 +84,15 @@ export class VisitEditModal extends Modal {
 				text.inputEl.setAttribute('list', listId);
 			});
 		this.syncCompanion();
+		if (this.options.campaignName) {
+			this.campaignSetting = new Setting(contentEl)
+				.setName(`Covered with ${this.options.campaignName}?`)
+				.addToggle((toggle) => {
+					toggle.setValue(false);
+					toggle.onChange((value) => { this.covered = value; });
+				});
+		}
+		this.syncCompanion();
 
 		const actions = new Setting(contentEl);
 		if (this.options.onDelete) {
@@ -109,6 +123,7 @@ export class VisitEditModal extends Modal {
 
 	private syncCompanion(): void {
 		if (this.companionSetting) this.companionSetting.settingEl.hidden = !this.home;
+		if (this.campaignSetting) this.campaignSetting.settingEl.hidden = !this.home;
 	}
 
 	private save(): void {
@@ -122,6 +137,7 @@ export class VisitEditModal extends Modal {
 			return;
 		}
 		this.close();
+		if (this.home && this.options.campaignName) this.options.onCovered?.(this.covered);
 		this.options.onSave({ when, home: this.home, companion: this.home ? this.companion.trim() : '' });
 	}
 }

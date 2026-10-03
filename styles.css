@@ -463,6 +463,12 @@
 
 .rv-locator-glancable .rv-locator-card.has-actions {
 	padding-right: calc(var(--rv-pad-x, 10px) + var(--rv-control-size, 28px) + 14px);
+	min-height: calc(var(--rv-badge-count, 1) * var(--rv-control-size, 28px) + (var(--rv-badge-count, 1) + 1) * 0.45em);
+}
+
+/* Compact mode sizes the badges to the text stack. The min-height above would add a blank line. */
+.rv-locator-glancable .rv-locator-card.has-actions.is-compact-mode {
+	min-height: 0;
 }
 
 .rv-locator-glancable .rv-locator-card.is-priority-zero {
@@ -471,11 +477,13 @@
 
 .rv-locator-glancable .rv-locator-place {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: baseline;
 	gap: 2px 8px;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
 .rv-locator-glancable .rv-locator-card-name {
@@ -493,10 +501,15 @@
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
 	color: var(--text-normal);
 	font-size: inherit;
 	font-weight: 700;
 	line-height: inherit;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link:hover {
@@ -571,23 +584,27 @@
 
 .rv-locator-glancable .rv-locator-card-foot {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
-	gap: 4px 10px;
+	gap: 0.35em;
 	max-width: 100%;
 	margin: 0;
 	min-width: 0;
+	overflow: hidden;
 }
 
 .rv-locator-glancable .rv-locator-slot {
 	display: inline-flex;
+	flex-wrap: nowrap;
 	align-items: center;
 	gap: 4px;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
 	color: var(--text-muted);
 	font-size: calc(12px * var(--rv-font-scale, 1));
 	line-height: 1.2;
+	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
 }
 
@@ -640,9 +657,9 @@
 
 .rv-locator-glancable .rv-locator-card-actions {
 	position: absolute;
-	top: var(--rv-pad-y, 8px);
+	top: 0;
 	right: var(--rv-pad-x, 10px);
-	bottom: var(--rv-pad-y, 8px);
+	bottom: 0;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -651,12 +668,18 @@
 	margin: 0;
 }
 
+.rv-locator-glancable .rv-locator-card-actions > * {
+	flex: 0 0 auto;
+}
+
 .rv-locator-date {
 	display: inline-flex;
+	flex: 1 1 auto;
 	align-items: baseline;
 	gap: 0.4em;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
 	vertical-align: baseline;
 }
 
@@ -1001,6 +1024,14 @@ table.rv-locator-digest-table,
 	color: var(--text-muted);
 }
 
+.callout.rv-locator-attempt-log > .callout-title {
+	align-items: center;
+}
+
+.callout.rv-locator-attempt-log:not(.is-collapsed) > .callout-content {
+	padding-top: calc(var(--rv-control-size, 28px) * 0.45 + 0.35em);
+}
+
 /*
   Bases chrome, only while this leaf's Glancable view is active.
   The host class is removed when that view unloads.
@@ -1093,7 +1124,7 @@ table.rv-locator-digest-table,
 
 .rv-locator-return-line {
 	margin: 0;
-	white-space: pre-wrap;
+	white-space: nowrap;
 }
 
 .rv-locator-suggest-title {
@@ -1112,6 +1143,54 @@ table.rv-locator-digest-table,
 .rv-locator-suggest-actions,
 .rv-locator-privacy {
 	padding: 8px 12px;
+}
+
+.rv-locator-modal > .rv-locator-modal-copy {
+	padding: 0.35em 1.15em 0.9em;
+}
+
+.rv-locator-modal .rv-locator-suggest-actions,
+.modal .rv-locator-suggest-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.45em 0.5em;
+}
+
+.modal .rv-field-host {
+	position: relative;
+}
+
+.modal .rv-inline-hits {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(100% + 1px);
+	z-index: 5;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 0.35em;
+	height: 1.35em;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.modal .rv-inline-hits button {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 1.35em;
+	margin: 0;
+	padding: 0 0.35em;
+	overflow: hidden;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35em;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.modal .setting-item:has(.rv-inline-hits),
+.modal .setting-item-control:has(.rv-inline-hits) {
+	overflow: visible;
 }
 
 .rv-locator-modal {
@@ -1312,7 +1391,7 @@ body.rv-wide-visit-buttons .mb-button-group.mb-button-group-inline:has(> .mb-but
 	width: 100%;
 }
 
-/* Four icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
+/* Five icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
 	flex: 1 1 0;
@@ -1363,21 +1442,26 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
   when the browser has it; color-mix is the fallback.
 */
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 78%, oklch(0.62 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.52, l, 0.68) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 82%, oklch(0.64 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.54, l, 0.68) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 62%, oklch(0.48 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.44, calc(l - 0.08), 0.6) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 70%, oklch(0.54 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.48, calc(l - 0.06), 0.62) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 48%, oklch(0.38 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.16), 0.52) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 58%, oklch(0.46 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.42, calc(l - 0.12), 0.56) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 46%, oklch(0.38 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.18), 0.5) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(5) > button.mb-button-inner {
 	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 36%, oklch(0.32 0 0));
 	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.3, calc(l - 0.24), 0.46) c h);
 }
@@ -1653,7 +1737,7 @@ body.rv-center-visit-notes .rv-dashboard :is(h3.rv-visit-notes-heading, h5.rv-vi
 }
 
 body.rv-center-visit-notes .rv-dashboard textarea {
-	text-align: center;
+	text-align: start;
 }
 
 body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-title {
@@ -1673,9 +1757,25 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	text-align: center;
 }
 
-body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions ul {
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(ul, ol) {
+	width: max-content;
+	max-width: 100%;
+	margin-inline: auto;
 	padding-inline-start: 0;
 	list-style-position: inside;
+	text-align: left;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions li {
+	padding-inline-start: 0;
+	list-style-position: inside;
+	text-align: left;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
+	padding-inline-start: 0;
+	list-style-position: inside;
+	text-align: center;
 }
 
 .rv-qf-badges {
@@ -1691,10 +1791,15 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	gap: 0.4em;
 }
 
+.rv-qf-badges {
+	margin-inline-end: 0.15em;
+}
+
 .rv-qf-body {
 	display: flex;
 	flex-direction: column;
-	gap: 0.2em;
+	gap: 0;
+	padding-top: 0.55em;
 }
 
 .rv-qf-row {
@@ -1702,6 +1807,27 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	grid-template-columns: 1.25em 8.2em minmax(0, 1fr);
 	align-items: center;
 	column-gap: 0.4em;
+	padding-block: 0.28em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rv-qf-row.is-status {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.rv-qf-label {
+	justify-self: start;
+	text-align: left;
+}
+
+body.rv-center-dashboard .rv-qf-body,
+body.rv-center-dashboard .rv-qf-row,
+body.rv-center-dashboard .rv-qf-label {
+	text-align: left;
+}
+
+body.rv-center-dashboard .rv-qf-label {
+	justify-self: start;
 }
 
 .rv-qf-icon {
@@ -1730,35 +1856,186 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	font-weight: 650;
 }
 
-.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest) {
+.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest),
+.rv-hub-owned > br {
 	display: none;
 }
 
-.rv-hub-row {
-	display: inline-flex;
+/*
+  Hub and Address share one paragraph. The hub line spans that grid so the
+  chips stay on the hub row, and Address, its field, and the map stay on the next.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	grid-template-columns: var(--rv-dash-label) var(--rv-dash-field) var(--rv-dash-plus);
 	align-items: center;
-	gap: 0.25em;
-	box-sizing: border-box;
-	width: var(--rv-dash-field);
-	max-width: var(--rv-dash-field);
-	vertical-align: middle;
+	column-gap: var(--rv-dash-gap);
 }
 
-.rv-hub-chip {
-	display: inline-flex;
-	flex: 1 1 0;
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
+.rv-hub-line {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: var(--rv-dash-label) minmax(0, var(--rv-dash-field)) var(--rv-dash-plus);
 	align-items: center;
+	column-gap: var(--rv-dash-gap);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+body.rv-wide-hubs .rv-hub-line {
+	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
+body.rv-wide-hubs .rv-hub-row {
+	display: flex;
+	flex-wrap: nowrap;
+	width: 100%;
 	min-width: 0;
-	overflow: hidden;
-	padding: 0 0.35em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s, 4px);
-	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .rv-hub-chip {
+	box-sizing: border-box;
+	flex: 1 1 0;
+	width: 0;
+	min-width: 0;
+	max-width: none;
+	padding-inline: var(--rv-hub-chip-inset, 0.35em);
+}
+
+@supports (grid-template-columns: subgrid) {
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+		grid-template-columns: subgrid;
+		column-gap: inherit;
+	}
+}
+
+.rv-hub-line > strong {
+	margin: 0;
 	white-space: nowrap;
 }
 
-.rv-hub-remove,
-.rv-hub-add {
+.rv-hub-line > .rv-hub-add {
+	justify-self: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--rv-dash-plus);
+	min-width: var(--rv-dash-plus);
+	height: var(--input-height, 2em);
+	margin: 0;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--button-radius, var(--radius-s, 4px));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-hub-line > .rv-hub-add:hover {
+	color: var(--text-normal);
+}
+
+.rv-hub-line > .rv-hub-add svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
+}
+
+.rv-hub-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25em;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	min-height: var(--input-height, 2em);
+	vertical-align: middle;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+.rv-hub-chip {
+	position: relative;
+	display: inline-flex;
+	flex: 0 1 auto;
+	align-items: center;
+	width: auto;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+	margin: 0;
+	overflow: hidden;
+	padding-block: 0;
+	--rv-hub-chip-inset: 0.35em;
+	padding-inline: var(--rv-hub-chip-inset);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--radius-s, 4px);
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	box-shadow: none;
+	color: var(--text-accent);
+	font: inherit;
+	font-weight: inherit;
+	line-height: inherit;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.rv-hub-chip > .rv-hub-chip-label {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+.rv-hub-chip.is-overflow > .rv-hub-chip-label {
+	-webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 1.2em), transparent calc(100% - 0.45em));
+	mask-image: linear-gradient(90deg, #000 calc(100% - 1.2em), transparent calc(100% - 0.45em));
+}
+
+.rv-hub-chip > .rv-hub-chip-ellipsis {
+	display: none;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: var(--rv-hub-chip-inset, 0.35em);
+	align-items: center;
+	pointer-events: none;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+}
+
+.rv-hub-chip.is-overflow > .rv-hub-chip-ellipsis {
+	display: flex;
+}
+
+.rv-dashboard a.internal-link.rv-hub-chip:hover,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover,
+.rv-hub-chip:hover {
+	color: var(--text-accent);
+	text-decoration: underline;
+	background-image: none;
+}
+
+.rv-hub-remove {
 	flex: 0 0 auto;
 	margin: 0;
 	padding: 0 0.25em;
@@ -1768,12 +2045,38 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	cursor: pointer;
 }
 
+.rv-address-input,
+.rv-dashboard input.rv-address-input,
+.markdown-preview-view input.rv-address-input,
+.markdown-rendered input.rv-address-input,
+.markdown-source-view input.rv-address-input {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	height: var(--input-height, 2em);
+	margin: 0;
+	padding: 2px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background: var(--background-modifier-form-field, var(--background-primary));
+	color: var(--text-normal);
+	font-family: var(--font-text) !important;
+	font-size: var(--font-text-size) !important;
+	font-weight: var(--font-normal, inherit);
+	line-height: var(--line-height-normal, 1.5);
+}
+
+.rv-address-hidden {
+	display: none !important;
+}
+
 body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
 body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
 	max-width: 100%;
 }
 
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong):not(.rv-hub-owned) {
 	display: flex;
 	align-items: center;
 	gap: var(--rv-dash-gap);
@@ -1806,4 +2109,362 @@ body.rv-wide-hubs .rv-hub-row {
 
 .rv-map-soon {
 	padding: 1.5rem 1.25rem;
+}
+
+.rv-qf-when {
+	display: inline-flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.rv-qf-when-date,
+.rv-qf-when-ago {
+	color: var(--text-faint);
+	font-size: 0.72em;
+	font-weight: var(--font-normal, 400);
+}
+
+.rv-qf-priority {
+	width: 7em;
+	max-width: 70%;
+	margin: 0;
+	vertical-align: middle;
+}
+
+.rv-qf-priority-num {
+	margin-left: 0.4em;
+}
+
+.rv-qf-taken-line {
+	display: inline-flex;
+	align-items: center;
+	max-width: min(46vw, 100%);
+	min-width: 0;
+}
+
+.rv-qf-taken-scroll {
+	display: inline-flex;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.rv-qf-taken {
+	white-space: nowrap;
+}
+
+.rv-qf-taken.is-met {
+	padding: 0 0.28em;
+	border: 1px solid color-mix(in srgb, var(--text-accent) 55%, transparent);
+	border-radius: var(--radius-s, 4px);
+	color: inherit;
+	text-decoration: none;
+}
+
+.rv-qf-badges .rv-attempt-override svg {
+	width: calc(var(--rv-control-size, 28px) * 0.55);
+	height: calc(var(--rv-control-size, 28px) * 0.55);
+}
+
+.rv-locator-glancable .rv-locator-card-name {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.rv-locator-glancable .rv-locator-place {
+	align-items: center;
+	gap: 4px;
+}
+
+.rv-locator-glancable .rv-locator-status-icon,
+.rv-locator-glancable .rv-locator-place-earth {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+	margin: 0;
+}
+
+.rv-locator-glancable .rv-locator-status-icon {
+	color: var(--text-normal);
+}
+
+.rv-locator-glancable .rv-locator-place-earth {
+	color: var(--text-faint);
+}
+
+.rv-locator-glancable .rv-locator-status-icon svg,
+.rv-locator-glancable .rv-locator-place-earth svg {
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+}
+
+.rv-locator-glancable .rv-locator-return-line {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	width: 100%;
+	margin-top: 2px;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-card-foot > .rv-locator-slot {
+	flex: 0 1 auto;
+}
+
+.rv-locator-glancable .rv-locator-when.is-compact {
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.65em;
+}
+
+.rv-locator-glancable .rv-locator-when > .rv-locator-slot,
+.rv-locator-glancable .rv-locator-when.is-compact > .rv-locator-slot {
+	width: auto;
+	max-width: 100%;
+	flex: 0 1 auto;
+	justify-content: flex-start;
+}
+
+.rv-locator-glancable .rv-locator-date {
+	flex: 0 1 auto;
+}
+
+.rv-locator-glancable .rv-locator-card,
+.rv-locator-glancable .rv-locator-place,
+.rv-locator-glancable .rv-locator-when,
+.rv-locator-glancable .rv-locator-card-foot,
+.rv-locator-glancable .rv-locator-city-lg,
+.rv-locator-glancable .rv-locator-distance-lg,
+.rv-locator-glancable .rv-locator-days,
+.rv-locator-glancable .rv-locator-date {
+	text-align: left;
+	justify-content: flex-start;
+}
+
+.rv-locator-glancable .rv-locator-card-foot .rv-locator-return-inline {
+	display: inline-flex;
+	flex: 0 0 auto;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	width: auto;
+	max-width: 100%;
+	margin: 0;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.rv-locator-return-visits,
+.rv-locator-return-bucket {
+	flex: 0 0 auto;
+	font-size: inherit;
+	font-weight: 600;
+	line-height: inherit;
+}
+
+.rv-locator-return-visits {
+	color: var(--text-normal);
+	font-weight: 700;
+}
+
+.rv-locator-return-when {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: calc(12px * 0.72 * var(--rv-font-scale, 1));
+	font-weight: 400;
+	line-height: 1.15;
+	text-overflow: ellipsis;
+}
+
+.rv-locator-return-bucket {
+	color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-locator-campaign-mark {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+	margin: 0;
+	color: var(--text-muted);
+}
+
+.rv-locator-campaign-mark svg {
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+}
+
+.rv-locator-toolbar-actions {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.rv-locator-toolbar-actions .rv-locator-new-rv {
+	margin-left: 0;
+}
+
+.rv-locator-toolbar-quiet {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-locator-toolbar-quiet svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-older-visits {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	cursor: pointer;
+}
+
+.rv-older-visits .collapse-indicator {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+	position: static;
+	top: auto;
+	opacity: 1 !important;
+	visibility: visible;
+	transform: none;
+}
+
+.markdown-preview-view h3.rv-older-visits > .collapse-indicator,
+.markdown-rendered h3.rv-older-visits > .collapse-indicator,
+h3.rv-older-visits > .collapse-indicator,
+h3.rv-older-visits > .collapse-indicator > svg {
+	opacity: 1 !important;
+	visibility: visible;
+}
+
+.rv-older-visits .collapse-indicator svg {
+	display: block;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	fill: none;
+	stroke: currentColor;
+	opacity: 1 !important;
+	visibility: visible;
+}
+
+.rv-older-visits.is-open .collapse-indicator {
+	transform: rotate(90deg);
+}
+
+h3.rv-visit-notes-heading {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	cursor: pointer;
+}
+
+h3.rv-visit-notes-heading > .collapse-indicator,
+h3.rv-visit-notes-heading > .collapse-indicator > svg {
+	display: inline-flex;
+	flex: 0 0 auto;
+	opacity: 1 !important;
+	visibility: visible;
+	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+}
+
+h3.rv-visit-notes-heading > .collapse-indicator > svg {
+	display: block;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	fill: none;
+	stroke: currentColor;
+	transform: none !important;
+}
+
+/* Same chevron-right as Older Visits: down while open, right while collapsed.
+   Obsidian puts is-collapsed on the heading wrapper, not the h3.
+   The indicator stays in the flex row so the 0.35em gap matches Older Visits. */
+h3.rv-visit-notes-heading > .collapse-indicator {
+	position: static !important;
+	top: auto !important;
+	inset: auto !important;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	margin: 0 !important;
+	transform: rotate(90deg) !important;
+}
+
+.is-collapsed > h3.rv-visit-notes-heading > .collapse-indicator,
+h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
+	transform: none !important;
+}
+
+.rv-older-hidden {
+	display: none;
+}
+
+.rv-notes-fold-stop,
+.rv-notes-fold-stop > h3 {
+	height: 0;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong) {
+	display: grid;
+	align-items: center;
+	column-gap: var(--rv-dash-gap);
+	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr) var(--rv-dash-plus);
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned :is(input[type="text"], input:not([type])) {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 }

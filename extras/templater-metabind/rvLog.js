@@ -9,8 +9,9 @@
  * Suggestions, or above the suggester quote on an older note. The daypart
  * table stays inside the log. Each visit stamp is `#####` with a muted
  * "N days ago" age ("Today" on the day). An older `###` stamp is promoted on the next write.
- * Home inserts that stamp above the log, including a second Home in the
- * same rounded hour, and adds `### Visit Notes:` once. The line under each
+ * Home inserts that stamp at the top of the visit list, under
+ * `### Recent Notes:`, including a second Home in the same minute.
+ * An older `### Visit Notes:` line is renamed. The line under each
  * new stamp is a Meta Bind textArea bound to the next `sVisitNNotes`
  * property, so notes stay editable in Reading view.
  *
@@ -34,28 +35,18 @@ const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 /**
- * Glancable visit stamp. Mirrors src/dates.ts formatGlancableVisitStamp:
- * nearest hour, then `Wed, 2pm — Sep 9, 2026`.
+ * Visit stamp. Mirrors src/dates.ts formatExactVisitStamp:
+ * exact minute, then `Wed, 2:32pm — Sep 9, 2026`. An hour with no minutes stays `2pm`.
  */
 function displayWhen(d) {
-  let year = d.getFullYear();
-  let month = d.getMonth();
-  let day = d.getDate();
-  let hour = d.getHours();
-  if (d.getMinutes() >= 30) hour += 1;
-  if (hour >= 24) {
-    const next = new Date(year, month, day + 1);
-    year = next.getFullYear();
-    month = next.getMonth();
-    day = next.getDate();
-    hour = 0;
-  }
-  const shown = new Date(year, month, day);
-  const dow = WEEKDAYS[shown.getDay()];
-  const rest = `${MONTHS[month]} ${day}, ${year}`;
+  const dow = WEEKDAYS[d.getDay()];
+  const rest = `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  const hour = d.getHours();
+  const minute = d.getMinutes();
   const suffix = hour >= 12 ? "pm" : "am";
   const onClock = hour % 12 === 0 ? 12 : hour % 12;
-  return `${dow}, ${onClock}${suffix} — ${rest}`;
+  const clock = minute > 0 ? `${onClock}:${pad2(minute)}${suffix}` : `${onClock}${suffix}`;
+  return `${dow}, ${clock} — ${rest}`;
 }
 
 function asNumber(v) {
@@ -260,28 +251,48 @@ function isVisitStampLine(line) {
   return stampCalendarDays(String(match[1] || ""), new Date()) != null;
 }
 
+function isStoredVisitLine(line) {
+  const match = /^(?:##|###|#####)\s+(.+?)\s*$/.exec(String(line || ""));
+  if (!match) return false;
+  const text = String(match[1] || "").replace(STAMP_AGE_SUFFIX, "").trim();
+  if (/^(?:visit|recent) notes:?$/i.test(text)) return false;
+  return stampCalendarDays(text, new Date()) != null;
+}
+
+const RECENT_NOTES = "### Recent Notes:";
+const LEGACY_NOTES = "### Visit Notes:";
+
 function ensureVisitNotesHeading(body) {
-  const lines = body.split(/\r?\n/);
-  if (lines.some((line) => line.trim() === "### Visit Notes:")) return body;
+  const newline = body.includes("\r\n") ? "\r\n" : "\n";
+  const lines = body.split(/\r?\n/).map((line) => (line.trim() === LEGACY_NOTES ? line.replace(LEGACY_NOTES, RECENT_NOTES) : line));
+  if (lines.some((line) => line.trim() === RECENT_NOTES)) return lines.join(newline);
   const stampAt = lines.findIndex((line) => isVisitStampLine(line));
-  if (stampAt < 0) return body;
-  lines.splice(stampAt, 0, "### Visit Notes:");
-  return lines.join(body.includes("\r\n") ? "\r\n" : "\n");
+  if (stampAt < 0) return lines.join(newline);
+  lines.splice(stampAt, 0, RECENT_NOTES);
+  return lines.join(newline);
 }
 
 function insertHomeHeading(body, whenLabel) {
-  const lines = body.split("\n");
+  const lines = body.split("\n").map((line) => (String(line).trim() === LEGACY_NOTES ? String(line).replace(LEGACY_NOTES, RECENT_NOTES) : line));
+  const heading = `##### ${whenLabel}`;
+  const field = `\`INPUT[textArea:${nextVisitNotesProperty(lines.join("\n"))}]\``;
+  const notesAt = lines.findIndex((line) => String(line).trim() === RECENT_NOTES);
+  if (notesAt >= 0) {
+    let at = notesAt + 1;
+    if (String(lines[at] || "").trim() === "") at += 1;
+    return [...lines.slice(0, at), heading, field, "", ...lines.slice(at)].join("\n");
+  }
+  const stampAt = lines.findIndex((line) => isStoredVisitLine(line));
+  if (stampAt >= 0) {
+    return [...lines.slice(0, stampAt), RECENT_NOTES, heading, field, "", ...lines.slice(stampAt)].join("\n");
+  }
   const found = findAttemptLog(lines);
-  if (!found || found.kind !== "callout") return body;
+  if (!found || found.kind !== "callout") return lines.join("\n");
   const anchor = attemptLogAnchor(lines, found.index);
   const before = lines.slice(0, anchor);
   while (before.length > 0 && before[before.length - 1] === "") before.pop();
   const after = lines.slice(anchor);
-  const heading = `##### ${whenLabel}`;
-  const field = `\`INPUT[textArea:${nextVisitNotesProperty(body)}]\``;
-  const last = before.length > 0 ? String(before[before.length - 1]).trim() : "";
-  const lead = before.length === 0 || last === "### Visit Notes:" ? [] : [""];
-  return [...before, ...lead, heading, field, "", ...after].join("\n");
+  return [...before, "", heading, field, "", ...after].join("\n");
 }
 
 /** Mirrors src/visit-log.ts nextVisitNotesProperty. */
@@ -531,11 +542,13 @@ async function askCompanionFallback(tp) {
   return promptText(tp, "Who did they bring?");
 }
 
-async function askCompanion(tp) {
+async function askCompanion(tp, file) {
   const plugin = rvPlugin();
+  const path = file && typeof file.path === "string" ? file.path : "";
   if (plugin && typeof plugin.promptCompanion === "function") {
     try {
-      const value = await plugin.promptCompanion();
+      const value = path ? await plugin.promptCompanion(path) : await plugin.promptCompanion();
+      if (value === false || value == null) return value === false ? null : "";
       return typeof value === "string" ? value.trim() : "";
     } catch {
       return "";
@@ -658,7 +671,8 @@ async function rvLog(tp, kind) {
   const whenIso = isoLocal(now);
   const whenLabel = displayWhen(now);
   const outcome = mode === "home" ? "success" : "not home";
-  const companion = mode === "home" ? await askCompanion(tp) : "";
+  const companion = mode === "home" ? await askCompanion(tp, file) : "";
+  if (companion == null) return;
 
   await app.fileManager.processFrontMatter(file, (fm) => {
     const addr = fm[ADDRESS_KEY];

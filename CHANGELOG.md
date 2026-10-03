@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.3.5
+
+`main.js` SHA-256: `524e4675c3d4cb5bc39eb173bd5f4a7ffaab7aa7fa63c28bf882f9c3faf240f0`
+
+`styles.css` SHA-256: `c943cafe845c49a1eb95809c97909d57487210e22f211d6d0f8286b8507a78aa`
+
+`manifest.json` SHA-256: `dbf47c2188d9abcdda12f0242dbffe93a835852e2cf21e9b476278e7fbd92591`
+
+- Hub chips are wikilinks, in note chrome, in the surrounding font, with every hub shown. Move Left and Remove are a right-click or long-press menu. There is no X.
+- The Quick Facts route badge opens the Google Maps link. The earth icon still opens the coming-soon map.
+- Quick Facts dates stay on one line, with a smaller calendar date and age. Labels are Spoke and Attempted. The priority slider sits next to the priority number. Status is Active, then Study, then Inactive. Rows are grouped with horizontal rules. Quick Facts labels stay left aligned when the dashboard is centered.
+- Taken scrolls the middle names. Met With and the latest Taken person stay visible. Met With is a box, not a link.
+- The card earth icon is muted, the same size as the row icons, and lines up with those rows. It scales with the card. Status icons stay their own color and share that icon column. One tooltip on the status icon.
+- Changing sort keeps the chip scroller where it was.
+- Wide visit buttons, wide hubs and address, wide Quick Facts, and Center RV Dashboard default on. Attempt Log width stays wide when the digest swaps rows and columns.
+- Cards side by side redraw and rescale when the window changes and the fit count is not the single-column default.
+- New RV is one dialog: Man/Woman, name, address, Met companion, and a priority slider prefilled from the default.
+- Page Preview stays off on the RV Dashboard and Glancable cards unless the setting is turned on.
+- Each settings tab has a reset button for that tab only. The Geoapify API key is not cleared.
+- Visit notes display newest first. Only the latest 3 stay open. The rest sit under a collapsed `## Older Visits` heading. The file is not rewritten.
+- Geoapify defaults to the global endpoint. EU is a setting.
+- A card can show the current return bucket. Off by default.
+- Quick Facts badge toggles repaint an open note.
+- Street suffixes stay in the note title (`Lake Dr`, `Maple Street`).
+- Glancable adds a map button and a Campaign button to the left of New RV. One campaign at a time. An at-home visit asks whether this RV was covered. Covered cards use book-check. Uncovered cards use book-alert.
+- The Attempt Log can mark a daypart Try or Avoid. Return suggestion lines are bullets, one bucket per line.
+- Extras sync is pinned to tag `v1.3.5`. This build does not create that git tag.
+
 ## 1.3.4
 
 `main.js` SHA-256: `28fe4ee5e9b9f11854e1825e24a9e38af3bfbe0fd9b60c83bacc47e28f0b5cbb`

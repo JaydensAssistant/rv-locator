@@ -16,10 +16,17 @@ export const URGENCY_COLUMN_ID = 'rv-locator.urgency';
 export const IDEALITY_COLUMN_ID = 'rv-locator.ideality';
 
 /**
- * Geoapify documents `api-eu.geoapify.com` as the EU-focused service endpoint
- * (EU infrastructure via BunnyCDN). The default `api.geoapify.com` host is not used.
+ * Global Geoapify host. It is the default because it is closer for most
+ * vaults. `api-eu.geoapify.com` stays available when the region setting is EU.
  */
-export const GEOCODE_ENDPOINT = 'https://api-eu.geoapify.com/v1/geocode/search';
+export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search';
+export const GEOCODE_ENDPOINT_EU = 'https://api-eu.geoapify.com/v1/geocode/search';
+
+export type GeoapifyRegion = 'global' | 'eu';
+
+export function geocodeEndpoint(region: GeoapifyRegion | undefined): string {
+	return region === 'eu' ? GEOCODE_ENDPOINT_EU : GEOCODE_ENDPOINT;
+}
 
 /** About 1.3 requests/second, under Geoapify's free-tier burst of ~5/second. */
 export const REQUEST_GAP_MS = 750;

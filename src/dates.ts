@@ -59,6 +59,15 @@ export function isWeekdayProperty(propertyName: string, displayName: string, con
  * Accepts `2026-09-09`, `2026-09-09T13:38:03`, `2026-09-20T10:44`, `2026-09-18 16:45`, and `2026-03-28 11:20`.
  * `Met` uses the same shapes as `Last Spoke`. It is never a boolean.
  */
+/** Calendar day from {@link parseFlexibleDate}, plus the clock when the text has one. */
+export function parseDriveInstant(raw: string): Date | null {
+	const date = parseFlexibleDate(raw);
+	if (!date) return null;
+	const clock = parseClock(raw);
+	if (!clock) return date;
+	return new Date(date.getFullYear(), date.getMonth(), date.getDate(), clock.hour, clock.minute, 0, 0);
+}
+
 export function parseFlexibleDate(input: string): Date | null {
 	const text = input.trim();
 	if (!text) return null;
@@ -82,6 +91,17 @@ const VISIT_STAMP_DATE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/;
 /** Drop a plugin-written age suffix so the visit stamp can be parsed again. */
 export function stripStampAge(text: string): string {
 	return text.replace(STAMP_AGE_SUFFIX, '').trim();
+}
+
+const STAMP_AGE_WORDS = /\s+(?:Today|\d+ days? ago)\s*$/i;
+
+/** Stamp heading text with the rendered age (`Today`, `3 days ago`) removed. */
+export function visibleStampText(text: string): string {
+	let next = text.replace(/\s+/g, ' ').trim();
+	for (let pass = 0; pass < 3 && STAMP_AGE_WORDS.test(next); pass += 1) {
+		next = next.replace(STAMP_AGE_WORDS, '').trim();
+	}
+	return next;
 }
 
 /**

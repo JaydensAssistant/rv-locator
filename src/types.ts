@@ -1,4 +1,4 @@
-import { DISTANCE_COLUMN_ID } from './constants';
+import { DISTANCE_COLUMN_ID, type GeoapifyRegion } from './constants';
 import { uniqueDatePropertyNames, parseDatePropertyNames } from './dates';
 import {
 	DEFAULT_HOME_LOG_TEMPLATE_FILE,
@@ -26,7 +26,7 @@ import {
 	type UrgencyColors,
 	type UrgencyPaletteId,
 } from './urgency-palette';
-import { sanitizeGenderFilter, sanitizeReturnScope, type GenderFilter, type ReturnScope } from './status';
+import { sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, type CampaignListFilter, type GenderFilter, type ReturnScope } from './status';
 
 export type DistanceUnit = 'miles' | 'kilometers';
 
@@ -34,6 +34,8 @@ export type AttemptLogWidth = 'auto' | 'full' | 'column';
 
 export interface RVLocatorSettings {
 	geoapifyApiKey: string;
+	/** `global` uses api.geoapify.com. `eu` is an explicit override. */
+	geoapifyRegion: GeoapifyRegion;
 	addressProperty: string;
 	locationProperty: string;
 	mapLinkProperty: string;
@@ -89,11 +91,11 @@ export interface RVLocatorSettings {
 	abbreviateDayparts: boolean;
 	/** `auto` is full width when days are columns, otherwise the dashboard column. */
 	attemptLogWidth: AttemptLogWidth;
-	/** Quick Facts grows to the note width. Off by default. */
+	/** Quick Facts grows to the note width. On by default. */
 	wideQuickFacts: boolean;
-	/** Hubs and Address grow to the note width. Off by default. */
+	/** Hubs and Address grow to the note width. On by default. */
 	wideHubsAddress: boolean;
-	/** Visit buttons grow to the note width. Off they stop at the Hub column. */
+	/** Visit buttons grow to the note width. On by default. */
 	wideVisitButtons: boolean;
 	centerDashboard: boolean;
 	centerVisitNotes: boolean;
@@ -125,6 +127,30 @@ export interface RVLocatorSettings {
 	showUrgencyBadge: boolean;
 	showPriorityBadge: boolean;
 	showRouteBadge: boolean;
+	/** New visits paint newest-first. Display only. On by default. */
+	visitsNewestFirst: boolean;
+	/** Visits after the newest few sit under ### Older Visits. On by default. */
+	collapseOlderVisits: boolean;
+	/** How many of the newest visits stay outside Older Visits. Default 3. */
+	visibleVisitCount: number;
+	/** Bottom line of a glancable card shows the current return bucket. On when the key is absent. */
+	showCardReturnStatus: boolean;
+	/** `short` is `Sat mor`. `long` is `Friday afternoon — `. Short when the key is absent. */
+	cardReturnFormat: 'short' | 'long';
+	/** Card title is the person's name. On when the key is absent. */
+	cardTitleNameOnly: boolean;
+	/**
+	 * Last spoke, last attempted, and met share one line, and the card badges
+	 * fit that stack. Off unless turned on. A vault that stored `compactCardDates`
+	 * still reads that key.
+	 */
+	compactMode: boolean;
+	/** Note opened by the return-visit hub chip. Default Return Visits Hub. */
+	returnHubNote: string;
+	/** Glancable campaign cycle: all, uncovered, covered. */
+	campaignListFilter: CampaignListFilter;
+	/** When on, the core Page Preview plugin may preview RV Dashboard titles. Off by default. */
+	dashboardPagePreview: boolean;
 	/** Folder for notes created with New RV. Empty keeps Templater's folder. */
 	newRvFolder: string;
 	/** Append the Met date `YYYY-MM-DD` to a created RV's file name. Off by default. */
@@ -242,6 +268,7 @@ export const DEFAULT_PRIORITY_NUDGE_EVERY = 3;
 
 export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	geoapifyApiKey: '',
+	geoapifyRegion: 'global',
 	addressProperty: 'Address',
 	locationProperty: 'Location',
 	mapLinkProperty: 'Map Link',
@@ -275,12 +302,12 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	openRvInReadingView: true,
 	abbreviateDayparts: true,
 	attemptLogWidth: 'full',
-	wideQuickFacts: false,
-	wideHubsAddress: false,
-	wideVisitButtons: false,
-	centerDashboard: false,
+	wideQuickFacts: true,
+	wideHubsAddress: true,
+	wideVisitButtons: true,
+	centerDashboard: true,
 	centerVisitNotes: false,
-	centerSuggestions: false,
+	centerSuggestions: true,
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
@@ -298,6 +325,16 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	showUrgencyBadge: true,
 	showPriorityBadge: true,
 	showRouteBadge: true,
+	visitsNewestFirst: true,
+	collapseOlderVisits: true,
+	visibleVisitCount: 3,
+	showCardReturnStatus: true,
+	cardReturnFormat: 'short',
+	cardTitleNameOnly: true,
+	compactMode: false,
+	returnHubNote: 'Return Visits Hub',
+	campaignListFilter: 'all',
+	dashboardPagePreview: false,
 	newRvFolder: '',
 	appendMetDateToFilename: false,
 	returnScope: 'active',
@@ -359,6 +396,8 @@ export interface StoredPluginData {
 	digestPolish?: number;
 	/** Return Suggestions callout type the vault was last written with. */
 	suggestionTypeApplied?: string;
+	/** The one campaign, or absent when none is saved. Not a setting, so a tab reset leaves it. */
+	campaign?: unknown;
 }
 
 export interface LatLon {
@@ -369,12 +408,21 @@ export interface LatLon {
 type SettingsInput = Partial<RVLocatorSettings> & {
 	/** Previous string setting. "Last Spc" is rewritten to the real key `Last Spoke`. */
 	weekdayDateProperties?: unknown;
+	/** Compact dates, renamed to {@link RVLocatorSettings.compactMode}. */
+	compactCardDates?: boolean;
 };
+
+/** Missing stays off. An explicit compact mode wins. Otherwise the old compact-dates key is kept. */
+export function compactModeFrom(input: SettingsInput): boolean {
+	if (typeof input.compactMode === 'boolean') return input.compactMode;
+	return input.compactCardDates === true;
+}
 
 export function mergeSettings(partial: SettingsInput | null | undefined): RVLocatorSettings {
 	const input = partial ?? {};
 	return {
 		geoapifyApiKey: typeof input.geoapifyApiKey === 'string' ? input.geoapifyApiKey : DEFAULT_SETTINGS.geoapifyApiKey,
+		geoapifyRegion: input.geoapifyRegion === 'eu' ? 'eu' : 'global',
 		addressProperty: nonEmptyString(input.addressProperty, DEFAULT_SETTINGS.addressProperty),
 		locationProperty: nonEmptyString(input.locationProperty, DEFAULT_SETTINGS.locationProperty),
 		mapLinkProperty: typeof input.mapLinkProperty === 'string' ? input.mapLinkProperty : DEFAULT_SETTINGS.mapLinkProperty,
@@ -407,12 +455,12 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		openRvInReadingView: input.openRvInReadingView !== false,
 		abbreviateDayparts: input.abbreviateDayparts !== false,
 		attemptLogWidth: input.attemptLogWidth === 'auto' || input.attemptLogWidth === 'column' ? input.attemptLogWidth : 'full',
-		wideQuickFacts: input.wideQuickFacts === true,
-		wideHubsAddress: input.wideHubsAddress === true,
-		wideVisitButtons: input.wideVisitButtons === true,
-		centerDashboard: input.centerDashboard === true,
+		wideQuickFacts: input.wideQuickFacts !== false,
+		wideHubsAddress: input.wideHubsAddress !== false,
+		wideVisitButtons: input.wideVisitButtons !== false,
+		centerDashboard: input.centerDashboard !== false,
 		centerVisitNotes: input.centerVisitNotes === true,
-		centerSuggestions: input.centerSuggestions === true,
+		centerSuggestions: input.centerSuggestions !== false,
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
@@ -430,6 +478,18 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		showUrgencyBadge: input.showUrgencyBadge !== false,
 		showPriorityBadge: input.showPriorityBadge !== false,
 		showRouteBadge: input.showRouteBadge !== false,
+		visitsNewestFirst: input.visitsNewestFirst !== false,
+		collapseOlderVisits: input.collapseOlderVisits !== false,
+		visibleVisitCount: wholeInRange(input.visibleVisitCount, 1, 30, DEFAULT_SETTINGS.visibleVisitCount),
+		showCardReturnStatus: input.showCardReturnStatus !== false,
+		cardReturnFormat: input.cardReturnFormat === 'long' ? 'long' : 'short',
+		cardTitleNameOnly: input.cardTitleNameOnly !== false,
+		compactMode: compactModeFrom(input),
+		returnHubNote: typeof input.returnHubNote === 'string' && input.returnHubNote.trim()
+			? input.returnHubNote.trim()
+			: DEFAULT_SETTINGS.returnHubNote,
+		campaignListFilter: sanitizeCampaignListFilter(input.campaignListFilter),
+		dashboardPagePreview: input.dashboardPagePreview === true,
 		newRvFolder: folderSetting(input.newRvFolder),
 		appendMetDateToFilename: input.appendMetDateToFilename === true,
 		returnScope: sanitizeReturnScope(input.returnScope),
@@ -437,11 +497,12 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 	};
 }
 
-/** Automatic is full width only when days run across the Attempt Log table. */
+/**
+ * Full width and Automatic are wide. Dashboard column is the narrow width.
+ * Swapping digest rows and columns does not change this.
+ */
 export function attemptLogFullWidth(settings: Pick<RVLocatorSettings, 'attemptLogWidth' | 'digestOrientation'>): boolean {
-	if (settings.attemptLogWidth === 'full') return true;
-	if (settings.attemptLogWidth === 'column') return false;
-	return settings.digestOrientation === 'columns';
+	return settings.attemptLogWidth !== 'column';
 }
 
 export function sanitizeNewRvPriority(value: unknown): number {

@@ -1,5 +1,5 @@
 import { parseDisplayAddress } from './address-display';
-import { GEOCODE_ENDPOINT } from './constants';
+import { geocodeEndpoint, type GeoapifyRegion } from './constants';
 import type { GeocodeHit } from './types';
 
 export interface AddressParts {
@@ -33,11 +33,23 @@ export function addressForQuery(address: string): string {
 	return address.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+/** Soft Geoapify proximity. This is a bias, not a filter, so other places can still return. */
+export interface GeocodeBias {
+	lat: number;
+	lon: number;
+}
+
 /**
  * Build a forward-geocode URL.
  * `text` is the address string only. Do not append names, phones, or note bodies.
+ * `bias` adds `bias=proximity:lon,lat` when present. It does not switch the host.
  */
-export function buildGeocodeUrl(address: string, apiKey: string): string {
+export function buildGeocodeUrl(
+	address: string,
+	apiKey: string,
+	region: GeoapifyRegion = 'global',
+	bias?: GeocodeBias | null,
+): string {
 	const text = addressForQuery(address);
 	if (!text) {
 		throw new Error('Address is empty.');
@@ -45,12 +57,50 @@ export function buildGeocodeUrl(address: string, apiKey: string): string {
 	if (!apiKey.trim()) {
 		throw new Error('API key is empty.');
 	}
-	const url = new URL(GEOCODE_ENDPOINT);
+	const url = new URL(geocodeEndpoint(region));
 	url.searchParams.set('text', text);
 	url.searchParams.set('format', 'json');
 	url.searchParams.set('limit', '5');
 	url.searchParams.set('apiKey', apiKey.trim());
+	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+	}
 	return url.toString();
+}
+
+/** Same characters, one for one, after trimming and collapsing whitespace. */
+export function addressesMatchOneForOne(left: string, right: string): boolean {
+	return collapseSpaces(left) === collapseSpaces(right);
+}
+
+function collapseSpaces(value: string): string {
+	return value.replace(/\s+/g, ' ').trim();
+}
+
+/** Street and city, for a one-line suggestion. The stored value stays the full address. */
+export function abbreviateAddress(formatted: string): string {
+	const parts = formatted.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
+	if (parts.length <= 2) return parts.join(', ');
+	return `${parts[0]}, ${parts[1]}`;
+}
+
+/**
+ * Enter or leaving the field selects a hit only when the text matches one.
+ * Several remaining hits do not count as a choice.
+ */
+export function matchingAddress<T extends { formattedAddress: string }>(hits: readonly T[], typed: string): T | null {
+	const needle = typed.replace(/\s+/g, ' ').trim().toLowerCase();
+	if (!needle) return null;
+	const exact = hits.find((hit) => {
+		const full = hit.formattedAddress.replace(/\s+/g, ' ').trim().toLowerCase();
+		return addressesMatchOneForOne(hit.formattedAddress, typed) || abbreviateAddress(hit.formattedAddress).toLowerCase() === needle || full === needle;
+	});
+	if (exact) return exact;
+	const partial = hits.filter((hit) => {
+		const full = hit.formattedAddress.toLowerCase();
+		return full.includes(needle) || abbreviateAddress(hit.formattedAddress).toLowerCase().includes(needle);
+	});
+	return partial.length === 1 ? partial[0] ?? null : null;
 }
 
 /**

@@ -13,7 +13,7 @@ import {
 	type Value,
 } from 'obsidian';
 import { ACTIVE_SORT, matchesNearbyScope, parsePriority, resolveNearbyOrder, visiblePropertyText, type NearbyScope } from './active-layout';
-import { matchesGenderFilter, matchesReturnScope, resolveStatus, sanitizeGender, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
+import { matchesGenderFilter, matchesReturnScope, resolveStatus, sanitizeGender, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { DISTANCE_COLUMN_ID } from './constants';
 import {
 	calendarDaysSince,
@@ -96,6 +96,9 @@ export function buildViewModel(args: {
 	/** In-view cycle. When set, it replaces the Active / All / Inactive priority test. */
 	returnScope?: ReturnScope;
 	genderFilter?: GenderFilter;
+	/** All, uncovered, or covered while a campaign is active. */
+	campaignListFilter?: CampaignListFilter;
+	campaignMark?: (path: string) => 'covered' | 'open' | null;
 	/**
 	 * Frontmatter fallback when Bases has not materialized a property
 	 * (a bare view order often only asks for the file name).
@@ -118,7 +121,7 @@ export function buildViewModel(args: {
 	const cityId = resolveNoteProperty(CITY_PROPERTY, args.allProperties);
 	const groups = readGroups(args.result).flatMap((group) => {
 		const rows = group.entries
-			.filter((entry) => entryMatchesScope(entry, args.scope, args.noteValue, args.returnScope, args.genderFilter))
+			.filter((entry) => entryMatchesScope(entry, args.scope, args.noteValue, args.returnScope, args.genderFilter, args.campaignListFilter, args.campaignMark))
 			.map((entry) => rowFromEntry(entry, columns, args.settings, locationId, addressId, cityId, args.noteValue));
 		if (rows.length === 0) return [];
 		return [{ label: group.label, rows }];
@@ -165,6 +168,8 @@ function entryMatchesScope(
 	noteValue: NoteValueReader | undefined,
 	returnScope?: ReturnScope,
 	genderFilter?: GenderFilter,
+	campaignListFilter?: CampaignListFilter,
+	campaignMark?: (path: string) => 'covered' | 'open' | null,
 ): boolean {
 	const priority = priorityOf(mergedValue(entry, 'note.Priority', noteValue));
 	const hub = {
@@ -176,9 +181,15 @@ function entryMatchesScope(
 	if (returnScope) {
 		const status = noteValue?.(entry.file, 'Status');
 		const gender = noteValue?.(entry.file, 'Gender');
-		return matchesReturnScope(returnScope, status, priority) && matchesGenderFilter(genderFilter ?? 'all', gender);
-	}
-	return matchesNearbyScope(scope, hub);
+		if (!matchesReturnScope(returnScope, status, priority) || !matchesGenderFilter(genderFilter ?? 'all', gender)) return false;
+	} else if (!matchesNearbyScope(scope, hub)) return false;
+	return matchesCampaignList(campaignListFilter, campaignMark?.(entry.file.path) ?? null);
+}
+
+function matchesCampaignList(filter: CampaignListFilter | undefined, mark: 'covered' | 'open' | null): boolean {
+	if (!filter || filter === 'all') return true;
+	if (filter === 'uncovered') return mark === 'open';
+	return mark === 'covered';
 }
 
 function folderOf(entry: BasesEntry): string {

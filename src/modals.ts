@@ -1,6 +1,6 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
-import { companionChoices, type CompanionSuggestion } from './companions';
+import { companionChoices, matchingCompanion, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
 import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
@@ -466,62 +466,176 @@ export class VisitConfirmModal extends Modal {
 	}
 }
 
-/** One companion. A typed name is offered beside recent Met With / Taken values. Skip stores nothing. */
-export class CompanionSuggestModal extends SuggestModal<CompanionSuggestion> {
+export type CoverageDecision = 'yes' | 'no' | 'skip';
+
+export interface CompanionCampaignPrompt {
+	name: string;
+	/** him, her, or them. */
+	pronoun?: 'him' | 'her' | 'them';
+	onDecision: (decision: CoverageDecision) => void;
+}
+
+export function coveragePronoun(gender: unknown): 'him' | 'her' | 'them' {
+	const value = typeof gender === 'string' ? gender.trim().toLowerCase() : '';
+	if (value === 'man' || value === 'male') return 'him';
+	if (value === 'woman' || value === 'female') return 'her';
+	return 'them';
+}
+
+export function coverageQuestion(pronoun: 'him' | 'her' | 'them', campaign: string): string {
+	return `Did you cover ${pronoun} with the ${campaign} campaign?`;
+}
+
+/**
+ * Companion for an at-home visit. The field is the same companion dropdown
+ * as Log past visit. Picking a name does not log. The visit is logged when
+ * they press Log visit, after the coverage choice when a campaign is active.
+ * Cancel and a click outside do not log.
+ */
+export class CompanionSuggestModal extends Modal {
 	private readonly gate: CompanionPromptGate;
+	private covered = true;
+	private decided = false;
+	private companion = '';
+	private companionPicked = false;
+	private companionInput: { setValue: (value: string) => void; inputEl?: HTMLElement } | null = null;
 
 	constructor(
 		app: App,
 		private recent: readonly string[],
-		onDone: (name: string | null) => void,
+		onDone: (name: string | null | false) => void,
+		private campaign: CompanionCampaignPrompt | null = null,
 	) {
 		super(app);
 		this.gate = createCompanionPromptGate(onDone);
-		this.emptyStateText = 'Type a name, or choose Skip. Skip leaves Met With and Taken unchanged.';
-		this.limit = 30;
 	}
 
 	onOpen(): void {
-		void super.onOpen();
-		this.setTitle('Who did they bring?');
-		this.setPlaceholder('Recent companion, or a new name');
-		this.setInstructions([
-			{ command: '↑↓', purpose: 'to navigate' },
-			{ command: '↵', purpose: 'to choose one person' },
-			{ command: 'esc', purpose: 'to skip' },
-		]);
+		this.setTitle('Who came with you?');
 		this.modalEl.addClass('rv-locator-modal');
-		const copy = this.modalEl.createDiv({ cls: 'rv-locator-modal-copy' });
-		copy.setText('Adds one person to Taken and leaves Met With as it is. Skip changes neither, and the visit is still logged.');
-		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
-		const skip = bar.createEl('button', { text: 'Skip' });
-		skip.addEventListener('click', () => {
-			this.gate.skip();
+		const { contentEl } = this;
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'Optional. Choose a companion if someone came along, then log the visit. Cancel does not log it.',
+		});
+		new Setting(contentEl)
+			.setName('Companion')
+			.setDesc('Optional.')
+			.addText((text) => {
+				text.setPlaceholder('Companion (optional)');
+				this.companionInput = text;
+				const listId = `rv-locator-companions-${Date.now()}`;
+				const list = contentEl.createEl('datalist', { attr: { id: listId } });
+				for (const name of this.recent) {
+					if (name.trim()) list.createEl('option', { attr: { value: name } });
+				}
+				text.inputEl.setAttribute('list', listId);
+				text.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
+					if (event.key !== 'Enter') return;
+					event.preventDefault();
+					this.commitCompanionMatch();
+				});
+				text.inputEl.addEventListener('blur', () => this.commitCompanionMatch());
+				text.onChange((value) => {
+					this.companion = value;
+					const match = matchingCompanion(this.getSuggestions(value), value);
+					this.markCompanion(match != null && match.value === value.trim());
+				});
+			});
+		if (this.campaign) {
+			const pronoun = this.campaign.pronoun ?? 'them';
+			contentEl.createEl('p', {
+				cls: 'rv-locator-modal-copy',
+				text: coverageQuestion(pronoun, this.campaign.name),
+			});
+			const choice = contentEl.createDiv('rv-locator-suggest-actions');
+			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
+			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
+			yes.classList.add('mod-cta');
+			yes.addEventListener('click', () => {
+				this.covered = true;
+				yes.classList.add('mod-cta');
+				no.classList.remove('mod-cta');
+			});
+			no.addEventListener('click', () => {
+				this.covered = false;
+				no.classList.add('mod-cta');
+				yes.classList.remove('mod-cta');
+			});
+		}
+		const bar = contentEl.createDiv('rv-locator-suggest-actions');
+		const log = bar.createEl('button', { text: 'Log visit', attr: { type: 'button' } });
+		log.classList.add('mod-cta');
+		log.addEventListener('click', () => this.commitLog());
+		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+		cancel.addEventListener('click', () => {
+			this.gate.cancel();
 			this.close();
+		});
+		this.containerEl.addEventListener('pointerdown', (event: PointerEvent) => {
+			this.onDimPointerDown(event.target);
 		});
 	}
 
+	/** A press on the dim layer behind the dialog cancels. A press inside the dialog does not. */
+	onDimPointerDown(target: EventTarget | null): void {
+		const modal = this.modalEl as unknown as { contains?: (node: EventTarget) => boolean };
+		if (target && modal.contains?.(target)) return;
+		this.gate.cancel();
+		this.close();
+	}
+
+	private finishCoverage(decision: CoverageDecision): void {
+		if (!this.campaign || this.decided) return;
+		this.decided = true;
+		this.campaign.onDecision(decision);
+	}
+
 	/**
-	 * SuggestModal closes before it reports the chosen row. Resolving a skip
-	 * here would drop that name. The dismiss waits so a choice in this turn wins.
-	 * Esc still skips, after the wait.
+	 * Esc closes the dialog before a choice. The dismiss waits so a choice in
+	 * this turn still wins. A click outside cancels and does not log.
 	 */
 	onClose(): void {
-		super.onClose();
 		this.gate.closed((run) => { window.setTimeout(run, 0); });
+		this.contentEl.empty();
 	}
 
 	getSuggestions(query: string): CompanionSuggestion[] {
 		return companionChoices(this.recent, query);
 	}
 
-	renderSuggestion(choice: CompanionSuggestion, el: HTMLElement): void {
-		el.setText(choice.label);
+	private markCompanion(picked: boolean): void {
+		this.companionPicked = picked;
+		this.companionInput?.inputEl?.classList.toggle('is-selected', picked);
 	}
 
-	onChooseSuggestion(choice: CompanionSuggestion): void {
-		this.gate.choose(choice.value);
+	private selectCompanion(value: string): void {
+		this.companion = value;
+		this.companionInput?.setValue(value);
+		this.markCompanion(true);
+	}
+
+	private commitCompanionMatch(): void {
+		if (this.companionPicked) return;
+		const match = matchingCompanion(this.getSuggestions(this.companion), this.companion);
+		if (!match) return;
+		this.selectCompanion(match.value);
+	}
+
+	private commitLog(): void {
+		this.commitCompanionMatch();
+		this.finishCoverage(this.covered ? 'yes' : 'no');
+		const name = this.companion.trim();
+		if (name) this.gate.choose(name);
+		else this.gate.skip();
 		this.close();
+	}
+
+	/** A finished choice. Highlighting a companion does not call this. */
+	onChooseSuggestion(choice: CompanionSuggestion): void {
+		this.companion = choice.value;
+		this.companionPicked = true;
+		this.commitLog();
 	}
 }
 

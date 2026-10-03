@@ -55,6 +55,57 @@ export function parseHomeCountyLines(value: string): string[] {
 	return value.split(/\n/).map((line) => line.trim()).filter((line) => line.length > 0);
 }
 
+/**
+ * Put home-region hits first. This is a sort, not a filter: a miss stays in the list.
+ * County, city, and state matches outrank a formatted-line mention.
+ */
+export function preferHomeRegion<T extends {
+	city?: string;
+	county?: string;
+	state?: string;
+	formattedAddress?: string;
+}>(hits: readonly T[], homeLines: readonly string[]): T[] {
+	const tokens = homeRegionTokens(homeLines);
+	if (tokens.length === 0) return [...hits];
+	return hits
+		.map((hit, index) => ({ hit, index, score: homeRegionScore(hit, tokens) }))
+		.sort((a, b) => b.score - a.score || a.index - b.index)
+		.map((item) => item.hit);
+}
+
+function homeRegionTokens(lines: readonly string[]): string[] {
+	const seen = new Set<string>();
+	const tokens: string[] = [];
+	for (const line of lines) {
+		for (const part of line.split(',')) {
+			const raw = part.trim().toLowerCase();
+			const county = normalizeCounty(part);
+			for (const token of [county, raw]) {
+				if (!token || seen.has(token)) continue;
+				seen.add(token);
+				tokens.push(token);
+			}
+		}
+	}
+	return tokens;
+}
+
+function homeRegionScore(hit: { city?: string; county?: string; state?: string; formattedAddress?: string }, tokens: readonly string[]): number {
+	let score = 0;
+	const county = hit.county ? normalizeCounty(hit.county) : '';
+	const city = hit.city?.trim().toLowerCase() ?? '';
+	const state = hit.state?.trim().toLowerCase() ?? '';
+	if (county && tokens.includes(county)) score += 3;
+	if (city && tokens.includes(city)) score += 3;
+	if (state && tokens.includes(state)) score += 2;
+	const parts = (hit.formattedAddress ?? '').split(',').map((part) => part.trim().toLowerCase());
+	for (const part of parts) {
+		if (!part) continue;
+		if (tokens.includes(part) || tokens.includes(normalizeCounty(part))) score += 2;
+	}
+	return score;
+}
+
 export function normalizeCountyList(value: unknown): string[] {
 	const chunks: string[] = [];
 	const source = Array.isArray(value) ? value : [value];

@@ -2,7 +2,7 @@ import { setIcon, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
-import { fittedFontScale, glancableColumns } from './glancable-density';
+import { compactBadgePx, fittedFontScale, glancableColumns, type CompactLineKind } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
@@ -11,6 +11,8 @@ import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
+import { cardPersonTitle } from './note-name';
+import { cardReturnLead } from './schedule';
 import { statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
@@ -65,25 +67,20 @@ export class NearbyGlancableView extends NearbyBasesView {
 		card.setAttr('data-urgency-band', String(band));
 		if (priority === 0) card.addClass('is-priority-zero');
 		card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority, urgencyColorsFor(this.plugin.settings.urgencyPalette, this.plugin.settings.urgencyCustomColors)));
-		const titleBits: string[] = [];
-		if (rank) {
-			card.setAttr('data-priority', rank);
-			titleBits.push(`Priority ${rank}`);
-		}
-		if (urgency != null) titleBits.push(`Urgency ${urgency.toFixed(2)}`);
-		if (titleBits.length > 0) card.setAttr('title', titleBits.join('. '));
-
+		if (rank) card.setAttr('data-priority', rank);
 		if (this.lineOn('name')) {
 			const name = card.createDiv('rv-locator-card-name');
 			name.setAttr('data-line', glancableLineId(0));
 			const statusIconEl = name.createSpan('rv-locator-status-icon');
 			setIcon(statusIconEl, statusIcon(row.status));
 			statusIconEl.setAttr('aria-label', row.status);
+			statusIconEl.querySelector('svg')?.removeAttribute('aria-label');
+			this.paintCampaignMark(name, row.path);
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
-				text: row.name,
+				text: cardPersonTitle(row.name, this.plugin.settings.cardTitleNameOnly),
 				href: row.path,
-				title: row.name,
+				attr: { 'aria-label': row.name },
 			});
 			this.bindFileLink(link, row.path);
 		}
@@ -105,14 +102,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 				place.createSpan({
 					cls: 'rv-locator-card-street',
 					text: row.addressStreet,
-					title: row.addressText || row.addressStreet,
+					attr: { 'aria-label': row.addressText || row.addressStreet },
 				});
 			}
 			if (showCity && row.addressCity) {
 				place.createSpan({
 					cls: 'rv-locator-city-lg',
 					text: row.addressCity,
-					title: row.addressText || row.addressCity,
+					attr: { 'aria-label': row.addressText || row.addressCity },
 				});
 			}
 			if (showDistance) {
@@ -123,7 +120,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 					text: live ? `· ${distance}` : '· —',
 					attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
 				});
-				distEl.setAttr('title', live ? distance : 'No position');
 				this.rememberDistance(key, distEl, row);
 			}
 		}
@@ -131,11 +127,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const showSpoke = this.lineOn('last-spoke');
 		const showAttempted = this.lineOn('last-attempted');
 		const showMet = this.lineOn('met');
+		const compactDates = this.plugin.settings.compactMode;
 		if (showSpoke || showAttempted || showMet) {
-			const when = card.createDiv('rv-locator-when');
-			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2));
-			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3));
-			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4));
+			const when = card.createDiv(compactDates ? 'rv-locator-when is-compact' : 'rv-locator-when');
+			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2), compactDates);
+			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3), compactDates);
+			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
 		}
 
 		const foot = card.createDiv('rv-locator-card-foot');
@@ -147,15 +144,50 @@ export class NearbyGlancableView extends NearbyBasesView {
 				: '';
 			this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
 		}
-		if (this.lineOn('visits')) {
-			const ratio = visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'));
+		const ratio = this.lineOn('visits')
+			? visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'))
+			: null;
+		if (ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-visits',
-				attr: { title: ratio.title },
+				attr: { 'aria-label': ratio.title },
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		this.paintActions(card, rank, row, urgency, priority);
+		if (ratio && this.plugin.settings.showCardReturnStatus) {
+			const line = foot.createSpan('rv-locator-return-inline');
+			line.createSpan({
+				cls: 'rv-locator-return-visits',
+				text: `# ${ratio.text}`,
+				attr: { 'aria-label': ratio.title },
+			});
+			line.createSpan({
+				cls: 'rv-locator-return-when',
+				text: cardReturnLead(new Date(), this.plugin.settings.cardReturnFormat),
+			});
+			line.createSpan({
+				cls: 'rv-locator-return-bucket',
+				text: this.plugin.cardReturnBucket(row.path),
+			});
+		}
+		const lines: CompactLineKind[] = [];
+		if (this.lineOn('name')) lines.push('name');
+		if (showStreet || showCity || showDistance) lines.push('place');
+		if (compactDates && (showSpoke || showAttempted || showMet)) lines.push('dates');
+		if (this.lineOn('met-with') || this.lineOn('visits')) lines.push('foot');
+		this.paintActions(card, rank, row, urgency, priority, compactDates ? lines : null);
+	}
+
+	private paintCampaignMark(parent: HTMLElement, path: string): void {
+		const mark = this.plugin.campaignMark(path);
+		if (!mark) return;
+		const label = mark === 'covered' ? 'Covered this campaign' : 'Not covered this campaign';
+		const icon = parent.createSpan({
+			cls: 'rv-locator-campaign-mark',
+			attr: { 'aria-label': label },
+		});
+		setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
+		icon.querySelector('svg')?.removeAttribute('aria-label');
 	}
 
 	private paintActions(
@@ -164,19 +196,29 @@ export class NearbyGlancableView extends NearbyBasesView {
 		row: RowModel,
 		urgency: number | null,
 		priority: number | null,
+		compactLines: readonly CompactLineKind[] | null,
 	): void {
 		const showRank = rank != null;
 		const map = this.mapCell(row);
 		const showMap = map?.kind === 'url' && Boolean(map.text);
 		const marks = urgencyMark(urgency, priority);
+		let badges = 1;
+		if (showRank && rank) badges += 1;
+		if (showMap && map) badges += 1;
+		parent.style.setProperty('--rv-badge-count', String(badges));
 		parent.addClass('has-actions');
+		if (compactLines) {
+			parent.addClass('is-compact-mode');
+			const scale = Number(this.root.style.getPropertyValue('--rv-font-scale')) || 1;
+			const size = compactBadgePx(scale, this.plugin.settings.glancablePaddingY, compactLines, badges);
+			parent.style.setProperty('--rv-control-size', `${size}px`);
+		}
 		const actions = parent.createSpan('rv-locator-card-actions');
 		const urgencyButton = actions.createEl('button', {
 			cls: 'rv-locator-urgency',
 			attr: {
 				type: 'button',
 				'data-band': String(marks.band),
-				title: urgencyTitle(urgency, priority),
 				'aria-label': urgencyTitle(urgency, priority),
 			},
 		});
@@ -192,7 +234,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 				text: rank,
 				attr: {
 					type: 'button',
-					title: `Priority ${rank}. Change priority.`,
 					'aria-label': `Priority ${rank}. Change priority`,
 				},
 			});
@@ -205,7 +246,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (showMap && map) this.renderMapChip(actions, map);
 	}
 
-	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string): void {
+	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string, compact = false): void {
 		const cell = this.cellNamed(row, name);
 		const text = cell && cell.kind !== 'empty' && cell.text && cell.text !== '—' ? cell.text : null;
 		if (!cell || text == null) {
@@ -214,10 +255,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		const slot = parent.createSpan({
 			cls: 'rv-locator-slot',
-			attr: { title: cell.title || label, 'data-line': lineId },
+			attr: { 'aria-label': cell.title || label, 'data-line': lineId },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
+		if (compact) {
+			const days = cell.daysSince;
+			slot.createSpan({ cls: 'rv-locator-slot-text', text: days == null ? '—' : `${days}d` });
+			return;
+		}
 		if (cell.dow) {
 			this.renderDriveDate(slot, cell);
 			return;
@@ -228,7 +274,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private plainSlot(parent: HTMLElement, icon: string, text: string, title: string, empty: boolean, extra = '', lineId = ''): void {
 		const slot = parent.createSpan({
 			cls: `rv-locator-slot${empty ? ' is-empty' : ''}${extra ? ` ${extra}` : ''}`,
-			attr: { title, ...(lineId ? { 'data-line': lineId } : {}) },
+			attr: { 'aria-label': title, ...(lineId ? { 'data-line': lineId } : {}) },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
@@ -239,11 +285,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const link = parent.createEl('a', {
 			cls: 'rv-locator-map-pin',
 			href: cell.text,
-			title: cell.title || 'Open map',
 			attr: {
 				rel: 'noopener',
 				target: '_blank',
-				'aria-label': 'Open map',
+				'aria-label': cell.title || 'Open map',
 			},
 		});
 		setIcon(link, 'route');
@@ -294,7 +339,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private watchLayout(): void {
 		if (this.layoutObserver || typeof ResizeObserver === 'undefined') return;
-		this.layoutObserver = new ResizeObserver(() => this.applyColumnSnap());
+		this.layoutObserver = new ResizeObserver(() => {
+			this.applyColumnSnap();
+			if (this.plugin.settings.glancableFitCount !== 0) this.applyDensity();
+		});
 		this.layoutObserver.observe(this.scrollEl);
 		this.register(() => {
 			this.layoutObserver?.disconnect();
