@@ -11,6 +11,7 @@ import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
+import { cardPersonTitle } from './note-name';
 import { cardReturnLead } from './schedule';
 import { statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
@@ -77,7 +78,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.paintCampaignMark(name, row.path);
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
-				text: row.name,
+				text: cardPersonTitle(row.name, this.plugin.settings.cardTitleNameOnly),
 				href: row.path,
 				attr: { 'aria-label': row.name },
 			});
@@ -126,11 +127,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const showSpoke = this.lineOn('last-spoke');
 		const showAttempted = this.lineOn('last-attempted');
 		const showMet = this.lineOn('met');
+		const compactDates = this.plugin.settings.compactCardDates;
 		if (showSpoke || showAttempted || showMet) {
-			const when = card.createDiv('rv-locator-when');
-			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2));
-			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3));
-			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4));
+			const when = card.createDiv(compactDates ? 'rv-locator-when is-compact' : 'rv-locator-when');
+			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2), compactDates);
+			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3), compactDates);
+			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
 		}
 
 		const foot = card.createDiv('rv-locator-card-foot');
@@ -161,7 +163,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 			line.createSpan({
 				cls: 'rv-locator-return-when',
-				text: cardReturnLead(new Date()),
+				text: cardReturnLead(new Date(), this.plugin.settings.cardReturnFormat),
 			});
 			line.createSpan({
 				cls: 'rv-locator-return-bucket',
@@ -194,6 +196,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const map = this.mapCell(row);
 		const showMap = map?.kind === 'url' && Boolean(map.text);
 		const marks = urgencyMark(urgency, priority);
+		let badges = 1;
+		if (showRank && rank) badges += 1;
+		if (showMap && map) badges += 1;
+		parent.style.setProperty('--rv-badge-count', String(badges));
 		parent.addClass('has-actions');
 		const actions = parent.createSpan('rv-locator-card-actions');
 		const urgencyButton = actions.createEl('button', {
@@ -228,7 +234,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (showMap && map) this.renderMapChip(actions, map);
 	}
 
-	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string): void {
+	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string, compact = false): void {
 		const cell = this.cellNamed(row, name);
 		const text = cell && cell.kind !== 'empty' && cell.text && cell.text !== '—' ? cell.text : null;
 		if (!cell || text == null) {
@@ -241,6 +247,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
+		if (compact) {
+			const days = cell.daysSince;
+			slot.createSpan({ cls: 'rv-locator-slot-text', text: days == null ? '—' : `${days}d` });
+			return;
+		}
 		if (cell.dow) {
 			this.renderDriveDate(slot, cell);
 			return;
