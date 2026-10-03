@@ -999,7 +999,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (outcome === 'home' || outcome === 'miss') await this.consumeCoverage(file.path, outcome);
 		await this.enqueueDigestRewrite(file);
 		await this.maybeNudgePriority(file, outcome);
-		if (outcome === 'home') await this.focusVisitNotes(file, null, true);
+		if (outcome === 'home') await this.focusVisitNotes(file, null);
 	}
 
 	/** Templater newRv calls this after the new note is on disk. */
@@ -1494,7 +1494,7 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.enqueueDigestRewrite(file);
 		for (const callback of this.viewRefreshers) callback();
 		await this.maybeNudgePriority(file, outcome);
-		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty, true);
+		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty);
 	}
 
 	private async restabilizeCompanions(file: TFile): Promise<void> {
@@ -1657,11 +1657,12 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Open the note (or bring its tab forward), scroll to the visit, and put
-	 * the caret at the end of its notes box. On iOS the keyboard may stay
-	 * down, because focus here does not come straight from a tap.
+	 * Open the note (or bring its tab forward) and put the caret in the new
+	 * notes box. One scroll lands on that box. The source line is not scrolled
+	 * first, so the preview does not jump away and come back. On iOS the
+	 * keyboard may stay down, because focus here does not come straight from a tap.
 	 */
-	private async focusVisitNotes(file: TFile, property: string | null, keepPlace = false): Promise<void> {
+	private async focusVisitNotes(file: TFile, property: string | null): Promise<void> {
 		if (this.unloaded) return;
 		const data = await this.app.vault.read(file);
 		const info = getFrontMatterInfo(data);
@@ -1677,36 +1678,34 @@ export default class RVLocatorPlugin extends Plugin {
 
 		let leaf = this.app.workspace.getLeavesOfType('markdown')
 			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
-		const alreadyOpen = keepPlace && leaf != null;
-		const heldScroll = alreadyOpen && leaf?.view instanceof MarkdownView ? readingScrollTops(leaf.view.containerEl) : [];
 		if (leaf) {
-			this.app.workspace.setActiveLeaf(leaf, { focus: !alreadyOpen });
-			if (alreadyOpen && leaf.view instanceof MarkdownView) restoreReadingScroll(leaf.view.containerEl, heldScroll);
+			this.app.workspace.setActiveLeaf(leaf, { focus: false });
 		} else {
 			leaf = this.app.workspace.getLeaf(false);
-			await leaf.openFile(file, { active: true, eState: { line: fieldAt } });
+			await leaf.openFile(file, { active: true });
 		}
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
 
 		let steady = 0;
+		let placed: HTMLTextAreaElement | null = null;
 		for (let attempt = 0; attempt < FOCUS_ATTEMPTS && steady < 3; attempt += 1) {
 			if (this.unloaded) return;
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
 			const area = notesBoxAfterStamp(view.containerEl, stamp, ordinal);
 			if (!area) continue;
-			if (alreadyOpen) restoreReadingScroll(view.containerEl, heldScroll);
 			if (area.ownerDocument.activeElement === area) {
 				steady += 1;
-				continue;
+			} else {
+				steady = 0;
+				area.focus({ preventScroll: true });
+				const end = area.value.length;
+				area.setSelectionRange(end, end);
 			}
-			steady = 0;
-			area.focus({ preventScroll: true });
-			const end = area.value.length;
-			area.setSelectionRange(end, end);
-			if (!alreadyOpen) area.scrollIntoView({ block: 'center' });
+			if (placed === area) continue;
 			fitNotesBox(area);
-			if (alreadyOpen) restoreReadingScroll(view.containerEl, heldScroll);
+			area.scrollIntoView({ block: 'center' });
+			placed = area;
 		}
 	}
 
@@ -2171,20 +2170,6 @@ function highestNotesProperty(body: string): string | null {
 }
 
 /** The first textarea rendered after the `ordinal`th heading showing `stamp`. */
-const READING_SCROLL = '.markdown-preview-view, .cm-scroller';
-
-function readingScrollTops(root: HTMLElement): number[] {
-	return Array.from(root.querySelectorAll(READING_SCROLL)).map((node) => node instanceof HTMLElement ? node.scrollTop : 0);
-}
-
-function restoreReadingScroll(root: HTMLElement, tops: readonly number[]): void {
-	Array.from(root.querySelectorAll(READING_SCROLL)).forEach((node, index) => {
-		const top = tops[index];
-		if (top == null || !(node instanceof HTMLElement) || node.scrollTop === top) return;
-		node.scrollTop = top;
-	});
-}
-
 function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
 	const headings = Array.from(root.querySelectorAll('h3, h5, .cm-line.HyperMD-header'))
 		.filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').includes(stamp));
