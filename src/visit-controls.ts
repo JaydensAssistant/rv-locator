@@ -3,6 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
+import { mountHeadingChevron } from './visit-display';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
 export interface VisitTarget {
@@ -76,12 +77,28 @@ function wrapLogStamp(item: HTMLElement): void {
 	first.textContent = '';
 }
 
+function directIndicator(heading: HTMLElement): HTMLElement | null {
+	for (const kid of Array.from(heading.children)) {
+		if (domInstanceOf(kid, HTMLElement) && kid.classList.contains('collapse-indicator')) return kid;
+	}
+	return null;
+}
+
 function tagVisitNotesHeading(root: HTMLElement): void {
 	const headings = root.matches('h3') ? [root] : Array.from(root.querySelectorAll('h3'));
 	for (const heading of headings) {
 		if (!domInstanceOf(heading, HTMLElement)) continue;
 		const title = textWithout(heading, '.heading-collapse-indicator');
-		if (title === 'Visit Notes:' || title === 'Recent Notes:') heading.addClass(NOTES_HEADING_CLASS);
+		if (title === 'Visit Notes:' || title === 'Recent Notes:') {
+			heading.addClass(NOTES_HEADING_CLASS);
+			let mark = directIndicator(heading);
+			if (!mark) {
+				mark = heading.createSpan({ cls: 'collapse-indicator collapse-icon' });
+				heading.insertBefore(mark, heading.firstChild);
+			}
+			mountHeadingChevron(mark);
+			heading.toggleClass('is-open', !heading.hasClass('is-collapsed'));
+		}
 	}
 }
 
