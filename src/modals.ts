@@ -535,7 +535,7 @@ export class CompanionSuggestModal extends Modal {
 	}
 
 	onOpen(): void {
-		this.setTitle('Who came with you?');
+		this.setTitle('Log visit');
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
@@ -544,7 +544,6 @@ export class CompanionSuggestModal extends Modal {
 		});
 		new Setting(contentEl)
 			.setName('Companion')
-			.setDesc('Optional.')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');
 				this.companionInput = text;

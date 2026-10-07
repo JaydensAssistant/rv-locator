@@ -691,28 +691,21 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			(value) => { this.plugin.settings.locationProperty = value; },
 		);
 		new Setting(containerEl)
-			.setName('Map shading')
-			.setDesc('Default is urgency. Pins can also be shaded by the other card sorts except nearness. Colors stay inside the urgency palette.')
+			.setName('Directions')
+			.setDesc('Where a route opens: Google Maps, Apple Maps, or Waze. Notes keep their stored Map Link. The choice applies when you tap directions.')
 			.addDropdown((dropdown) => {
-				dropdown.addOption('urgency', 'Urgency');
-				dropdown.addOption('ideality', 'Ideality');
-				dropdown.addOption('priority', 'Priority');
-				dropdown.addOption('spoke', 'Last Spoke');
-				dropdown.addOption('attempted', 'Last Attempted');
-				dropdown.addOption('met', 'Met');
-				dropdown.addOption('city', 'City');
-				dropdown.setValue(this.plugin.settings.mapShade);
+				dropdown.addOption('google', 'Google Maps');
+				dropdown.addOption('apple', 'Apple Maps');
+				dropdown.addOption('waze', 'Waze');
+				dropdown.setValue(this.plugin.settings.routeProvider);
 				dropdown.onChange(async (value) => {
-					const mode = value === 'ideality' || value === 'priority' || value === 'spoke' || value === 'attempted' || value === 'met' || value === 'city'
-						? value
-						: 'urgency';
-					this.plugin.settings.mapShade = mode;
+					this.plugin.settings.routeProvider = value === 'apple' || value === 'waze' ? value : 'google';
 					await this.plugin.saveSettings();
 				});
 			});
 		this.propertySetting(
 			'Map link property',
-			'Google Maps search of Address. Leave empty to skip. Re-geocode refreshes this link.',
+			'Written on the first geocode. Leave empty to skip. Changing Directions does not rewrite this property.',
 			'Map Link',
 			() => this.plugin.settings.mapLinkProperty,
 			(value) => { this.plugin.settings.mapLinkProperty = value; },

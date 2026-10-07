@@ -190,7 +190,7 @@ function paintFactsTitle(
 	if (host.settings.showRouteBadge) {
 		const route = badges.createEl('button', {
 			cls: 'rv-locator-map-pin',
-			attr: { type: 'button', 'aria-label': 'Open in Google Maps' },
+			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
 		setIcon(route, 'route');
 		route.addEventListener('click', (event) => {
@@ -260,7 +260,8 @@ function paintFactsBody(
 	factDateRow(content, 'home', 'Met', readProperty(data, 'Met'));
 	paintClampRow(content, 'book', 'Literature', textList(readProperty(data, 'Left Publications')));
 	paintClampRow(content, 'film', 'Media', textList(readProperty(data, 'Shared Media')));
-	if (study) paintClampRow(content, 'book-open', 'Lessons', textList(readProperty(data, 'Lessons Studied')));
+	const studiedLessons = textList(readProperty(data, 'Lessons Studied'));
+	if (studiedLessons.length > 0) paintClampRow(content, 'book-open', 'Lessons', studiedLessons);
 
 	const taken = textList(readProperty(data, 'Taken'));
 	const metWith = textOf(readProperty(data, 'Met With'));

@@ -667,6 +667,24 @@ async function rvLog(tp, kind) {
     return;
   }
 
+  if (mode === "home") {
+    const plugin = rvPlugin();
+    const logHome = plugin && plugin.logNoteHome;
+    if (typeof logHome !== "function") {
+      new Notice("RV Locator is not ready to log this visit.");
+      return;
+    }
+    try {
+      const logged = await logHome.call(plugin, file, tp);
+      if (logged === false) return;
+    } catch (error) {
+      const message = error && error.message ? error.message : "Could not log the visit.";
+      new Notice(message);
+      return;
+    }
+    return;
+  }
+
   const now = new Date();
   const whenIso = isoLocal(now);
   const whenLabel = displayWhen(now);

@@ -1,9 +1,12 @@
-import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
-import type { NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, googleMapsDirectionsLink, normalizeAddress, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { MarkdownView, Menu, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
+import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { addressesMatchOneForOne, buildAutocompleteUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
+	GLANCABLE_ALL_VIEW_TYPE,
+	GLANCABLE_INACTIVE_VIEW_TYPE,
 	GLANCABLE_VIEW_TYPE,
 	HOVER_SOURCE,
 	REQUEST_GAP_MS,
@@ -13,10 +16,10 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick, preferHomeRegion } from './home-base';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
-import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, nextStudyStart, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, type VisitShare } from './catalog';
+import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
@@ -29,15 +32,15 @@ import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { layoutVisitNotes } from './visit-display';
 import { pagePreviewDecision } from './page-preview';
-import { RvMapView, MAP_VIEW_TYPE } from './map-view';
+import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import type { MapPin } from './map-pins';
-import { buildMapPins } from './map-pins';
+import { buildMapPins, heatModeForSort, pinLookForHub } from './map-pins';
 import { shadeHeats } from './map-shade';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
-import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
+import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { stripStampAge } from './dates';
+import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
@@ -49,7 +52,6 @@ import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeAct
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { latLonFromUnknown, validLatLon } from './distance';
-import { calendarDaysSince, formatGlanceableCounter, parseDriveInstant } from './dates';
 import { idealityScore } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
@@ -538,10 +540,13 @@ export default class RVLocatorPlugin extends Plugin {
 			new NewRvIdentityModal(this.app, {
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
-				recentAddresses: this.recentAddressLabels(),
-				lookupAddress: (query) => this.suggestAddresses(query),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
 				media: [...MEDIA_TITLES, ...this.settings.customMedia],
+				lessons: [...LESSONS],
+				customLessons: this.settings.customLessons,
+				suggestHome: (query) => this.suggestAddressHome(query),
+				suggestBroad: (query) => this.suggestAddressBroad(query),
+				addressCache: () => this.addressSuggestCacheMap(),
 			}, (value) => resolve(value)).open();
 		});
 		if (!identity || this.unloaded) return;
@@ -567,10 +572,13 @@ export default class RVLocatorPlugin extends Plugin {
 				intro: 'Same choices as a new RV. The address starts from this note.',
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
-				recentAddresses: this.recentAddressLabels(),
-				lookupAddress: (query) => this.suggestAddresses(query),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
 				media: [...MEDIA_TITLES, ...this.settings.customMedia],
+				lessons: [...LESSONS],
+				customLessons: this.settings.customLessons,
+				suggestHome: (query) => this.suggestAddressHome(query),
+				suggestBroad: (query) => this.suggestAddressBroad(query),
+				addressCache: () => this.addressSuggestCacheMap(),
 				preset: {
 					gender,
 					address,
@@ -629,10 +637,10 @@ export default class RVLocatorPlugin extends Plugin {
 				return;
 			}
 			const sourcePath = this.housemateSourcePath;
+			const draft = this.newRvDraft;
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
 			else if (created instanceof TFile) {
-				const draft = this.newRvDraft;
 				if (draft) await this.writeNewRvShare(created, draft);
 				await this.refreshAttemptDigest(created);
 				if (sourcePath) await this.linkHousehold(sourcePath, created);
@@ -650,14 +658,22 @@ export default class RVLocatorPlugin extends Plugin {
 	private async writeNewRvShare(file: TFile, identity: NewRvIdentity): Promise<void> {
 		const publications = shareTitles(identity.publications, identity.publicationList);
 		const media = shareTitles(identity.media, identity.mediaList);
-		if (publications.length === 0 && media.length === 0) return;
 		const share: VisitShare = {
 			...emptyShare(),
 			publications: publications[0] ?? '',
 			media: media[0] ?? '',
 			publicationList: publications,
 			mediaList: media,
+			lesson: identity.lesson ?? '',
+			lessonFrom: identity.lessonFrom ?? '',
+			lessonTo: identity.lessonTo ?? '',
+			extraLesson: identity.extraLesson ?? '',
+			extraFrom: identity.extraFrom ?? '',
+			extraTo: identity.extraTo ?? '',
 		};
+		const lesson = share.lesson.trim() || (share.extraLesson ?? '').trim();
+		if (publications.length === 0 && media.length === 0 && !lesson) return;
+		const now = new Date();
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
 			const publication = publications[0];
@@ -666,12 +682,12 @@ export default class RVLocatorPlugin extends Plugin {
 			else if (publications.length > 1) assignProperty(data, 'Left Publications', publications);
 			if (media.length === 1 && shown) assignProperty(data, 'Shared Media', shown);
 			else if (media.length > 1) assignProperty(data, 'Shared Media', media);
+			recordLoggedLessons(data, share, formatFrontmatterDateTime(now));
 		});
-		const now = new Date();
 		await this.app.vault.process(file, (data) => {
 			const info = getFrontMatterInfo(data);
 			const head = data.slice(0, info.contentStart);
-			const stamped = insertHomeHeading(data.slice(info.contentStart), formatVisitStamp(now), undefined, share);
+			const stamped = appendShareToFirstStamp(data.slice(info.contentStart), share);
 			return head + refreshHomeStampAges(stamped, now);
 		});
 		await this.rememberShare(share);
@@ -752,7 +768,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const gender = readProperty(frontmatter, 'Gender');
 		const status = note ? resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) : null;
 		const study = status === 'Study';
-		const lessonFrom = path && study ? await this.nextStudyDefaults(path) : { lesson: '', from: '' };
+		const defaults = path ? await this.studyDefaults(path) : studyPrefill(null);
 		const picked = await new Promise<string | null | false>((resolve) => {
 			const modal = new CompanionSuggestModal(
 				this.app,
@@ -766,7 +782,7 @@ export default class RVLocatorPlugin extends Plugin {
 					},
 				} : null,
 				path ? {
-					...this.shareFieldOptions(study, lessonFrom.lesson, lessonFrom.from),
+					...this.shareFieldOptions(study, defaults, false, !study),
 					onShare: (share) => {
 						if (shareBox) shareBox.share = share;
 					},
@@ -785,7 +801,15 @@ export default class RVLocatorPlugin extends Plugin {
 		return quoteCompanionFrontmatter(markdown);
 	}
 
-	private shareFieldOptions(study: boolean, lesson = '', lessonFrom = '', forceLiterature = false): ShareFieldOptions {
+	private shareFieldOptions(
+		study: boolean,
+		defaults: { lesson: string; from: string; to: string },
+		forceLiterature = false,
+		optionalLesson = false,
+	): ShareFieldOptions {
+		const prefilled = study
+			? { ...emptyShare(), lesson: defaults.lesson, lessonFrom: defaults.from, lessonTo: defaults.to }
+			: emptyShare();
 		return {
 			publications: [...this.settings.customPublications, ...PUBLICATION_TITLES],
 			media: [...this.settings.customMedia, ...MEDIA_TITLES],
@@ -793,31 +817,31 @@ export default class RVLocatorPlugin extends Plugin {
 			lessons: [...LESSONS],
 			showLiterature: forceLiterature || !study || this.settings.showStudyLiterature,
 			showLesson: study,
-			initial: { ...emptyShare(), lesson, lessonFrom },
+			optionalLesson: optionalLesson && !study,
+			lessonPrefill: defaults,
+			initial: prefilled,
 		};
 	}
 
-	private async nextStudyDefaults(path: string): Promise<{ lesson: string; from: string }> {
+	private async studyDefaults(path: string): Promise<{ lesson: string; from: string; to: string }> {
 		const file = this.app.vault.getFileByPath(path);
-		if (!file) return { lesson: '', from: '' };
+		if (!file) return studyPrefill(null);
 		try {
-			const progress = newestLessonProgress(await this.app.vault.cachedRead(file));
-			if (!progress?.lesson && !progress?.to) return { lesson: '', from: '' };
-			return nextStudyStart(progress.lesson, progress.to, LESSONS);
+			return studyPrefill(newestLessonProgress(await this.app.vault.cachedRead(file)));
 		} catch {
-			return { lesson: '', from: '' };
+			return studyPrefill(null);
 		}
 	}
 
 	private async promptLiterature(file: TFile, options?: { study?: boolean; campaign?: boolean }): Promise<VisitShare | false> {
 		const study = options?.study === true;
-		const lessonFrom = study ? await this.nextStudyDefaults(file.path) : { lesson: '', from: '' };
+		const defaults = await this.studyDefaults(file.path);
 		const campaign = options?.campaign && this.shouldAskCoverage(file.path) ? this.campaign : null;
 		const gender = readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender');
 		return new Promise((resolve) => {
 			new LiteraturePromptModal(
 				this.app,
-				this.shareFieldOptions(study, lessonFrom.lesson, lessonFrom.from),
+				this.shareFieldOptions(study, defaults, false, !study),
 				(share) => resolve(share),
 				campaign ? {
 					name: campaign.name,
@@ -1304,6 +1328,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (this.nearbySort.property === next.property && this.nearbySort.direction === next.direction) return;
 		this.nearbySort = next;
 		void this.persist();
+		for (const canvas of this.mapCanvases) canvas.refresh();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -1323,21 +1348,156 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	mapFocusPath: string | null = null;
+	mapSelectedPath: string | null = null;
+	mapFullscreen = false;
+	hubMapOpen = false;
+	/** Last GPS fix reported by a hub view, for address bias. */
+	liveFix: { lat: number; lon: number } | null = null;
+	private addressSuggestCache = new Map<string, GeocodeHit[]>();
+	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean): void }>();
+	private hubScrollers = new Set<(path: string | null) => void>();
 
-	/** Earth on a card, beside Address, or on the hub. The external route icon stays a maps link. */
+	/** Earth on a card, beside Address, or on the hub. Opens the hub split, not a separate tab. */
 	async openMapSoon(path?: string): Promise<void> {
-		this.mapFocusPath = path ?? null;
+		if (path) this.mapFocusPath = path;
+		if (Platform.isMobile || Platform.isMobileApp) {
+			this.hubMapOpen = true;
+			this.mapFullscreen = false;
+			for (const callback of this.viewRefreshers) callback();
+			if (path) this.focusMapPin(path, true);
+			return;
+		}
 		const leaves = this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE);
 		const existing = leaves[0];
 		if (existing) {
 			await this.app.workspace.revealLeaf(existing);
 			const view = existing.view;
 			if (view instanceof RvMapView) view.recenter();
+			if (path) this.focusMapPin(path, true);
 			return;
 		}
-		const leaf = this.app.workspace.getLeaf('tab');
+		const hub = this.glancableLeaf();
+		if (hub) this.app.workspace.setActiveLeaf(hub, { focus: false });
+		const leaf = this.app.workspace.getLeaf('split', 'vertical');
 		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
-		void this.app.workspace.revealLeaf(leaf);
+		if (path) this.focusMapPin(path, true);
+	}
+
+	private glancableLeaf(): WorkspaceLeaf | null {
+		for (const type of [GLANCABLE_VIEW_TYPE, GLANCABLE_ALL_VIEW_TYPE, GLANCABLE_INACTIVE_VIEW_TYPE]) {
+			const leaf = this.app.workspace.getLeavesOfType(type)[0];
+			if (leaf) return leaf;
+		}
+		return null;
+	}
+
+	mapIsFullscreen(): boolean {
+		return this.mapFullscreen;
+	}
+
+	setMapFullscreen(on: boolean): void {
+		this.mapFullscreen = on;
+		for (const callback of this.viewRefreshers) callback();
+		for (const canvas of this.mapCanvases) canvas.refresh();
+	}
+
+	notifyPin(path: string): void {
+		this.mapSelectedPath = path;
+		for (const scroll of this.hubScrollers) scroll(path);
+		for (const canvas of this.mapCanvases) canvas.focus(path, false);
+	}
+
+	notifyMapCleared(): void {
+		this.mapSelectedPath = null;
+		for (const scroll of this.hubScrollers) scroll(null);
+	}
+
+	focusMapPin(path: string, center = true): void {
+		this.mapSelectedPath = path;
+		for (const canvas of this.mapCanvases) canvas.focus(path, center);
+		for (const scroll of this.hubScrollers) scroll(path);
+	}
+
+	registerHubScroller(scroll: (path: string | null) => void): () => void {
+		this.hubScrollers.add(scroll);
+		return () => { this.hubScrollers.delete(scroll); };
+	}
+
+	attachMap(canvas: { refresh(): void; focus(path: string | null, center: boolean): void }): () => void {
+		this.mapCanvases.add(canvas);
+		return () => { this.mapCanvases.delete(canvas); };
+	}
+
+	mountHubMap(parent: HTMLElement): { destroy(): void } {
+		const handle = mountEmbeddedMap(parent, this);
+		return { destroy: () => { handle.destroy(); } };
+	}
+
+	hubSort(): { property: string; direction: 'ASC' | 'DESC' } {
+		return this.nearbySort;
+	}
+
+	cycleHubSort(property: string): void {
+		const preset = visibleSortPresets(this.settings.sortChips).find((item) => item.property === property);
+		if (!preset) return;
+		this.setNearbySort(nextPresetSort(this.nearbySort, preset));
+	}
+
+	sortChoices(): { property: string; label: string; active: boolean }[] {
+		return visibleSortPresets(this.settings.sortChips).map((preset) => {
+			const active = this.nearbySort.property.toLowerCase() === preset.property.toLowerCase();
+			return {
+				property: preset.property,
+				label: sortPresetChipLabel(preset, active ? this.nearbySort.direction : null),
+				active,
+			};
+		});
+	}
+
+	noteLiveFix(fix: { lat: number; lon: number } | null): void {
+		this.liveFix = fix;
+	}
+
+	addressSuggestCacheMap(): Map<string, GeocodeHit[]> {
+		return this.addressSuggestCache;
+	}
+
+	async suggestAddressHome(query: string): Promise<SuggestFetchResult> {
+		const bias = await this.suggestBias();
+		const hits = await this.autocompleteAddress(query, bias, Boolean(bias));
+		return { hits, allowBroad: Boolean(bias) };
+	}
+
+	async suggestAddressBroad(query: string): Promise<GeocodeHit[]> {
+		const bias = await this.suggestBias();
+		return this.autocompleteAddress(query, bias, false);
+	}
+
+	/** Distance-test point, then a live GPS fix, then one geocode of the first home county. */
+	private async suggestBias(): Promise<GeocodeBias | null> {
+		return this.currentMapFix() ?? this.liveFix ?? await this.homeProximity();
+	}
+
+	/**
+	 * Autocomplete only. Full geocode search stays on the 750ms pacer.
+	 * The home pass adds a circle filter. A broader pass keeps the bias and drops the circle.
+	 */
+	private async autocompleteAddress(query: string, bias: GeocodeBias | null, filterCircle: boolean): Promise<GeocodeHit[]> {
+		const apiKey = this.settings.geoapifyApiKey.trim();
+		const text = query.trim();
+		if (!apiKey || text.length < 3) return [];
+		try {
+			const url = buildAutocompleteUrl(text, apiKey, this.settings.geoapifyRegion, {
+				bias,
+				filterRadiusM: filterCircle && bias ? ADDRESS_SUGGEST_HOME_RADIUS_M : null,
+			});
+			const response = await fetch(url);
+			if (!response.ok) return [];
+			const body: unknown = await response.json();
+			return preferHomeRegion(parseGeocodeBody(body), this.settings.homeCounties);
+		} catch {
+			return [];
+		}
 	}
 
 	listMapPins(): MapPin[] {
@@ -1388,6 +1548,8 @@ export default class RVLocatorPlugin extends Plugin {
 				metDays,
 				city: cityText,
 				ideality,
+				gender: sanitizeGender(readProperty(frontmatter, 'Gender')),
+				status,
 				card: {
 					address: readAddress(frontmatter, this.settings.addressProperty) ?? '',
 					city: cityText,
@@ -1402,16 +1564,19 @@ export default class RVLocatorPlugin extends Plugin {
 					literature: textProperty(readProperty(frontmatter, 'Left Publications')),
 					media: textProperty(readProperty(frontmatter, 'Shared Media')),
 					lessons,
+					driveDates: driveDateRows(frontmatter),
 				},
 			};
 		});
-		const heats = shadeHeats(this.settings.mapShade, rows);
+		const look = pinLookForHub(this.nearbySort.property, this.settings.returnScope, this.settings.genderFilter);
+		const heats = shadeHeats(heatModeForSort(this.nearbySort.property), rows);
 		return buildMapPins(
 			rows.map((row, index) => ({ ...row, shadeHeat: heats[index] ?? 0 })),
 			this.settings.idealityFloorDays,
 			this.settings.urgencyThresholdDays,
 			colors,
-			this.settings.mapShade,
+			look,
+			look === 'status' && this.settings.returnScope === 'archive',
 		);
 	}
 
@@ -1426,22 +1591,25 @@ export default class RVLocatorPlugin extends Plugin {
 		return null;
 	}
 
-	/** Quick Facts route badge. Stored Map Link when it is a URL, otherwise a Google Maps search. */
+	/** Directions from the chosen provider. The stored Map Link property is not read or rewritten. */
 	async openRoute(path: string): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
-		const stored = readProperty(frontmatter, this.settings.mapLinkProperty);
-		const storedUrl = typeof stored === 'string' && /^https?:\/\//i.test(stored.trim()) ? stored.trim() : '';
+		const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
 		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
 		const cityName = this.settings.cityProperty.trim() || 'City';
 		const city = readProperty(frontmatter, cityName);
 		const cityText = typeof city === 'string' ? city : '';
-		const googleStored = /google\.[^/]+\/maps/i.test(storedUrl) ? storedUrl : '';
-		const url = googleStored || (address ? googleMapsDirectionsLink(address, cityText) : '');
-		if (!url) {
-			new Notice('This note has no address to open in Google Maps.');
+		if (!point && !address.trim()) {
+			new Notice('This note has no address to open directions.');
 			return;
 		}
+		const url = directionsUrl(this.settings.routeProvider, {
+			lat: point?.lat,
+			lon: point?.lon,
+			address,
+			city: cityText,
+		});
 		window.open(url, '_blank', 'noopener');
 	}
 
@@ -1838,9 +2006,6 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
-		const now = new Date();
-		const shareBox = { share: emptyShare() };
-		const companion = '';
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		const share = await this.promptLiterature(file, outcome === 'home' ? { study, campaign: true } : undefined);
@@ -1848,7 +2013,20 @@ export default class RVLocatorPlugin extends Plugin {
 			if (outcome === 'home') this.coverageDecisions.delete(file.path);
 			return;
 		}
-		shareBox.share = share;
+		await this.commitVisit(file, outcome, '', share);
+	}
+
+	/** In-note Home. Same write as the card, including literature, media, and lessons. */
+	async logNoteHome(file: TFile): Promise<boolean> {
+		const shareBox = { share: emptyShare() };
+		const companion = await this.promptCompanion(file.path, shareBox);
+		if (companion === false) return false;
+		await this.commitVisit(file, 'home', companion, shareBox.share);
+		return true;
+	}
+
+	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare): Promise<void> {
+		const now = new Date();
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
@@ -1856,16 +2034,16 @@ export default class RVLocatorPlugin extends Plugin {
 			const head = data.slice(0, info.contentStart);
 			const body = data.slice(info.contentStart);
 			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
-			const nextBody = applyVisitBody(body, outcome, now, companion, shareBox.share);
+			const nextBody = applyVisitBody(body, outcome, now, companion, share);
 			visitsAfter = listVisits(nextBody);
 			return head + nextBody;
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
-			applyVisitFrontmatter(data, outcome, now, companion, shareBox.share);
+			applyVisitFrontmatter(data, outcome, now, companion, share);
 			syncMet(data, visitsAfter, now);
 		});
-		await this.rememberShare(shareBox.share);
+		await this.rememberShare(share);
 		await this.restabilizeCompanions(file);
 		await this.consumeCoverage(file.path, outcome);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
@@ -1875,14 +2053,19 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Log past visit, from the priority badge, the note's button, or the command. */
 	promptPastVisit(file: TFile): void {
+		void this.openPastVisit(file);
+	}
+
+	private async openPastVisit(file: TFile): Promise<void> {
 		const campaign = this.shouldAskCoverage(file.path) ? this.campaign : null;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
+		const defaults = await this.studyDefaults(file.path);
 		new VisitEditModal(this.app, {
 			title: `Log past visit on “${file.basename}”`,
 			recentCompanions: this.recentCompanionNames(),
 			campaignName: campaign?.name,
-			share: this.shareFieldOptions(study, '', ''),
+			share: this.shareFieldOptions(study, defaults, false, !study),
 			onCovered: (covered) => {
 				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
 			},
@@ -1996,13 +2179,22 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private promptEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
+		void this.openEditVisit(file, entry, hint);
+	}
+
+	private async openEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): Promise<void> {
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
+		const stored = entry.lesson?.trim() ?? '';
+		const defaults = stored
+			? { lesson: entry.lesson ?? '', from: entry.lessonFrom ?? '', to: entry.lessonTo ?? '' }
+			: await this.studyDefaults(file.path);
+		const openLesson = study || Boolean(stored);
 		new VisitEditModal(this.app, {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
-			share: this.shareFieldOptions(study, entry.lesson ?? '', entry.lessonFrom ?? ''),
+			share: this.shareFieldOptions(openLesson, defaults, false, !openLesson),
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
@@ -2719,6 +2911,32 @@ function lessonList(value: unknown): string[] {
 		if (text) names.push(text);
 	}
 	return names;
+}
+
+function driveDateRows(frontmatter: { [key: string]: unknown } | undefined): { icon: string; dow: string; time: string; rest: string; days: string }[] {
+	const specs: readonly [string, string][] = [
+		['book-marked', 'Last Studied'],
+		['message-circle', 'Last Spoke'],
+		['clock', 'Last Attempted'],
+		['home', 'Met'],
+	];
+	const rows: { icon: string; dow: string; time: string; rest: string; days: string }[] = [];
+	for (const [icon, name] of specs) {
+		const value = readProperty(frontmatter, name);
+		const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+		if (!raw.trim()) continue;
+		const display = formatDriveDate(raw);
+		if (display.empty) continue;
+		const days = calendarDaysSince(raw);
+		rows.push({
+			icon,
+			dow: display.dow ?? '',
+			time: display.time ?? '',
+			rest: display.rest ?? '',
+			days: days == null ? '' : formatGlanceableCounter(days),
+		});
+	}
+	return rows;
 }
 
 function counterText(value: unknown): string {

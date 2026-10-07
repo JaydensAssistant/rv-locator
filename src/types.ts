@@ -107,6 +107,8 @@ export interface RVLocatorSettings {
 	urgencyCustomColors: UrgencyColors;
 	/** How map pins are colored. Urgency bands unless this is changed. Nearness is not a mode. */
 	mapShade: MapShadeMode;
+	/** Directions built at click time. Stored Map Link text is left alone. */
+	routeProvider: RouteProvider;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -335,6 +337,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
 	mapShade: 'urgency',
+	routeProvider: 'google',
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -375,6 +378,13 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	studyShowSpoke: false,
 	studyShowAttempted: false,
 };
+
+export type RouteProvider = 'google' | 'apple' | 'waze';
+
+export function sanitizeRouteProvider(value: unknown): RouteProvider {
+	if (value === 'apple' || value === 'waze') return value;
+	return 'google';
+}
 
 export interface NearbySortPreference {
 	property: string;
@@ -503,6 +513,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
 		mapShade: sanitizeMapShade(input.mapShade),
+		routeProvider: sanitizeRouteProvider(input.routeProvider),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),

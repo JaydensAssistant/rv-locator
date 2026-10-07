@@ -2777,22 +2777,22 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 /* Ancestor + button beats Obsidian's `button:not(.clickable-icon)` on fill and glyph color. */
 .rv-map .rv-map-pins > button.rv-map-pin {
-	--rv-control-size: 32px;
+	--rv-control-size: 48px;
 	position: absolute;
 	z-index: 1;
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 42px;
-	height: 42px;
+	width: 63px;
+	height: 63px;
 	margin: 0;
 	padding: 0;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
-	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
+	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
 	color: var(--pin-color, var(--interactive-accent));
-	font-size: 15px;
+	font-size: 22px;
 	font-weight: 700;
 	line-height: 1;
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
@@ -2816,9 +2816,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-map .rv-map-pins > button.rv-map-pin.is-fresh {
-	width: 42px;
-	height: 42px;
-	font-size: 15px;
+	width: 63px;
+	height: 63px;
+	font-size: 22px;
 	filter: none;
 	background-color: color-mix(in srgb, var(--background-primary) 88%, transparent);
 	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
@@ -2838,12 +2838,13 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
-	width: 46px;
-	height: 46px;
+	width: 63px;
+	height: 63px;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
-	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
+	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	font-size: 22px;
 	color: var(--pin-color, var(--interactive-accent));
 	font-weight: 700;
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
@@ -3286,8 +3287,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-map-pin svg {
-	width: 18px;
-	height: 18px;
+	width: 27px;
+	height: 27px;
 }
 
 .rv-qf-value.is-collapsible {
@@ -3370,4 +3371,114 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
 	outline: none;
 	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.rv-stamp-date,
+.rv-stamp-ago {
+	cursor: pointer;
+}
+
+.rv-card-flash {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.rv-suggest-pending {
+	padding: 0.35em 0.6em;
+	color: var(--text-muted);
+	letter-spacing: 0.2em;
+	animation: rv-ellipsis 0.9s ease-in-out infinite;
+}
+
+@keyframes rv-ellipsis {
+	0%, 100% { opacity: 0.25; }
+	50% { opacity: 1; }
+}
+
+.rv-share-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3em;
+	margin: 0.25em 0 0.6em;
+}
+
+.rv-share-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25em;
+	padding: 0.1em 0.45em;
+	border-radius: 999px;
+	background: var(--background-modifier-hover);
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-share-chip-x {
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-locator-companion-modal .setting-item {
+	border: none;
+}
+
+.rv-hub-map,
+.rv-hub-map-handle {
+	display: none;
+}
+
+.rv-locator-view.is-hub-map .rv-hub-map {
+	display: flex;
+	flex-direction: column;
+	flex: 0 0 auto;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.rv-locator-view.is-hub-map .rv-hub-map-handle {
+	display: block;
+	flex: 0 0 14px;
+	cursor: ns-resize;
+	background: linear-gradient(var(--background-modifier-border), var(--background-modifier-border)) center / 2.5rem 3px no-repeat;
+}
+
+.rv-locator-view.is-map-fullscreen .rv-locator-scroll,
+.rv-locator-view.is-map-fullscreen .rv-locator-sortbar,
+.rv-locator-view.is-map-fullscreen .rv-locator-search-slot,
+.rv-locator-view.is-map-fullscreen .rv-hub-map-handle,
+.rv-locator-view.is-map-fullscreen .rv-locator-banner,
+.rv-locator-view.is-map-fullscreen .rv-locator-attr {
+	display: none;
+}
+
+.rv-locator-view.is-map-fullscreen .rv-hub-map {
+	flex: 1 1 auto;
+	height: auto;
+}
+
+.rv-map.is-fullscreen {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	background: var(--background-primary);
+}
+
+.rv-map-back {
+	display: none;
+}
+
+.rv-map-back.is-visible {
+	display: inline-flex;
+}
+
+.rv-map-sorts {
+	display: flex;
+	gap: 0.22em;
+	padding: 0 0.7em 0.35em;
+}
+
+.rv-pin-mark {
+	font-size: 22px;
+	line-height: 1;
 }

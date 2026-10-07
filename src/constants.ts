@@ -28,6 +28,11 @@ export function geocodeEndpoint(region: GeoapifyRegion | undefined): string {
 	return region === 'eu' ? GEOCODE_ENDPOINT_EU : GEOCODE_ENDPOINT;
 }
 
+/** Type-ahead. The full search endpoint stays for saving a chosen address. */
+export function autocompleteEndpoint(region: GeoapifyRegion | undefined): string {
+	return geocodeEndpoint(region).replace('/v1/geocode/search', '/v1/geocode/autocomplete');
+}
+
 /** About 1.3 requests/second, under Geoapify's free-tier burst of ~5/second. */
 export const REQUEST_GAP_MS = 750;
 

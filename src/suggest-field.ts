@@ -1,8 +1,12 @@
 import { setIcon } from 'obsidian';
 
+/** Placeholder row while an address lookup is in flight. Not a choice. */
+export const SUGGEST_PENDING = '\u0000pending';
+
 /**
  * A chevron that stays visible, including before the field is typed in.
- * A tap opens the list. An empty query shows the caller's order (most recently used).
+ * The list stays closed until the user clicks the chevron or types.
+ * An empty query shows the caller's order (most recently used).
  */
 export function mountAlwaysChevron(
 	input: HTMLElement,
@@ -34,6 +38,14 @@ export function mountAlwaysChevron(
 		}
 		panel.hidden = false;
 		for (const item of items) {
+			if (item === SUGGEST_PENDING) {
+				const pending = panel.ownerDocument.createElement('div');
+				pending.className = 'rv-suggest-pending';
+				pending.setAttribute('aria-hidden', 'true');
+				pending.textContent = '…';
+				panel.appendChild(pending);
+				continue;
+			}
 			const row = panel.ownerDocument.createElement('button');
 			row.type = 'button';
 			row.className = 'rv-suggest-option';
@@ -79,10 +91,10 @@ export function mountAlwaysChevron(
 		if (typeof input.focus === 'function') input.focus();
 	});
 	input.addEventListener('input', () => {
-		if (!panel.hidden) paint();
-	});
-	input.addEventListener('focus', () => {
 		paint();
+	});
+	input.addEventListener('rv-suggest-sync', () => {
+		if (!panel.hidden) paint();
 	});
 	input.addEventListener('keydown', (event) => {
 		const key = event instanceof KeyboardEvent ? event.key : '';

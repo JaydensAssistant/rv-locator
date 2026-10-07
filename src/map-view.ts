@@ -1,6 +1,7 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
+import { equalizeSortPills } from './sort-pills';
 import { clusterAppearance, latToTileY, lonToTileX, mapPressIsClick, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import type { RVLocatorSettings } from './types';
@@ -16,6 +17,15 @@ export interface MapHost {
 	openMapNote(path: string): void;
 	openRoute(path: string): Promise<void>;
 	currentMapFix(): { lat: number; lon: number } | null;
+	/** False while the map sits beside or inside the hub. */
+	mapIsFullscreen?(): boolean;
+	setMapFullscreen?(on: boolean): void;
+	notifyPin?(path: string): void;
+	notifyMapCleared?(): void;
+	hubSort?(): { property: string; direction: 'ASC' | 'DESC' };
+	cycleHubSort?(property: string): void;
+	sortChoices?(): readonly { property: string; label: string; active: boolean }[];
+	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean): void }): () => void;
 }
 
 const TILE = 256;
@@ -35,6 +45,8 @@ export class RvMapView extends ItemView {
 	private watchId: number | null = null;
 	private drag: { x: number; y: number; lat: number; lon: number; moved: boolean } | null = null;
 	private selectedPath: string | null = null;
+	private sortRow: HTMLElement | null = null;
+	private detachMap: (() => void) | null = null;
 
 	constructor(leaf: WorkspaceLeaf, private host: MapHost) {
 		super(leaf);
@@ -63,10 +75,30 @@ export class RvMapView extends ItemView {
 		setIcon(fit, 'maximize');
 		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location' } });
 		setIcon(locate, 'locate');
+		const fullscreen = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Full screen' } });
+		setIcon(fullscreen, 'expand');
+		const back = bar.createEl('button', {
+			cls: 'rv-map-back',
+			text: 'Back to Hub',
+			attr: { type: 'button' },
+		});
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom + 1));
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom - 1));
 		fit.addEventListener('click', () => this.fitAll());
 		locate.addEventListener('click', () => this.locateMe());
+		fullscreen.addEventListener('click', () => {
+			const next = !this.isFullscreen();
+			this.host.setMapFullscreen?.(next);
+			this.syncFullscreen();
+			this.paint();
+		});
+		back.addEventListener('click', () => {
+			this.host.setMapFullscreen?.(false);
+			this.syncFullscreen();
+			this.paint();
+		});
+		this.sortRow = this.contentEl.createDiv('rv-map-sorts');
+		this.paintSorts();
 		this.stage = this.contentEl.createDiv('rv-map-stage');
 		this.pinLayer = this.stage.createDiv('rv-map-pins');
 		const credit = this.contentEl.createDiv('rv-map-credit');
@@ -81,6 +113,11 @@ export class RvMapView extends ItemView {
 		this.bindStage();
 		this.paint();
 		this.watchLocation();
+		this.syncFullscreen();
+		this.detachMap = this.host.attachMap?.({
+			refresh: () => { this.recenter(); },
+			focus: (path, center) => { this.focusPath(path, center); },
+		}) ?? null;
 	}
 
 	async onClose(): Promise<void> {
@@ -88,6 +125,30 @@ export class RvMapView extends ItemView {
 			navigator.geolocation.clearWatch(this.watchId);
 		}
 		this.watchId = null;
+		this.detachMap?.();
+		this.detachMap = null;
+	}
+
+	/** Hub asked the map to center a pin, or only to highlight it. */
+	focusPath(path: string | null, center: boolean): void {
+		this.selectedPath = path;
+		const pin = path ? this.pins.find((item) => item.path === path) : null;
+		if (pin && center) {
+			this.centerLat = pin.lat;
+			this.centerLon = pin.lon;
+			this.zoom = Math.max(this.zoom, 15);
+		}
+		this.paint();
+	}
+
+	private isFullscreen(): boolean {
+		return this.host.mapIsFullscreen?.() === true;
+	}
+
+	private syncFullscreen(): void {
+		this.contentEl.toggleClass('is-fullscreen', this.isFullscreen());
+		const back = this.contentEl.querySelector('.rv-map-back');
+		if (back instanceof HTMLElement) back.toggleClass('is-visible', this.isFullscreen());
 	}
 
 	/** Called when an already-open map is asked to center again. */
@@ -95,6 +156,8 @@ export class RvMapView extends ItemView {
 		this.pins = this.host.listMapPins();
 		this.user = this.host.currentMapFix() ?? this.user;
 		this.centerOnOpen();
+		this.paintSorts();
+		this.syncFullscreen();
 		this.paint();
 	}
 
@@ -154,8 +217,15 @@ export class RvMapView extends ItemView {
 			const drag = this.drag;
 			this.drag = null;
 			stage.removeClass('is-grabbing');
-			if (!drag || drag.moved || !this.selectedPath) return;
+			if (!drag || drag.moved) return;
+			if (this.isFullscreen()) {
+				if (!this.selectedPath) return;
+				this.selectedPath = null;
+				this.paint();
+				return;
+			}
 			this.selectedPath = null;
+			this.host.notifyMapCleared?.();
 			this.paint();
 		});
 		stage.addEventListener('pointerleave', () => {
@@ -210,7 +280,7 @@ export class RvMapView extends ItemView {
 			for (const item of placed) this.paintPin(pins, item.pin, item.point);
 		}
 		const selected = this.selectedPath ? placed.find((item) => item.pin.path === this.selectedPath) : null;
-		if (selected && this.zoom > 12) this.openCard(pins, selected.pin, selected.point);
+		if (selected && this.zoom > 12 && this.isFullscreen()) this.openCard(pins, selected.pin, selected.point);
 	}
 
 	private paintUser(layer: HTMLElement, width: number, height: number, cx: number, cy: number): void {
@@ -234,6 +304,10 @@ export class RvMapView extends ItemView {
 		if (pin.stateIcon) {
 			button.dataset.pinState = pin.stateIcon;
 			setIcon(button, pin.stateIcon);
+		} else if (pin.shadeIcon) {
+			setIcon(button, pin.shadeIcon);
+		} else if (pin.markText) {
+			button.createSpan({ cls: 'rv-pin-mark', text: pin.markText });
 		} else mountUrgencyGlyph(button, pin.glyph);
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
@@ -241,7 +315,12 @@ export class RvMapView extends ItemView {
 			event.preventDefault();
 			event.stopPropagation();
 			this.selectedPath = pin.path;
-			this.openCard(layer, pin, point);
+			if (this.isFullscreen()) {
+				this.openCard(layer, pin, point);
+				button.addClass('is-selected');
+				return;
+			}
+			this.host.notifyPin?.(pin.path);
 			button.addClass('is-selected');
 		});
 	}
@@ -295,7 +374,11 @@ export class RvMapView extends ItemView {
 		card.style.setProperty('--rv-urgency-accent', pin.color);
 		card.style.setProperty('--rv-urgency-ink', urgencyInk(pin.color));
 		card.style.setProperty('--rv-badge-count', '3');
-		card.style.setProperty('--rv-control-size', '28px');
+		card.style.setProperty('--rv-font-scale', '1');
+		card.style.setProperty('--rv-icon-scale', '1.2');
+		const hubSize = this.contentEl.ownerDocument.querySelector('.rv-locator-view');
+		const size = hubSize instanceof HTMLElement ? hubSize.style.getPropertyValue('--rv-control-size') : '';
+		if (size) card.style.setProperty('--rv-control-size', size);
 		const openNote = (): void => { this.host.openMapNote(pin.path); };
 		card.addEventListener('click', (event) => {
 			const target = event.target;
@@ -321,12 +404,17 @@ export class RvMapView extends ItemView {
 			this.cardSlot(city, 'building-2', pin.card.city, false);
 		}
 		const when = card.createDiv('rv-locator-when');
-		if (pin.card.study) this.cardSlot(when, 'book-marked', pin.card.studied ? `Studied ${pin.card.studied}` : 'Studied —', !pin.card.studied);
-		else {
-			if (pin.card.spoke) this.cardSlot(when, 'message-circle', `Spoke ${pin.card.spoke}`, false);
-			if (pin.card.attempted) this.cardSlot(when, 'clock', `Attempted ${pin.card.attempted}`, false);
+		const dates = pin.card.driveDates ?? [];
+		if (dates.length > 0) {
+			for (const date of dates) this.dateSlot(when, date);
+		} else {
+			if (pin.card.study) this.cardSlot(when, 'book-marked', pin.card.studied ? `Studied ${pin.card.studied}` : 'Studied —', !pin.card.studied);
+			else {
+				if (pin.card.spoke) this.cardSlot(when, 'message-circle', `Spoke ${pin.card.spoke}`, false);
+				if (pin.card.attempted) this.cardSlot(when, 'clock', `Attempted ${pin.card.attempted}`, false);
+			}
+			if (pin.card.met) this.cardSlot(when, 'home', `Met ${pin.card.met}`, false);
 		}
-		if (pin.card.met) this.cardSlot(when, 'home', `Met ${pin.card.met}`, false);
 		const foot = card.createDiv('rv-locator-card-foot');
 		this.cardSlot(foot, 'user', pin.card.metWith || '—', !pin.card.metWith);
 		const ratio = pin.card.study ? pin.card.studyRatio : pin.card.visits;
@@ -350,7 +438,7 @@ export class RvMapView extends ItemView {
 		});
 		const route = actions.createEl('button', {
 			cls: 'rv-locator-map-pin',
-			attr: { type: 'button', 'aria-label': 'Directions in Google Maps' },
+			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
 		setIcon(route, 'route');
 		route.addEventListener('click', (event) => {
@@ -358,6 +446,33 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
+	}
+
+	private dateSlot(parent: HTMLElement, date: { icon: string; dow: string; time: string; rest: string; days: string }): void {
+		const slot = parent.createSpan('rv-locator-slot is-dated');
+		const iconEl = slot.createSpan('rv-locator-slot-icon');
+		setIcon(iconEl, date.icon);
+		const wrap = slot.createSpan('rv-locator-date');
+		const clock = wrap.createSpan('rv-locator-clock');
+		clock.createSpan({ cls: 'rv-locator-dow', text: date.dow });
+		if (date.time) clock.createSpan({ cls: 'rv-locator-time', text: `, ${date.time}` });
+		if (date.rest) wrap.createSpan({ cls: 'rv-locator-cal', text: date.rest });
+		if (date.days) slot.createSpan({ cls: 'rv-locator-days', text: date.days });
+	}
+
+	private paintSorts(): void {
+		const row = this.sortRow;
+		if (!row) return;
+		row.empty();
+		for (const choice of this.host.sortChoices?.() ?? []) {
+			const button = row.createEl('button', {
+				cls: `rv-locator-sort-preset${choice.active ? ' is-active' : ''}`,
+				attr: { type: 'button', 'aria-pressed': choice.active ? 'true' : 'false' },
+			});
+			button.createSpan({ cls: 'rv-sort-label', text: choice.label });
+			button.addEventListener('click', () => { this.host.cycleHubSort?.(choice.property); });
+		}
+		equalizeSortPills(row);
 	}
 
 	private cardSlot(parent: HTMLElement, icon: string, text: string, empty: boolean): void {
@@ -424,6 +539,36 @@ function average(values: number[]): number {
 function spread(values: number[]): number {
 	if (values.length === 0) return 0;
 	return Math.max(...values) - Math.min(...values);
+}
+
+/** Phone hub stack. Obsidian mobile has no workspace splits. */
+export function mountEmbeddedMap(
+	parent: HTMLElement,
+	host: MapHost,
+): { destroy(): void; refresh(): void; focus(path: string | null, center: boolean): void } {
+	const shell = {
+		contentEl: parent,
+		host,
+		centerLat: 28.54,
+		centerLon: -81.38,
+		zoom: 13,
+		pins: [] as MapPin[],
+		user: null as { lat: number; lon: number } | null,
+		stage: null as HTMLElement | null,
+		pinLayer: null as HTMLElement | null,
+		watchId: null as number | null,
+		drag: null as { x: number; y: number; lat: number; lon: number; moved: boolean } | null,
+		selectedPath: null as string | null,
+		sortRow: null as HTMLElement | null,
+		detachMap: null as (() => void) | null,
+	};
+	const map = Object.assign(Object.create(RvMapView.prototype), shell) as RvMapView;
+	void map.onOpen();
+	return {
+		destroy: () => { void map.onClose(); },
+		refresh: () => { map.recenter(); },
+		focus: (path, center) => { map.focusPath(path, center); },
+	};
 }
 
 function tileYToLat(y: number, zoom: number): number {

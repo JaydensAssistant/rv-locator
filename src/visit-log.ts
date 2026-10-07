@@ -562,6 +562,23 @@ export function insertHomeHeading(body: string, stamp: string, notesProperty?: s
 	return [...before, ...lead, heading, field, '', ...after].join('\n');
 }
 
+/**
+ * Add literature, media, and lesson text to the note's existing first visit
+ * subheading. A new heading is not inserted.
+ */
+export function appendShareToFirstStamp(body: string, share: VisitShare): string {
+	const extra = visitExtraMarkup(share).trim();
+	if (!extra) return body;
+	const lines = body.split('\n');
+	const at = lines.findIndex((line) => isStoredVisitLine(line));
+	if (at < 0) return body;
+	const line = lines[at] ?? '';
+	if (visitExtrasFromLine(line)) return body;
+	const age = /(<span class="rv-stamp-ago")/i;
+	lines[at] = age.test(line) ? line.replace(age, `${extra} $1`) : `${line.replace(/\s+$/, '')} ${extra}`;
+	return lines.join('\n');
+}
+
 export function appendLogLine(body: string, line: string): string {
 	let lines = body.split('\n');
 	let found = findAttemptLog(lines);

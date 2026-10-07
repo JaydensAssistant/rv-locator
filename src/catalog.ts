@@ -93,6 +93,52 @@ export function nextStudyStart(lesson: string, endedOn: string, catalog: readonl
 	return { lesson: title, from: ended };
 }
 
+export interface StudyDefaults {
+	lesson: string;
+	from: string;
+	to: string;
+}
+
+/**
+ * Next study's lesson, start, and end.
+ * No prior study opens lesson 1 from its intro through its last part.
+ * A finished lesson opens the next lesson the same way.
+ * A stop mid-lesson opens the next part and still ends on that lesson's last part.
+ */
+export function studyPrefill(
+	progress: { lesson: string; to: string } | null,
+	catalog: readonly LessonSpec[] = LESSONS,
+): StudyDefaults {
+	if (!progress || (!progress.lesson.trim() && !progress.to.trim())) {
+		return boundsForLesson(catalog[0] ?? null);
+	}
+	const start = nextStudyStart(progress.lesson, progress.to, catalog);
+	const spec = lessonByTitle(start.lesson, catalog.map((item) => item.title));
+	const parts = lessonPartOptions(spec);
+	return {
+		lesson: start.lesson,
+		from: start.from,
+		to: parts[parts.length - 1] ?? '',
+	};
+}
+
+/** Start and end when a lesson is picked by hand. End is that lesson's last part. */
+export function lessonBounds(
+	title: string,
+	catalog: readonly LessonSpec[] = LESSONS,
+	custom: readonly string[] = [],
+): { from: string; to: string } {
+	const spec = lessonByTitle(title, [...custom, ...catalog.map((item) => item.title)]);
+	const parts = lessonPartOptions(spec);
+	return { from: parts[0] ?? '', to: parts[parts.length - 1] ?? '' };
+}
+
+function boundsForLesson(lesson: LessonSpec | null): StudyDefaults {
+	if (!lesson) return { lesson: '', from: '', to: '' };
+	const parts = lessonPartOptions(lesson);
+	return { lesson: lesson.title, from: parts[0] ?? '', to: parts[parts.length - 1] ?? '' };
+}
+
 /** A normal lesson, in study order. */
 export const NORMAL_LESSON_PARTS = [
 	'Intro',

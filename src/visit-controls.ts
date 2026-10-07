@@ -114,6 +114,7 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
 		markStampDate(heading);
+		wireStampJump(heading, when);
 		wrapShareTail(heading);
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
@@ -162,6 +163,51 @@ function markStampDate(heading: HTMLElement): void {
 		}
 		node = walker.nextNode();
 	}
+}
+
+/** Date and day-count jump to that day's attempt-log line, not the visit notes. */
+function wireStampJump(heading: HTMLElement, when: Date): void {
+	heading.querySelectorAll('.rv-stamp-date, .rv-stamp-ago').forEach((node) => {
+		if (!domInstanceOf(node, HTMLElement) || node.dataset.rvJump === '1') return;
+		node.dataset.rvJump = '1';
+		node.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			jumpStampToAttempt(heading, when);
+		});
+	});
+}
+
+function jumpStampToAttempt(heading: HTMLElement, when: Date): void {
+	const host = heading.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered');
+	const root = domInstanceOf(host, HTMLElement) ? host : heading.ownerDocument.body;
+	if (!domInstanceOf(root, HTMLElement)) return;
+	let match: HTMLElement | null = null;
+	for (const callout of attemptLogCallouts(root)) {
+		for (const item of Array.from(callout.querySelectorAll('li'))) {
+			if (match || !domInstanceOf(item, HTMLElement)) continue;
+			const bullet = parseLogBullet(`- ${item.textContent ?? ''}`);
+			if (!bullet || !sameLocalDay(bullet.when, when)) continue;
+			match = item;
+		}
+	}
+	if (!match) return;
+	let node: HTMLElement | null = match;
+	while (node && node !== root) {
+		node.classList.remove('is-collapsed');
+		if (node.style.display === 'none') node.style.removeProperty('display');
+		node = node.parentElement;
+	}
+	match.scrollIntoView({ block: 'center' });
+	match.classList.add('rv-day-flash');
+	const flashed = match;
+	window.setTimeout(() => flashed.classList.remove('rv-day-flash'), 1600);
+}
+
+function sameLocalDay(left: Date, right: Date): boolean {
+	return left.getFullYear() === right.getFullYear()
+		&& left.getMonth() === right.getMonth()
+		&& left.getDate() === right.getDate();
 }
 
 /** Plugin-owned spans around a plain-text share tail. The note file is not rewritten. */

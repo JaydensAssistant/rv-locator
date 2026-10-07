@@ -1,4 +1,4 @@
-import { setIcon, TFile, type QueryController } from 'obsidian';
+import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
@@ -30,6 +30,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private bodiesLoading = false;
 	private parsedKey = '';
 	private parsedQuery: GlanceQuery | null = null;
+	private hubMapEl: HTMLElement | null = null;
+	private hubMapRatio = 0.4;
 
 	constructor(
 		controller: QueryController,
@@ -51,6 +53,22 @@ export class NearbyGlancableView extends NearbyBasesView {
 	protected override afterRender(): void {
 		this.syncBasesChrome();
 		this.ensureSearchField();
+		this.syncHubMap();
+	}
+
+	protected override afterChrome(): void {
+		if (!(Platform.isMobile || Platform.isMobileApp)) return;
+		const map = this.root.createDiv('rv-hub-map');
+		const handle = this.root.createDiv('rv-hub-map-handle');
+		handle.setAttr('role', 'separator');
+		handle.setAttr('aria-label', 'Resize map');
+		this.root.insertBefore(map, this.scrollEl);
+		this.root.insertBefore(handle, this.scrollEl);
+		this.hubMapEl = map;
+		this.plugin.mountHubMap(map);
+		this.bindHubHandle(handle);
+		const stop = this.plugin.registerHubScroller((path) => this.flashCard(path));
+		this.register(stop);
 	}
 
 	protected override sortedGroups() {
@@ -179,6 +197,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private paintCard(parent: HTMLElement, row: RowModel, key: string): void {
 		const card = parent.createDiv('rv-locator-card');
+		card.setAttr('data-rv-path', row.path);
+		card.addEventListener('click', (event) => {
+			const target = event.target;
+			if (target instanceof Element && target.closest('a, button')) return;
+			this.plugin.focusMapPin(row.path, true);
+		});
 		const rank = priorityRank(this.cellNamed(row, 'Priority'));
 		const priority = rowPriority(row);
 		const urgency = rowUrgency(row, this.plugin.settings, new Date(), this.plugin.snoozeUntilFor(row.path));
@@ -283,6 +307,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
 		}
 
+		const literature = joinedProperty(readProperty(note, 'Left Publications'));
+		const media = joinedProperty(readProperty(note, 'Shared Media'));
+		const lessons = stringList(readProperty(note, 'Lessons Studied'));
+		if (literature || media || lessons.length > 0) {
+			const extra = card.createDiv('rv-locator-when');
+			if (literature) this.plainSlot(extra, 'book', literature, 'Literature', false);
+			if (media) this.plainSlot(extra, 'film', media, 'Media', false);
+			for (const lesson of lessons) this.plainSlot(extra, 'book-open', lesson, 'Lesson', false);
+		}
+
 		const foot = card.createDiv('rv-locator-card-foot');
 		foot.setAttr('data-line', glancableLineId(5));
 		if (this.lineOn('met-with')) {
@@ -355,12 +389,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 		compactLines: readonly CompactLineKind[] | null,
 	): void {
 		const showRank = rank != null;
-		const map = this.mapCell(row);
-		const showMap = map?.kind === 'url' && Boolean(map.text);
+		const locationName = this.plugin.settings.locationProperty.trim() || 'Location';
+		const location = this.cellNamed(row, locationName);
+		const hasLocation = Boolean(location && location.kind !== 'empty' && location.text && location.text !== '—');
+		const showMap = Boolean(row.addressText) || hasLocation;
 		const marks = urgencyMark(urgency, priority);
 		let badges = 1;
 		if (showRank && rank) badges += 1;
-		if (showMap && map) badges += 1;
+		if (showMap) badges += 1;
 		parent.style.setProperty('--rv-badge-count', String(badges));
 		parent.addClass('has-actions');
 		if (compactLines) {
@@ -399,7 +435,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				this.plugin.promptPriority(row.path, row.name);
 			});
 		}
-		if (showMap && map) this.renderMapChip(actions, map);
+		if (showMap) this.renderRouteButton(actions, row.path);
 	}
 
 	private noteFrontmatter(path: string): Record<string, unknown> | null {
@@ -470,17 +506,58 @@ export class NearbyGlancableView extends NearbyBasesView {
 		slot.createSpan({ cls: 'rv-locator-slot-text', text });
 	}
 
-	private renderMapChip(parent: HTMLElement, cell: CellModel): void {
-		const link = parent.createEl('a', {
+	private renderRouteButton(parent: HTMLElement, path: string): void {
+		const button = parent.createEl('button', {
 			cls: 'rv-locator-map-pin',
-			href: cell.text,
-			attr: {
-				rel: 'noopener',
-				target: '_blank',
-				'aria-label': cell.title || 'Open map',
-			},
+			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
-		setIcon(link, 'route');
+		setIcon(button, 'route');
+		button.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			void this.plugin.openRoute(path);
+		});
+	}
+
+	private syncHubMap(): void {
+		const map = this.hubMapEl;
+		if (!map) return;
+		const open = this.plugin.hubMapOpen;
+		this.root.toggleClass('is-hub-map', open);
+		this.root.toggleClass('is-map-fullscreen', open && this.plugin.mapIsFullscreen());
+		map.style.height = open && !this.plugin.mapIsFullscreen() ? `${Math.round(this.hubMapRatio * 100)}%` : '';
+	}
+
+	private bindHubHandle(handle: HTMLElement): void {
+		handle.addEventListener('pointerdown', (event) => {
+			if (event.button !== 0) return;
+			event.preventDefault();
+			const startY = event.clientY;
+			const start = this.hubMapRatio;
+			const height = this.root.clientHeight || 1;
+			const move = (ev: PointerEvent): void => {
+				const next = start + (ev.clientY - startY) / height;
+				this.hubMapRatio = next < 0.12 ? 0 : Math.min(0.85, Math.max(0.18, next));
+				this.syncHubMap();
+			};
+			const stop = (): void => {
+				handle.ownerDocument.removeEventListener('pointermove', move);
+				handle.ownerDocument.removeEventListener('pointerup', stop);
+			};
+			handle.ownerDocument.addEventListener('pointermove', move);
+			handle.ownerDocument.addEventListener('pointerup', stop);
+		});
+	}
+
+	private flashCard(path: string | null): void {
+		this.scrollEl.querySelectorAll('.rv-card-flash').forEach((node) => node.classList.remove('rv-card-flash'));
+		if (!path) return;
+		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
+		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
+		if (!(card instanceof HTMLElement)) return;
+		card.scrollIntoView({ block: 'center' });
+		card.classList.add('rv-card-flash');
+		window.setTimeout(() => card.classList.remove('rv-card-flash'), 1600);
 	}
 
 	private mapCell(row: RowModel): CellModel | undefined {
@@ -631,6 +708,21 @@ function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle', attr: Record<s
 	for (const [key, value] of Object.entries(attr)) node.setAttribute(key, value);
 	parent.appendChild(node);
 	return node;
+}
+
+function joinedProperty(value: unknown): string {
+	return stringList(value).join(' · ');
+}
+
+function stringList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (text) names.push(text);
+	}
+	return names;
 }
 
 function basesChromeHost(root: HTMLElement): HTMLElement | null {

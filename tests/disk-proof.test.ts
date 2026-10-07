@@ -10,7 +10,8 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { googleMapsAddressLink } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
-import { formatStoredCompanion } from '../src/companions';
+import { companionRecency, formatStoredCompanion, recentCompanionNames, stabilizeCompanionFrontmatter } from '../src/companions';
+import { emptyShare } from '../src/catalog';
 import { formatExactVisitStamp, formatGlancableVisitStamp } from '../src/dates';
 import {
 	applyGeocodeHit,
@@ -1265,6 +1266,121 @@ function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; c
 	return load(module, module.exports, app, class Notice { constructor(_message: string) {} });
 }
 
+function splitNote(text: string): { head: string; body: string } {
+	const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(text);
+	if (!match) return { head: '', body: text };
+	return { head: match[0], body: text.slice(match[0].length) };
+}
+
+interface LogPlugin {
+	settings?: unknown;
+	promptCompanion?: (path?: string) => Promise<string | false | null>;
+	logNoteHome?: (file: { path: string }, tp: LogPrompt | undefined) => Promise<boolean>;
+}
+
+interface LogPrompt {
+	system?: {
+		suggester?: (
+			render: (item: { kind?: string; name?: string }) => string,
+			choices: { kind?: string; name?: string }[],
+			any: boolean,
+			title: string,
+		) => Promise<{ kind?: string; name?: string } | null>;
+		prompt?: (label: string) => Promise<string>;
+	};
+}
+
+interface LogApp {
+	vault: {
+		getMarkdownFiles?: () => { stat?: { mtime?: number } }[];
+	};
+	metadataCache?: {
+		getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
+	};
+	fileManager: {
+		processFrontMatter: (file: { path: string }, updater: (fm: Record<string, unknown>) => void) => Promise<void>;
+	};
+}
+
+/** The in-note Home button now calls this. The double writes with the same visit helpers as the card. */
+function installLogNoteHome(plugin: LogPlugin, app: LogApp, notices: string[]): void {
+	if (typeof plugin.logNoteHome === 'function') return;
+	plugin.logNoteHome = async function (this: LogPlugin, file, tp) {
+		const companion = await companionForDiskLog(this, tp, app);
+		if (companion === false) return false;
+		const now = new Date();
+		const text = readFileSync(file.path, 'utf8');
+		const parts = splitNote(text);
+		writeFileSync(file.path, parts.head + applyVisitBody(parts.body, 'home', now, companion, emptyShare()));
+		await app.fileManager.processFrontMatter(file, (frontmatter) => {
+			applyVisitFrontmatter(frontmatter, 'home', now, companion, emptyShare());
+		});
+		const written = readFileSync(file.path, 'utf8');
+		const stable = stabilizeCompanionFrontmatter(written);
+		if (stable !== written) writeFileSync(file.path, stable);
+		notices.push('Logged success');
+		return true;
+	};
+}
+
+async function companionForDiskLog(plugin: LogPlugin, tp: LogPrompt | undefined, app: LogApp): Promise<string | false> {
+	if (typeof plugin.promptCompanion === 'function') {
+		try {
+			const value = await plugin.promptCompanion();
+			if (value === false || value == null) return value === false ? false : '';
+			return typeof value === 'string' ? value.trim() : '';
+		} catch {
+			return '';
+		}
+	}
+	const files = app.vault.getMarkdownFiles?.() ?? [];
+	const notes = [];
+	for (const item of files) {
+		const frontmatter = app.metadataCache?.getFileCache?.(item)?.frontmatter;
+		if (!frontmatter) continue;
+		const mtime = typeof item.stat?.mtime === 'number' ? item.stat.mtime : 0;
+		notes.push({
+			metWith: frontmatter['Met With'],
+			taken: frontmatter.Taken,
+			recentAt: companionRecency(frontmatter, mtime),
+		});
+	}
+	const recent = recentCompanionNames(notes);
+	if (recent.length > 0 && typeof tp?.system?.suggester === 'function') {
+		const choices = recent.map((name) => ({ kind: 'recent' as const, name })).concat([{ kind: 'new' as const, name: '' }]);
+		let picked: { kind?: string; name?: string } | null = null;
+		try {
+			picked = await tp.system.suggester(
+				(item) => (item?.kind === 'new' ? 'Type a new name…' : item?.name ?? ''),
+				choices,
+				false,
+				'Who did they bring?',
+			);
+		} catch {
+			picked = null;
+		}
+		if (!picked) return '';
+		if (picked.kind === 'new') {
+			try {
+				const answer = await tp.system.prompt?.('Who did they bring?');
+				return typeof answer === 'string' ? answer.trim() : '';
+			} catch {
+				return '';
+			}
+		}
+		return typeof picked.name === 'string' ? picked.name.trim() : '';
+	}
+	if (typeof tp?.system?.prompt === 'function') {
+		try {
+			const answer = await tp.system.prompt('Who did they bring?');
+			return typeof answer === 'string' ? answer.trim() : '';
+		} catch {
+			return '';
+		}
+	}
+	return '';
+}
+
 function loadRvLog(notices: string[], extra?: {
 	getMarkdownFiles?: () => unknown[];
 	getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
@@ -1279,6 +1395,11 @@ function loadRvLog(notices: string[], extra?: {
 		Notice: new (message: string) => unknown,
 	) => (tp: unknown, kind: string) => Promise<void>;
 	const module = { exports: {} as unknown };
+	const plugins = extra?.plugins && typeof extra.plugins === 'object'
+		? extra.plugins as { plugins?: Record<string, LogPlugin> }
+		: { plugins: {} as Record<string, LogPlugin> };
+	if (!plugins.plugins) plugins.plugins = {};
+	const locator = plugins.plugins['rv-locator'] ?? (plugins.plugins['rv-locator'] = {});
 	const app = {
 		vault: {
 			read: async (note: { path: string }) => readFileSync(note.path, 'utf8'),
@@ -1287,7 +1408,7 @@ function loadRvLog(notices: string[], extra?: {
 			getMarkdownFiles: extra?.getMarkdownFiles,
 		},
 		metadataCache: extra?.getFileCache ? { getFileCache: extra.getFileCache } : undefined,
-		plugins: extra?.plugins,
+		plugins,
 		workspace: { getActiveFile: () => null },
 		fileManager: {
 			processFrontMatter: async (file: { path: string }, updater: (fm: Record<string, unknown>) => void) => {
@@ -1315,6 +1436,7 @@ function loadRvLog(notices: string[], extra?: {
 			},
 		},
 	};
+	installLogNoteHome(locator, app, notices);
 	return load(module, module.exports, app, class Notice {
 		constructor(message: string) { notices.push(message); }
 	});

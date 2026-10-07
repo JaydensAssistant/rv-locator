@@ -61,6 +61,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const win = this.root.win ?? window;
 		this.position = new LivePosition(win, (state) => {
 			this.geoState = state;
+			this.plugin.noteLiveFix(state.fix);
 			this.onGeoChanged();
 		});
 		this.syncPositionSource();
@@ -303,7 +304,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const attr = this.root.createDiv('rv-locator-attr');
 		attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
 		attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
+		this.afterChrome();
 	}
+
+	/** Phone hub inserts the map stack once the scroll column exists. */
+	protected afterChrome(): void {}
 
 	private renderBanner(): void {
 		if (!this.chromeReady) return;

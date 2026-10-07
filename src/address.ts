@@ -1,6 +1,6 @@
 import { parseDisplayAddress } from './address-display';
-import { geocodeEndpoint, type GeoapifyRegion } from './constants';
-import type { GeocodeHit } from './types';
+import { autocompleteEndpoint, geocodeEndpoint, type GeoapifyRegion } from './constants';
+import type { GeocodeHit, RouteProvider } from './types';
 
 export interface AddressParts {
 	housenumber?: string;
@@ -66,6 +66,52 @@ export function buildGeocodeUrl(
 		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
 	}
 	return url.toString();
+}
+
+/** Autocomplete type-ahead. `limit` stays 5. A circle filter is the home-first pass. */
+export function buildAutocompleteUrl(
+	address: string,
+	apiKey: string,
+	region: GeoapifyRegion = 'global',
+	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null },
+): string {
+	const text = addressForQuery(address);
+	if (!text) throw new Error('Address is empty.');
+	if (!apiKey.trim()) throw new Error('API key is empty.');
+	const url = new URL(autocompleteEndpoint(region));
+	url.searchParams.set('text', text);
+	url.searchParams.set('format', 'json');
+	url.searchParams.set('limit', '5');
+	url.searchParams.set('apiKey', apiKey.trim());
+	const bias = options?.bias;
+	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+		const radius = options?.filterRadiusM;
+		if (radius && radius > 0) {
+			url.searchParams.set('filter', `circle:${bias.lon},${bias.lat},${Math.round(radius)}`);
+		}
+	}
+	return url.toString();
+}
+
+export function directionsUrl(
+	provider: RouteProvider,
+	input: { lat?: number | null; lon?: number | null; address?: string | null; city?: string | null },
+): string {
+	const lat = input.lat;
+	const lon = input.lon;
+	const point = typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon);
+	const query = mapsSearchQuery(input.address ?? '', input.city);
+	if (provider === 'apple') {
+		if (point) return `https://maps.apple.com/?daddr=${lat},${lon}`;
+		return `https://maps.apple.com/?daddr=${encodeURIComponent(query)}`;
+	}
+	if (provider === 'waze') {
+		if (point) return `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
+		return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+	}
+	if (point) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lon}`)}`;
+	return googleMapsDirectionsLink(input.address ?? '', input.city);
 }
 
 /** Same characters, one for one, after trimming and collapsing whitespace. */

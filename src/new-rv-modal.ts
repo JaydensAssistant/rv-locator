@@ -1,11 +1,11 @@
 import { Modal, Setting, type App } from 'obsidian';
-import { emptyShare, type VisitShare } from './catalog';
+import { AddressSuggestController, type SuggestFetchResult } from './address-suggest';
+import { emptyShare, studyPrefill, type LessonSpec, type VisitShare } from './catalog';
 import { mountShareFields } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
-import { mountAlwaysChevron } from './suggest-field';
-import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne } from './address';
+import { SUGGEST_PENDING, mountAlwaysChevron } from './suggest-field';
+import { abbreviateAddress, addressesMatchOneForOne } from './address';
 import { companionChoices, exactCompanion, matchingCompanion } from './companions';
-import { ADDRESS_LOOKUP_IDLE_MS, addressLookupDecision } from './lookup-cadence';
 import type { RvGender } from './status';
 import type { GeocodeHit } from './types';
 
@@ -22,15 +22,24 @@ export interface NewRvIdentity {
 	media: string;
 	publicationList?: string[];
 	mediaList?: string[];
+	lesson?: string;
+	lessonFrom?: string;
+	lessonTo?: string;
+	extraLesson?: string;
+	extraFrom?: string;
+	extraTo?: string;
 }
 
 export interface NewRvModalOptions {
 	defaultPriority: number;
 	companions: readonly string[];
-	/** Geoapify hits for the address field. Empty when there is no key or no match. */
-	lookupAddress?: (query: string) => Promise<readonly GeocodeHit[]>;
-	/** Stored addresses, newest first. Shown by the chevron until a lookup returns hits. */
-	recentAddresses?: readonly string[];
+	/** Home-biased autocomplete, then a wider pass when home is sparse. */
+	suggestHome?: (query: string) => Promise<SuggestFetchResult>;
+	suggestBroad?: (query: string) => Promise<readonly GeocodeHit[]>;
+	/** Session cache shared with the plugin so reopening the modal is instant. */
+	addressCache?: () => Map<string, GeocodeHit[]>;
+	lessons?: readonly LessonSpec[];
+	customLessons?: readonly string[];
 	title?: string;
 	intro?: string;
 	preset?: Partial<Pick<NewRvIdentity, 'gender' | 'name' | 'address' | 'companion' | 'priority'>>;
@@ -56,14 +65,11 @@ export class NewRvIdentityModal extends Modal {
 	private settled = false;
 	private companionPicked = false;
 	private verifiedHit: GeocodeHit | null = null;
-	private addressList: HTMLElement | null = null;
 	private addressResults: GeocodeHit[] = [];
+	private addressLoading = false;
 	private addressInput: TextControl | null = null;
 	private companionInput: TextControl | null = null;
-	private idleTimer = 0;
-	private sentQuery = '';
-	private lookupFlight: Promise<void> | null = null;
-	private queuedQuery: string | null = null;
+	private suggest: AddressSuggestController | null = null;
 	private share: VisitShare = emptyShare();
 
 	constructor(
@@ -131,21 +137,32 @@ export class NewRvIdentityModal extends Modal {
 					const exact = this.addressResults.find((hit) => addressesMatchOneForOne(value, hit.formattedAddress));
 					if (exact) {
 						this.verifiedHit = { ...exact, formattedAddress: exact.formattedAddress.replace(/\s+/g, ' ').trim() };
-						this.releaseAddressList();
 						return;
 					}
-					this.attachAddressList();
-					this.scheduleAddressLookup(value);
+					this.suggest?.push(value);
 				});
-				const listId = `rv-locator-addresses-${Date.now()}`;
-				this.addressList = contentEl.createEl('datalist', { attr: { id: listId } });
-				text.inputEl?.setAttribute('list', listId);
 				if (text.inputEl) {
 					mountAlwaysChevron(text.inputEl, () => this.addressChevronItems(), (picked) => {
+						if (picked === SUGGEST_PENDING) return;
 						const hit = this.addressResults.find((item) => item.formattedAddress === picked);
 						if (hit) this.selectAddress(hit);
-						else this.useRecentAddress(picked);
 					});
+					const home = this.options.suggestHome;
+					const broad = this.options.suggestBroad;
+					if (home && broad) {
+						this.suggest = new AddressSuggestController({
+							now: () => Date.now(),
+							schedule: (ms, run) => window.setTimeout(run, ms),
+							cancel: (id) => { window.clearTimeout(id); },
+						}, { home, broad }, (view) => {
+							this.addressLoading = view.loading;
+							this.addressResults = view.hits.map((hit) => ({
+								...hit,
+								formattedAddress: hit.formattedAddress.replace(/\s+/g, ' ').trim(),
+							}));
+							text.inputEl?.dispatchEvent(new Event('rv-suggest-sync'));
+						}, this.options.addressCache?.());
+					}
 				}
 			});
 		new Setting(contentEl)
@@ -179,10 +196,12 @@ export class NewRvIdentityModal extends Modal {
 		mountShareFields(contentEl, {
 			publications: this.options.publications ?? [],
 			media: this.options.media ?? [],
-			customLessons: [],
-			lessons: [],
+			customLessons: this.options.customLessons ?? [],
+			lessons: this.options.lessons ?? [],
 			showLiterature: true,
 			showLesson: false,
+			optionalLesson: true,
+			lessonPrefill: studyPrefill(null, this.options.lessons),
 			initial: this.share,
 		}, (next) => { this.share = next; });
 		new Setting(contentEl)
@@ -208,7 +227,8 @@ export class NewRvIdentityModal extends Modal {
 	}
 
 	onClose(): void {
-		window.clearTimeout(this.idleTimer);
+		this.suggest?.dispose();
+		this.suggest = null;
 		if (!this.settled) this.onDone(null);
 		this.contentEl.empty();
 	}
@@ -232,6 +252,12 @@ export class NewRvIdentityModal extends Modal {
 			media: this.share.media.trim(),
 			publicationList: this.share.publicationList,
 			mediaList: this.share.mediaList,
+			lesson: this.share.lesson,
+			lessonFrom: this.share.lessonFrom,
+			lessonTo: this.share.lessonTo,
+			extraLesson: this.share.extraLesson,
+			extraFrom: this.share.extraFrom,
+			extraTo: this.share.extraTo,
 		});
 		this.close();
 	}
@@ -259,100 +285,9 @@ export class NewRvIdentityModal extends Modal {
 		if (!addressesMatchOneForOne(value, this.verifiedHit.formattedAddress)) this.verifiedHit = null;
 	}
 
-	private scheduleAddressLookup(value: string): void {
-		window.clearTimeout(this.idleTimer);
-		const query = value.trim();
-		const decision = addressLookupDecision(this.sentQuery.length, query.length);
-		if (decision === 'wait') {
-			this.addressResults = [];
-			this.paintAddressHits();
-			return;
-		}
-		if (decision === 'now') {
-			this.enqueueAddress(query);
-			return;
-		}
-		this.idleTimer = window.setTimeout(() => this.enqueueAddress(query), ADDRESS_LOOKUP_IDLE_MS);
-	}
-
-	private enqueueAddress(query: string): void {
-		const current = query.trim();
-		if (addressLookupDecision(0, current.length) === 'wait') return;
-		if (this.lookupFlight) {
-			this.queuedQuery = current;
-			return;
-		}
-		if (current === this.sentQuery) return;
-		this.lookupFlight = this.fetchAddress(current).finally(() => {
-			this.lookupFlight = null;
-			const next = this.queuedQuery;
-			this.queuedQuery = null;
-			if (!next || next === current || this.address.trim() !== next) return;
-			const decision = addressLookupDecision(current.length, next.length);
-			if (decision === 'now') this.enqueueAddress(next);
-			else if (decision === 'idle') {
-				this.idleTimer = window.setTimeout(() => this.enqueueAddress(next), ADDRESS_LOOKUP_IDLE_MS);
-			}
-		});
-	}
-
-	private async fetchAddress(query: string): Promise<void> {
-		const lookup = this.options.lookupAddress;
-		if (!lookup) return;
-		this.sentQuery = query;
-		let hits: readonly GeocodeHit[] = [];
-		try {
-			hits = await lookup(query);
-		} catch {
-			hits = [];
-		}
-		if (this.address.trim() !== query) return;
-		const seen = new Set<string>();
-		this.addressResults = [];
-		for (const hit of hits) {
-			const label = hit.formattedAddress.replace(/\s+/g, ' ').trim();
-			if (!label || seen.has(label)) continue;
-			seen.add(label);
-			this.addressResults.push({ ...hit, formattedAddress: label });
-		}
-		this.paintAddressHits();
-	}
-
-	private paintAddressHits(): void {
-		const list = this.addressList;
-		if (!list) return;
-		if (this.verifiedHit && addressesMatchOneForOne(this.address, this.verifiedHit.formattedAddress)) {
-			this.releaseAddressList();
-			return;
-		}
-		this.attachAddressList();
-		list.empty();
-		for (const hit of this.addressResults) {
-			list.createEl('option', {
-				text: abbreviateAddress(hit.formattedAddress),
-				attr: { value: hit.formattedAddress },
-			});
-		}
-	}
-
-	/** Recent addresses until Geoapify has hits. A lookup replaces the chevron list. */
 	private addressChevronItems(): string[] {
-		return addressChevronLabels(
-			this.options.recentAddresses ?? [],
-			this.addressResults.map((hit) => hit.formattedAddress),
-			this.address,
-		);
-	}
-
-	/** A stored address fills the field. It is not a Geoapify pick, so lookup can still confirm it. */
-	private useRecentAddress(value: string): void {
-		const label = value.replace(/\s+/g, ' ').trim();
-		if (!label) return;
-		this.address = label;
-		this.verifiedHit = null;
-		this.addressInput?.setValue(label);
-		const input = this.addressInput?.inputEl;
-		if (input instanceof HTMLInputElement) input.readOnly = false;
+		const labels = this.addressResults.map((hit) => hit.formattedAddress).filter((label) => label.length > 0);
+		return this.addressLoading ? [SUGGEST_PENDING, ...labels] : labels;
 	}
 
 	private selectAddress(hit: GeocodeHit): void {
@@ -363,14 +298,10 @@ export class NewRvIdentityModal extends Modal {
 		if (shown !== label) this.addressInput?.setValue(label);
 		const input = this.addressInput?.inputEl;
 		if (input instanceof HTMLInputElement) input.readOnly = false;
-		this.releaseAddressList();
 	}
 
 	private commitAddressMatch(): void {
-		if (this.verifiedHit && addressesMatchOneForOne(this.address, this.verifiedHit.formattedAddress)) {
-			this.releaseAddressList();
-			return;
-		}
+		if (this.verifiedHit && addressesMatchOneForOne(this.address, this.verifiedHit.formattedAddress)) return;
 		const needle = this.address.replace(/\s+/g, ' ').trim().toLowerCase();
 		if (!needle) return;
 		const match = this.addressResults.find((hit) => {
@@ -381,21 +312,6 @@ export class NewRvIdentityModal extends Modal {
 		});
 		if (!match) return;
 		this.selectAddress(match);
-	}
-
-	/** A picked address is ordinary text. The dropdown comes back when the text is no longer that pick. */
-	private releaseAddressList(): void {
-		this.addressList?.empty();
-		const input = this.addressInput?.inputEl;
-		input?.removeAttribute('list');
-		if (input instanceof HTMLInputElement) input.readOnly = false;
-	}
-
-	private attachAddressList(): void {
-		const input = this.addressInput?.inputEl;
-		const list = this.addressList;
-		if (!input || !list?.id) return;
-		if (input.getAttribute('list') !== list.id) input.setAttribute('list', list.id);
 	}
 
 	private selectCompanion(value: string): void {

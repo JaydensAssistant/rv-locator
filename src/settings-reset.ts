@@ -115,6 +115,7 @@ function applyAdvanced(next: RVLocatorSettings): void {
 	next.addressProperty = DEFAULT_SETTINGS.addressProperty;
 	next.locationProperty = DEFAULT_SETTINGS.locationProperty;
 	next.mapLinkProperty = DEFAULT_SETTINGS.mapLinkProperty;
+	next.routeProvider = DEFAULT_SETTINGS.routeProvider;
 	next.cityProperty = DEFAULT_SETTINGS.cityProperty;
 	next.countyProperty = DEFAULT_SETTINGS.countyProperty;
 	next.stateProperty = DEFAULT_SETTINGS.stateProperty;

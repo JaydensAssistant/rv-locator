@@ -1,6 +1,7 @@
 import { Setting } from 'obsidian';
 import {
 	catalogSuggestions,
+	lessonBounds,
 	lessonByTitle,
 	lessonPartOptions,
 	mediaAliasIndex,
@@ -20,6 +21,9 @@ export interface ShareFieldOptions {
 	lessons: readonly LessonSpec[];
 	showLiterature: boolean;
 	showLesson: boolean;
+	/** Collapsed lesson block for a return visit that is not a study. */
+	optionalLesson?: boolean;
+	lessonPrefill?: { lesson: string; from: string; to: string };
 	initial: VisitShare;
 }
 
@@ -41,7 +45,7 @@ export function mountShareFields(
 		mountTitleList(
 			contentEl,
 			'What literature did you leave?',
-			'Optional. Type a title or pick one. Add another when you left more than one.',
+			'Optional. Pick or type a title. It becomes a chip so you can add another.',
 			shareTitles(share.publications, share.publicationList),
 			(query) => catalogSuggestions(options.publications, [], query, publicationAliasIndex()),
 			(values) => publish({ publications: values[0] ?? '', publicationList: values }),
@@ -49,44 +53,93 @@ export function mountShareFields(
 		mountTitleList(
 			contentEl,
 			'What media did you show?',
-			'Optional. Type a title or pick one. Add another when you showed more than one.',
+			'Optional. Pick or type a title. It becomes a chip so you can add another.',
 			shareTitles(share.media, share.mediaList),
 			(query) => catalogSuggestions(options.media, [], query, mediaAliasIndex()),
 			(values) => publish({ media: values[0] ?? '', mediaList: values }),
 		);
 	}
-	if (options.showLesson) {
-		const block = contentEl.createDiv('rv-study-block');
-		block.createEl('h3', { cls: 'rv-study-heading', text: 'Study' });
-		const lessonNames = [
-			...options.customLessons,
-			...options.lessons.map((lesson) => lesson.title),
-		];
-		let parts = partsFor(share.lesson, options);
-		const from = { current: share.lessonFrom };
-		const to = { current: share.lessonTo };
-		const holders: { from?: HTMLElement } = {};
-		mountField(
-			block,
-			'What lesson did you work on?',
-			'Optional. You do not have to finish the lesson.',
-			'Optional',
-			share.lesson,
-			(query) => rankSuggestions(query, lessonNames),
-			(value) => {
-				parts = partsFor(value, options);
-				publish({ lesson: value });
-				repaintRange(holders, parts, from, to, publish);
-			},
-			false,
-			true,
-		);
-		const range = block.createDiv('rv-lesson-range');
-		holders.from = range;
-		repaintRange(holders, parts, from, to, publish);
-		mountExtraLesson(block, options, share, lessonNames, publish);
-	}
+	if (options.showLesson) mountLessonBlock(contentEl, options, share, publish, 'Study');
+	else if (options.optionalLesson) mountOptionalLesson(contentEl, options, share, publish);
 	return share;
+}
+
+function mountOptionalLesson(
+	contentEl: HTMLElement,
+	options: ShareFieldOptions,
+	share: VisitShare,
+	publish: (next: Partial<VisitShare>) => void,
+): void {
+	const host = contentEl.createDiv('rv-study-optional');
+	const toggle = host.createEl('button', {
+		cls: 'rv-study-toggle',
+		text: 'Studied a lesson?',
+		attr: { type: 'button', 'aria-expanded': 'false' },
+	});
+	const body = host.createDiv('rv-study-optional-body');
+	body.hidden = true;
+	let opened = false;
+	toggle.addEventListener('click', (event) => {
+		event.preventDefault();
+		const next = body.hidden;
+		body.hidden = !next;
+		toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+		if (!next) {
+			publish({ lesson: '', lessonFrom: '', lessonTo: '', extraLesson: '', extraFrom: '', extraTo: '' });
+			return;
+		}
+		if (opened) return;
+		opened = true;
+		const prefill = options.lessonPrefill;
+		if (prefill?.lesson) {
+			share.lesson = prefill.lesson;
+			share.lessonFrom = prefill.from;
+			share.lessonTo = prefill.to;
+			publish({ lesson: prefill.lesson, lessonFrom: prefill.from, lessonTo: prefill.to });
+		}
+		mountLessonBlock(body, options, share, publish, 'Study');
+	});
+}
+
+function mountLessonBlock(
+	parent: HTMLElement,
+	options: ShareFieldOptions,
+	share: VisitShare,
+	publish: (next: Partial<VisitShare>) => void,
+	heading: string,
+): void {
+	const block = parent.createDiv('rv-study-block');
+	block.createEl('h3', { cls: 'rv-study-heading', text: heading });
+	const lessonNames = [
+		...options.customLessons,
+		...options.lessons.map((lesson) => lesson.title),
+	];
+	let parts = partsFor(share.lesson, options);
+	const from = { current: share.lessonFrom };
+	const to = { current: share.lessonTo };
+	const holders: { from?: HTMLElement } = {};
+	mountField(
+		block,
+		'What lesson did you work on?',
+		'Optional. You do not have to finish the lesson.',
+		'Optional',
+		share.lesson,
+		(query) => rankSuggestions(query, lessonNames),
+		(value) => {
+			parts = partsFor(value, options);
+			const bounds = lessonBounds(value, options.lessons, options.customLessons);
+			from.current = bounds.from;
+			to.current = bounds.to;
+			publish({ lesson: value, lessonFrom: bounds.from, lessonTo: bounds.to });
+			repaintRange(holders, parts, from, to, publish);
+		},
+		false,
+		true,
+	);
+	const range = block.createDiv('rv-lesson-range');
+	holders.from = range;
+	repaintRange(holders, parts, from, to, publish);
+	mountExtraLesson(block, options, share, lessonNames, publish);
 }
 
 function mountExtraLesson(
@@ -120,7 +173,10 @@ function mountExtraLesson(
 			(query) => rankSuggestions(query, lessonNames),
 			(value) => {
 				parts = partsFor(value, options);
-				publish({ extraLesson: value });
+				const bounds = lessonBounds(value, options.lessons, options.customLessons);
+				from.current = bounds.from;
+				to.current = bounds.to;
+				publish({ extraLesson: value, extraFrom: bounds.from, extraTo: bounds.to });
 				repaintExtra(holders, parts, from, to, publish);
 			},
 			false,
@@ -199,36 +255,55 @@ function mountTitleList(
 	suggestions: (query: string) => readonly string[],
 	onChange: (values: string[]) => void,
 ): void {
-	const items = values.length > 0 ? [...values] : [''];
+	const items = values.map((item) => item.trim()).filter(Boolean);
 	const host = parent.createDiv('rv-share-list');
+	const chips = host.createDiv('rv-share-chips');
 	const sync = (): void => {
 		onChange(items.map((item) => item.trim()).filter(Boolean));
 	};
-	const add = (index: number): void => {
-		mountField(
-			host,
-			index === 0 ? name : 'Another',
-			index === 0 ? desc : '',
-			'Optional',
-			items[index] ?? '',
-			suggestions,
-			(value) => {
-				items[index] = value;
+	const paintChips = (): void => {
+		chips.empty();
+		items.forEach((title, index) => {
+			const chip = chips.createSpan('rv-share-chip');
+			chip.createSpan({ text: title });
+			const remove = chip.createEl('button', {
+				cls: 'rv-share-chip-x',
+				text: '×',
+				attr: { type: 'button', 'aria-label': `Remove ${title}` },
+			});
+			remove.addEventListener('click', (event) => {
+				event.preventDefault();
+				items.splice(index, 1);
+				paintChips();
 				sync();
-			},
-			true,
-		);
+			});
+		});
 	};
-	items.forEach((_, index) => add(index));
-	const more = host.createEl('button', {
-		cls: 'rv-share-add',
-		text: 'Add another',
-		attr: { type: 'button' },
-	});
-	more.addEventListener('click', (event) => {
-		event.preventDefault();
-		items.push('');
-		add(items.length - 1);
+	paintChips();
+	let draft = '';
+	const setting = new Setting(host).setName(name);
+	if (desc) setting.setDesc(desc);
+	setting.addText((text) => {
+		text.setPlaceholder('Optional');
+		const commit = (value: string): void => {
+			const title = value.trim();
+			if (!title) return;
+			if (!items.some((item) => item.toLowerCase() === title.toLowerCase())) items.push(title);
+			draft = '';
+			text.setValue('');
+			paintChips();
+			sync();
+		};
+		text.onChange((value) => { draft = value; });
+		text.inputEl.addEventListener('keydown', (event) => {
+			if (!(event instanceof KeyboardEvent) || event.key !== 'Enter') return;
+			event.preventDefault();
+			commit(draft);
+		});
+		text.inputEl.addEventListener('blur', () => { commit(draft); });
+		mountAlwaysChevron(text.inputEl, () => suggestions(draft), (picked) => {
+			commit(picked);
+		}, (value) => splitTitleSuffix(value));
 	});
 }
 
