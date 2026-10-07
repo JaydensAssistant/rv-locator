@@ -348,7 +348,7 @@
 .rv-locator-sort-preset {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35em;
+	gap: 0.22em;
 	box-sizing: border-box;
 	flex: 0 0 auto;
 	width: max-content;
@@ -356,7 +356,8 @@
 	overflow: visible;
 	justify-content: center;
 	margin: 0;
-	padding: 4px 8px;
+	padding: 2px 6px;
+	letter-spacing: -0.02em;
 	white-space: nowrap;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 999px;
@@ -1726,6 +1727,7 @@ body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > 
 	--rv-notes-pad: 0.3em;
 	box-sizing: border-box;
 	width: 100%;
+	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
 	padding: var(--rv-notes-pad) 0.6em;
 	line-height: 1.45;
 	resize: none;
@@ -3126,37 +3128,45 @@ a.rv-address-link.is-empty {
 	text-align: start;
 }
 
-.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
-	color: var(--rv-urgency-ink, var(--text-on-accent));
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner,
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner svg {
+	color: #fff;
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner svg {
+	stroke: #fff;
 }
 
 /*
-  Same lightness steps as the accent visit buttons, taken from the live
-  traffic-light band. Outside the note the accent steps still apply.
+  Same hue as the live urgency accent. The leftmost step keeps that
+  lightness unless the accent is washed out (ceiling 0.80) or near-black
+  (floor 0.46). Later steps move down, and the darkest stays at or above 0.34
+  so a white icon still reads. Chroma stays in a sane band so yellow does
+  not collapse into brown. Outside the note the accent steps still apply.
 */
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--rv-urgency-accent, var(--interactive-accent)) 82%, oklch(0.64 0 0));
-	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.54, l, 0.68) c h);
+	--rv-visit-btn-bg: var(--rv-urgency-accent, var(--interactive-accent));
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
 }
 
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--rv-urgency-accent, var(--interactive-accent)) 70%, oklch(0.54 0 0));
-	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.48, calc(l - 0.06), 0.62) c h);
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 88%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.42, calc(l - 0.06), 0.74) clamp(0.05, c, 0.16) h);
 }
 
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--rv-urgency-accent, var(--interactive-accent)) 58%, oklch(0.46 0 0));
-	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.42, calc(l - 0.12), 0.56) c h);
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 76%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.38, calc(l - 0.12), 0.68) clamp(0.05, c, 0.16) h);
 }
 
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--rv-urgency-accent, var(--interactive-accent)) 46%, oklch(0.38 0 0));
-	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.36, calc(l - 0.18), 0.5) c h);
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 64%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.36, calc(l - 0.18), 0.62) clamp(0.05, c, 0.16) h);
 }
 
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(5) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--rv-urgency-accent, var(--interactive-accent)) 36%, oklch(0.32 0 0));
-	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.3, calc(l - 0.24), 0.46) c h);
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 52%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.34, calc(l - 0.24), 0.56) clamp(0.05, c, 0.16) h);
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
@@ -3272,4 +3282,29 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	width: 100%;
 	min-width: 100%;
 	max-width: 100%;
+	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
+}
+
+.rv-locator-search {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.rv-locator-search-input {
+	flex: 1 1 auto;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	margin: 0;
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font: inherit;
+	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
 }

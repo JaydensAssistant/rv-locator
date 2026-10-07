@@ -27,7 +27,9 @@ import { formatGlanceableCounter } from '../src/dates';
 import { pinStateIcon } from '../src/map-pins';
 import { interpolatePalette, shadeHeats } from '../src/map-shade';
 import { insidePriorityFloor } from '../src/scoring';
+import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceRecord } from '../src/glance-search';
 import { equalPillWidth } from '../src/sort-pills';
+import { visitButtonLightness } from '../src/visit-buttons';
 import { DEFAULT_IDEALITY_FLOOR_DAYS, compactModeFrom, mergeSettings } from '../src/types';
 import { newestLessonEnd, shareFromLine, visitExtraMarkup } from '../src/visit-share';
 
@@ -210,8 +212,13 @@ describe('in-note urgency chrome', () => {
 		assert.equal(/nth-child\(n\)[^{]*\{[^}]*--rv-visit-btn-bg:\s*var\(--rv-urgency-accent/.test(css), false);
 		for (const child of [1, 2, 3, 4, 5]) {
 			const block = css.match(new RegExp(String.raw`\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(${child}\) > button\.mb-button-inner \{([^}]*)\}`))?.[1] ?? '';
-			assert.match(block, /oklch\(from var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+			assert.match(block, /oklch\(from var\(--rv-urgency-accent, var\(--interactive-accent\)\) clamp\(0\.\d+, (?:l|calc\(l - 0\.\d+\)), 0\.\d+\) clamp\(0\.05, c, 0\.16\)/);
 		}
+		assert.match(css, /\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(1\) > button\.mb-button-inner \{[^}]*clamp\(0\.46, l, 0\.80\)/);
+		assert.match(css, /\.rv-visit-btn > button\.mb-button-inner svg \{\s*color: #fff;/);
+		assert.match(css, /\.rv-dashboard textarea \{[^}]*font-family: var\(--font-interface/);
+		assert.match(css, /\.rv-locator-sort-preset \{[^}]*padding: 2px 6px;[^}]*letter-spacing: -0\.02em;/);
+		assert.doesNotMatch(css, /\.rv-sort-label \{[^}]*text-overflow: ellipsis/);
 		const address = [...css.matchAll(/a\.rv-address-link \{([^}]*)\}/g)].map((match) => match[1] ?? '');
 		assert.equal(address.some((block) => /justify-self:\s*start/.test(block)), false);
 		const stretched = address.find((block) => /width:\s*100%/.test(block) && /justify-self:\s*stretch/.test(block) && /text-decoration:\s*underline/.test(block));
@@ -221,5 +228,67 @@ describe('in-note urgency chrome', () => {
 		assert.doesNotMatch(hubHover, /text-decoration:\s*none/);
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-lead \{[^}]*flex-grow:\s*0/);
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-ago[^{]*\{[^}]*margin-left:\s*0/);
+	});
+
+	it('keeps the leftmost visit button on the accent and floors the darkest step', () => {
+		const amber = 0.7386;
+		assert.equal(visitButtonLightness(amber, 0), amber);
+		const steps = [0, 1, 2, 3, 4].map((index) => visitButtonLightness(amber, index));
+		assert.deepEqual(steps, [...steps].sort((a, b) => b - a));
+		assert.ok((steps[4] ?? 0) >= 0.34);
+		assert.ok((steps[0] ?? 0) > (steps[4] ?? 0));
+		assert.equal(visitButtonLightness(0.95, 0), 0.8);
+		assert.equal(visitButtonLightness(0.1, 0), 0.46);
+		assert.equal(visitButtonLightness(0.1, 4), 0.34);
+	});
+});
+
+describe('glancable smart search', () => {
+	const now = new Date(2026, 9, 7, 15, 0, 0);
+	const query = 'Met yesterday left brochure dog Jamie';
+
+	function person(patch: Partial<GlanceRecord> = {}): GlanceRecord {
+		return {
+			name: 'Pat Example',
+			address: '1 Main St',
+			city: 'Austin',
+			met: new Date(2026, 9, 6, 16, 30),
+			spoke: new Date(2026, 8, 1, 10, 0),
+			attempted: new Date(2026, 8, 2, 10, 0),
+			studied: null,
+			literature: 'Enjoy Life Forever Brochure',
+			media: '',
+			lessons: '',
+			taken: '',
+			notes: 'Talked about a dog named Jamie',
+			...patch,
+		};
+	}
+
+	it('matches met yesterday, a brochure, and both note words together', () => {
+		const parsed = parseGlanceQuery(query, now);
+		assert.equal(matchesGlanceQuery(person(), parsed), true);
+		assert.equal(matchesGlanceQuery(person({ met: new Date(2026, 9, 7, 11, 0) }), parsed), false);
+		assert.equal(matchesGlanceQuery(person({ literature: 'Something Tiny Tract' }), parsed), false);
+		assert.equal(matchesGlanceQuery(person({ notes: 'Talked about a dog' }), parsed), false);
+		assert.equal(matchesGlanceQuery(person({ spoke: new Date(2026, 9, 6, 16, 30), met: new Date(2026, 8, 1, 10, 0) }), parseGlanceQuery('Spoke yesterday', now)), true);
+		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('Spoke yesterday', now)), false);
+		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('', now)), true);
+		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('Austin', now)), true);
+	});
+
+	it('reads visit notes and stamp literature off the note', () => {
+		const record = glanceRecordFromNote({
+			name: 'Pat Example',
+			address: '1 Main St',
+			city: '',
+			frontmatter: {
+				Met: '2026-10-06T16:30',
+				City: 'Austin',
+				'sVisit1Notes': 'Talked about a dog named Jamie',
+			},
+			body: '##### Tue, 4pm — Oct 6, 2026 · «book» «Enjoy Life Forever Brochure»',
+		});
+		assert.equal(matchesGlanceQuery(record, parseGlanceQuery(query, now)), true);
 	});
 });

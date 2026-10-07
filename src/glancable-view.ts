@@ -1,4 +1,4 @@
-import { setIcon, type QueryController } from 'obsidian';
+import { setIcon, TFile, type QueryController } from 'obsidian';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
@@ -15,6 +15,7 @@ import { cardPersonTitle } from './note-name';
 import { cardReturnLead } from './schedule';
 import { calendarDaysSince, formatGlanceableCounter } from './dates';
 import { readProperty } from './frontmatter';
+import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceQuery } from './glance-search';
 import { formatStudyFraction } from './catalog';
 import { resolveStatus, statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
@@ -23,6 +24,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 	readonly type: string;
 	private layoutObserver: ResizeObserver | null = null;
 	private chromeHost: HTMLElement | null = null;
+	private glanceQuery = '';
+	private searchOpen = false;
+	private searchCaret: number | null = null;
+	private bodyCache = new Map<string, { mtime: number; body: string }>();
+	private bodiesLoading = false;
+	private parsedKey = '';
+	private parsedQuery: GlanceQuery | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -45,6 +53,42 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.syncBasesChrome();
 	}
 
+	protected override sortedGroups() {
+		const groups = super.sortedGroups();
+		const text = this.glanceQuery.trim();
+		if (!text) return groups;
+		this.loadSearchBodies();
+		const query = this.queryFor(text);
+		return groups
+			.map((group) => ({
+				label: group.label,
+				rows: group.rows.filter((row) => matchesGlanceQuery(this.recordFor(row), query)),
+			}))
+			.filter((group) => group.rows.length > 0);
+	}
+
+	protected override searchReplacesBar(): boolean {
+		return this.searchOpen;
+	}
+
+	protected override paintSearchControl(parent: HTMLElement): void {
+		if (this.searchOpen) {
+			this.paintSearchField(parent);
+			return;
+		}
+		const button = parent.createEl('button', {
+			cls: 'rv-locator-toolbar-quiet',
+			attr: { type: 'button', 'aria-label': 'Search', title: 'Search', 'aria-expanded': 'false' },
+		});
+		setIcon(button, 'search');
+		button.addEventListener('click', () => {
+			this.searchOpen = true;
+			this.searchCaret = this.glanceQuery.length;
+			this.renderBody();
+		});
+		if (parent.firstChild) parent.insertBefore(button, parent.firstChild);
+	}
+
 	protected paint(): void {
 		this.applyDensity();
 		const groups = this.sortedGroups();
@@ -59,6 +103,98 @@ export class NearbyGlancableView extends NearbyBasesView {
 		});
 		this.applyColumnSnap();
 		this.watchLayout();
+	}
+
+	private paintSearchField(parent: HTMLElement): void {
+		const row = parent.createDiv('rv-locator-search');
+		const input = row.createEl('input', {
+			cls: 'rv-locator-search-input',
+			attr: {
+				type: 'search',
+				placeholder: 'Search',
+				'aria-label': 'Search return visits',
+				value: this.glanceQuery,
+			},
+		});
+		input.value = this.glanceQuery;
+		input.addEventListener('input', () => {
+			this.glanceQuery = input.value;
+			this.searchCaret = input.selectionStart;
+			this.renderBody();
+		});
+		input.addEventListener('keydown', (event) => {
+			if (event.key !== 'Escape') return;
+			event.preventDefault();
+			this.collapseSearch();
+		});
+		const clear = row.createEl('button', {
+			cls: 'rv-locator-toolbar-quiet',
+			attr: { type: 'button', 'aria-label': 'Clear search', title: 'Clear search' },
+		});
+		setIcon(clear, 'x');
+		clear.addEventListener('click', () => {
+			this.collapseSearch();
+		});
+		const caret = this.searchCaret ?? input.value.length;
+		input.focus();
+		input.setSelectionRange(caret, caret);
+	}
+
+	private collapseSearch(): void {
+		this.glanceQuery = '';
+		this.searchOpen = false;
+		this.searchCaret = null;
+		this.parsedKey = '';
+		this.parsedQuery = null;
+		this.renderBody();
+	}
+
+	private queryFor(text: string): GlanceQuery {
+		if (this.parsedKey !== text || !this.parsedQuery) {
+			this.parsedQuery = parseGlanceQuery(text, new Date());
+			this.parsedKey = text;
+		}
+		return this.parsedQuery;
+	}
+
+	private recordFor(row: RowModel) {
+		const file = this.app.vault.getAbstractFileByPath(row.path);
+		const frontmatter = file instanceof TFile
+			? (this.app.metadataCache.getFileCache(file)?.frontmatter ?? null) as Record<string, unknown> | null
+			: null;
+		return glanceRecordFromNote({
+			name: row.name,
+			address: row.addressText || row.addressStreet || '',
+			city: row.addressCity || '',
+			frontmatter,
+			body: this.bodyCache.get(row.path)?.body ?? '',
+		});
+	}
+
+	private loadSearchBodies(): void {
+		if (this.bodiesLoading) return;
+		const files: TFile[] = [];
+		for (const group of this.groups) {
+			for (const row of group.rows) {
+				const file = this.app.vault.getAbstractFileByPath(row.path);
+				if (!(file instanceof TFile)) continue;
+				const cached = this.bodyCache.get(file.path);
+				if (!cached || cached.mtime !== file.stat.mtime) files.push(file);
+			}
+		}
+		if (files.length === 0) return;
+		this.bodiesLoading = true;
+		void Promise.all(files.map(async (file) => {
+			try {
+				const body = await this.app.vault.cachedRead(file);
+				this.bodyCache.set(file.path, { mtime: file.stat.mtime, body });
+			} catch {
+				// Frontmatter still searches name, address, dates, and logged titles.
+			}
+		})).then(() => {
+			this.bodiesLoading = false;
+			if (this.glanceQuery.trim()) this.renderBody();
+		});
 	}
 
 	private paintCard(parent: HTMLElement, row: RowModel, key: string): void {

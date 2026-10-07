@@ -406,7 +406,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	private totalRows(): number {
-		return this.groups.reduce((sum, group) => sum + group.rows.length, 0);
+		return this.sortedGroups().reduce((sum, group) => sum + group.rows.length, 0);
 	}
 
 	private readOrder(): BasesPropertyId[] {
@@ -426,6 +426,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private paintSortPresets(): void {
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		this.sortEl.empty();
+		if (this.searchReplacesBar()) {
+			this.paintSearchControl(this.sortEl);
+			return;
+		}
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
@@ -477,9 +481,18 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
 		});
+		if (this.mode === 'glancable') this.paintSearchControl(actions);
 		equalizeSortPills(this.sortButtonsEl);
 		this.sortButtonsEl.scrollLeft = savedScroll;
 	}
+
+	/** Glancable replaces the pill row with the expanded search field. */
+	protected searchReplacesBar(): boolean {
+		return false;
+	}
+
+	/** Collapsed search icon, or the expanded field when `searchReplacesBar` is set. */
+	protected paintSearchControl(_parent: HTMLElement): void {}
 
 	protected paintSortExtras(): void {
 		// Ideality planner was removed in 1.2.6. It may return later.
