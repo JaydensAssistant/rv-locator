@@ -20,7 +20,7 @@ import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFract
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
-import { decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
+import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
@@ -240,20 +240,24 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerView(MAP_VIEW_TYPE, (leaf) => new RvMapView(leaf, this));
 
 		this.registerMarkdownPostProcessor((element, context) => {
+			const path = context.sourcePath;
+			applyLiveUrgency(element, path, this.noteChromeHost());
 			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
 			decorateAttemptLog(element, hasCallout ? this.suggestionCalloutType() : undefined);
 			refreshStampAgeLabels(element);
-			this.decorateOpenNote(element, context.sourcePath);
+			this.decorateOpenNote(element, path);
 			decorateVisitControls(
 				element,
 				() => context.getSectionInfo(element)?.lineStart ?? null,
-				(target, evt) => this.openVisitMenu(context.sourcePath, target, evt),
+				(target, evt) => this.openVisitMenu(path, target, evt),
 			);
+			const lastDelay = NOTES_FIT_DELAYS_MS[NOTES_FIT_DELAYS_MS.length - 1] ?? 2_500;
 			for (const delay of NOTES_FIT_DELAYS_MS) {
 				window.setTimeout(() => {
 					if (this.unloaded) return;
 					fitNotesBoxes(element);
-					this.decorateOpenNote(element, context.sourcePath);
+					applyLiveUrgency(element, path, this.noteChromeHost(), delay === lastDelay);
+					this.decorateOpenNote(element, path);
 				}, delay);
 			}
 		});
@@ -396,7 +400,18 @@ export default class RVLocatorPlugin extends Plugin {
 		this.scheduleNotesFit();
 		this.maybeSessionLocationNotice();
 		if (!file) return;
+		this.primeOpenUrgency(file);
 		window.setTimeout(() => this.openInReadingView(file, false), 0);
+	}
+
+	/** Accent vars on the leaf before the preview's first paint. */
+	private primeOpenUrgency(file: TFile): void {
+		const host = this.noteChromeHost();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) continue;
+			applyLiveUrgency(view.containerEl, file.path, host);
+		}
 	}
 
 	private locationNoticeClaimed = false;

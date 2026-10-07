@@ -484,6 +484,18 @@
 	background: var(--background-primary);
 }
 
+.rv-locator-glancable .rv-locator-search-slot {
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 100%;
+	padding: 0 10px 6px;
+}
+
+.rv-locator-glancable .rv-locator-search-slot.is-focused .rv-locator-search-input {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+}
+
 .rv-locator-glancable .rv-locator-new-rv {
 	width: var(--rv-control-size, 28px);
 	height: var(--rv-control-size, 28px);
@@ -689,7 +701,7 @@
 	white-space: nowrap;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-map-pin {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin {
 	display: inline-flex;
 	box-sizing: border-box;
 	flex: 0 0 auto;
@@ -705,7 +717,7 @@
 	text-decoration: none;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-map-pin svg {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg {
 	width: 100%;
 	height: 100%;
 	stroke-width: calc(var(--rv-control-size, 28px) * 0.08);
@@ -770,8 +782,8 @@
 	white-space: nowrap;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-priority-pill,
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill,
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency {
 	display: inline-flex;
 	box-sizing: border-box;
 	flex: 0 0 auto;
@@ -794,17 +806,17 @@
 }
 
 /* Band 0 keeps the outer circle and adds the inner ring drawn in the glyph. */
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency[data-band="0"] {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency[data-band="0"] {
 	border-width: calc(1.25px * var(--rv-font-scale, 1));
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-priority-pill {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
 	padding: 0;
 	font-size: calc(var(--rv-control-size, 28px) * 0.46);
 	font-weight: 700;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph {
 	display: block;
 	flex: 0 0 auto;
 	width: calc(var(--rv-control-size, 28px) * 0.7);
@@ -814,13 +826,13 @@
 	fill: currentColor;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph rect,
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph circle {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph rect,
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph circle {
 	fill: currentColor;
 	stroke: none;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph circle.is-ring {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph circle.is-ring {
 	fill: none;
 	stroke: currentColor;
 	stroke-width: calc(var(--rv-control-size, 28px) * 0.08);
@@ -2764,6 +2776,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-map-pin {
+	--rv-control-size: 32px;
 	position: absolute;
 	z-index: 1;
 	display: inline-flex;
@@ -2773,13 +2786,14 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	height: 42px;
 	margin: 0;
 	padding: 0;
-	border: 2px solid var(--background-primary);
+	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	color: var(--rv-urgency-ink, #fff);
+	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
+	color: var(--pin-color, var(--interactive-accent));
 	font-size: 15px;
 	font-weight: 700;
 	line-height: 1;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 	transform: translate(-50%, -50%);
 	cursor: pointer;
 }
@@ -2791,6 +2805,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	filter: none;
 	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
 	border: 2.5px dotted var(--pin-color, currentColor);
+	color: var(--pin-color, currentColor);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
@@ -2807,14 +2822,21 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	justify-content: center;
 	width: 46px;
 	height: 46px;
-	border: 2px solid var(--background-primary);
+	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	background: var(--interactive-accent);
-	color: var(--text-on-accent, #fff);
+	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
+	color: var(--pin-color, var(--interactive-accent));
 	font-weight: 700;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.28);
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 	transform: translate(-50%, -50%);
 	cursor: pointer;
+}
+
+.rv-map-cluster.is-fresh {
+	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+	border: 2.5px dotted var(--pin-color, currentColor);
+	color: var(--pin-color, currentColor);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
 .rv-map-user {
@@ -2831,17 +2853,20 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-map-card {
 	position: absolute;
 	z-index: 4;
-	display: flex;
-	flex-direction: column;
-	gap: 0.28em;
-	min-width: 14em;
-	max-width: 18em;
-	padding: 0.55em 0.65em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s, 6px);
-	background: var(--background-primary);
-	box-shadow: var(--shadow-s);
+	width: min(20rem, calc(100vw - 24px));
 	text-align: start;
+}
+
+.rv-map-card.rv-locator-glancable {
+	height: auto;
+	overflow: visible;
+	background: transparent;
+}
+
+.rv-map-card .rv-locator-card {
+	width: 100%;
+	cursor: pointer;
+	box-shadow: var(--shadow-s), inset 4px 0 0 var(--rv-urgency-accent, var(--background-modifier-border));
 }
 
 .rv-map-card-head {
@@ -3128,6 +3153,22 @@ a.rv-address-link.is-empty {
 	text-align: start;
 }
 
+/*
+  Visit buttons, Quick Facts, stamps, and suggestions stay hidden until the
+  leaf has the note's urgency vars. Otherwise the first frame uses the theme accent.
+*/
+.workspace-leaf-content:not(.is-urgency-ready) :is(
+	.mb-button.rv-visit-btn,
+	.rv-qf-badges,
+	.rv-stamp-ago,
+	.rv-hub-chip,
+	.rv-qf-when-ago,
+	.rv-locator-return-suggestions
+),
+.workspace-leaf-content:not(.is-urgency-ready) .rv-visit-line::before {
+	opacity: 0;
+}
+
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner,
 .rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 	color: #fff;
@@ -3307,4 +3348,6 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	color: var(--text-normal);
 	font: inherit;
 	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
+	outline: none;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
 }

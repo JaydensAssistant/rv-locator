@@ -1,6 +1,8 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { OSM_ATTRIBUTION } from './constants';
-import { latToTileY, lonToTileX, type MapPin } from './map-pins';
+import { mountUrgencyGlyph } from './glancable-view';
+import { clusterAppearance, latToTileY, lonToTileX, mapPressIsClick, type MapPin } from './map-pins';
+import { urgencyMark } from './scoring';
 import type { RVLocatorSettings } from './types';
 import { urgencyInk } from './urgency-palette';
 
@@ -31,7 +33,7 @@ export class RvMapView extends ItemView {
 	private stage: HTMLElement | null = null;
 	private pinLayer: HTMLElement | null = null;
 	private watchId: number | null = null;
-	private drag: { x: number; y: number; lat: number; lon: number } | null = null;
+	private drag: { x: number; y: number; lat: number; lon: number; moved: boolean } | null = null;
 	private selectedPath: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, private host: MapHost) {
@@ -130,26 +132,36 @@ export class RvMapView extends ItemView {
 		if (!stage) return;
 		stage.addEventListener('pointerdown', (event) => {
 			if (event.target instanceof Element && event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster')) return;
-			this.drag = { x: event.clientX, y: event.clientY, lat: this.centerLat, lon: this.centerLon };
-			stage.addClass('is-grabbing');
+			this.drag = { x: event.clientX, y: event.clientY, lat: this.centerLat, lon: this.centerLon, moved: false };
 		});
 		stage.addEventListener('pointermove', (event) => {
 			if (!this.drag) return;
-			const scale = TILE * 2 ** this.zoom;
 			const dx = event.clientX - this.drag.x;
 			const dy = event.clientY - this.drag.y;
+			if (!this.drag.moved) {
+				if (mapPressIsClick(dx, dy)) return;
+				this.drag.moved = true;
+				stage.addClass('is-grabbing');
+			}
+			const scale = TILE * 2 ** this.zoom;
 			this.centerLon = this.drag.lon - (dx / scale) * 360;
 			const startY = latToTileY(this.drag.lat, this.zoom);
 			const nextY = startY - dy / TILE;
 			this.centerLat = tileYToLat(nextY, this.zoom);
 			this.paint();
 		});
-		const end = (): void => {
+		stage.addEventListener('pointerup', () => {
+			const drag = this.drag;
 			this.drag = null;
 			stage.removeClass('is-grabbing');
-		};
-		stage.addEventListener('pointerup', end);
-		stage.addEventListener('pointerleave', end);
+			if (!drag || drag.moved || !this.selectedPath) return;
+			this.selectedPath = null;
+			this.paint();
+		});
+		stage.addEventListener('pointerleave', () => {
+			this.drag = null;
+			stage.removeClass('is-grabbing');
+		});
 		stage.addEventListener('wheel', (event) => {
 			event.preventDefault();
 			this.setZoom(this.zoom + (event.deltaY < 0 ? 1 : -1));
@@ -218,12 +230,11 @@ export class RvMapView extends ItemView {
 			attr: { type: 'button', 'aria-label': pin.name },
 		});
 		button.style.setProperty('--pin-color', pin.color);
-		button.style.color = ghost ? pin.color : urgencyInk(pin.color);
-		if (!ghost) button.style.background = pin.color;
+		button.style.setProperty('--rv-urgency-accent', pin.color);
 		if (pin.stateIcon) {
 			button.dataset.pinState = pin.stateIcon;
 			setIcon(button, pin.stateIcon);
-		} else button.textContent = pin.glyph;
+		} else mountUrgencyGlyph(button, pin.glyph);
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
 		button.addEventListener('click', (event) => {
@@ -253,10 +264,12 @@ export class RvMapView extends ItemView {
 				if (only) this.paintPin(layer, only, { x: group.x, y: group.y });
 				continue;
 			}
+			const look = clusterAppearance(group.pins);
 			const button = layer.createEl('button', {
-				cls: 'rv-map-cluster',
+				cls: `rv-map-cluster${look.ghost ? ' is-fresh' : ''}`,
 				attr: { type: 'button', 'aria-label': `${group.pins.length} return visits` },
 			});
+			button.style.setProperty('--pin-color', look.color);
 			button.textContent = String(group.pins.length);
 			button.style.left = `${group.x}px`;
 			button.style.top = `${group.y}px`;
@@ -274,25 +287,69 @@ export class RvMapView extends ItemView {
 
 	private openCard(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		layer.querySelectorAll('.rv-map-card').forEach((node) => node.remove());
-		const card = layer.createDiv('rv-map-card rv-locator-card');
-		card.style.left = `${point.x + 28}px`;
-		card.style.top = `${point.y}px`;
+		const shell = layer.createDiv('rv-map-card rv-locator-glancable');
+		shell.style.left = `${point.x + 28}px`;
+		shell.style.top = `${point.y}px`;
+		const marks = urgencyMark(pin.urgency, pin.priority);
+		const card = shell.createDiv('rv-locator-card has-actions');
 		card.style.setProperty('--rv-urgency-accent', pin.color);
 		card.style.setProperty('--rv-urgency-ink', urgencyInk(pin.color));
-		const head = card.createDiv('rv-map-card-head');
-		head.createEl('strong', { text: pin.name });
-		const badges = head.createDiv('rv-map-card-badges');
-		const urgency = badges.createSpan('rv-map-badge rv-map-action');
-		urgency.style.background = pin.color;
-		urgency.style.color = urgencyInk(pin.color);
-		urgency.setText(pin.glyph);
-		urgency.setAttr('aria-label', 'Urgency');
-		const priority = badges.createSpan({ cls: 'rv-map-badge rv-map-action is-priority', text: String(pin.priority) });
-		priority.style.background = pin.color;
-		priority.style.color = urgencyInk(pin.color);
-		priority.setAttr('aria-label', `Priority ${pin.priority}`);
-		const route = badges.createEl('button', {
-			cls: 'rv-map-badge rv-map-action',
+		card.style.setProperty('--rv-badge-count', '3');
+		card.style.setProperty('--rv-control-size', '28px');
+		const openNote = (): void => { this.host.openMapNote(pin.path); };
+		card.addEventListener('click', (event) => {
+			const target = event.target;
+			if (target instanceof Element && target.closest('button, a')) return;
+			openNote();
+		});
+		const name = card.createDiv('rv-locator-card-name');
+		const link = name.createEl('a', {
+			cls: 'rv-locator-file-link',
+			text: pin.name,
+			href: pin.path,
+			attr: { 'aria-label': pin.name },
+		});
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			openNote();
+		});
+		const place = card.createDiv('rv-locator-place');
+		this.cardSlot(place, 'earth', pin.card.address || '—', !pin.card.address);
+		if (pin.card.city) {
+			const city = card.createDiv('rv-locator-place');
+			this.cardSlot(city, 'building-2', pin.card.city, false);
+		}
+		const when = card.createDiv('rv-locator-when');
+		if (pin.card.study) this.cardSlot(when, 'book-marked', pin.card.studied ? `Studied ${pin.card.studied}` : 'Studied —', !pin.card.studied);
+		else {
+			if (pin.card.spoke) this.cardSlot(when, 'message-circle', `Spoke ${pin.card.spoke}`, false);
+			if (pin.card.attempted) this.cardSlot(when, 'clock', `Attempted ${pin.card.attempted}`, false);
+		}
+		if (pin.card.met) this.cardSlot(when, 'home', `Met ${pin.card.met}`, false);
+		const foot = card.createDiv('rv-locator-card-foot');
+		this.cardSlot(foot, 'user', pin.card.metWith || '—', !pin.card.metWith);
+		const ratio = pin.card.study ? pin.card.studyRatio : pin.card.visits;
+		if (ratio) this.cardSlot(foot, pin.card.study ? 'percent' : 'list-checks', ratio, false);
+		if (pin.card.literature || pin.card.media || pin.card.lessons.length > 0) {
+			const extra = card.createDiv('rv-locator-when');
+			if (pin.card.literature) this.cardSlot(extra, 'book', pin.card.literature, false);
+			if (pin.card.media) this.cardSlot(extra, 'film', pin.card.media, false);
+			for (const lesson of pin.card.lessons) this.cardSlot(extra, 'book-open', lesson, false);
+		}
+		const actions = card.createSpan('rv-locator-card-actions');
+		const urgency = actions.createSpan({
+			cls: 'rv-locator-urgency',
+			attr: { 'data-band': String(marks.band), 'aria-label': 'Urgency' },
+		});
+		mountUrgencyGlyph(urgency, marks.glyphs);
+		actions.createSpan({
+			cls: 'rv-locator-priority-pill',
+			text: String(pin.priority),
+			attr: { 'aria-label': `Priority ${pin.priority}` },
+		});
+		const route = actions.createEl('button', {
+			cls: 'rv-locator-map-pin',
 			attr: { type: 'button', 'aria-label': 'Directions in Google Maps' },
 		});
 		setIcon(route, 'route');
@@ -301,40 +358,13 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
-		const open = badges.createEl('button', {
-			cls: 'rv-map-badge rv-map-action',
-			attr: { type: 'button', 'aria-label': 'Open note' },
-		});
-		setIcon(open, 'file-text');
-		open.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			this.host.openMapNote(pin.path);
-		});
-		this.cardLine(card, 'map-pin', pin.card.address || '—');
-		if (pin.card.city) this.cardLine(card, 'building-2', pin.card.city);
-		if (pin.card.study) this.cardLine(card, 'book-marked', pin.card.studied ? `Studied ${pin.card.studied}` : 'Studied —');
-		else {
-			if (pin.card.spoke) this.cardLine(card, 'message-circle', `Spoke ${pin.card.spoke}`);
-			if (pin.card.attempted) this.cardLine(card, 'clock', `Attempted ${pin.card.attempted}`);
-		}
-		if (pin.card.met) this.cardLine(card, 'home', `Met ${pin.card.met}`);
-		this.cardLine(card, 'user', pin.card.metWith || '—');
-		this.cardLine(card, pin.card.study ? 'percent' : 'list-checks', pin.card.study ? pin.card.studyRatio : pin.card.visits);
-		this.cardLine(card, 'book', pin.card.literature || '—');
-		this.cardLine(card, 'film', pin.card.media || '—');
-		if (pin.card.study) {
-			card.createDiv({ cls: 'rv-map-section', text: 'Lessons Studied' });
-			const lessons = pin.card.lessons.length ? pin.card.lessons : ['—'];
-			for (const lesson of lessons) this.cardLine(card, 'book-open', lesson);
-		}
 	}
 
-	private cardLine(card: HTMLElement, icon: string, text: string): void {
-		const row = card.createDiv('rv-map-fact');
-		const mark = row.createSpan('rv-map-fact-icon');
+	private cardSlot(parent: HTMLElement, icon: string, text: string, empty: boolean): void {
+		const slot = parent.createSpan({ cls: `rv-locator-slot${empty ? ' is-empty' : ''}` });
+		const mark = slot.createSpan('rv-locator-slot-icon');
 		setIcon(mark, icon);
-		row.createSpan({ cls: 'rv-map-fact-text', text });
+		slot.createSpan({ cls: 'rv-locator-slot-text', text });
 	}
 
 	private fitAll(): void {

@@ -24,6 +24,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private toastedBanner = '';
 	protected scrollEl!: HTMLElement;
 	protected sortEl!: HTMLElement;
+	/** Glancable search stays under the sort bar. Pills never move out for it. */
+	protected searchSlot: HTMLElement | null = null;
 	/** Sort chips live here so they can scroll without moving the New button. */
 	protected sortButtonsEl!: HTMLElement;
 	protected groups: GroupModel[] = [];
@@ -296,6 +298,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.bannerText = this.bannerEl.createSpan('rv-locator-banner-text');
 		this.bannerEl.hide();
 		this.sortEl = this.root.createDiv('rv-locator-sortbar');
+		this.searchSlot = this.mode === 'glancable' ? this.root.createDiv('rv-locator-search-slot') : null;
 		this.scrollEl = this.root.createDiv('rv-locator-scroll');
 		const attr = this.root.createDiv('rv-locator-attr');
 		attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
@@ -426,10 +429,6 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private paintSortPresets(): void {
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		this.sortEl.empty();
-		if (this.searchReplacesBar()) {
-			this.paintSearchControl(this.sortEl);
-			return;
-		}
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
@@ -481,18 +480,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
 		});
-		if (this.mode === 'glancable') this.paintSearchControl(actions);
 		equalizeSortPills(this.sortButtonsEl);
 		this.sortButtonsEl.scrollLeft = savedScroll;
 	}
-
-	/** Glancable replaces the pill row with the expanded search field. */
-	protected searchReplacesBar(): boolean {
-		return false;
-	}
-
-	/** Collapsed search icon, or the expanded field when `searchReplacesBar` is set. */
-	protected paintSearchControl(_parent: HTMLElement): void {}
 
 	protected paintSortExtras(): void {
 		// Ideality planner was removed in 1.2.6. It may return later.

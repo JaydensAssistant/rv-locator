@@ -25,8 +25,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private layoutObserver: ResizeObserver | null = null;
 	private chromeHost: HTMLElement | null = null;
 	private glanceQuery = '';
-	private searchOpen = false;
-	private searchCaret: number | null = null;
+	private searchInput: HTMLInputElement | null = null;
 	private bodyCache = new Map<string, { mtime: number; body: string }>();
 	private bodiesLoading = false;
 	private parsedKey = '';
@@ -51,6 +50,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	protected override afterRender(): void {
 		this.syncBasesChrome();
+		this.ensureSearchField();
 	}
 
 	protected override sortedGroups() {
@@ -65,28 +65,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 				rows: group.rows.filter((row) => matchesGlanceQuery(this.recordFor(row), query)),
 			}))
 			.filter((group) => group.rows.length > 0);
-	}
-
-	protected override searchReplacesBar(): boolean {
-		return this.searchOpen;
-	}
-
-	protected override paintSearchControl(parent: HTMLElement): void {
-		if (this.searchOpen) {
-			this.paintSearchField(parent);
-			return;
-		}
-		const button = parent.createEl('button', {
-			cls: 'rv-locator-toolbar-quiet',
-			attr: { type: 'button', 'aria-label': 'Search', title: 'Search', 'aria-expanded': 'false' },
-		});
-		setIcon(button, 'search');
-		button.addEventListener('click', () => {
-			this.searchOpen = true;
-			this.searchCaret = this.glanceQuery.length;
-			this.renderBody();
-		});
-		if (parent.firstChild) parent.insertBefore(button, parent.firstChild);
 	}
 
 	protected paint(): void {
@@ -105,8 +83,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.watchLayout();
 	}
 
-	private paintSearchField(parent: HTMLElement): void {
-		const row = parent.createDiv('rv-locator-search');
+	/** Search stays under the pills. The field is created once so typing keeps focus. */
+	private ensureSearchField(): void {
+		const slot = this.searchSlot;
+		if (!slot || this.searchInput) return;
+		const row = slot.createDiv('rv-locator-search');
 		const input = row.createEl('input', {
 			cls: 'rv-locator-search-input',
 			attr: {
@@ -117,15 +98,17 @@ export class NearbyGlancableView extends NearbyBasesView {
 			},
 		});
 		input.value = this.glanceQuery;
+		this.searchInput = input;
+		input.addEventListener('focus', () => slot.addClass('is-focused'));
+		input.addEventListener('blur', () => slot.removeClass('is-focused'));
 		input.addEventListener('input', () => {
 			this.glanceQuery = input.value;
-			this.searchCaret = input.selectionStart;
 			this.renderBody();
 		});
 		input.addEventListener('keydown', (event) => {
-			if (event.key !== 'Escape') return;
+			if (event.key !== 'Escape' || !this.glanceQuery) return;
 			event.preventDefault();
-			this.collapseSearch();
+			this.clearSearch();
 		});
 		const clear = row.createEl('button', {
 			cls: 'rv-locator-toolbar-quiet',
@@ -133,19 +116,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 		});
 		setIcon(clear, 'x');
 		clear.addEventListener('click', () => {
-			this.collapseSearch();
+			this.clearSearch();
+			input.focus();
 		});
-		const caret = this.searchCaret ?? input.value.length;
-		input.focus();
-		input.setSelectionRange(caret, caret);
 	}
 
-	private collapseSearch(): void {
+	private clearSearch(): void {
 		this.glanceQuery = '';
-		this.searchOpen = false;
-		this.searchCaret = null;
 		this.parsedKey = '';
 		this.parsedQuery = null;
+		if (this.searchInput) this.searchInput.value = '';
 		this.renderBody();
 	}
 

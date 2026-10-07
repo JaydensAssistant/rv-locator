@@ -35,34 +35,79 @@ export interface NoteChromeHost {
 
 const LONG_PRESS_MS = 500;
 
+/** Leaves and previews that own the urgency custom properties. */
+const URGENCY_READY_SELECTOR = '.workspace-leaf-content, .markdown-preview-view, .markdown-reading-view, .rv-dashboard';
+
 /** Quick Facts header badges, Quick Facts rows, and one shared Hub chip row. */
 export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteChromeHost): void {
 	const data = host.frontmatter(path);
 	if (!data) return;
-	paintLiveUrgency(root, path, data, host);
+	applyLiveUrgency(root, path, host);
 	decorateQuickFacts(root, path, data, host);
 	decorateHubRow(root, path, data, host);
 	decorateSlotOverride(root, path, data, host);
 }
 
-/** Render-only urgency on the note and Return Suggestions. Does not rewrite Markdown. */
-function paintLiveUrgency(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+/**
+ * The note, its preview, and the leaf, walking up from `start`.
+ * Custom properties inherit, so the leaf is enough for chrome that mounts later.
+ */
+export function urgencyStyleHosts(start: HTMLElement): HTMLElement[] {
+	const hosts: HTMLElement[] = [start];
+	let node = start.parentElement;
+	while (node) {
+		hosts.push(node);
+		if (node.classList.contains('workspace-leaf-content')) break;
+		node = node.parentElement;
+	}
+	return hosts;
+}
+
+/**
+ * Render-only urgency on the note and Return Suggestions. Does not rewrite Markdown.
+ * Sets the accent before chrome paints. With no frontmatter yet, clears a previous
+ * note's accent so the hide-until-ready rule can hold the wrong color off screen.
+ * `forceReady` unhides after the last remount even if frontmatter never arrives.
+ */
+export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChromeHost, forceReady = false): void {
+	const hosts = urgencyStyleHosts(start);
+	const data = host.frontmatter(path);
+	if (!data) {
+		if (forceReady) markUrgencyReady(hosts);
+		else clearUrgencyPaint(hosts);
+		return;
+	}
 	const priority = finiteNumber(readProperty(data, 'Priority'));
 	const urgency = noteUrgency(path, data, priority, host);
 	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
 	const accent = urgencyAccentColor(urgency, priority, colors);
 	const ink = urgencyInk(accent);
-	const targets = new Set<HTMLElement>();
-	const dashboard = root.closest('.rv-dashboard');
-	if (dashboard instanceof HTMLElement) targets.add(dashboard);
-	if (root.classList.contains('rv-locator-return-suggestions')) targets.add(root);
-	root.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
-		if (node instanceof HTMLElement) targets.add(node);
-	});
-	for (const el of targets) {
+	for (const el of hosts) {
 		el.style.setProperty('--rv-urgency-accent', accent);
 		el.style.setProperty('--rv-urgency-ink', ink);
 		if (el.classList.contains('rv-locator-return-suggestions')) el.style.setProperty('--callout-color', accent);
+	}
+	start.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		node.style.setProperty('--rv-urgency-accent', accent);
+		node.style.setProperty('--rv-urgency-ink', ink);
+		node.style.setProperty('--callout-color', accent);
+	});
+	markUrgencyReady(hosts);
+}
+
+function markUrgencyReady(hosts: readonly HTMLElement[]): void {
+	for (const el of hosts) {
+		if (el.matches(URGENCY_READY_SELECTOR)) el.classList.add('is-urgency-ready');
+	}
+}
+
+function clearUrgencyPaint(hosts: readonly HTMLElement[]): void {
+	for (const el of hosts) {
+		el.style.removeProperty('--rv-urgency-accent');
+		el.style.removeProperty('--rv-urgency-ink');
+		if (el.classList.contains('rv-locator-return-suggestions')) el.style.removeProperty('--callout-color');
+		if (el.matches(URGENCY_READY_SELECTOR)) el.classList.remove('is-urgency-ready');
 	}
 }
 

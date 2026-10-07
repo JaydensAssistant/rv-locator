@@ -24,7 +24,7 @@ import {
 	type LessonSpec,
 } from '../src/catalog';
 import { formatGlanceableCounter } from '../src/dates';
-import { pinStateIcon } from '../src/map-pins';
+import { clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, pinStateIcon, type MapPin } from '../src/map-pins';
 import { interpolatePalette, shadeHeats } from '../src/map-shade';
 import { insidePriorityFloor } from '../src/scoring';
 import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceRecord } from '../src/glance-search';
@@ -183,6 +183,38 @@ describe('glanceable counters and floors', () => {
 	});
 });
 
+function samplePin(patch: Partial<MapPin> = {}): MapPin {
+	return {
+		path: 'a.md',
+		name: 'A',
+		lat: 0,
+		lon: 0,
+		priority: 1,
+		urgency: 1,
+		days: 1,
+		color: '#1f8a4c',
+		glyph: '!',
+		fresh: false,
+		stateIcon: null,
+		card: {
+			address: '',
+			city: '',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		},
+		...patch,
+	};
+}
+
 describe('map pin state and shade', () => {
 	it('uses a distinct ghost icon and lets cooldown win', () => {
 		assert.equal(pinStateIcon(true, false), 'hourglass');
@@ -203,6 +235,30 @@ describe('map pin state and shade', () => {
 		assert.equal(interpolatePalette(0, ['#000000', '#ffffff']), '#000000');
 		assert.equal(interpolatePalette(1, ['#000000', '#ffffff']), '#ffffff');
 		assert.equal(equalPillWidth([12, 40, 18]), 40);
+	});
+
+	it('colors a cluster from the most urgent pin and ghosts only an all-ghost cluster', () => {
+		const low = samplePin({ urgency: 1, priority: 5, color: '#1f8a4c' });
+		const high = samplePin({ path: 'b.md', urgency: 3, priority: 1, color: '#d63c3c' });
+		const tied = samplePin({ path: 'c.md', urgency: 3, priority: 4, color: '#e06a00' });
+		assert.deepEqual(clusterAppearance([low, high]), { color: '#d63c3c', ghost: false });
+		assert.equal(clusterAppearance([high, tied]).color, '#e06a00');
+		const ghosts = [
+			samplePin({ stateIcon: 'hourglass', urgency: 0, color: '#d6a100', fresh: true }),
+			samplePin({ path: 'b.md', stateIcon: 'ban', urgency: 2, color: '#d63c3c', fresh: false }),
+		];
+		assert.deepEqual(clusterAppearance(ghosts), { color: '#d63c3c', ghost: true });
+		assert.equal(clusterAppearance([ghosts[0]!, low]).ghost, false);
+		assert.equal(clusterAppearance([]).color, '');
+		assert.equal(clusterAppearance([]).ghost, false);
+	});
+
+	it('treats a map press as a click only inside the slop', () => {
+		assert.equal(mapPressIsClick(0, 0), true);
+		assert.equal(mapPressIsClick(MAP_CLICK_SLOP_PX, 0), true);
+		assert.equal(mapPressIsClick(3, 4), true);
+		assert.equal(mapPressIsClick(MAP_CLICK_SLOP_PX + 1, 0), false);
+		assert.equal(mapPressIsClick(4, 4), false);
 	});
 });
 
@@ -228,6 +284,24 @@ describe('in-note urgency chrome', () => {
 		assert.doesNotMatch(hubHover, /text-decoration:\s*none/);
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-lead \{[^}]*flex-grow:\s*0/);
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-ago[^{]*\{[^}]*margin-left:\s*0/);
+		assert.match(css, /\.workspace-leaf-content:not\(\.is-urgency-ready\) :is\([\s\S]*\.mb-button\.rv-visit-btn/);
+		assert.match(css, /\.rv-map-pin \{[^}]*background: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)/);
+		assert.match(css, /\.rv-map-pin \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
+		assert.match(css, /\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
+		assert.match(css, /\.rv-map-cluster \{[^}]*background: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)/);
+		assert.match(css, /\.rv-map-cluster\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-search-slot \{/);
+		assert.match(css, /:is\(\.rv-locator-view, \.rv-qf-badges, \.rv-map-card\) \.rv-locator-urgency \{/);
+		const map = readFileSync(path.join(process.cwd(), 'src/map-view.ts'), 'utf8');
+		assert.doesNotMatch(map, /file-text/);
+		assert.match(map, /openMapNote\(pin\.path\)/);
+		assert.match(map, /clusterAppearance\(/);
+		assert.match(map, /mapPressIsClick\(/);
+		const glance = readFileSync(path.join(process.cwd(), 'src/glancable-view.ts'), 'utf8');
+		const nearby = readFileSync(path.join(process.cwd(), 'src/nearby-view.ts'), 'utf8');
+		assert.doesNotMatch(glance, /searchReplacesBar/);
+		assert.doesNotMatch(nearby, /searchReplacesBar/);
+		assert.match(nearby, /rv-locator-search-slot/);
 	});
 
 	it('keeps the leftmost visit button on the accent and floors the darkest step', () => {

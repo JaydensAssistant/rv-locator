@@ -102,6 +102,39 @@ export function buildMapPins(
 	return pins;
 }
 
+export interface ClusterAppearance {
+	/** Color of the most urgent pin. Priority breaks a tie. */
+	color: string;
+	/** Every pin in the cluster is a ghost (cooldown or avoid). */
+	ghost: boolean;
+}
+
+/** Cluster chrome follows the hottest pin. A ghost cluster is only all ghosts. */
+export function clusterAppearance(pins: readonly MapPin[]): ClusterAppearance {
+	let best: MapPin | null = null;
+	for (const pin of pins) {
+		if (!best) {
+			best = pin;
+			continue;
+		}
+		const urgency = pin.urgency ?? -1;
+		const bestUrgency = best.urgency ?? -1;
+		if (urgency > bestUrgency || (urgency === bestUrgency && pin.priority > best.priority)) best = pin;
+	}
+	return {
+		color: best?.color ?? '',
+		ghost: pins.length > 0 && pins.every((pin) => pin.stateIcon != null),
+	};
+}
+
+/** Movement under this many pixels is a tap, not a pan. */
+export const MAP_CLICK_SLOP_PX = 5;
+
+/** True when the pointer did not move far enough to count as a drag. */
+export function mapPressIsClick(dx: number, dy: number, slop = MAP_CLICK_SLOP_PX): boolean {
+	return dx * dx + dy * dy <= slop * slop;
+}
+
 export function lonToTileX(lon: number, zoom: number): number {
 	return ((lon + 180) / 360) * 2 ** zoom;
 }
