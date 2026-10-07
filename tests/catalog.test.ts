@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { describe, it } from 'node:test';
 import {
 	LESSONS,
@@ -199,5 +201,25 @@ describe('map pin state and shade', () => {
 		assert.equal(interpolatePalette(0, ['#000000', '#ffffff']), '#000000');
 		assert.equal(interpolatePalette(1, ['#000000', '#ffffff']), '#ffffff');
 		assert.equal(equalPillWidth([12, 40, 18]), 40);
+	});
+});
+
+describe('in-note urgency chrome', () => {
+	it('steps visit buttons, stretches the underlined address, tints hub text, and centers stamps', () => {
+		const css = readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+		assert.equal(/nth-child\(n\)[^{]*\{[^}]*--rv-visit-btn-bg:\s*var\(--rv-urgency-accent/.test(css), false);
+		for (const child of [1, 2, 3, 4, 5]) {
+			const block = css.match(new RegExp(String.raw`\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(${child}\) > button\.mb-button-inner \{([^}]*)\}`))?.[1] ?? '';
+			assert.match(block, /oklch\(from var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+		}
+		const address = [...css.matchAll(/a\.rv-address-link \{([^}]*)\}/g)].map((match) => match[1] ?? '');
+		assert.equal(address.some((block) => /justify-self:\s*start/.test(block)), false);
+		const stretched = address.find((block) => /width:\s*100%/.test(block) && /justify-self:\s*stretch/.test(block) && /text-decoration:\s*underline/.test(block));
+		assert.ok(stretched);
+		const hubHover = [...css.matchAll(/\.markdown-preview-view \.rv-dashboard a\.internal-link\.rv-hub-chip:hover[^{]*\{([^}]*)\}/g)].at(-1)?.[1] ?? '';
+		assert.match(hubHover, /color:\s*var\(--rv-urgency-accent, var\(--text-accent\)\)/);
+		assert.doesNotMatch(hubHover, /text-decoration:\s*none/);
+		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-lead \{[^}]*flex-grow:\s*0/);
+		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-ago[^{]*\{[^}]*margin-left:\s*0/);
 	});
 });
