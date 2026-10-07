@@ -9,7 +9,7 @@ import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
 import { mountUrgencyGlyph } from './glancable-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
-import { layoutTakenNames } from './taken-row';
+import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
 import { urgencyColorsFor, urgencyInk } from './urgency-palette';
@@ -221,13 +221,10 @@ function paintFactsBody(
 	const metWith = textOf(readProperty(data, 'Met With'));
 	const row = factRow(content, 'users', 'Taken', '');
 	bindCompanionOpen(row, path, host);
-	if (taken.length === 0 && !metWith) {
-		const valueEl = row.querySelector('.rv-qf-value');
-		if (valueEl instanceof HTMLElement) valueEl.setText('—');
-	} else if (taken.length > 0) paintTaken(row, taken, metWith);
-	else {
-		const valueEl = row.querySelector('.rv-qf-value');
-		if (valueEl instanceof HTMLElement) paintClampList(valueEl, [metWith]);
+	const valueEl = row.querySelector('.rv-qf-value');
+	if (valueEl instanceof HTMLElement) {
+		if (taken.length === 0 && !metWith) valueEl.setText('—');
+		else paintClampList(valueEl, taken.length > 0 ? taken : [metWith]);
 	}
 }
 
@@ -251,7 +248,7 @@ function paintClampRow(parent: HTMLElement, icon: string, label: string, items: 
 
 /** Last three entries, clamped to two lines. A tap shows the rest. */
 function paintClampList(host: HTMLElement, items: readonly string[]): void {
-	const recent = items.slice(-3);
+	const recent = lastListEntries(items);
 	const box = host.createSpan('rv-qf-clamp');
 	box.setText(recent.join(' · '));
 	if (items.length <= 1 && recent.join(' · ').length < 48) return;
@@ -417,28 +414,6 @@ function revealJumpTarget(target: HTMLElement, root: HTMLElement): void {
 	});
 	root.querySelectorAll('.rv-older-visits').forEach((el) => {
 		if (el instanceof HTMLElement) el.classList.add('is-open');
-	});
-}
-
-function paintTaken(row: HTMLElement, names: readonly string[], metWith: string): void {
-	const value = row.querySelector('.rv-qf-value');
-	if (!(value instanceof HTMLElement)) return;
-	value.empty();
-	const layout = layoutTakenNames(names, metWith);
-	const line = value.createSpan('rv-qf-taken-line');
-	const pieces: { name: string; kind: 'met' | 'scroll' | 'recent' }[] = [];
-	if (layout.met) pieces.push({ name: layout.met, kind: 'met' });
-	for (const name of layout.scroll) pieces.push({ name, kind: 'scroll' });
-	if (layout.recent) pieces.push({ name: layout.recent, kind: 'recent' });
-	let scroll: HTMLElement | null = null;
-	pieces.forEach((piece, index) => {
-		const host = piece.kind === 'scroll'
-			? (scroll ?? (scroll = line.createSpan('rv-qf-taken-scroll')))
-			: line.createSpan('rv-qf-taken-pin');
-		if (index > 0) host.createSpan({ cls: 'rv-qf-comma', text: ', ' });
-		const cls = piece.kind === 'met' ? 'rv-qf-taken is-met' : 'rv-qf-taken';
-		const chip = host.createSpan({ cls, text: piece.name });
-		if (piece.kind === 'met') chip.setAttr('title', 'Met With');
 	});
 }
 

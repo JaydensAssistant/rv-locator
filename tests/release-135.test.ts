@@ -10,7 +10,7 @@ import { nextCampaignListFilter } from '../src/status';
 import { urgencyBangShapes, urgencyMark } from '../src/scoring';
 import { resetSettingsTab } from '../src/settings-reset';
 import { formatSlotOverride, parseSlotOverrides, upsertSlotOverride } from '../src/slot-override';
-import { layoutTakenNames } from '../src/taken-row';
+import { lastListEntries, layoutTakenNames } from '../src/taken-row';
 import { pickDayJump } from '../src/day-jump';
 import { visibleStampText } from '../src/dates';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
@@ -68,6 +68,8 @@ describe('1.3.5 taken row', () => {
 		assert.equal(same.met, 'Ada');
 		assert.equal(same.recent, null);
 		assert.deepEqual(same.scroll, []);
+		assert.deepEqual(lastListEntries(['Ada', 'Bo', 'Cy', 'Dale', 'Eve']), ['Cy', 'Dale', 'Eve']);
+		assert.deepEqual(lastListEntries(['Ada', 'Bo']), ['Ada', 'Bo']);
 	});
 });
 

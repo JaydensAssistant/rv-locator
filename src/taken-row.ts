@@ -11,6 +11,12 @@ export interface TakenLayout {
  * Met stays visible, and so does the latest Taken name.
  * Everyone else can scroll. One person who is both is shown once.
  */
+/** Last entries shown before a Quick Facts list expands. Two-line clamp is applied on top of this. */
+export function lastListEntries(items: readonly string[], limit = 3): string[] {
+	const cleaned = items.map((item) => item.trim()).filter((item) => item.length > 0);
+	return cleaned.slice(-limit);
+}
+
 export function layoutTakenNames(names: readonly string[], metWith: string): TakenLayout {
 	const cleaned = names.map((name) => name.trim()).filter((name) => name.length > 0);
 	if (cleaned.length === 0) return { met: null, scroll: [], recent: null };
