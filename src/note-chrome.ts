@@ -38,9 +38,31 @@ const LONG_PRESS_MS = 500;
 export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteChromeHost): void {
 	const data = host.frontmatter(path);
 	if (!data) return;
+	paintLiveUrgency(root, path, data, host);
 	decorateQuickFacts(root, path, data, host);
 	decorateHubRow(root, path, data, host);
 	decorateSlotOverride(root, path, data, host);
+}
+
+/** Render-only urgency on the note and Return Suggestions. Does not rewrite Markdown. */
+function paintLiveUrgency(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	const priority = finiteNumber(readProperty(data, 'Priority'));
+	const urgency = noteUrgency(path, data, priority, host);
+	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
+	const accent = urgencyAccentColor(urgency, priority, colors);
+	const ink = urgencyInk(accent);
+	const targets = new Set<HTMLElement>();
+	const dashboard = root.closest('.rv-dashboard');
+	if (dashboard instanceof HTMLElement) targets.add(dashboard);
+	if (root.classList.contains('rv-locator-return-suggestions')) targets.add(root);
+	root.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
+		if (node instanceof HTMLElement) targets.add(node);
+	});
+	for (const el of targets) {
+		el.style.setProperty('--rv-urgency-accent', accent);
+		el.style.setProperty('--rv-urgency-ink', ink);
+		if (el.classList.contains('rv-locator-return-suggestions')) el.style.setProperty('--callout-color', accent);
+	}
 }
 
 function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
@@ -425,10 +447,29 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	paintLabelIcon(address, 'earth', 'Address:');
 	const property = host.settings.addressProperty.trim() || 'Address';
 	const input = ensureAddressInput(paragraph);
-	for (const child of Array.from(paragraph.children)) {
-		if (!(child instanceof HTMLElement)) continue;
+	for (const child of Array.from(paragraph.childNodes)) {
 		if (child === address || child === input) continue;
-		if (child.classList.contains('rv-hub-line') || child.classList.contains('rv-map-button') || child.tagName === 'STRONG') continue;
+		if (!(child instanceof HTMLElement)) {
+			if (child.nodeType === Node.TEXT_NODE && (child.textContent ?? '').trim()) {
+				const plain = paragraph.ownerDocument.createElement('span');
+				plain.className = 'rv-address-hidden';
+				plain.textContent = child.textContent ?? '';
+				child.replaceWith(plain);
+			}
+			continue;
+		}
+		if (
+			child.classList.contains('rv-hub-line')
+			|| child.classList.contains('rv-address-link')
+			|| child.tagName === 'STRONG'
+		) {
+			child.classList.remove('rv-address-hidden');
+			continue;
+		}
+		if (child.classList.contains('rv-map-button')) {
+			child.remove();
+			continue;
+		}
 		child.classList.add('rv-address-hidden');
 	}
 	const stored = textOf(readProperty(data, property));
@@ -474,6 +515,7 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 			host.openMap(path);
 		});
 	}
+	link.classList.remove('rv-address-hidden');
 	const text = input.value.trim();
 	link.textContent = text || 'Add an address';
 	link.classList.toggle('is-empty', !text);

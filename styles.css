@@ -1963,8 +1963,9 @@ body.rv-center-dashboard .rv-qf-label {
   chips stay on the hub row, and Address, its field, and the map stay on the next.
 */
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	--rv-hub-label: 8em;
 	display: grid;
-	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr);
+	grid-template-columns: var(--rv-hub-label) minmax(0, 1fr);
 	justify-items: start;
 	text-align: start;
 	align-items: center;
@@ -1973,7 +1974,7 @@ body.rv-center-dashboard .rv-qf-label {
 
 body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
 	display: grid;
-	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr);
+	grid-template-columns: var(--rv-hub-label, 8em) minmax(0, 1fr);
 	justify-items: start;
 	text-align: start;
 }
@@ -1981,7 +1982,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-hub-line {
 	grid-column: 1 / -1;
 	display: grid;
-	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr);
+	grid-template-columns: var(--rv-hub-label, 8em) minmax(0, 1fr);
 	justify-items: start;
 	text-align: start;
 	align-items: center;
@@ -1991,7 +1992,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 body.rv-wide-hubs .rv-hub-line {
-	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr);
+	grid-template-columns: var(--rv-hub-label, 8em) minmax(0, 1fr);
 	justify-items: start;
 	text-align: start;
 }
@@ -1999,6 +2000,7 @@ body.rv-wide-hubs .rv-hub-line {
 body.rv-wide-hubs .rv-hub-row {
 	display: flex;
 	flex-wrap: nowrap;
+	justify-self: stretch;
 	width: 100%;
 	min-width: 0;
 	max-width: 100%;
@@ -2009,10 +2011,10 @@ body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-ch
 body.rv-wide-hubs .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
 body.rv-wide-hubs .rv-hub-chip {
 	box-sizing: border-box;
-	flex: 1 1 0;
-	width: 0;
+	flex: 1 1 auto;
+	width: auto;
 	min-width: 0;
-	max-width: none;
+	max-width: 100%;
 	padding-inline: var(--rv-hub-chip-inset, 0.35em);
 }
 
@@ -2060,6 +2062,7 @@ body.rv-wide-hubs .rv-hub-chip {
 	display: flex;
 	flex-wrap: wrap;
 	align-items: center;
+	justify-self: stretch;
 	gap: 0.25em;
 	box-sizing: border-box;
 	width: 100%;
@@ -2172,7 +2175,9 @@ body.rv-wide-hubs .rv-hub-chip {
 	line-height: var(--line-height-normal, 1.5);
 }
 
-.rv-address-hidden {
+.rv-address-hidden,
+a.rv-address-link[hidden],
+input.rv-address-input[hidden] {
 	display: none !important;
 }
 
@@ -2187,8 +2192,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	gap: var(--rv-dash-gap);
 }
 
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) :is(input[type="text"], input:not([type])),
-body.rv-wide-hubs .rv-hub-row {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) :is(input[type="text"], input:not([type])) {
 	flex: 1 1 auto;
 	width: auto;
 	max-width: none;
@@ -2573,7 +2577,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	display: grid;
 	align-items: center;
 	column-gap: var(--rv-dash-gap);
-	grid-template-columns: var(--rv-dash-label) minmax(0, 1fr);
+	grid-template-columns: var(--rv-hub-label, 8em) minmax(0, 1fr);
 	justify-items: start;
 	text-align: start;
 }
@@ -2859,9 +2863,12 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-map-fact-icon svg,
-.rv-map-action svg {
-	width: 16px;
-	height: 16px;
+.rv-map-card button.rv-map-action,
+.rv-map-card button.rv-map-action svg {
+	width: 16px !important;
+	height: 16px !important;
+	min-width: 16px;
+	min-height: 16px;
 }
 
 .rv-map-fact-text {
@@ -2897,7 +2904,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	color: var(--text-normal);
 }
 
-.rv-map-badge svg {
+.rv-map-badge:not(button) svg {
 	width: 1em;
 	height: 1em;
 }
@@ -2945,6 +2952,44 @@ a.rv-address-link {
 	cursor: pointer;
 }
 
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	box-sizing: border-box;
+	grid-column: 1;
+	width: var(--rv-hub-label, 8em);
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
+	display: block;
+	grid-column: 2;
+	justify-self: stretch;
+	align-self: center;
+	box-sizing: border-box;
+	width: auto;
+	max-width: 100%;
+	min-width: 0;
+	margin: 0;
+	overflow: hidden;
+	text-align: start;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+	color: var(--link-color, var(--interactive-accent));
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input {
+	grid-column: 2;
+	justify-self: stretch;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
 a.rv-address-link.is-empty {
 	color: var(--text-faint);
 }
@@ -2967,12 +3012,26 @@ a.rv-address-link.is-empty {
 	box-shadow: inset 3px 0 0 var(--rv-urgency-accent, transparent);
 }
 
+.rv-dashboard .callout.rv-locator-return-suggestions {
+	--callout-color: var(--rv-urgency-accent);
+	background-color: color-mix(in srgb, var(--rv-urgency-accent, transparent) 14%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--rv-urgency-accent, transparent) 48%, var(--background-modifier-border));
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-title,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-title .callout-title-inner {
+	color: var(--rv-urgency-accent, var(--text-normal));
+	background-color: transparent;
+}
+
 .rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) {
 	background-color: color-mix(in srgb, var(--rv-urgency-accent, transparent) 14%, var(--background-primary));
 }
 
-.rv-study-block .setting-item {
-	border-top: 0;
+.rv-locator-modal .rv-study-block .setting-item,
+.rv-study-block .setting-item,
+.rv-study-block .rv-lesson-range > .setting-item {
+	border-top: none !important;
 	padding-top: 0.35em;
 }
 

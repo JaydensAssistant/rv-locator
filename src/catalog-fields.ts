@@ -82,6 +82,7 @@ export function mountShareFields(
 				repaintRange(holders, parts, from, to, publish);
 			},
 			false,
+			true,
 		);
 		const range = block.createDiv('rv-lesson-range');
 		holders.from = range;
@@ -126,6 +127,7 @@ function mountExtraLesson(
 				repaintExtra(holders, parts, from, to, publish);
 			},
 			false,
+			true,
 		);
 		const range = fields.createDiv('rv-lesson-range');
 		holders.from = range;
@@ -155,7 +157,7 @@ function repaintRange(
 	mountField(host, 'Where did you start?', 'The part you began with.', 'Start', from.current, (query) => rankSuggestions(query, parts), (value) => {
 		from.current = value;
 		publish({ lessonFrom: value });
-	}, false);
+	}, false, true);
 	mountField(
 		host,
 		'Where did you end? You completed this point.',
@@ -168,6 +170,7 @@ function repaintRange(
 			publish({ lessonTo: value });
 		},
 		false,
+		true,
 	);
 }
 
@@ -184,11 +187,11 @@ function repaintExtra(
 	mountField(host, 'Where did that one start?', '', 'Start', from.current, (query) => rankSuggestions(query, parts), (value) => {
 		from.current = value;
 		publish({ extraFrom: value });
-	}, false);
+	}, false, true);
 	mountField(host, 'Where did that one end? You completed this point.', '', 'End', to.current, (query) => rankSuggestions(query, parts), (value) => {
 		to.current = value;
 		publish({ extraTo: value });
-	}, false);
+	}, false, true);
 }
 
 function mountField(
@@ -200,9 +203,11 @@ function mountField(
 	suggestions: (query: string) => readonly string[],
 	onValue: (value: string) => void,
 	titled: boolean,
+	joined = false,
 ): void {
 	let current = initial;
 	const setting = new Setting(parent).setName(name);
+	if (joined) setting.settingEl?.style.setProperty('border-top', 'none', 'important');
 	if (desc) setting.setDesc(desc);
 	setting.addText((text) => {
 		text.setPlaceholder(placeholder);
