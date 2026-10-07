@@ -11,7 +11,8 @@ import { mountUrgencyGlyph } from './glancable-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { layoutTakenNames } from './taken-row';
 import type { RVLocatorSettings } from './types';
-import { urgencyColorsFor } from './urgency-palette';
+import { formatStudyFraction } from './catalog';
+import { urgencyColorsFor, urgencyInk } from './urgency-palette';
 
 export interface NoteChromeHost {
 	frontmatter(path: string): Record<string, unknown> | null;
@@ -28,6 +29,7 @@ export interface NoteChromeHost {
 	moveHub(path: string, label: string): void;
 	openSlotOverride(path: string): void;
 	setAddress(path: string, address: string): void;
+	openMap(path: string): void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -53,6 +55,12 @@ function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string
 	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
 	const accent = urgencyAccentColor(urgency, priority, colors);
 	callout.style.setProperty('--rv-urgency-accent', accent);
+	callout.style.setProperty('--rv-urgency-ink', urgencyInk(accent));
+	const dashboard = callout.closest('.rv-dashboard');
+	if (dashboard instanceof HTMLElement) {
+		dashboard.style.setProperty('--rv-urgency-accent', accent);
+		dashboard.style.setProperty('--rv-urgency-ink', urgencyInk(accent));
+	}
 	paintFactsTitle(title, path, data, status, priority, urgency, host);
 	paintFactsBody(content, path, data, status, priority, host);
 }
@@ -165,21 +173,48 @@ function paintFactsBody(
 			host.setPriority(path, Number(slider.value));
 		});
 	}
-	const successful = finiteNumber(readProperty(data, 'Successful Visits'));
-	const visits = finiteNumber(readProperty(data, 'Visits'));
-	const ratio = `${successful == null ? '—' : String(successful)}/${visits == null ? '—' : String(visits)}`;
-	factRow(content, 'list-checks', 'Visits', ratio);
+	const study = status === 'Study';
+	if (study) {
+		const lessons = textList(readProperty(data, 'Lessons Studied')).length;
+		const studies = finiteNumber(readProperty(data, 'Studies')) ?? 0;
+		const fraction = formatStudyFraction(lessons, studies, host.settings.studyRatio);
+		const label = host.settings.studyRatio === 'studies-lessons' ? 'Studies/Lessons' : 'Lessons/Studies';
+		factRow(content, 'book-marked', label, fraction.withDecimal);
+	} else {
+		const successful = finiteNumber(readProperty(data, 'Successful Visits'));
+		const visits = finiteNumber(readProperty(data, 'Visits'));
+		factRow(content, 'list-checks', 'Visits', visitsPercent(successful, visits));
+	}
 
-	factDateRow(content, 'message-circle', 'Spoke', readProperty(data, 'Last Spoke'));
-	factDateRow(content, 'clock', 'Attempted', readProperty(data, 'Last Attempted'));
+	if (study) factDateRow(content, 'book-marked', 'Studied', readProperty(data, 'Last Studied'));
+	if (!study || host.settings.studyShowSpoke) factDateRow(content, 'message-circle', 'Spoke', readProperty(data, 'Last Spoke'));
+	if (!study || host.settings.studyShowAttempted) factDateRow(content, 'clock', 'Attempted', readProperty(data, 'Last Attempted'));
 	factDateRow(content, 'home', 'Met', readProperty(data, 'Met'));
-	factRow(content, 'book-open', 'Left Publications', textOf(readProperty(data, 'Left Publications')) || '—');
-	factRow(content, 'clapperboard', 'Shared Media', textOf(readProperty(data, 'Shared Media')) || '—');
+	factRow(content, 'book-open', 'Literature', textOf(readProperty(data, 'Left Publications')) || '—');
+	factRow(content, 'clapperboard', 'Media', textOf(readProperty(data, 'Shared Media')) || '—');
+	if (study) paintLessonsStudied(content, textList(readProperty(data, 'Lessons Studied')));
 
 	const taken = textList(readProperty(data, 'Taken'));
 	const metWith = textOf(readProperty(data, 'Met With'));
 	const row = factRow(content, 'users', 'Taken', taken.length === 0 ? '—' : '');
 	if (taken.length > 0) paintTaken(row, taken, metWith);
+}
+
+function visitsPercent(successful: number | null, visits: number | null): string {
+	const home = successful == null ? '—' : String(successful);
+	const total = visits == null ? '—' : String(visits);
+	if (successful == null || visits == null || visits <= 0) return `${home}/${total}`;
+	return `${successful}/${visits} (${Math.round((successful / visits) * 100)}%)`;
+}
+
+function paintLessonsStudied(parent: HTMLElement, lessons: readonly string[]): void {
+	const section = parent.createDiv('rv-qf-section');
+	section.createDiv({ cls: 'rv-qf-section-title', text: 'Lessons Studied' });
+	if (lessons.length === 0) {
+		factRow(section, 'book-marked', 'Lesson', '—');
+		return;
+	}
+	for (const lesson of lessons) factRow(section, 'book-marked', 'Lesson', lesson);
 }
 
 function factDateRow(parent: HTMLElement, icon: string, label: string, value: unknown): void {
@@ -358,20 +393,9 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 			row = stray instanceof HTMLElement ? stray : line.createSpan('rv-hub-row');
 			if (row.parentElement !== line) line.appendChild(row);
 		}
-		const foundAdd = line.querySelector(':scope > .rv-hub-add') ?? paragraph.querySelector(':scope > .rv-hub-add');
-		const add = foundAdd instanceof HTMLElement
-			? foundAdd
-			: line.createEl('button', { cls: 'rv-hub-add', attr: { type: 'button', 'aria-label': 'Add hub' } });
-		if (add.parentElement !== line) line.appendChild(add);
-		if (row.nextElementSibling !== add) line.insertBefore(row, add);
+		paragraph.querySelectorAll('.rv-hub-add, a.rv-map-button').forEach((node) => node.remove());
 		row.empty();
-		add.empty();
-		setIcon(add, 'plus');
-		add.onclick = (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			host.addHub(path);
-		};
+		paintLabelIcon(hubLabel, 'waypoints', 'Hub:');
 		const hubs = hubRefs(readProperty(data, 'Hub'));
 		const returnHub = host.settings.returnHubNote;
 		hubs.forEach((hub, index) => {
@@ -398,7 +422,7 @@ function ensureAddressInput(paragraph: HTMLElement): HTMLInputElement {
 function decorateAddress(paragraph: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
 	const address = labeledStrong(paragraph, 'address');
 	if (!address) return;
-	address.textContent = 'Address:';
+	paintLabelIcon(address, 'earth', 'Address:');
 	const property = host.settings.addressProperty.trim() || 'Address';
 	const input = ensureAddressInput(paragraph);
 	for (const child of Array.from(paragraph.children)) {
@@ -412,7 +436,50 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	if (!focused) input.value = stored;
 	const write = () => host.setAddress(path, input.value);
 	input.onchange = write;
-	input.onblur = write;
+	input.onblur = () => {
+		write();
+		showAddressLink(paragraph, input, path, host);
+	};
+	input.classList.add('rv-address-input');
+	showAddressLink(paragraph, input, path, host);
+	if (address.dataset.rvAddressEdit !== '1') {
+		address.dataset.rvAddressEdit = '1';
+		address.addEventListener('click', () => {
+			const link = paragraph.querySelector(':scope > a.rv-address-link');
+			if (link instanceof HTMLElement) link.hidden = true;
+			input.hidden = false;
+			input.focus();
+		});
+	}
+}
+
+function paintLabelIcon(label: HTMLElement, icon: string, text: string): void {
+	label.empty();
+	const mark = label.createSpan('rv-label-icon');
+	setIcon(mark, icon);
+	label.createSpan({ cls: 'rv-label-text', text });
+}
+
+function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: string, host: NoteChromeHost): void {
+	const found = paragraph.querySelector(':scope > a.rv-address-link');
+	const link = found instanceof HTMLElement ? found : paragraph.ownerDocument.createElement('a');
+	if (!(found instanceof HTMLElement)) {
+		link.className = 'rv-address-link';
+		link.setAttribute('href', '#');
+		if (typeof input.insertAdjacentElement === 'function') input.insertAdjacentElement('afterend', link);
+		else paragraph.appendChild(link);
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openMap(path);
+		});
+	}
+	const text = input.value.trim();
+	link.textContent = text || 'Add an address';
+	link.classList.toggle('is-empty', !text);
+	const editing = paragraph.ownerDocument.activeElement === input;
+	link.hidden = editing || text.length === 0;
+	input.hidden = !editing && text.length > 0;
 }
 
 function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLElement | null {
@@ -492,6 +559,11 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 			item.setTitle('Remove');
 			item.setIcon('trash');
 			item.onClick(() => host.removeHub(path, hub.label));
+		});
+		menu.addItem((item) => {
+			item.setTitle('Add a Hub');
+			item.setIcon('plus');
+			item.onClick(() => host.addHub(path));
 		});
 		menu.showAtMouseEvent(event);
 		window.setTimeout(() => { link.dataset.rvMenu = ''; }, 400);

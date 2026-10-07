@@ -1,14 +1,16 @@
 /**
  * Publication, media, and lesson catalogs.
- * The title lists stay empty until the official names are dropped in.
- * A follow-up fills {@link PUBLICATION_TITLES}, {@link MEDIA_TITLES}, and {@link LESSONS}.
+ * Display titles come from the supplied list. Parenthetical aliases match search only.
  */
+import { LESSON_ENTRIES, MEDIA_ENTRIES, PUBLICATION_ENTRIES, type CatalogTitle } from './catalog-data';
 
-/** Official publication titles. Empty until that list is supplied. */
-export const PUBLICATION_TITLES: readonly string[] = [];
+export type { CatalogTitle };
 
-/** Official media titles. Empty until that list is supplied. */
-export const MEDIA_TITLES: readonly string[] = [];
+/** Official publication titles, in list order. */
+export const PUBLICATION_TITLES: readonly string[] = PUBLICATION_ENTRIES.map((entry) => entry.title);
+
+/** Official media titles, in list order. */
+export const MEDIA_TITLES: readonly string[] = MEDIA_ENTRIES.map((entry) => entry.title);
 
 export type ReviewSection = 1 | 2 | 3 | 4;
 
@@ -23,8 +25,73 @@ export interface LessonSpec {
 	reviewSection?: ReviewSection;
 }
 
-/** Official lessons. Empty until that list is supplied. */
-export const LESSONS: readonly LessonSpec[] = [];
+/** Official Enjoy Life Forever lessons, including the four section reviews. */
+export const LESSONS: readonly LessonSpec[] = LESSON_ENTRIES.map((entry) => (
+	entry.reviewSection
+		? { title: entry.title, review: true, reviewSection: entry.reviewSection }
+		: { title: entry.title, review: entry.review }
+));
+
+const TITLE_SUFFIXES = [
+	'Become Jehovah’s Friend',
+	'Tiny Tract',
+	'Watchtower',
+	'Brochure',
+	'Awake!',
+	'Tract',
+	'Book',
+] as const;
+
+/** Title text and the type suffix that stays visible when the row truncates. */
+export function splitTitleSuffix(title: string): { text: string; suffix: string } {
+	const known = [...PUBLICATION_ENTRIES, ...MEDIA_ENTRIES].find((entry) => entry.title === title);
+	const suffix = known?.suffix
+		|| TITLE_SUFFIXES.find((item) => title.endsWith(` ${item}`))
+		|| '';
+	if (!suffix || !title.endsWith(suffix)) return { text: title, suffix: '' };
+	return { text: title.slice(0, -suffix.length).trimEnd(), suffix };
+}
+
+export type StudyRatioOrder = 'lessons-studies' | 'studies-lessons';
+
+/** Card ratio has no decimal. Quick Facts adds the divided number in parentheses. */
+export function formatStudyFraction(
+	lessons: number,
+	studies: number,
+	order: StudyRatioOrder = 'lessons-studies',
+): { ratio: string; withDecimal: string } {
+	const left = order === 'studies-lessons' ? studies : lessons;
+	const right = order === 'studies-lessons' ? lessons : studies;
+	const ratio = `${countText(left)}/${countText(right)}`;
+	if (!Number.isFinite(left) || !Number.isFinite(right) || right <= 0) return { ratio, withDecimal: ratio };
+	return { ratio, withDecimal: `${ratio} (${(left / right).toFixed(2)})` };
+}
+
+function countText(value: number): string {
+	if (!Number.isFinite(value)) return '—';
+	return String(Math.max(0, Math.round(value)));
+}
+
+/**
+ * Summary, or the last part of the lesson, opens the next lesson at its intro.
+ * Stopping earlier opens the next part of the same lesson.
+ */
+export function nextStudyStart(lesson: string, endedOn: string, catalog: readonly LessonSpec[] = LESSONS): { lesson: string; from: string } {
+	const title = lesson.trim();
+	const ended = endedOn.trim();
+	const current = lessonByTitle(title, catalog.map((item) => item.title));
+	const parts = [...lessonPartOptions(current)];
+	const index = parts.findIndex((part) => part.toLowerCase() === ended.toLowerCase());
+	const finished = ended.toLowerCase() === 'summary' || (index >= 0 && index === parts.length - 1);
+	if (finished) {
+		const at = catalog.findIndex((item) => item.title.trim().toLowerCase() === title.toLowerCase());
+		const next = at >= 0 ? catalog[at + 1] : undefined;
+		if (next) return { lesson: next.title, from: lessonPartOptions(next)[0] ?? 'Intro' };
+		return { lesson: title, from: ended };
+	}
+	if (index >= 0 && index + 1 < parts.length) return { lesson: title, from: parts[index + 1] ?? ended };
+	return { lesson: title, from: ended };
+}
 
 /** A normal lesson, in study order. */
 export const NORMAL_LESSON_PARTS = [
@@ -56,10 +123,23 @@ export interface VisitShare {
 	lesson: string;
 	lessonFrom: string;
 	lessonTo: string;
+	/** Rare second lesson in the same visit. Empty unless they open that control. */
+	extraLesson?: string;
+	extraFrom?: string;
+	extraTo?: string;
 }
 
 export function emptyShare(): VisitShare {
-	return { publications: '', media: '', lesson: '', lessonFrom: '', lessonTo: '' };
+	return {
+		publications: '',
+		media: '',
+		lesson: '',
+		lessonFrom: '',
+		lessonTo: '',
+		extraLesson: '',
+		extraFrom: '',
+		extraTo: '',
+	};
 }
 
 export function lessonByTitle(title: string, custom: readonly string[] = []): LessonSpec | null {
@@ -93,7 +173,11 @@ function normalize(value: string): string {
  * Exact match first, then a close match. "enjoy lif f" finds "Enjoy Life Forever".
  * An empty query keeps the list order, which is most-recently-used when the caller built it that way.
  */
-export function rankSuggestions(query: string, items: readonly string[]): string[] {
+export function rankSuggestions(
+	query: string,
+	items: readonly string[],
+	aliases: Readonly<Record<string, readonly string[]>> = {},
+): string[] {
 	const unique: string[] = [];
 	const seen = new Set<string>();
 	for (const item of items) {
@@ -107,10 +191,16 @@ export function rankSuggestions(query: string, items: readonly string[]): string
 	const needle = normalize(query);
 	if (!needle) return unique;
 	return unique
-		.map((item) => ({ item, score: matchScore(needle, item) }))
+		.map((item) => ({ item, score: scoreWithAliases(needle, item, aliases[item.toLowerCase()]) }))
 		.filter((row) => row.score > 0)
 		.sort((a, b) => b.score - a.score || a.item.localeCompare(b.item))
 		.map((row) => row.item);
+}
+
+function scoreWithAliases(query: string, item: string, aliases: readonly string[] | undefined): number {
+	let best = matchScore(query, item);
+	for (const alias of aliases ?? []) best = Math.max(best, matchScore(query, alias));
+	return best;
 }
 
 function matchScore(query: string, item: string): number {
@@ -178,7 +268,8 @@ export function renameLabelInMarkdown(markdown: string, from: string, to: string
 	if (!previous || previous === nextName) return markdown;
 	let next = markdown.split(`data-label="${escapeAttr(previous)}"`).join(`data-label="${escapeAttr(nextName)}"`);
 	next = next.split(`'${previous}'`).join(`'${nextName}'`);
-	const properties = ['Left Publications', 'Shared Media'];
+	next = next.split(`«${previous}»`).join(`«${nextName}»`);
+	const properties = ['Left Publications', 'Shared Media', 'Lessons Studied'];
 	for (const property of properties) {
 		const pattern = new RegExp(`^(${property}:)\\s*${escapeRegExp(previous)}\\s*$`, 'gm');
 		next = next.replace(pattern, `$1 ${nextName}`);
@@ -190,6 +281,30 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export function catalogSuggestions(catalog: readonly string[], custom: readonly string[], query: string): string[] {
-	return rankSuggestions(query, [...custom, ...catalog]);
+const PUBLICATION_ALIASES = aliasIndex(PUBLICATION_ENTRIES);
+const MEDIA_ALIASES = aliasIndex(MEDIA_ENTRIES);
+
+function aliasIndex(entries: readonly CatalogTitle[]): Record<string, readonly string[]> {
+	const map: Record<string, readonly string[]> = {};
+	for (const entry of entries) {
+		if (entry.aliases?.length) map[entry.title.toLowerCase()] = entry.aliases;
+	}
+	return map;
+}
+
+export function publicationAliasIndex(): Readonly<Record<string, readonly string[]>> {
+	return PUBLICATION_ALIASES;
+}
+
+export function mediaAliasIndex(): Readonly<Record<string, readonly string[]>> {
+	return MEDIA_ALIASES;
+}
+
+export function catalogSuggestions(
+	catalog: readonly string[],
+	custom: readonly string[],
+	query: string,
+	aliases: Readonly<Record<string, readonly string[]>> = {},
+): string[] {
+	return rankSuggestions(query, [...custom, ...catalog], aliases);
 }

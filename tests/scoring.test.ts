@@ -114,10 +114,10 @@ describe('urgency', () => {
 
 	it('offers urgency palettes and keeps custom colors as hex', () => {
 		assert.deepEqual(urgencyColorsFor('default', ['#000000', '#000000', '#000000', '#000000']), [
-			'color-mix(in srgb, var(--interactive-accent) 22%, var(--background-primary))',
-			'color-mix(in srgb, var(--interactive-accent) 48%, var(--background-primary))',
-			'color-mix(in srgb, var(--interactive-accent) 78%, var(--background-primary))',
-			'var(--interactive-accent)',
+			'#1f8a4c',
+			'#d6a100',
+			'#e06a00',
+			'#d63c3c',
 		]);
 		for (const id of ['pastel', 'purple', 'green', 'blue', 'pink', 'color-blind', 'sunset', 'accent'] as const) {
 			assert.equal(URGENCY_PALETTES.some((palette) => palette.id === id), true, id);
@@ -136,7 +136,7 @@ describe('urgency', () => {
 		assert.equal(merged.abbreviateDayparts, true);
 		assert.equal(merged.attemptLogWidth, 'full');
 		assert.equal(merged.centerDashboard, true);
-		assert.equal(merged.centerVisitNotes, false);
+		assert.equal(merged.centerVisitNotes, true);
 		assert.equal(merged.centerSuggestions, true);
 		assert.equal(mergeSettings({ centerVisitNotes: true }).centerVisitNotes, true);
 		assert.equal(mergeSettings({ centerVisitNotes: false }).centerVisitNotes, false);

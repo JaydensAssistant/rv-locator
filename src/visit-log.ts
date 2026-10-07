@@ -78,6 +78,7 @@ export function applyVisitFrontmatter(
 	}
 	if (share.publications.trim()) assignProperty(frontmatter, 'Left Publications', share.publications.trim());
 	if (share.media.trim()) assignProperty(frontmatter, 'Shared Media', share.media.trim());
+	recordLoggedLessons(frontmatter, share, stamp);
 	if (!hadAddress) {
 		removeProperty(frontmatter, ADDRESS_KEY);
 		return;
@@ -430,6 +431,32 @@ function isStoredVisitLine(line: string): boolean {
 	const text = stripStampAge(match[1] ?? '').trim();
 	if (/^(?:visit|recent) notes:?$/i.test(text)) return false;
 	return calendarDaysSinceStamp(text, new Date()) != null;
+}
+
+/** A logged lesson or part bumps Studies and keeps the distinct lesson list. */
+export function recordLoggedLessons(frontmatter: Record<string, unknown>, share: VisitShare, stamp: string): void {
+	const titles = [share.lesson, share.extraLesson ?? ''].map((item) => item.trim()).filter(Boolean);
+	if (titles.length === 0) return;
+	const current = finiteCount(readProperty(frontmatter, 'Studies')) ?? 0;
+	assignProperty(frontmatter, 'Studies', current + titles.length);
+	assignProperty(frontmatter, 'Last Studied', stamp);
+	const list = lessonNames(readProperty(frontmatter, 'Lessons Studied'));
+	for (const title of titles) {
+		if (!list.some((item) => item.toLowerCase() === title.toLowerCase())) list.push(title);
+	}
+	assignProperty(frontmatter, 'Lessons Studied', list);
+}
+
+function lessonNames(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (!text || names.some((name) => name.toLowerCase() === text.toLowerCase())) continue;
+		names.push(text);
+	}
+	return names;
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {

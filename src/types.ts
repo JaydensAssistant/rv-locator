@@ -1,3 +1,4 @@
+import type { StudyRatioOrder } from './catalog';
 import { DISTANCE_COLUMN_ID, type GeoapifyRegion } from './constants';
 import { uniqueDatePropertyNames, parseDatePropertyNames } from './dates';
 import {
@@ -171,6 +172,12 @@ export interface RVLocatorSettings {
 	glancableIconScale: number;
 	/** City and distance on their own line. Off by default. */
 	splitCityLine: boolean;
+	/** Study card and Quick Facts ratio. Lessons/Studies unless switched. */
+	studyRatio: StudyRatioOrder;
+	/** Study cards hide Last Spoke unless this was turned on. */
+	studyShowSpoke: boolean;
+	/** Study cards hide Last Attempted unless this was turned on. */
+	studyShowAttempted: boolean;
 }
 
 export type PriorityBand = 1 | 2 | 3 | 4 | 5;
@@ -320,7 +327,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	wideHubsAddress: true,
 	wideVisitButtons: true,
 	centerDashboard: true,
-	centerVisitNotes: false,
+	centerVisitNotes: true,
 	centerSuggestions: true,
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
@@ -360,6 +367,9 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	leftAlignSuggestionBullets: true,
 	glancableIconScale: 1.2,
 	splitCityLine: false,
+	studyRatio: 'lessons-studies',
+	studyShowSpoke: false,
+	studyShowAttempted: false,
 };
 
 export interface NearbySortPreference {
@@ -484,7 +494,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		wideHubsAddress: input.wideHubsAddress !== false,
 		wideVisitButtons: input.wideVisitButtons !== false,
 		centerDashboard: input.centerDashboard !== false,
-		centerVisitNotes: input.centerVisitNotes === true,
+		centerVisitNotes: input.centerVisitNotes !== false,
 		centerSuggestions: input.centerSuggestions !== false,
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
@@ -526,6 +536,9 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		leftAlignSuggestionBullets: input.leftAlignSuggestionBullets !== false,
 		glancableIconScale: boundedNumber(input.glancableIconScale, 0.5, 2.5, DEFAULT_SETTINGS.glancableIconScale),
 		splitCityLine: input.splitCityLine === true,
+		studyRatio: input.studyRatio === 'studies-lessons' ? 'studies-lessons' : 'lessons-studies',
+		studyShowSpoke: input.studyShowSpoke === true,
+		studyShowAttempted: input.studyShowAttempted === true,
 	};
 }
 

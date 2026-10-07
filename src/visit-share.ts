@@ -1,68 +1,65 @@
 import { emptyShare, type VisitShare } from './catalog';
 
 const EXTRA_SPAN = /<span\b[^>]*\brv-visit-extra\b[^>]*>[\s\S]*?<\/span>/gi;
+const SHARE_TAIL = /(?:\s+·\s+(?:Left|Shared|Covered|Also)\s+«[^»]*»(?:\s+«[^»]*»–«[^»]*»)?)+\s*$/;
+const PLAIN_PIECE = /·\s+(Left|Shared|Covered|Also)\s+«([^»]*)»(?:\s+«([^»]*)»–«([^»]*)»)?/g;
 
 /** Drop literature, media, and lesson markup so a visit stamp can be parsed. */
-export function stripVisitExtras(text: string): string {
-	return text.replace(EXTRA_SPAN, ' ').replace(/\s+/g, ' ').trim();
+export function stripShareMarkup(text: string): string {
+	return text.replace(EXTRA_SPAN, ' ').replace(SHARE_TAIL, ' ');
 }
 
-function span(kind: string, label: string, share: VisitShare): string {
-	const attrs = [
-		`class="rv-visit-extra ${kind}"`,
-		`data-label="${escapeAttr(labelValue(kind, share))}"`,
-		`data-from="${escapeAttr(share.lessonFrom)}"`,
-		`data-to="${escapeAttr(share.lessonTo)}"`,
-		`title="${escapeAttr(label)}"`,
-	];
-	return `<span ${attrs.join(' ')}>${escapeText(label)}</span>`;
+function decodeAttr(value: string): string {
+	return value.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 }
 
-function labelValue(kind: string, share: VisitShare): string {
-	if (kind === 'rv-left-pub') return share.publications;
-	if (kind === 'rv-shared-media') return share.media;
-	return share.lesson;
-}
-
-function escapeAttr(value: string): string {
-	return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-}
-
-function escapeText(value: string): string {
-	return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/** Markup after the days-ago span. Empty when the visit recorded none of these. */
+/** Visible stamp tail. Guillemets keep apostrophes inside a title. */
 export function visitExtraMarkup(share: VisitShare): string {
 	const parts: string[] = [];
-	if (share.publications.trim()) {
-		parts.push(span('rv-left-pub', `Left '${share.publications.trim()}'`, share));
-	}
-	if (share.media.trim()) {
-		parts.push(span('rv-shared-media', `Shared '${share.media.trim()}'`, share));
-	}
-	if (share.lesson.trim()) {
-		const from = share.lessonFrom.trim();
-		const to = share.lessonTo.trim();
-		const range = from || to ? ` ${from || '…'}–${to || '…'}` : '';
-		parts.push(span('rv-lesson', `Covered '${share.lesson.trim()}'${range}`, share));
-	}
+	const publications = share.publications.trim();
+	const media = share.media.trim();
+	const lesson = share.lesson.trim();
+	const extra = share.extraLesson?.trim() ?? '';
+	if (publications) parts.push(`· Left «${publications}»`);
+	if (media) parts.push(`· Shared «${media}»`);
+	if (lesson) parts.push(covered('Covered', lesson, share.lessonFrom, share.lessonTo));
+	if (extra) parts.push(covered('Also', extra, share.extraFrom ?? '', share.extraTo ?? ''));
 	return parts.join(' ');
 }
 
-/** Extra spans already written on a stamp line, kept when the age text is refreshed. */
+function covered(kind: 'Covered' | 'Also', lesson: string, from: string, to: string): string {
+	const start = from.trim();
+	const end = to.trim();
+	const range = start || end ? ` «${start}»–«${end}»` : '';
+	return `· ${kind} «${lesson}»${range}`;
+}
+
+/** Extra text already written on a stamp line, kept when the age text is refreshed. */
 export function visitExtrasFromLine(line: string): string {
-	const found = line.match(EXTRA_SPAN);
-	return found ? found.join(' ') : '';
+	const spans = line.match(EXTRA_SPAN);
+	if (spans?.length) return spans.join(' ');
+	const plain = SHARE_TAIL.exec(line);
+	return plain?.[0]?.trim() ?? '';
 }
 
 /** The newest visit's ended-on value, for the next lesson's start. */
 export function newestLessonEnd(markdown: string): string {
-	const match = /class="rv-visit-extra rv-lesson"[^>]*data-to="([^"]*)"/.exec(markdown)
-		?? /data-to="([^"]*)"[^>]*class="rv-visit-extra rv-lesson"/.exec(markdown);
-	if (match?.[1]) return decodeAttr(match[1]);
-	const loose = /class="rv-visit-extra rv-lesson"[\s\S]*?data-to="([^"]*)"/.exec(markdown);
-	return loose?.[1] ? decodeAttr(loose[1]) : '';
+	return newestLessonProgress(markdown)?.to ?? '';
+}
+
+/** Newest Covered lesson on the note. The newest visit is the first stamp in the file. */
+export function newestLessonProgress(markdown: string): { lesson: string; to: string } | null {
+	const span = /class="rv-visit-extra rv-lesson"[\s\S]*?data-label="([^"]*)"[\s\S]*?data-to="([^"]*)"/.exec(markdown);
+	const plain = /· Covered «([^»]*)»(?:\s+«[^»]*»–«([^»]*)»)?/.exec(markdown);
+	const spanAt = span?.index ?? Number.POSITIVE_INFINITY;
+	const plainAt = plain?.index ?? Number.POSITIVE_INFINITY;
+	if (span && spanAt <= plainAt) {
+		return { lesson: decodeAttr(span[1] ?? ''), to: decodeAttr(span[2] ?? '') };
+	}
+	if (plain) return { lesson: plain[1] ?? '', to: plain[2] ?? '' };
+	const loose = /data-to="([^"]*)"/.exec(markdown);
+	if (span && loose) return { lesson: decodeAttr(span[1] ?? ''), to: decodeAttr(loose[1] ?? '') };
+	return null;
 }
 
 export function shareFromLine(line: string): VisitShare {
@@ -78,9 +75,23 @@ export function shareFromLine(line: string): VisitShare {
 			share.lessonTo = decodeAttr(/data-to="([^"]*)"/.exec(span)?.[1] ?? '');
 		}
 	}
+	PLAIN_PIECE.lastIndex = 0;
+	let match = PLAIN_PIECE.exec(line);
+	while (match) {
+		const kind = match[1] ?? '';
+		const label = match[2] ?? '';
+		if (kind === 'Left') share.publications = label;
+		else if (kind === 'Shared') share.media = label;
+		else if (kind === 'Covered') {
+			share.lesson = label;
+			share.lessonFrom = match[3] ?? '';
+			share.lessonTo = match[4] ?? '';
+		} else if (kind === 'Also') {
+			share.extraLesson = label;
+			share.extraFrom = match[3] ?? '';
+			share.extraTo = match[4] ?? '';
+		}
+		match = PLAIN_PIECE.exec(line);
+	}
 	return share;
-}
-
-function decodeAttr(value: string): string {
-	return value.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 }

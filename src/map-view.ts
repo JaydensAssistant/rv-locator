@@ -2,6 +2,7 @@ import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { OSM_ATTRIBUTION } from './constants';
 import { latToTileY, lonToTileX, type MapPin } from './map-pins';
 import type { RVLocatorSettings } from './types';
+import { urgencyInk } from './urgency-palette';
 
 export const MAP_VIEW_TYPE = 'rv-locator-map';
 
@@ -31,6 +32,7 @@ export class RvMapView extends ItemView {
 	private pinLayer: HTMLElement | null = null;
 	private watchId: number | null = null;
 	private drag: { x: number; y: number; lat: number; lon: number } | null = null;
+	private selectedPath: string | null = null;
 
 	constructor(leaf: WorkspaceLeaf, private host: MapHost) {
 		super(leaf);
@@ -55,8 +57,14 @@ export class RvMapView extends ItemView {
 		bar.createEl('h2', { text: 'Map' });
 		const zoomIn = bar.createEl('button', { text: '+', attr: { type: 'button', 'aria-label': 'Zoom in' } });
 		const zoomOut = bar.createEl('button', { text: '−', attr: { type: 'button', 'aria-label': 'Zoom out' } });
+		const fit = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Fit all pins' } });
+		setIcon(fit, 'maximize');
+		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location' } });
+		setIcon(locate, 'locate');
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom + 1));
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom - 1));
+		fit.addEventListener('click', () => this.fitAll());
+		locate.addEventListener('click', () => this.locateMe());
 		this.stage = this.contentEl.createDiv('rv-map-stage');
 		this.pinLayer = this.stage.createDiv('rv-map-pins');
 		const credit = this.contentEl.createDiv('rv-map-credit');
@@ -121,7 +129,9 @@ export class RvMapView extends ItemView {
 		const stage = this.stage;
 		if (!stage) return;
 		stage.addEventListener('pointerdown', (event) => {
+			if (event.target instanceof Element && event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster')) return;
 			this.drag = { x: event.clientX, y: event.clientY, lat: this.centerLat, lon: this.centerLon };
+			stage.addClass('is-grabbing');
 		});
 		stage.addEventListener('pointermove', (event) => {
 			if (!this.drag) return;
@@ -134,7 +144,10 @@ export class RvMapView extends ItemView {
 			this.centerLat = tileYToLat(nextY, this.zoom);
 			this.paint();
 		});
-		const end = (): void => { this.drag = null; };
+		const end = (): void => {
+			this.drag = null;
+			stage.removeClass('is-grabbing');
+		};
 		stage.addEventListener('pointerup', end);
 		stage.addEventListener('pointerleave', end);
 		stage.addEventListener('wheel', (event) => {
@@ -179,7 +192,13 @@ export class RvMapView extends ItemView {
 		}
 		pins.empty();
 		if (this.user) this.paintUser(pins, width, height, cx, cy);
-		for (const pin of this.pins) this.paintPin(pins, pin, width, height, cx, cy);
+		const placed = this.pins.map((pin) => ({ pin, point: this.project(pin.lat, pin.lon, width, height, cx, cy) }));
+		if (this.zoom <= 12) this.paintClusters(pins, placed);
+		else {
+			for (const item of placed) this.paintPin(pins, item.pin, item.point);
+		}
+		const selected = this.selectedPath ? placed.find((item) => item.pin.path === this.selectedPath) : null;
+		if (selected && this.zoom > 12) this.openCard(pins, selected.pin, selected.point);
 	}
 
 	private paintUser(layer: HTMLElement, width: number, height: number, cx: number, cy: number): void {
@@ -191,56 +210,161 @@ export class RvMapView extends ItemView {
 		dot.setAttr('title', 'Current location');
 	}
 
-	private paintPin(
-		layer: HTMLElement,
-		pin: MapPin,
-		width: number,
-		height: number,
-		cx: number,
-		cy: number,
-	): void {
+	private paintPin(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
+		const selected = this.selectedPath === pin.path;
 		const button = layer.createEl('button', {
-			cls: `rv-map-pin${pin.fresh ? ' is-fresh' : ''}`,
+			cls: `rv-map-pin${pin.fresh ? ' is-fresh' : ''}${selected ? ' is-selected' : ''}`,
 			attr: { type: 'button', 'aria-label': pin.name },
 		});
-		button.style.background = pin.color;
+		button.style.setProperty('--pin-color', pin.color);
+		button.style.color = pin.fresh ? pin.color : urgencyInk(pin.color);
+		if (!pin.fresh) button.style.background = pin.color;
 		button.textContent = pin.glyph;
-		const point = this.project(pin.lat, pin.lon, width, height, cx, cy);
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
+			this.selectedPath = pin.path;
 			this.openCard(layer, pin, point);
+			button.addClass('is-selected');
 		});
+	}
+
+	private paintClusters(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {
+		const groups: { x: number; y: number; pins: MapPin[] }[] = [];
+		for (const item of placed) {
+			const group = groups.find((entry) => Math.hypot(entry.x - item.point.x, entry.y - item.point.y) < 48);
+			if (!group) {
+				groups.push({ x: item.point.x, y: item.point.y, pins: [item.pin] });
+				continue;
+			}
+			group.pins.push(item.pin);
+			group.x = (group.x * (group.pins.length - 1) + item.point.x) / group.pins.length;
+			group.y = (group.y * (group.pins.length - 1) + item.point.y) / group.pins.length;
+		}
+		for (const group of groups) {
+			if (group.pins.length === 1) {
+				const only = group.pins[0];
+				if (only) this.paintPin(layer, only, { x: group.x, y: group.y });
+				continue;
+			}
+			const button = layer.createEl('button', {
+				cls: 'rv-map-cluster',
+				attr: { type: 'button', 'aria-label': `${group.pins.length} return visits` },
+			});
+			button.textContent = String(group.pins.length);
+			button.style.left = `${group.x}px`;
+			button.style.top = `${group.y}px`;
+			button.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				const lats = group.pins.map((pin) => pin.lat);
+				const lons = group.pins.map((pin) => pin.lon);
+				this.centerLat = average(lats);
+				this.centerLon = average(lons);
+				this.setZoom(this.zoom + 2);
+			});
+		}
 	}
 
 	private openCard(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		layer.querySelectorAll('.rv-map-card').forEach((node) => node.remove());
-		const card = layer.createDiv('rv-map-card');
-		card.style.left = `${point.x + 16}px`;
+		const card = layer.createDiv('rv-map-card rv-locator-card');
+		card.style.left = `${point.x + 28}px`;
 		card.style.top = `${point.y}px`;
-		card.createEl('strong', { text: pin.name });
-		const badges = card.createDiv('rv-map-card-badges');
-		const urgency = badges.createSpan('rv-map-badge');
+		card.style.setProperty('--rv-urgency-accent', pin.color);
+		card.style.setProperty('--rv-urgency-ink', urgencyInk(pin.color));
+		const head = card.createDiv('rv-map-card-head');
+		head.createEl('strong', { text: pin.name });
+		const badges = head.createDiv('rv-map-card-badges');
+		const urgency = badges.createSpan('rv-map-badge rv-map-action');
 		urgency.style.background = pin.color;
+		urgency.style.color = urgencyInk(pin.color);
 		urgency.setText(pin.glyph);
 		urgency.setAttr('aria-label', 'Urgency');
-		const priority = badges.createSpan({ cls: 'rv-map-badge is-priority', text: String(pin.priority) });
+		const priority = badges.createSpan({ cls: 'rv-map-badge rv-map-action is-priority', text: String(pin.priority) });
+		priority.style.background = pin.color;
+		priority.style.color = urgencyInk(pin.color);
 		priority.setAttr('aria-label', `Priority ${pin.priority}`);
 		const route = badges.createEl('button', {
-			cls: 'rv-map-badge',
-			attr: { type: 'button', 'aria-label': 'Route' },
+			cls: 'rv-map-badge rv-map-action',
+			attr: { type: 'button', 'aria-label': 'Directions in Google Maps' },
 		});
 		setIcon(route, 'route');
-		route.addEventListener('click', () => { void this.host.openRoute(pin.path); });
-		const open = card.createEl('button', {
-			cls: 'rv-map-open',
-			text: 'Open note',
-			attr: { type: 'button' },
+		route.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			void this.host.openRoute(pin.path);
+		});
+		const open = badges.createEl('button', {
+			cls: 'rv-map-badge rv-map-action',
+			attr: { type: 'button', 'aria-label': 'Open note' },
 		});
 		setIcon(open, 'file-text');
-		open.addEventListener('click', () => this.host.openMapNote(pin.path));
+		open.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			this.host.openMapNote(pin.path);
+		});
+		this.cardLine(card, 'map-pin', pin.card.address || '—');
+		if (pin.card.city) this.cardLine(card, 'building-2', pin.card.city);
+		if (pin.card.study) this.cardLine(card, 'book-marked', pin.card.studied ? `Studied ${pin.card.studied}` : 'Studied —');
+		else {
+			if (pin.card.spoke) this.cardLine(card, 'message-circle', `Spoke ${pin.card.spoke}`);
+			if (pin.card.attempted) this.cardLine(card, 'clock', `Attempted ${pin.card.attempted}`);
+		}
+		if (pin.card.met) this.cardLine(card, 'home', `Met ${pin.card.met}`);
+		this.cardLine(card, 'user', pin.card.metWith || '—');
+		this.cardLine(card, 'list-checks', pin.card.study ? pin.card.studyRatio : pin.card.visits);
+		this.cardLine(card, 'book-open', pin.card.literature || '—');
+		this.cardLine(card, 'clapperboard', pin.card.media || '—');
+		if (pin.card.study) {
+			card.createDiv({ cls: 'rv-map-section', text: 'Lessons Studied' });
+			const lessons = pin.card.lessons.length ? pin.card.lessons : ['—'];
+			for (const lesson of lessons) this.cardLine(card, 'book-marked', lesson);
+		}
+	}
+
+	private cardLine(card: HTMLElement, icon: string, text: string): void {
+		const row = card.createDiv('rv-map-fact');
+		const mark = row.createSpan('rv-map-fact-icon');
+		setIcon(mark, icon);
+		row.createSpan({ cls: 'rv-map-fact-text', text });
+	}
+
+	private fitAll(): void {
+		const points = [
+			...this.pins.map((pin) => ({ lat: pin.lat, lon: pin.lon })),
+			...(this.user ? [this.user] : []),
+		];
+		if (points.length === 0) return;
+		const lats = points.map((point) => point.lat);
+		const lons = points.map((point) => point.lon);
+		this.centerLat = average(lats);
+		this.centerLon = average(lons);
+		const span = Math.max(spread(lats), spread(lons));
+		this.zoom = span < 0.02 ? 15 : span < 0.08 ? 13 : span < 0.3 ? 11 : span < 1 ? 9 : 6;
+		this.paint();
+	}
+
+	private locateMe(): void {
+		if (this.user) {
+			this.centerLat = this.user.lat;
+			this.centerLon = this.user.lon;
+			this.zoom = 15;
+			this.paint();
+			return;
+		}
+		const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
+		if (!geo || this.host.settings.distanceTest) return;
+		geo.getCurrentPosition((position) => {
+			this.user = { lat: position.coords.latitude, lon: position.coords.longitude };
+			this.centerLat = this.user.lat;
+			this.centerLon = this.user.lon;
+			this.zoom = 15;
+			this.paint();
+		});
 	}
 
 	private project(
@@ -256,6 +380,16 @@ export class RvMapView extends ItemView {
 			y: (latToTileY(lat, this.zoom) - cy) * TILE + height / 2,
 		};
 	}
+}
+
+function average(values: number[]): number {
+	if (values.length === 0) return 0;
+	return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function spread(values: number[]): number {
+	if (values.length === 0) return 0;
+	return Math.max(...values) - Math.min(...values);
 }
 
 function tileYToLat(y: number, zoom: number): number {

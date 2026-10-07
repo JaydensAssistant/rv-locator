@@ -311,10 +311,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		}
 		if (message.test || message.error) {
 			this.bannerEl.hide();
-			if (this.toastedBanner !== message.text) {
-				this.toastedBanner = message.text;
-				new Notice(message.text, 4500);
-			}
+			this.plugin.notifyLocationOnce(message.text);
 			return;
 		}
 		this.bannerText.setText(message.text);

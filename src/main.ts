@@ -1,6 +1,6 @@
 import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import type { NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, googleMapsAddressLink, normalizeAddress, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, googleMapsDirectionsLink, normalizeAddress, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
@@ -16,9 +16,9 @@ import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
-import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, rememberCustom, renameCustom, renameLabelInMarkdown, type VisitShare } from './catalog';
+import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, nextStudyStart, rememberCustom, renameCustom, renameLabelInMarkdown, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
-import { newestLessonEnd } from './visit-share';
+import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
@@ -48,7 +48,7 @@ import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeAct
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { latLonFromUnknown, validLatLon } from './distance';
-import { calendarDaysSince } from './dates';
+import { calendarDaysSince, formatGlanceableCounter } from './dates';
 import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -392,8 +392,47 @@ export default class RVLocatorPlugin extends Plugin {
 	private onNoteOpened(file: TFile | null): void {
 		this.scheduleAgeRefresh();
 		this.scheduleNotesFit();
+		this.maybeSessionLocationNotice();
 		if (!file) return;
 		window.setTimeout(() => this.openInReadingView(file, false), 0);
+	}
+
+	private locationNoticeClaimed = false;
+	private locationNoticePending = false;
+
+	/** One no-location or desktop-testing notice per app launch. */
+	notifyLocationOnce(text: string): void {
+		const message = text.trim();
+		if (!message || this.locationNoticeClaimed) return;
+		this.locationNoticeClaimed = true;
+		new Notice(message, 4500);
+	}
+
+	private maybeSessionLocationNotice(): void {
+		if (this.locationNoticeClaimed || this.locationNoticePending) return;
+		if (this.settings.distanceTest) {
+			const lat = this.settings.testLatitude;
+			const lon = this.settings.testLongitude;
+			this.notifyLocationOnce(`Desktop distance testing is on, using ${lat}, ${lon} instead of this device. Distance is not written into notes.`);
+			return;
+		}
+		const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
+		if (!geo) {
+			this.notifyLocationOnce('This desktop has no position, so distance shows a dash. Obsidian Mobile can use GPS. Distance is not written into notes.');
+			return;
+		}
+		this.locationNoticePending = true;
+		geo.getCurrentPosition(
+			() => {
+				this.locationNoticeClaimed = true;
+				this.locationNoticePending = false;
+			},
+			() => {
+				this.locationNoticePending = false;
+				this.notifyLocationOnce('This desktop has no position, so distance shows a dash. Obsidian Mobile can use GPS. Distance is not written into notes.');
+			},
+			{ enableHighAccuracy: false, maximumAge: 60_000, timeout: 4_000 },
+		);
 	}
 
 	/**
@@ -676,7 +715,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const gender = readProperty(frontmatter, 'Gender');
 		const status = note ? resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) : null;
 		const study = status === 'Study';
-		const lessonFrom = path && study ? await this.newestLessonEnd(path) : '';
+		const lessonFrom = path && study ? await this.nextStudyDefaults(path) : { lesson: '', from: '' };
 		const picked = await new Promise<string | null | false>((resolve) => {
 			const modal = new CompanionSuggestModal(
 				this.app,
@@ -690,7 +729,7 @@ export default class RVLocatorPlugin extends Plugin {
 					},
 				} : null,
 				path ? {
-					...this.shareFieldOptions(study, lessonFrom),
+					...this.shareFieldOptions(study, lessonFrom.lesson, lessonFrom.from),
 					onShare: (share) => {
 						if (shareBox) shareBox.share = share;
 					},
@@ -709,7 +748,7 @@ export default class RVLocatorPlugin extends Plugin {
 		return quoteCompanionFrontmatter(markdown);
 	}
 
-	private shareFieldOptions(study: boolean, lessonFrom = '', forceLiterature = false): ShareFieldOptions {
+	private shareFieldOptions(study: boolean, lesson = '', lessonFrom = '', forceLiterature = false): ShareFieldOptions {
 		return {
 			publications: [...this.settings.customPublications, ...PUBLICATION_TITLES],
 			media: [...this.settings.customMedia, ...MEDIA_TITLES],
@@ -717,17 +756,19 @@ export default class RVLocatorPlugin extends Plugin {
 			lessons: [...LESSONS],
 			showLiterature: forceLiterature || !study || this.settings.showStudyLiterature,
 			showLesson: study,
-			initial: { ...emptyShare(), lessonFrom },
+			initial: { ...emptyShare(), lesson, lessonFrom },
 		};
 	}
 
-	private async newestLessonEnd(path: string): Promise<string> {
+	private async nextStudyDefaults(path: string): Promise<{ lesson: string; from: string }> {
 		const file = this.app.vault.getFileByPath(path);
-		if (!file) return '';
+		if (!file) return { lesson: '', from: '' };
 		try {
-			return newestLessonEnd(await this.app.vault.cachedRead(file));
+			const progress = newestLessonProgress(await this.app.vault.cachedRead(file));
+			if (!progress?.lesson && !progress?.to) return { lesson: '', from: '' };
+			return nextStudyStart(progress.lesson, progress.to, LESSONS);
 		} catch {
-			return '';
+			return { lesson: '', from: '' };
 		}
 	}
 
@@ -740,7 +781,11 @@ export default class RVLocatorPlugin extends Plugin {
 	private async rememberShare(share: VisitShare): Promise<void> {
 		const publications = rememberCustom(this.settings.customPublications, share.publications, PUBLICATION_TITLES);
 		const media = rememberCustom(this.settings.customMedia, share.media, MEDIA_TITLES);
-		const lessons = rememberCustom(this.settings.customLessons, share.lesson, LESSONS.map((lesson) => lesson.title));
+		const lessons = rememberCustom(
+			rememberCustom(this.settings.customLessons, share.lesson, LESSONS.map((lesson) => lesson.title)),
+			share.extraLesson ?? '',
+			LESSONS.map((lesson) => lesson.title),
+		);
 		const changed = publications.length !== this.settings.customPublications.length
 			|| media.length !== this.settings.customMedia.length
 			|| lessons.length !== this.settings.customLessons.length;
@@ -1013,6 +1058,7 @@ export default class RVLocatorPlugin extends Plugin {
 			moveHub: (path, label) => { void this.moveHub(path, label); },
 			openSlotOverride: (path) => { this.openSlotOverride(path); },
 			setAddress: (path, address) => { void this.writeAddress(path, address); },
+			openMap: (path) => { void this.openMapSoon(path); },
 		};
 	}
 
@@ -1246,14 +1292,36 @@ export default class RVLocatorPlugin extends Plugin {
 			const status = resolveStatus(readProperty(frontmatter, 'Status'), priority);
 			const spoke = readProperty(frontmatter, 'Last Spoke');
 			const raw = spoke instanceof Date ? spoke.toISOString() : typeof spoke === 'string' ? spoke : '';
+			const days = raw ? calendarDaysSince(raw) : null;
+			const lessons = lessonList(readProperty(frontmatter, 'Lessons Studied'));
+			const studies = finiteVisitCount(readProperty(frontmatter, 'Studies')) ?? 0;
+			const successful = finiteVisitCount(readProperty(frontmatter, 'Successful Visits'));
+			const visits = finiteVisitCount(readProperty(frontmatter, 'Visits'));
+			const cityName = this.settings.cityProperty.trim() || 'City';
+			const city = readProperty(frontmatter, cityName);
 			return {
 				path: file.path,
 				name: file.basename,
 				lat: point?.lat ?? Number.NaN,
 				lon: point?.lon ?? Number.NaN,
 				priority,
-				days: raw ? calendarDaysSince(raw) : null,
+				days,
 				inactive: status === 'Inactive',
+				card: {
+					address: readAddress(frontmatter, this.settings.addressProperty) ?? '',
+					city: typeof city === 'string' ? city : '',
+					study: status === 'Study',
+					spoke: days == null ? '' : formatGlanceableCounter(days),
+					attempted: counterText(readProperty(frontmatter, 'Last Attempted')),
+					studied: counterText(readProperty(frontmatter, 'Last Studied')),
+					met: counterText(readProperty(frontmatter, 'Met')),
+					metWith: textProperty(readProperty(frontmatter, 'Met With')),
+					visits: `${successful ?? '—'}/${visits ?? '—'}`,
+					studyRatio: formatStudyFraction(lessons.length, studies, this.settings.studyRatio).ratio,
+					literature: textProperty(readProperty(frontmatter, 'Left Publications')),
+					media: textProperty(readProperty(frontmatter, 'Shared Media')),
+					lessons,
+				},
 			};
 		});
 		return buildMapPins(rows, this.settings.idealityFloorDays, this.settings.urgencyThresholdDays, colors);
@@ -1280,7 +1348,8 @@ export default class RVLocatorPlugin extends Plugin {
 		const cityName = this.settings.cityProperty.trim() || 'City';
 		const city = readProperty(frontmatter, cityName);
 		const cityText = typeof city === 'string' ? city : '';
-		const url = storedUrl || (address ? googleMapsAddressLink(address, cityText) : '');
+		const googleStored = /google\.[^/]+\/maps/i.test(storedUrl) ? storedUrl : '';
+		const url = googleStored || (address ? googleMapsDirectionsLink(address, cityText) : '');
 		if (!url) {
 			new Notice('This note has no address to open in Google Maps.');
 			return;
@@ -1684,7 +1753,7 @@ export default class RVLocatorPlugin extends Plugin {
 			title: `Log past visit on “${file.basename}”`,
 			recentCompanions: this.recentCompanionNames(),
 			campaignName: campaign?.name,
-			share: this.shareFieldOptions(study, '', true),
+			share: this.shareFieldOptions(study, '', ''),
 			onCovered: (covered) => {
 				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
 			},
@@ -1718,6 +1787,9 @@ export default class RVLocatorPlugin extends Plugin {
 			lesson: visit.lesson ?? '',
 			lessonFrom: visit.lessonFrom ?? '',
 			lessonTo: visit.lessonTo ?? '',
+			extraLesson: visit.extraLesson ?? '',
+			extraFrom: visit.extraFrom ?? '',
+			extraTo: visit.extraTo ?? '',
 		});
 		await this.consumeCoverage(file.path, visit.home ? 'home' : 'miss');
 		new Notice(`Logged ${describeVisit(visit)} on “${file.basename}”.`);
@@ -1801,7 +1873,7 @@ export default class RVLocatorPlugin extends Plugin {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
-			share: this.shareFieldOptions(study, entry.lessonFrom ?? '', true),
+			share: this.shareFieldOptions(study, entry.lesson ?? '', entry.lessonFrom ?? ''),
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
@@ -2496,6 +2568,27 @@ function finiteVisitCount(value: unknown): number | null {
 	if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return null;
 	const parsed = Number(value.trim());
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function textProperty(value: unknown): string {
+	return typeof value === 'string' ? value.trim() : '';
+}
+
+function lessonList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (text) names.push(text);
+	}
+	return names;
+}
+
+function counterText(value: unknown): string {
+	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	const days = raw ? calendarDaysSince(raw) : null;
+	return days == null ? '' : formatGlanceableCounter(days);
 }
 
 function locationCopyNames(settings: RVLocatorSettings): string[] {

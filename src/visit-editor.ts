@@ -31,6 +31,9 @@ export interface VisitFacts {
 	lesson?: string;
 	lessonFrom?: string;
 	lessonTo?: string;
+	extraLesson?: string;
+	extraFrom?: string;
+	extraTo?: string;
 }
 
 /**
@@ -179,6 +182,9 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 			lesson: facts.lesson ?? '',
 			lessonFrom: facts.lessonFrom ?? '',
 			lessonTo: facts.lessonTo ?? '',
+			extraLesson: facts.extraLesson ?? '',
+			extraFrom: facts.extraFrom ?? '',
+			extraTo: facts.extraTo ?? '',
 		});
 		const heading = extra ? `##### ${stamp} ${extra}` : `##### ${stamp}`;
 		const block = options.notesBlock && options.notesBlock.length > 0
@@ -285,10 +291,51 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	moveLatest(frontmatter, 'Last Spoke', removed?.home ? removed : null, after.filter((visit) => visit.home));
 	if (added?.publications?.trim()) assignProperty(frontmatter, 'Left Publications', added.publications.trim());
 	if (added?.media?.trim()) assignProperty(frontmatter, 'Shared Media', added.media.trim());
+	applyLessonChange(frontmatter, change);
 	updateTaken(frontmatter, removed, added, after);
 	syncMet(frontmatter, after, new Date());
 	const property = change.removedNotesProperty?.trim();
 	if (removed?.home && property && !added?.home) removeProperty(frontmatter, property);
+}
+
+function lessonTitles(visit: VisitFacts | null | undefined): string[] {
+	if (!visit) return [];
+	return [visit.lesson, visit.extraLesson].map((item) => item?.trim() ?? '').filter(Boolean);
+}
+
+function applyLessonChange(frontmatter: Record<string, unknown>, change: VisitChange): void {
+	const added = change.added ?? null;
+	const removed = change.removed ?? null;
+	const addedTitles = lessonTitles(added);
+	const removedTitles = lessonTitles(removed);
+	if (addedTitles.length === 0 && removedTitles.length === 0) return;
+	shiftCount(frontmatter, 'Studies', addedTitles.length - removedTitles.length);
+	if (added && addedTitles.length > 0) {
+		assignProperty(frontmatter, 'Last Studied', formatFrontmatterDateTime(added.when));
+	}
+	const kept = new Set(
+		[...change.remaining, ...(added ? [added] : [])]
+			.flatMap((visit) => lessonTitles(visit))
+			.map((title) => title.toLowerCase()),
+	);
+	const list = lessonNameList(readProperty(frontmatter, 'Lessons Studied'));
+	for (const title of addedTitles) {
+		if (!list.some((item) => item.toLowerCase() === title.toLowerCase())) list.push(title);
+	}
+	const next = list.filter((title) => kept.has(title.toLowerCase()) || !removedTitles.some((item) => item.toLowerCase() === title.toLowerCase()));
+	assignProperty(frontmatter, 'Lessons Studied', next);
+}
+
+function lessonNameList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (!text || names.some((name) => name.toLowerCase() === text.toLowerCase())) continue;
+		names.push(text);
+	}
+	return names;
 }
 
 function shiftCount(frontmatter: Record<string, unknown>, name: string, delta: number): void {
@@ -402,6 +449,9 @@ export function visitFacts(entry: VisitFacts): VisitFacts {
 		lesson: entry.lesson,
 		lessonFrom: entry.lessonFrom,
 		lessonTo: entry.lessonTo,
+		extraLesson: entry.extraLesson,
+		extraFrom: entry.extraFrom,
+		extraTo: entry.extraTo,
 	};
 }
 

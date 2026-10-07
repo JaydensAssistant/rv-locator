@@ -1,3 +1,5 @@
+import { stripShareMarkup } from './visit-share';
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
@@ -90,8 +92,7 @@ const VISIT_STAMP_DATE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/;
 
 /** Drop a plugin-written age suffix so the visit stamp can be parsed again. */
 export function stripStampAge(text: string): string {
-	return text
-		.replace(/\s*<span\b[^>]*\brv-visit-extra\b[^>]*>[\s\S]*?<\/span>/gi, ' ')
+	return stripShareMarkup(text)
 		.replace(STAMP_AGE_SUFFIX, '')
 		.replace(/\s+/g, ' ')
 		.trim();
@@ -101,7 +102,7 @@ const STAMP_AGE_WORDS = /\s+(?:Today|\d+ days? ago)\s*$/i;
 
 /** Stamp heading text with the rendered age (`Today`, `3 days ago`) removed. */
 export function visibleStampText(text: string): string {
-	let next = text.replace(/\s+/g, ' ').trim();
+	let next = stripShareMarkup(text).replace(/\s+/g, ' ').trim();
 	for (let pass = 0; pass < 3 && STAMP_AGE_WORDS.test(next); pass += 1) {
 		next = next.replace(STAMP_AGE_WORDS, '').trim();
 	}

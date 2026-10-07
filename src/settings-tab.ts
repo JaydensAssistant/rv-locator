@@ -265,7 +265,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		const centers: ReadonlyArray<{ key: 'centerDashboard' | 'centerVisitNotes' | 'centerSuggestions'; name: string; desc: string }> = [
 			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, and buttons. Quick Facts labels stay left aligned.' },
-			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'Centers the Visit Notes heading and each visit stamp. The words in the notes box stay left aligned.' },
+			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'On when the setting is missing. Centers the Visit Notes heading, each visit stamp, and the notes block. The words in the notes box stay left aligned.' },
 			{ key: 'centerSuggestions', name: 'Center Return Suggestions', desc: 'Centers the Return Suggestions title and lines, the Attempt Log, its table, and its visit lines.' },
 		];
 		for (const center of centers) {
@@ -390,7 +390,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Literature on a study')
-			.setDesc('Off by default. A study\'s at-home log hides literature and media unless this is on. The lesson prompt stays.')
+			.setDesc('Off by default. A study\'s at-home log, past visit, and edit hide literature and media unless this is on. The lesson prompt stays.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.showStudyLiterature);
 				toggle.onChange(async (value) => {
@@ -399,8 +399,38 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		new Setting(containerEl)
+			.setName('Lessons/Studies on a study')
+			.setDesc('On shows Lessons/Studies, such as 2/6 (0.33) in Quick Facts. Off shows Studies/Lessons. The card leaves off the divided number. Missing this setting stays Lessons/Studies.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.studyRatio !== 'studies-lessons');
+				toggle.onChange(async (value) => {
+					this.plugin.settings.studyRatio = value ? 'lessons-studies' : 'studies-lessons';
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Last Spoke on a study')
+			.setDesc('Off unless it was turned on. A study card and Quick Facts show Last Studied instead. This puts Last Spoke back as well.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.studyShowSpoke);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.studyShowSpoke = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Last Attempted on a study')
+			.setDesc('Off unless it was turned on. A study card and Quick Facts show Last Studied instead. This puts Last Attempted back as well.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.studyShowAttempted);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.studyShowAttempted = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
 			.setName('Left-align suggestion bullets')
-			.setDesc('On by default. Return-suggestion bullets outside the Attempt Log stay left-aligned even when Center Return Suggestions is on. The Attempt Log keeps its centered lines.')
+			.setDesc('On by default. Return-suggestion bullets stay left-aligned even when Center Return Suggestions is on. Attempt Log lines are left-aligned too.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.leftAlignSuggestionBullets);
 				toggle.onChange(async (value) => {

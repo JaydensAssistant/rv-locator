@@ -114,6 +114,7 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
 		markStampDate(heading);
+		wrapShareTail(heading);
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
@@ -160,6 +161,51 @@ function markStampDate(heading: HTMLElement): void {
 			return;
 		}
 		node = walker.nextNode();
+	}
+}
+
+/** Plugin-owned spans around a plain-text share tail. The note file is not rewritten. */
+function wrapShareTail(heading: HTMLElement): void {
+	if (heading.querySelector('.rv-visit-extra')) return;
+	const doc = heading.ownerDocument;
+	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
+	const walker = doc.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const text = node.textContent ?? '';
+		const at = text.indexOf('·');
+		if (at < 0 || !/·\s+(?:Left|Shared|Covered|Also)\s+«/.test(text)) {
+			node = walker.nextNode();
+			continue;
+		}
+		const parent = node.parentElement;
+		if (!parent) return;
+		const lead = text.slice(0, at).trimEnd();
+		const tail = text.slice(at);
+		node.textContent = '';
+		if (lead) {
+			const leadEl = doc.createElement('span');
+			leadEl.className = 'rv-stamp-lead';
+			leadEl.textContent = lead;
+			parent.insertBefore(leadEl, node.nextSibling);
+		}
+		const piece = /·\s+(?:Left|Shared|Covered|Also)\s+«[^»]*»(?:\s+«[^»]*»–«[^»]*»)?/g;
+		let match = piece.exec(tail);
+		let cursor = 0;
+		let after: Node = node;
+		while (match) {
+			const span = doc.createElement('span');
+			span.className = 'rv-visit-extra';
+			span.textContent = ` ${match[0]}`;
+			const anchor = after.nextSibling;
+			parent.insertBefore(span, anchor);
+			after = span;
+			cursor = match.index + match[0].length;
+			match = piece.exec(tail);
+		}
+		const rest = tail.slice(cursor);
+		if (rest) parent.insertBefore(doc.createTextNode(rest), after.nextSibling);
+		return;
 	}
 }
 

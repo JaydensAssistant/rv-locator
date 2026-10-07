@@ -8,12 +8,17 @@ import {
 	REVIEW_QUESTION_COUNTS,
 	catalogSuggestions,
 	deleteCustom,
+	formatStudyFraction,
 	lessonPartOptions,
+	mediaAliasIndex,
+	nextStudyStart,
+	publicationAliasIndex,
 	rankSuggestions,
 	rememberCustom,
 	renameCustom,
 	emptyShare,
 	renameLabelInMarkdown,
+	splitTitleSuffix,
 	type LessonSpec,
 } from '../src/catalog';
 import { formatGlanceableCounter } from '../src/dates';
@@ -21,11 +26,25 @@ import { insidePriorityFloor } from '../src/scoring';
 import { DEFAULT_IDEALITY_FLOOR_DAYS, compactModeFrom, mergeSettings } from '../src/types';
 import { newestLessonEnd, shareFromLine, visitExtraMarkup } from '../src/visit-share';
 
-describe('empty catalogs', () => {
-	it('ships with no official titles', () => {
-		assert.deepEqual(PUBLICATION_TITLES, []);
-		assert.deepEqual(MEDIA_TITLES, []);
-		assert.deepEqual(LESSONS, []);
+describe('official catalogs', () => {
+	it('loads the supplied titles and keeps aliases out of the row', () => {
+		assert.equal(PUBLICATION_TITLES.length, 57);
+		assert.equal(MEDIA_TITLES.length, 123);
+		assert.equal(LESSONS.length, 64);
+		assert.equal(PUBLICATION_TITLES[0], '"Can We Enjoy Life Forever?" Tiny Tract');
+		assert.equal(LESSONS[12]?.title, 'Section 1 Review');
+		assert.equal(LESSONS[12]?.reviewSection, 1);
+		assert.equal(LESSONS.at(-1)?.title, 'Section 4 Review');
+		assert.equal(PUBLICATION_TITLES.includes('Meeting Invite'), false);
+		assert.equal(MEDIA_TITLES.some((title) => title.includes('Caleb and Sofia Video')), false);
+		const ranked = catalogSuggestions(PUBLICATION_TITLES, [], 'meeting invite', publicationAliasIndex());
+		assert.equal(ranked[0], '"Invitation to Congregation Meetings"');
+		const media = catalogSuggestions(MEDIA_TITLES, [], 'precious caleb', mediaAliasIndex());
+		assert.equal(media[0]?.includes('You Are Precious to Jehovah'), true);
+		assert.equal(media[0]?.includes('Caleb and Sofia'), false);
+		const parts = splitTitleSuffix('"Can We Enjoy Life Forever?" Tiny Tract');
+		assert.equal(parts.suffix, 'Tiny Tract');
+		assert.equal(parts.text.includes('Tiny Tract'), false);
 	});
 
 	it('keeps a typed title and ranks an exact match ahead of a close one', () => {
@@ -82,6 +101,22 @@ describe('visit share markup', () => {
 		assert.equal(read.lessonFrom, 'Intro');
 		assert.equal(read.lessonTo, '3');
 		assert.equal(newestLessonEnd(`${line}\nolder`), '3');
+		assert.match(line, /· Left «Tract»/);
+		assert.doesNotMatch(line, /<span/);
+	});
+
+	it('advances a finished lesson and stays in a lesson that is still open', () => {
+		const finished = nextStudyStart('01 How Can the Bible Help You?', 'Summary');
+		assert.equal(finished.lesson, '02 The Bible Gives Hope');
+		assert.equal(finished.from, 'Intro');
+		const mid = nextStudyStart('01 How Can the Bible Help You?', '3');
+		assert.equal(mid.lesson, '01 How Can the Bible Help You?');
+		assert.equal(mid.from, '4');
+		const review = nextStudyStart('12 What Will Help You to Keep Studying the Bible?', 'Summary');
+		assert.equal(review.lesson, 'Section 1 Review');
+		assert.equal(review.from, '1');
+		assert.deepEqual(formatStudyFraction(2, 6, 'lessons-studies'), { ratio: '2/6', withDecimal: '2/6 (0.33)' });
+		assert.equal(formatStudyFraction(2, 6, 'studies-lessons').ratio, '6/2');
 	});
 });
 
@@ -112,6 +147,11 @@ describe('glanceable counters and floors', () => {
 		assert.equal(mergeSettings({}).glancableIconScale, 1.2);
 		assert.equal(mergeSettings({}).splitCityLine, false);
 		assert.equal(mergeSettings({}).showStudyLiterature, false);
+		assert.equal(mergeSettings({}).centerVisitNotes, true);
+		assert.equal(mergeSettings({ centerVisitNotes: false }).centerVisitNotes, false);
+		assert.equal(mergeSettings({}).studyRatio, 'lessons-studies');
+		assert.equal(mergeSettings({ studyShowSpoke: true }).studyShowSpoke, true);
+		assert.equal(mergeSettings({}).studyShowAttempted, false);
 		assert.equal(compactModeFrom({ compactMode: false }), false);
 		assert.equal(compactModeFrom({ compactCardDates: false }), false);
 	});

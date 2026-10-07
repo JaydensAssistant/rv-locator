@@ -11,6 +11,24 @@ export interface MapPinSource {
 	days: number | null;
 	/** Inactive notes are not pins. Study and Active are. */
 	inactive: boolean;
+	card: MapPinCard;
+}
+
+/** Facts the pin popup shares with the list card and Quick Facts. */
+export interface MapPinCard {
+	address: string;
+	city: string;
+	study: boolean;
+	spoke: string;
+	attempted: string;
+	studied: string;
+	met: string;
+	metWith: string;
+	visits: string;
+	studyRatio: string;
+	literature: string;
+	media: string;
+	lessons: readonly string[];
 }
 
 export interface MapPin {
@@ -23,8 +41,9 @@ export interface MapPin {
 	days: number | null;
 	color: string;
 	glyph: string;
-	/** Inside the priority's ideality floor: half size and half saturation. */
+	/** Inside the priority floor: same size, ghost fill, dotted urgency ring. */
 	fresh: boolean;
+	card: MapPinCard;
 }
 
 /** Active RVs with coordinates. A pin inside its priority floor is marked fresh. */
@@ -51,6 +70,7 @@ export function buildMapPins(
 			color: urgencyAccentColor(urgency, row.priority, colors),
 			glyph: mark.glyphs,
 			fresh: row.days != null && insidePriorityFloor(row.days, row.priority, floors),
+			card: row.card,
 		});
 	}
 	return pins;

@@ -10,11 +10,13 @@ import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
-import { urgencyColorsFor } from './urgency-palette';
+import { urgencyColorsFor, urgencyInk } from './urgency-palette';
 import { cardPersonTitle } from './note-name';
 import { cardReturnLead } from './schedule';
-import { formatGlanceableCounter } from './dates';
-import { statusIcon } from './status';
+import { calendarDaysSince, formatGlanceableCounter } from './dates';
+import { readProperty } from './frontmatter';
+import { formatStudyFraction } from './catalog';
+import { resolveStatus, statusIcon } from './status';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -67,7 +69,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const band = priority != null && priority > 0 ? urgencyBand(urgency) : 0;
 		card.setAttr('data-urgency-band', String(band));
 		if (priority === 0) card.addClass('is-priority-zero');
-		card.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority, urgencyColorsFor(this.plugin.settings.urgencyPalette, this.plugin.settings.urgencyCustomColors)));
+		const urgencyColor = urgencyAccentColor(urgency, priority, urgencyColorsFor(this.plugin.settings.urgencyPalette, this.plugin.settings.urgencyCustomColors));
+		card.style.setProperty('--rv-urgency-accent', urgencyColor);
+		card.style.setProperty('--rv-urgency-ink', urgencyInk(urgencyColor));
 		if (rank) card.setAttr('data-priority', rank);
 		if (this.lineOn('name')) {
 			const name = card.createDiv('rv-locator-card-name');
@@ -148,12 +152,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 			}
 		}
 
-		const showSpoke = this.lineOn('last-spoke');
-		const showAttempted = this.lineOn('last-attempted');
+		const note = this.noteFrontmatter(row.path);
+		const study = resolveStatus(readProperty(note, 'Status'), priority) === 'Study';
+		const showSpoke = this.lineOn('last-spoke') && (!study || this.plugin.settings.studyShowSpoke);
+		const showAttempted = this.lineOn('last-attempted') && (!study || this.plugin.settings.studyShowAttempted);
+		const showStudied = study;
 		const showMet = this.lineOn('met');
 		const compactDates = this.plugin.settings.compactMode;
-		if (showSpoke || showAttempted || showMet) {
+		if (showSpoke || showAttempted || showMet || showStudied) {
 			const when = card.createDiv(compactDates ? 'rv-locator-when is-compact' : 'rv-locator-when');
+			if (showStudied) this.frontmatterDateSlot(when, readProperty(note, 'Last Studied'), 'book-marked', 'Last Studied', glancableLineId(2), compactDates);
 			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2), compactDates);
 			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3), compactDates);
 			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
@@ -169,7 +177,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
 		}
 		const ratio = this.lineOn('visits')
-			? visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits'))
+			? (study ? studyRatio(note, this.plugin.settings.studyRatio) : visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits')))
 			: null;
 		if (ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
@@ -198,7 +206,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (this.lineOn('name')) lines.push('name');
 		if (showStreet || showCity || showDistance) lines.push('place');
 		if (splitCity) lines.push('place');
-		if (compactDates && (showSpoke || showAttempted || showMet)) lines.push('dates');
+		if (compactDates && (showSpoke || showAttempted || showMet || showStudied)) lines.push('dates');
 		if (this.lineOn('met-with') || this.lineOn('visits')) lines.push('foot');
 		this.paintActions(card, rank, row, urgency, priority, compactDates ? lines : null);
 	}
@@ -269,6 +277,26 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 		}
 		if (showMap && map) this.renderMapChip(actions, map);
+	}
+
+	private noteFrontmatter(path: string): Record<string, unknown> | null {
+		const file = this.plugin.app.vault.getFileByPath(path);
+		if (!file) return null;
+		return this.plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+	}
+
+	private frontmatterDateSlot(
+		parent: HTMLElement,
+		value: unknown,
+		icon: string,
+		label: string,
+		lineId: string,
+		compact: boolean,
+	): void {
+		const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+		const days = raw ? calendarDaysSince(raw, new Date()) : null;
+		const text = days == null ? '—' : (compact ? formatGlanceableCounter(days) : raw);
+		this.plainSlot(parent, icon, text, label, days == null, '', lineId);
 	}
 
 	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string, compact = false): void {
@@ -524,6 +552,17 @@ function priorityRank(cell: CellModel | undefined): string | null {
 	const rank = Math.round(parsed);
 	if (rank < 0 || rank > 5) return null;
 	return String(rank);
+}
+
+function studyRatio(note: Record<string, unknown> | null, order: 'lessons-studies' | 'studies-lessons'): { text: string; title: string } {
+	const lessons = Array.isArray(readProperty(note, 'Lessons Studied'))
+		? (readProperty(note, 'Lessons Studied') as unknown[]).filter((item) => typeof item === 'string' && item.trim()).length
+		: (typeof readProperty(note, 'Lessons Studied') === 'string' && String(readProperty(note, 'Lessons Studied')).trim() ? 1 : 0);
+	const studies = Number(readProperty(note, 'Studies'));
+	const count = Number.isFinite(studies) ? studies : 0;
+	const fraction = formatStudyFraction(lessons, count, order);
+	const label = order === 'studies-lessons' ? 'Studies/Lessons' : 'Lessons/Studies';
+	return { text: fraction.ratio, title: `${label} ${fraction.withDecimal}` };
 }
 
 function visitRatio(successful: CellModel | undefined, visits: CellModel | undefined): { text: string; title: string } {

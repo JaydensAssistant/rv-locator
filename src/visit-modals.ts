@@ -47,6 +47,9 @@ export class VisitEditModal extends Modal {
 			lesson: start.lesson ?? options.share?.initial.lesson ?? '',
 			lessonFrom: start.lessonFrom ?? options.share?.initial.lessonFrom ?? '',
 			lessonTo: start.lessonTo ?? options.share?.initial.lessonTo ?? '',
+			extraLesson: start.extraLesson ?? options.share?.initial.extraLesson ?? '',
+			extraFrom: start.extraFrom ?? options.share?.initial.extraFrom ?? '',
+			extraTo: start.extraTo ?? options.share?.initial.extraTo ?? '',
 		};
 	}
 
@@ -173,6 +176,9 @@ export class VisitEditModal extends Modal {
 			lesson: this.share.lesson.trim(),
 			lessonFrom: this.share.lessonFrom.trim(),
 			lessonTo: this.share.lessonTo.trim(),
+			extraLesson: this.share.extraLesson?.trim() ?? '',
+			extraFrom: this.share.extraFrom?.trim() ?? '',
+			extraTo: this.share.extraTo?.trim() ?? '',
 		});
 	}
 }

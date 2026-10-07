@@ -82,6 +82,9 @@ function applyEveryday(next: RVLocatorSettings): void {
 	next.leftAlignSuggestionBullets = DEFAULT_SETTINGS.leftAlignSuggestionBullets;
 	next.glancableIconScale = DEFAULT_SETTINGS.glancableIconScale;
 	next.splitCityLine = DEFAULT_SETTINGS.splitCityLine;
+	next.studyRatio = DEFAULT_SETTINGS.studyRatio;
+	next.studyShowSpoke = DEFAULT_SETTINGS.studyShowSpoke;
+	next.studyShowAttempted = DEFAULT_SETTINGS.studyShowAttempted;
 	next.campaignListFilter = DEFAULT_SETTINGS.campaignListFilter;
 	next.dashboardPagePreview = DEFAULT_SETTINGS.dashboardPagePreview;
 }

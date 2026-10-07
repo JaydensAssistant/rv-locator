@@ -8,6 +8,7 @@ export function mountAlwaysChevron(
 	input: HTMLElement,
 	suggestions: () => readonly string[],
 	onPick: (value: string) => void,
+	present?: (value: string) => { text: string; suffix: string },
 ): void {
 	const parent = input.parentElement;
 	if (!parent || typeof input.insertAdjacentElement !== 'function') return;
@@ -36,7 +37,20 @@ export function mountAlwaysChevron(
 			const row = panel.ownerDocument.createElement('button');
 			row.type = 'button';
 			row.className = 'rv-suggest-option';
-			row.textContent = item;
+			const shown = present?.(item);
+			if (shown?.suffix) {
+				row.classList.add('rv-title-option');
+				const main = row.ownerDocument.createElement('span');
+				main.className = 'rv-title-text';
+				main.textContent = shown.text;
+				const suffix = row.ownerDocument.createElement('span');
+				suffix.className = 'rv-title-suffix';
+				suffix.textContent = shown.suffix;
+				row.append(main, suffix);
+				row.title = item;
+			} else {
+				row.textContent = item;
+			}
 			row.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();

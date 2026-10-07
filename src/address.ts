@@ -211,6 +211,12 @@ export function googleMapsAddressLink(address: string, city?: string | null): st
 	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
+/** Turn-by-turn starts in Google Maps. OpenStreetMap is the basemap, not the route. */
+export function googleMapsDirectionsLink(address: string, city?: string | null): string {
+	const query = mapsSearchQuery(address, city);
+	return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
+}
+
 const BODY_MAP_LINK = /\[🗺️\]\(https?:\/\/[^)\s]+\)/g;
 
 /**
