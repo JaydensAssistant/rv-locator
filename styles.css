@@ -3159,10 +3159,12 @@ a.rv-address-link.is-empty {
 	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.3, calc(l - 0.24), 0.46) c h);
 }
 
-.rv-dashboard a.internal-link.rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
 .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
-.rv-dashboard a.internal-link.rv-hub-chip:hover,
-.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover {
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip:hover,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover,
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip:hover {
 	color: var(--rv-urgency-accent, var(--text-accent));
 }
 
