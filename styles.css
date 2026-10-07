@@ -2775,7 +2775,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	inset: 0;
 }
 
-.rv-map-pin {
+/* Ancestor + button beats Obsidian's `button:not(.clickable-icon)` on fill and glyph color. */
+.rv-map .rv-map-pins > button.rv-map-pin {
 	--rv-control-size: 32px;
 	position: absolute;
 	z-index: 1;
@@ -2788,6 +2789,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	padding: 0;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
+	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
 	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
 	color: var(--pin-color, var(--interactive-accent));
 	font-size: 15px;
@@ -2798,23 +2800,39 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	cursor: pointer;
 }
 
-.rv-map-pin.is-fresh {
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph {
+	color: var(--pin-color, var(--interactive-accent));
+	fill: currentColor;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph :is(rect, circle):not(.is-ring) {
+	fill: currentColor;
+	stroke: none;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph circle.is-ring {
+	fill: none;
+	stroke: currentColor;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin.is-fresh {
 	width: 42px;
 	height: 42px;
 	font-size: 15px;
 	filter: none;
+	background-color: color-mix(in srgb, var(--background-primary) 88%, transparent);
 	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
 	border: 2.5px dotted var(--pin-color, currentColor);
 	color: var(--pin-color, currentColor);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
 }
 
-.rv-map-pin.is-selected {
+.rv-map .rv-map-pins > button.rv-map-pin.is-selected {
 	z-index: 3;
 	box-shadow: 0 0 0 3px var(--background-primary), 0 0 0 6px var(--interactive-accent);
 }
 
-.rv-map-cluster {
+.rv-map .rv-map-pins > button.rv-map-cluster {
 	position: absolute;
 	z-index: 2;
 	display: inline-flex;
@@ -2824,6 +2842,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	height: 46px;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
+	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
 	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent);
 	color: var(--pin-color, var(--interactive-accent));
 	font-weight: 700;
@@ -2832,7 +2851,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	cursor: pointer;
 }
 
-.rv-map-cluster.is-fresh {
+.rv-map .rv-map-pins > button.rv-map-cluster.is-fresh {
+	background-color: color-mix(in srgb, var(--background-primary) 88%, transparent);
 	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
 	border: 2.5px dotted var(--pin-color, currentColor);
 	color: var(--pin-color, currentColor);

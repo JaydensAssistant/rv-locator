@@ -33,6 +33,28 @@ import { visitButtonLightness } from '../src/visit-buttons';
 import { DEFAULT_IDEALITY_FLOOR_DAYS, compactModeFrom, mergeSettings } from '../src/types';
 import { newestLessonEnd, shareFromLine, visitExtraMarkup } from '../src/visit-share';
 
+/** Counts ids, classes (including those inside :not/:is), and elements. Enough to compare these selectors. */
+function selectorSpecificity(selector: string): [number, number, number] {
+	const ids = selector.match(/#[\w-]+/g)?.length ?? 0;
+	const classes = selector.match(/\.[\w-]+/g)?.length ?? 0;
+	const without = selector
+		.replace(/#[\w-]+/g, ' ')
+		.replace(/\.[\w-]+/g, ' ')
+		.replace(/::[\w-]+/g, ' ')
+		.replace(/:[\w-]+(\([^)]*\))?/g, ' ');
+	const elements = without.match(/[a-zA-Z][\w-]*/g)?.length ?? 0;
+	return [ids, classes, elements];
+}
+
+function beatsSpecificity(stronger: [number, number, number], weaker: [number, number, number]): boolean {
+	for (let index = 0; index < 3; index += 1) {
+		const left = stronger[index] ?? 0;
+		const right = weaker[index] ?? 0;
+		if (left !== right) return left > right;
+	}
+	return false;
+}
+
 describe('official catalogs', () => {
 	it('loads the supplied titles and keeps aliases out of the row', () => {
 		assert.equal(PUBLICATION_TITLES.length, 57);
@@ -285,11 +307,33 @@ describe('in-note urgency chrome', () => {
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-lead \{[^}]*flex-grow:\s*0/);
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-ago[^{]*\{[^}]*margin-left:\s*0/);
 		assert.match(css, /\.workspace-leaf-content:not\(\.is-urgency-ready\) :is\([\s\S]*\.mb-button\.rv-visit-btn/);
-		assert.match(css, /\.rv-map-pin \{[^}]*background: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)/);
-		assert.match(css, /\.rv-map-pin \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
-		assert.match(css, /\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
-		assert.match(css, /\.rv-map-cluster \{[^}]*background: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)/);
-		assert.match(css, /\.rv-map-cluster\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \.rv-urgency-glyph \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
+		const themeButton = selectorSpecificity('button:not(.clickable-icon)');
+		for (const selector of [
+			'.rv-map .rv-map-pins > button.rv-map-pin',
+			'.rv-map .rv-map-pins > button.rv-map-cluster',
+		]) {
+			assert.equal(beatsSpecificity(selectorSpecificity(selector), themeButton), true, selector);
+		}
+		assert.equal(
+			beatsSpecificity(
+				selectorSpecificity('.rv-map .rv-map-pins > button.rv-map-pin.is-fresh'),
+				selectorSpecificity('.rv-map .rv-map-pins > button.rv-map-pin'),
+			),
+			true,
+		);
+		assert.equal(
+			beatsSpecificity(
+				selectorSpecificity('.rv-map .rv-map-pins > button.rv-map-cluster.is-fresh'),
+				selectorSpecificity('.rv-map .rv-map-pins > button.rv-map-cluster'),
+			),
+			true,
+		);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-search-slot \{/);
 		assert.match(css, /:is\(\.rv-locator-view, \.rv-qf-badges, \.rv-map-card\) \.rv-locator-urgency \{/);
 		const map = readFileSync(path.join(process.cwd(), 'src/map-view.ts'), 'utf8');
