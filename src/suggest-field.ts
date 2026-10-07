@@ -51,6 +51,7 @@ export function mountAlwaysChevron(
 			} else {
 				row.textContent = item;
 			}
+			row.dataset.value = item;
 			row.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
@@ -59,6 +60,12 @@ export function mountAlwaysChevron(
 			});
 			panel.appendChild(row);
 		}
+	};
+
+	let highlighted = -1;
+	const markHighlight = (): void => {
+		const rows = Array.from(panel.querySelectorAll('.rv-suggest-option'));
+		rows.forEach((row, index) => row.classList.toggle('is-highlighted', index === highlighted));
 	};
 
 	button.addEventListener('click', (event) => {
@@ -76,6 +83,32 @@ export function mountAlwaysChevron(
 	});
 	input.addEventListener('focus', () => {
 		paint();
+	});
+	input.addEventListener('keydown', (event) => {
+		const key = event instanceof KeyboardEvent ? event.key : '';
+		if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Enter') return;
+		const rows = Array.from(panel.querySelectorAll('.rv-suggest-option'));
+		if (key === 'ArrowDown' || key === 'ArrowUp') {
+			event.preventDefault();
+			if (panel.hidden) paint();
+			const count = panel.querySelectorAll('.rv-suggest-option').length;
+			if (count === 0) return;
+			highlighted = key === 'ArrowDown' ? Math.min(count - 1, highlighted + 1) : Math.max(0, highlighted - 1);
+			markHighlight();
+			return;
+		}
+		const picked = rows[highlighted];
+		if (picked instanceof HTMLElement && picked.classList.contains('is-highlighted')) {
+			event.preventDefault();
+			event.stopPropagation();
+			onPick(picked.dataset.value || picked.textContent || '');
+			panel.hidden = true;
+			highlighted = -1;
+			return;
+		}
+		event.preventDefault();
+		panel.hidden = true;
+		highlighted = -1;
 	});
 	input.ownerDocument.addEventListener('pointerdown', (event) => {
 		const target = event.target;

@@ -3,7 +3,8 @@ import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
-import { dateInputValue, defaultPastVisitTime, describeVisit, hourLabel, isFutureVisit, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
+import { coverageQuestion } from './modals';
+import { dateInputValue, defaultPastVisitTime, describeVisit, hourLabel, isFutureVisit, snapFiveMinutes, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
 export interface VisitEditOptions {
 	title: string;
@@ -27,6 +28,7 @@ export class VisitEditModal extends Modal {
 	private home = true;
 	private dateText = '';
 	private hour = 12;
+	private minute = 0;
 	private companion = '';
 	private covered = false;
 	private companionSetting: Setting | null = null;
@@ -40,6 +42,9 @@ export class VisitEditModal extends Modal {
 		this.home = start.home;
 		this.dateText = dateInputValue(rounded.date);
 		this.hour = rounded.hour;
+		const snapped = options.initial ? snapFiveMinutes(start.when.getMinutes()) : 0;
+		this.minute = snapped;
+		if (options.initial && start.when.getMinutes() >= 58) this.hour = (this.hour + 1) % 24;
 		this.companion = start.companion;
 		this.share = {
 			publications: start.publications ?? options.share?.initial.publications ?? '',
@@ -50,6 +55,8 @@ export class VisitEditModal extends Modal {
 			extraLesson: start.extraLesson ?? options.share?.initial.extraLesson ?? '',
 			extraFrom: start.extraFrom ?? options.share?.initial.extraFrom ?? '',
 			extraTo: start.extraTo ?? options.share?.initial.extraTo ?? '',
+			publicationList: start.publicationList ?? options.share?.initial.publicationList,
+			mediaList: start.mediaList ?? options.share?.initial.mediaList,
 		};
 	}
 
@@ -80,11 +87,19 @@ export class VisitEditModal extends Modal {
 			});
 
 		new Setting(contentEl)
-			.setName('Approximate time')
+			.setName('Hour')
 			.addDropdown((dropdown) => {
 				for (let hour = 0; hour < 24; hour += 1) dropdown.addOption(String(hour), hourLabel(hour));
 				dropdown.setValue(String(this.hour));
 				dropdown.onChange((value) => { this.hour = Number(value); });
+			});
+		new Setting(contentEl)
+			.setName('Minutes')
+			.setDesc('Five-minute steps. Starts at 00.')
+			.addDropdown((dropdown) => {
+				for (let minute = 0; minute < 60; minute += 5) dropdown.addOption(String(minute), String(minute).padStart(2, '0'));
+				dropdown.setValue(String(this.minute));
+				dropdown.onChange((value) => { this.minute = Number(value); });
 			});
 
 		this.companionSetting = new Setting(contentEl)
@@ -156,7 +171,7 @@ export class VisitEditModal extends Modal {
 	}
 
 	private save(): void {
-		const when = visitWhenFrom(this.dateText, this.hour);
+		const when = visitWhenFrom(this.dateText, this.hour, this.minute);
 		if (!when) {
 			new Notice('Choose the day of the visit.');
 			return;
@@ -173,6 +188,8 @@ export class VisitEditModal extends Modal {
 			companion: this.home ? this.companion.trim() : '',
 			publications: this.share.publications.trim(),
 			media: this.share.media.trim(),
+			publicationList: this.share.publicationList,
+			mediaList: this.share.mediaList,
 			lesson: this.share.lesson.trim(),
 			lessonFrom: this.share.lessonFrom.trim(),
 			lessonTo: this.share.lessonTo.trim(),
@@ -183,15 +200,17 @@ export class VisitEditModal extends Modal {
 	}
 }
 
-/** Literature and media for a not-home log, which has no companion dialog. */
+/** Literature, media, and study lessons. Home logs use this instead of the companion dialog. */
 export class LiteraturePromptModal extends Modal {
 	private share: VisitShare;
 	private settled = false;
+	private covered = true;
 
 	constructor(
 		app: App,
 		private options: ShareFieldOptions,
 		private onDone: (share: VisitShare | false) => void,
+		private campaign: { name: string; pronoun: 'him' | 'her' | 'them'; onDecision: (yes: boolean) => void } | null = null,
 	) {
 		super(app);
 		this.share = { ...options.initial };
@@ -205,12 +224,33 @@ export class LiteraturePromptModal extends Modal {
 			text: 'Optional. Leave both blank to log the visit without literature or media.',
 		});
 		mountShareFields(this.contentEl, this.options, (next) => { this.share = next; });
+		if (this.campaign) {
+			this.contentEl.createEl('p', {
+				cls: 'rv-locator-modal-copy',
+				text: coverageQuestion(this.campaign.pronoun, this.campaign.name),
+			});
+			const choice = this.contentEl.createDiv('rv-locator-suggest-actions');
+			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
+			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
+			yes.classList.add('mod-cta');
+			yes.addEventListener('click', () => {
+				this.covered = true;
+				yes.classList.add('mod-cta');
+				no.classList.remove('mod-cta');
+			});
+			no.addEventListener('click', () => {
+				this.covered = false;
+				no.classList.add('mod-cta');
+				yes.classList.remove('mod-cta');
+			});
+		}
 		new Setting(this.contentEl)
 			.addButton((button) => {
 				button.setButtonText('Log visit');
 				button.setCta();
 				button.onClick(() => {
 					this.settled = true;
+					this.campaign?.onDecision(this.covered);
 					this.onDone(this.share);
 					this.close();
 				});

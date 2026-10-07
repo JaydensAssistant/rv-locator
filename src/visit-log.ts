@@ -1,7 +1,7 @@
 import { attemptLogAnchor } from './attempt-digest';
 import { appendCompanionTaken } from './companions';
 import { calendarDaysSinceStamp, formatDaysAgo, formatExactVisitStamp, formatGlancableVisitStamp, stripStampAge } from './dates';
-import { emptyShare, type VisitShare } from './catalog';
+import { emptyShare, shareTitles, type VisitShare } from './catalog';
 import { visitExtraMarkup, visitExtrasFromLine } from './visit-share';
 import { stampDateTime } from './schedule';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
@@ -76,8 +76,8 @@ export function applyVisitFrontmatter(
 			assignProperty(frontmatter, 'Taken', appendCompanionTaken(readProperty(frontmatter, 'Taken'), stored));
 		}
 	}
-	if (share.publications.trim()) assignProperty(frontmatter, 'Left Publications', share.publications.trim());
-	if (share.media.trim()) assignProperty(frontmatter, 'Shared Media', share.media.trim());
+	assignShareList(frontmatter, 'Left Publications', shareTitles(share.publications, share.publicationList));
+	assignShareList(frontmatter, 'Shared Media', shareTitles(share.media, share.mediaList));
 	recordLoggedLessons(frontmatter, share, stamp);
 	if (!hadAddress) {
 		removeProperty(frontmatter, ADDRESS_KEY);
@@ -391,7 +391,7 @@ function refreshStampLine(line: string, today: Date): string {
 	const days = calendarDaysSinceStamp(stamp, today);
 	if (days == null) return line;
 	const tail = extras ? ` ${extras}` : '';
-	return `##### ${stamp} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>${tail}`;
+	return `##### ${stamp}${tail} <span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
 }
 
 /** One `### Recent Notes:` above the first visit stamp. `### Visit Notes:` is renamed. Notes with no stamp are left alone. */
@@ -457,6 +457,13 @@ function lessonNames(value: unknown): string[] {
 		names.push(text);
 	}
 	return names;
+}
+
+function assignShareList(frontmatter: Record<string, unknown>, name: string, titles: readonly string[]): void {
+	if (titles.length === 0) return;
+	const only = titles[0];
+	if (titles.length === 1 && only) assignProperty(frontmatter, name, only);
+	else assignProperty(frontmatter, name, [...titles]);
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {

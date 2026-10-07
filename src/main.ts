@@ -11,16 +11,16 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { decideGeocodePick, preferHomeRegion } from './home-base';
-import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
+import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
-import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, nextStudyStart, rememberCustom, renameCustom, renameLabelInMarkdown, type VisitShare } from './catalog';
+import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, nextStudyStart, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
-import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
+import { decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
@@ -32,6 +32,7 @@ import { pagePreviewDecision } from './page-preview';
 import { RvMapView, MAP_VIEW_TYPE } from './map-view';
 import type { MapPin } from './map-pins';
 import { buildMapPins } from './map-pins';
+import { shadeHeats } from './map-shade';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
@@ -43,12 +44,13 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { currentReturnBucket, readAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
+import { currentReturnBucket, daypartAt, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { latLonFromUnknown, validLatLon } from './distance';
-import { calendarDaysSince, formatGlanceableCounter } from './dates';
+import { calendarDaysSince, formatGlanceableCounter, parseDriveInstant } from './dates';
+import { idealityScore } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -631,13 +633,33 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeNewRvShare(file: TFile, identity: NewRvIdentity): Promise<void> {
-		if (!identity.publications && !identity.media) return;
+		const publications = shareTitles(identity.publications, identity.publicationList);
+		const media = shareTitles(identity.media, identity.mediaList);
+		if (publications.length === 0 && media.length === 0) return;
+		const share: VisitShare = {
+			...emptyShare(),
+			publications: publications[0] ?? '',
+			media: media[0] ?? '',
+			publicationList: publications,
+			mediaList: media,
+		};
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
-			if (identity.publications) assignProperty(data, 'Left Publications', identity.publications);
-			if (identity.media) assignProperty(data, 'Shared Media', identity.media);
+			const publication = publications[0];
+			const shown = media[0];
+			if (publications.length === 1 && publication) assignProperty(data, 'Left Publications', publication);
+			else if (publications.length > 1) assignProperty(data, 'Left Publications', publications);
+			if (media.length === 1 && shown) assignProperty(data, 'Shared Media', shown);
+			else if (media.length > 1) assignProperty(data, 'Shared Media', media);
 		});
-		await this.rememberShare({ ...emptyShare(), publications: identity.publications, media: identity.media });
+		const now = new Date();
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			const head = data.slice(0, info.contentStart);
+			const stamped = insertHomeHeading(data.slice(info.contentStart), formatVisitStamp(now), undefined, share);
+			return head + refreshHomeStampAges(stamped, now);
+		});
+		await this.rememberShare(share);
 	}
 
 	/** One-shot gender and optional name for the New RV template. Cleared after it is read. */
@@ -772,15 +794,34 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async promptLiterature(_file: TFile): Promise<VisitShare | false> {
+	private async promptLiterature(file: TFile, options?: { study?: boolean; campaign?: boolean }): Promise<VisitShare | false> {
+		const study = options?.study === true;
+		const lessonFrom = study ? await this.nextStudyDefaults(file.path) : { lesson: '', from: '' };
+		const campaign = options?.campaign && this.shouldAskCoverage(file.path) ? this.campaign : null;
+		const gender = readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender');
 		return new Promise((resolve) => {
-			new LiteraturePromptModal(this.app, this.shareFieldOptions(false), (share) => resolve(share)).open();
+			new LiteraturePromptModal(
+				this.app,
+				this.shareFieldOptions(study, lessonFrom.lesson, lessonFrom.from),
+				(share) => resolve(share),
+				campaign ? {
+					name: campaign.name,
+					pronoun: coveragePronoun(gender),
+					onDecision: (yes) => { this.coverageDecisions.set(file.path, yes ? 'yes' : 'no'); },
+				} : null,
+			).open();
 		});
 	}
 
 	private async rememberShare(share: VisitShare): Promise<void> {
-		const publications = rememberCustom(this.settings.customPublications, share.publications, PUBLICATION_TITLES);
-		const media = rememberCustom(this.settings.customMedia, share.media, MEDIA_TITLES);
+		let publications = this.settings.customPublications;
+		for (const title of shareTitles(share.publications, share.publicationList)) {
+			publications = rememberCustom(publications, title, PUBLICATION_TITLES);
+		}
+		let media = this.settings.customMedia;
+		for (const title of shareTitles(share.media, share.mediaList)) {
+			media = rememberCustom(media, title, MEDIA_TITLES);
+		}
 		const lessons = rememberCustom(
 			rememberCustom(this.settings.customLessons, share.lesson, LESSONS.map((lesson) => lesson.title)),
 			share.extraLesson ?? '',
@@ -1059,6 +1100,7 @@ export default class RVLocatorPlugin extends Plugin {
 			openSlotOverride: (path) => { this.openSlotOverride(path); },
 			setAddress: (path, address) => { void this.writeAddress(path, address); },
 			openMap: (path) => { void this.openMapSoon(path); },
+			openCompanion: (path) => { void this.attachCompanion(path); },
 		};
 	}
 
@@ -1299,6 +1341,24 @@ export default class RVLocatorPlugin extends Plugin {
 			const visits = finiteVisitCount(readProperty(frontmatter, 'Visits'));
 			const cityName = this.settings.cityProperty.trim() || 'City';
 			const city = readProperty(frontmatter, cityName);
+			const cityText = typeof city === 'string' ? city : '';
+			const attemptedDays = propertyDays(readProperty(frontmatter, 'Last Attempted'));
+			const metDays = propertyDays(readProperty(frontmatter, 'Met'));
+			const avoid = currentReturnBucket({
+				buckets: this.cachedAttemptBuckets(file.path) ?? {},
+				grid: this.settings.availabilityGrid,
+				thresholds: this.digestThresholds(),
+				overrides: this.slotOverridesFor(file),
+			}) === 'Avoid';
+			const ideality = idealityScore({
+				days,
+				priority,
+				miles: null,
+				thresholds: this.settings.urgencyThresholdDays,
+				floors: this.settings.idealityFloorDays,
+				territorySpan: this.settings.territorySpanMiles,
+				holdDistance: true,
+			});
 			return {
 				path: file.path,
 				name: file.basename,
@@ -1307,9 +1367,15 @@ export default class RVLocatorPlugin extends Plugin {
 				priority,
 				days,
 				inactive: status === 'Inactive',
+				avoid,
+				spokeDays: days,
+				attemptedDays,
+				metDays,
+				city: cityText,
+				ideality,
 				card: {
 					address: readAddress(frontmatter, this.settings.addressProperty) ?? '',
-					city: typeof city === 'string' ? city : '',
+					city: cityText,
 					study: status === 'Study',
 					spoke: days == null ? '' : formatGlanceableCounter(days),
 					attempted: counterText(readProperty(frontmatter, 'Last Attempted')),
@@ -1324,7 +1390,14 @@ export default class RVLocatorPlugin extends Plugin {
 				},
 			};
 		});
-		return buildMapPins(rows, this.settings.idealityFloorDays, this.settings.urgencyThresholdDays, colors);
+		const heats = shadeHeats(this.settings.mapShade, rows);
+		return buildMapPins(
+			rows.map((row, index) => ({ ...row, shadeHeat: heats[index] ?? 0 })),
+			this.settings.idealityFloorDays,
+			this.settings.urgencyThresholdDays,
+			colors,
+			this.settings.mapShade,
+		);
 	}
 
 	openMapNote(path: string): void {
@@ -1370,6 +1443,51 @@ export default class RVLocatorPlugin extends Plugin {
 	campaignMark(path: string): 'covered' | 'open' | null {
 		if (!campaignIsActive(this.campaign)) return null;
 		return isCovered(this.campaign, path) ? 'covered' : 'open';
+	}
+
+	/** Label for the daypart override that is in effect right now. Null when this moment is not overridden. */
+	cardOverrideLabel(path: string): string | null {
+		if (!this.settings.showCardReturnStatus) return null;
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const now = new Date();
+		const hit = this.slotOverridesFor(file).find((item) => item.weekday === now.getDay() && item.daypart === daypartAt(now));
+		if (!hit) return null;
+		const reason = (hit.reason ?? '').trim();
+		return reason || (hit.bucket === 'avoid' ? 'Avoid' : 'Try');
+	}
+
+	/** Open the note and flash the visit that falls on this date. */
+	jumpCardDate(path: string, raw: string): void {
+		const when = parseDriveInstant(raw) ?? stampDateTime(raw);
+		if (!when) return;
+		void this.openNoteDay(path, when);
+	}
+
+	private async openNoteDay(path: string, when: Date): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const workspace = this.app.workspace as { getLeaf?: (split: boolean) => { openFile?: (file: TFile) => Promise<void>; view?: { containerEl?: HTMLElement } } };
+		const leaf = workspace.getLeaf?.(false);
+		if (leaf?.openFile) await leaf.openFile(file);
+		else await this.app.workspace.openLinkText(path, path, false);
+		window.setTimeout(() => {
+			const root = leaf?.view?.containerEl;
+			if (root instanceof HTMLElement) jumpToDayInRoot(root, when);
+		}, 60);
+	}
+
+	/** Met With / Taken only. Does not insert a visit. */
+	private async attachCompanion(path: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const picked = await this.promptCompanion();
+		if (picked === false || !picked.trim()) return;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			assignProperty(data, 'Met With', picked);
+			assignProperty(data, 'Taken', appendCompanionTaken(readProperty(data, 'Taken'), picked));
+		});
 	}
 
 	/** Daypart bucket for the card's return line. Uses cached Attempt Log counts. */
@@ -1707,19 +1825,15 @@ export default class RVLocatorPlugin extends Plugin {
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
 		const now = new Date();
 		const shareBox = { share: emptyShare() };
-		let companion = '';
-		if (outcome === 'home') {
-			const picked = await this.promptCompanion(file.path, shareBox);
-			if (picked === false) {
-				this.coverageDecisions.delete(file.path);
-				return;
-			}
-			companion = picked;
-		} else {
-			const share = await this.promptLiterature(file);
-			if (share === false) return;
-			shareBox.share = share;
+		const companion = '';
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
+		const share = await this.promptLiterature(file, outcome === 'home' ? { study, campaign: true } : undefined);
+		if (share === false) {
+			if (outcome === 'home') this.coverageDecisions.delete(file.path);
+			return;
 		}
+		shareBox.share = share;
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
@@ -2571,7 +2685,14 @@ function finiteVisitCount(value: unknown): number | null {
 }
 
 function textProperty(value: unknown): string {
-	return typeof value === 'string' ? value.trim() : '';
+	if (typeof value === 'string') return value.trim();
+	if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item.trim()).join(' · ');
+	return '';
+}
+
+function propertyDays(value: unknown): number | null {
+	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	return raw ? calendarDaysSince(raw) : null;
 }
 
 function lessonList(value: unknown): string[] {

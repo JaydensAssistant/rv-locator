@@ -88,11 +88,13 @@ describe('1.3.5 slot override', () => {
 	it('parses a daypart mark and lets it win the current bucket', () => {
 		const parsed = parseSlotOverrides(['Tue evening: Avoid', 'nope', 'Monday mor: Try', 'Fri aft Avoid']);
 		assert.deepEqual(parsed, [
-			{ weekday: 2, daypart: 'evening', bucket: 'avoid' },
-			{ weekday: 1, daypart: 'morning', bucket: 'try' },
-			{ weekday: 5, daypart: 'afternoon', bucket: 'avoid' },
+			{ weekday: 2, daypart: 'evening', bucket: 'avoid', reason: '' },
+			{ weekday: 1, daypart: 'morning', bucket: 'try', reason: '' },
+			{ weekday: 5, daypart: 'afternoon', bucket: 'avoid', reason: '' },
 		]);
 		assert.equal(formatSlotOverride(parsed[0]!), 'Tue evening Avoid');
+		assert.equal(formatSlotOverride({ weekday: 2, daypart: 'evening', bucket: 'avoid', reason: 'Works then' }), 'Tue evening Avoid — Works then');
+		assert.equal(parseSlotOverrides(['Tue evening Avoid — Works then'])[0]?.reason, 'Works then');
 		const fromYaml = parseSlotOverrides([{ 'Tue evening': 'Avoid' }, { 'Monday mor': 'Try' }]);
 		assert.deepEqual(fromYaml, parsed.slice(0, 2));
 		const grid = defaultAvailabilityGrid();

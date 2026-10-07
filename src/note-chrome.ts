@@ -30,6 +30,7 @@ export interface NoteChromeHost {
 	openSlotOverride(path: string): void;
 	setAddress(path: string, address: string): void;
 	openMap(path: string): void;
+	openCompanion(path: string): void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -201,7 +202,7 @@ function paintFactsBody(
 		const studies = finiteNumber(readProperty(data, 'Studies')) ?? 0;
 		const fraction = formatStudyFraction(lessons, studies, host.settings.studyRatio);
 		const label = host.settings.studyRatio === 'studies-lessons' ? 'Studies/Lessons' : 'Lessons/Studies';
-		factRow(content, 'book-marked', label, fraction.withDecimal);
+		factRow(content, 'percent', label, fraction.withDecimal);
 	} else {
 		const successful = finiteNumber(readProperty(data, 'Successful Visits'));
 		const visits = finiteNumber(readProperty(data, 'Visits'));
@@ -212,14 +213,22 @@ function paintFactsBody(
 	if (!study || host.settings.studyShowSpoke) factDateRow(content, 'message-circle', 'Spoke', readProperty(data, 'Last Spoke'));
 	if (!study || host.settings.studyShowAttempted) factDateRow(content, 'clock', 'Attempted', readProperty(data, 'Last Attempted'));
 	factDateRow(content, 'home', 'Met', readProperty(data, 'Met'));
-	factRow(content, 'book-open', 'Literature', textOf(readProperty(data, 'Left Publications')) || '—');
-	factRow(content, 'clapperboard', 'Media', textOf(readProperty(data, 'Shared Media')) || '—');
-	if (study) paintLessonsStudied(content, textList(readProperty(data, 'Lessons Studied')));
+	paintClampRow(content, 'book', 'Literature', textList(readProperty(data, 'Left Publications')));
+	paintClampRow(content, 'film', 'Media', textList(readProperty(data, 'Shared Media')));
+	if (study) paintClampRow(content, 'book-open', 'Lessons', textList(readProperty(data, 'Lessons Studied')));
 
 	const taken = textList(readProperty(data, 'Taken'));
 	const metWith = textOf(readProperty(data, 'Met With'));
-	const row = factRow(content, 'users', 'Taken', taken.length === 0 ? '—' : '');
-	if (taken.length > 0) paintTaken(row, taken, metWith);
+	const row = factRow(content, 'users', 'Taken', '');
+	bindCompanionOpen(row, path, host);
+	if (taken.length === 0 && !metWith) {
+		const valueEl = row.querySelector('.rv-qf-value');
+		if (valueEl instanceof HTMLElement) valueEl.setText('—');
+	} else if (taken.length > 0) paintTaken(row, taken, metWith);
+	else {
+		const valueEl = row.querySelector('.rv-qf-value');
+		if (valueEl instanceof HTMLElement) paintClampList(valueEl, [metWith]);
+	}
 }
 
 function visitsPercent(successful: number | null, visits: number | null): string {
@@ -229,14 +238,51 @@ function visitsPercent(successful: number | null, visits: number | null): string
 	return `${successful}/${visits} (${Math.round((successful / visits) * 100)}%)`;
 }
 
-function paintLessonsStudied(parent: HTMLElement, lessons: readonly string[]): void {
-	const section = parent.createDiv('rv-qf-section');
-	section.createDiv({ cls: 'rv-qf-section-title', text: 'Lessons Studied' });
-	if (lessons.length === 0) {
-		factRow(section, 'book-marked', 'Lesson', '—');
+function paintClampRow(parent: HTMLElement, icon: string, label: string, items: readonly string[]): void {
+	const row = factRow(parent, icon, label, '');
+	const valueEl = row.querySelector('.rv-qf-value');
+	if (!(valueEl instanceof HTMLElement)) return;
+	if (items.length === 0) {
+		valueEl.setText('—');
 		return;
 	}
-	for (const lesson of lessons) factRow(section, 'book-marked', 'Lesson', lesson);
+	paintClampList(valueEl, items);
+}
+
+/** Last three entries, clamped to two lines. A tap shows the rest. */
+function paintClampList(host: HTMLElement, items: readonly string[]): void {
+	const recent = items.slice(-3);
+	const box = host.createSpan('rv-qf-clamp');
+	box.setText(recent.join(' · '));
+	if (items.length <= 1 && recent.join(' · ').length < 48) return;
+	host.classList.add('is-collapsible');
+	host.setAttr('role', 'button');
+	host.tabIndex = 0;
+	let open = false;
+	const toggle = (event: Event): void => {
+		event.preventDefault();
+		event.stopPropagation();
+		open = !open;
+		box.setText((open ? items : recent).join(' · '));
+		host.classList.toggle('is-expanded', open);
+	};
+	host.addEventListener('click', toggle);
+	host.addEventListener('keydown', (event) => {
+		if (!(event instanceof KeyboardEvent)) return;
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		toggle(event);
+	});
+}
+
+function bindCompanionOpen(row: HTMLElement, path: string, host: NoteChromeHost): void {
+	const open = (event: Event): void => {
+		event.preventDefault();
+		event.stopPropagation();
+		host.openCompanion(path);
+	};
+	row.querySelector('.rv-qf-icon')?.addEventListener('click', open);
+	row.querySelector('.rv-qf-label')?.addEventListener('click', open);
+	row.classList.add('rv-qf-companion');
 }
 
 function factDateRow(parent: HTMLElement, icon: string, label: string, value: unknown): void {
@@ -278,7 +324,19 @@ function jumpToQuickFactDay(anchor: HTMLElement, when: Date): void {
 	if (!pick) return;
 	const target = pick.kind === 'notes' ? visitNotesTarget(pick.el) : pick.el;
 	revealJumpTarget(target, root);
+	jumpToDayInRoot(root, when);
+}
+
+/** Scroll to the visit on this day and flash it. Recent Notes, Older Visits, or the Attempt Log. */
+export function jumpToDayInRoot(root: HTMLElement, when: Date): boolean {
+	const pick = pickDayJump(when, collectDayJumps(root));
+	if (!pick) return false;
+	const target = pick.kind === 'notes' ? visitNotesTarget(pick.el) : pick.el;
+	revealJumpTarget(target, root);
 	target.scrollIntoView({ block: 'center' });
+	target.classList.add('rv-day-flash');
+	window.setTimeout(() => target.classList.remove('rv-day-flash'), 1600);
+	return true;
 }
 
 function collectDayJumps(root: HTMLElement): DayJumpTarget[] {
@@ -417,7 +475,7 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		}
 		paragraph.querySelectorAll('.rv-hub-add, a.rv-map-button').forEach((node) => node.remove());
 		row.empty();
-		paintLabelIcon(hubLabel, 'waypoints', 'Hub:');
+		paintLabelIcon(hubLabel, 'layout-grid', 'Hub:');
 		const hubs = hubRefs(readProperty(data, 'Hub'));
 		const returnHub = host.settings.returnHubNote;
 		hubs.forEach((hub, index) => {
@@ -684,6 +742,7 @@ function wikiLabel(text: string): string {
 function textOf(value: unknown): string {
 	if (typeof value === 'string') return value.trim();
 	if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+	if (Array.isArray(value)) return value.map((item) => textOf(item)).filter(Boolean).join(' · ');
 	return '';
 }
 

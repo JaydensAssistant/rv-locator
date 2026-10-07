@@ -6,6 +6,7 @@ import {
 	mediaAliasIndex,
 	publicationAliasIndex,
 	rankSuggestions,
+	shareTitles,
 	splitTitleSuffix,
 	type LessonSpec,
 	type VisitShare,
@@ -37,25 +38,21 @@ export function mountShareFields(
 		onChange({ ...share });
 	};
 	if (options.showLiterature) {
-		mountField(
+		mountTitleList(
 			contentEl,
 			'What literature did you leave?',
-			'Optional. Type a title or pick one. A new title is kept.',
-			'Optional',
-			share.publications,
+			'Optional. Type a title or pick one. Add another when you left more than one.',
+			shareTitles(share.publications, share.publicationList),
 			(query) => catalogSuggestions(options.publications, [], query, publicationAliasIndex()),
-			(value) => publish({ publications: value }),
-			true,
+			(values) => publish({ publications: values[0] ?? '', publicationList: values }),
 		);
-		mountField(
+		mountTitleList(
 			contentEl,
 			'What media did you show?',
-			'Optional. Type a title or pick one. A new title is kept.',
-			'Optional',
-			share.media,
+			'Optional. Type a title or pick one. Add another when you showed more than one.',
+			shareTitles(share.media, share.mediaList),
 			(query) => catalogSuggestions(options.media, [], query, mediaAliasIndex()),
-			(value) => publish({ media: value }),
-			true,
+			(values) => publish({ media: values[0] ?? '', mediaList: values }),
 		);
 	}
 	if (options.showLesson) {
@@ -192,6 +189,47 @@ function repaintExtra(
 		to.current = value;
 		publish({ extraTo: value });
 	}, false, true);
+}
+
+function mountTitleList(
+	parent: HTMLElement,
+	name: string,
+	desc: string,
+	values: readonly string[],
+	suggestions: (query: string) => readonly string[],
+	onChange: (values: string[]) => void,
+): void {
+	const items = values.length > 0 ? [...values] : [''];
+	const host = parent.createDiv('rv-share-list');
+	const sync = (): void => {
+		onChange(items.map((item) => item.trim()).filter(Boolean));
+	};
+	const add = (index: number): void => {
+		mountField(
+			host,
+			index === 0 ? name : 'Another',
+			index === 0 ? desc : '',
+			'Optional',
+			items[index] ?? '',
+			suggestions,
+			(value) => {
+				items[index] = value;
+				sync();
+			},
+			true,
+		);
+	};
+	items.forEach((_, index) => add(index));
+	const more = host.createEl('button', {
+		cls: 'rv-share-add',
+		text: 'Add another',
+		attr: { type: 'button' },
+	});
+	more.addEventListener('click', (event) => {
+		event.preventDefault();
+		items.push('');
+		add(items.length - 1);
+	});
 }
 
 function mountField(

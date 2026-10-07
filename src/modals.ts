@@ -4,7 +4,7 @@ import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
-import { companionChoices, matchingCompanion, type CompanionSuggestion } from './companions';
+import { companionChoices, exactCompanion, matchingCompanion, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
 import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
@@ -652,7 +652,7 @@ export class CompanionSuggestModal extends Modal {
 
 	private commitCompanionMatch(): void {
 		if (this.companionPicked) return;
-		const match = matchingCompanion(this.getSuggestions(this.companion), this.companion);
+		const match = exactCompanion(this.getSuggestions(this.companion), this.companion);
 		if (!match) return;
 		this.selectCompanion(match.value);
 	}

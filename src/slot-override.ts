@@ -6,6 +6,8 @@ export interface SlotOverride {
 	weekday: number;
 	daypart: Daypart;
 	bucket: 'try' | 'avoid';
+	/** Why this daypart was forced. Empty on marks saved before labels were required. */
+	reason?: string;
 }
 
 const WEEKDAY: Record<string, number> = {
@@ -33,10 +35,12 @@ const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 export function formatSlotOverride(override: SlotOverride): string {
 	const day = WEEKDAY_SHORT[override.weekday] ?? 'Sun';
 	const bucket = override.bucket === 'avoid' ? 'Avoid' : 'Try';
-	return `${day} ${override.daypart} ${bucket}`;
+	const reason = (override.reason ?? '').trim();
+	const base = `${day} ${override.daypart} ${bucket}`;
+	return reason ? `${base} — ${reason}` : base;
 }
 
-const SLOT_MARK = /^([A-Za-z]+)\s+([A-Za-z]+)\s*(?::\s*|\s+)(try|avoid)$/i;
+const SLOT_MARK = /^([A-Za-z]+)\s+([A-Za-z]+)\s*(?::\s*|\s+)(try|avoid)(?:\s+[—–-]\s*(.+))?$/i;
 
 /** `Tue evening Avoid`, the older `Tue evening: Avoid`, and a YAML map of those. */
 export function parseSlotOverrides(value: unknown): SlotOverride[] {
@@ -52,7 +56,7 @@ export function parseSlotOverrides(value: unknown): SlotOverride[] {
 		const key = `${weekday}:${daypart}`;
 		if (seen.has(key)) continue;
 		seen.add(key);
-		overrides.push({ weekday, daypart, bucket });
+		overrides.push({ weekday, daypart, bucket, reason: (match[4] ?? '').trim() });
 	}
 	return overrides;
 }

@@ -127,6 +127,10 @@ export interface VisitShare {
 	extraLesson?: string;
 	extraFrom?: string;
 	extraTo?: string;
+	/** Every publication left on this visit. The first is also {@link publications}. */
+	publicationList?: string[];
+	/** Every media piece shown on this visit. The first is also {@link media}. */
+	mediaList?: string[];
 }
 
 export function emptyShare(): VisitShare {
@@ -140,6 +144,14 @@ export function emptyShare(): VisitShare {
 		extraFrom: '',
 		extraTo: '',
 	};
+}
+
+/** Several titles when the logger added more than one. A single field still counts. */
+export function shareTitles(single: string, list?: readonly string[]): string[] {
+	const many = (list ?? []).map((item) => item.trim()).filter(Boolean);
+	if (many.length > 0) return many;
+	const one = single.trim();
+	return one ? [one] : [];
 }
 
 export function lessonByTitle(title: string, custom: readonly string[] = []): LessonSpec | null {

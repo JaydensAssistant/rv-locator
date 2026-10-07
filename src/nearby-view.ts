@@ -1,5 +1,6 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { equalizeSortPills } from './sort-pills';
 import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
@@ -476,6 +477,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
 		});
+		equalizeSortPills(this.sortButtonsEl);
 		this.sortButtonsEl.scrollLeft = savedScroll;
 	}
 
@@ -502,7 +504,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			cls: 'rv-locator-sort-preset is-filter',
 			attr: { type: 'button', 'aria-label': `Showing ${RETURN_SCOPE_LABEL[scope]}` },
 		});
-		setIcon(scopeButton.createSpan('rv-sort-icon'), 'users');
+		setIcon(scopeButton.createSpan('rv-sort-icon'), 'layers');
 		scopeButton.createSpan({ cls: 'rv-sort-label', text: RETURN_SCOPE_LABEL[scope] });
 		scopeButton.addEventListener('click', () => {
 			void this.plugin.setReturnScope(nextReturnScope(scope));
@@ -511,7 +513,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			cls: 'rv-locator-sort-preset is-filter',
 			attr: { type: 'button', 'aria-label': `Showing ${GENDER_FILTER_LABEL[gender]}` },
 		});
-		setIcon(genderButton.createSpan('rv-sort-icon'), gender === 'women' ? 'user' : gender === 'men' ? 'user' : 'users');
+		setIcon(genderButton.createSpan('rv-sort-icon'), gender === 'women' ? 'venus' : gender === 'men' ? 'mars' : 'venus-and-mars');
 		genderButton.createSpan({ cls: 'rv-sort-label', text: GENDER_FILTER_LABEL[gender] });
 		genderButton.addEventListener('click', () => {
 			void this.plugin.setGenderFilter(nextGenderFilter(gender));

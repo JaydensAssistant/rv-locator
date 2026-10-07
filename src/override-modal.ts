@@ -1,4 +1,4 @@
-import { Modal, Setting, type App } from 'obsidian';
+import { Modal, Notice, Setting, type App } from 'obsidian';
 import { iconizeModal } from './modal-chrome';
 import { DAYPARTS, type Daypart } from './schedule';
 import {
@@ -14,6 +14,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 export class SlotOverrideModal extends Modal {
 	private weekday = new Date().getDay();
 	private daypart: Daypart = 'evening';
+	private reason = '';
 	private current: SlotOverride[];
 
 	constructor(
@@ -57,6 +58,14 @@ export class SlotOverrideModal extends Modal {
 				dropdown.onChange((value) => { this.daypart = value === 'morning' || value === 'afternoon' ? value : 'evening'; });
 			});
 		new Setting(contentEl)
+			.setName('Label')
+			.setDesc('Why this day and daypart should be Try or Avoid. For example, they work then.')
+			.addText((text) => {
+				text.setPlaceholder('Works then');
+				text.setValue(this.reason);
+				text.onChange((value) => { this.reason = value; });
+			});
+		new Setting(contentEl)
 			.addButton((button) => {
 				button.setButtonText('Try');
 				button.setCta();
@@ -85,7 +94,13 @@ export class SlotOverrideModal extends Modal {
 	}
 
 	private save(bucket: 'try' | 'avoid'): void {
-		this.current = upsertSlotOverride(this.current, { weekday: this.weekday, daypart: this.daypart, bucket });
+		const reason = this.reason.trim();
+		if (!reason) {
+			new Notice('Add a label for this override.');
+			return;
+		}
+		this.current = upsertSlotOverride(this.current, { weekday: this.weekday, daypart: this.daypart, bucket, reason });
+		this.reason = '';
 		this.onChange(this.current);
 		this.paint();
 	}

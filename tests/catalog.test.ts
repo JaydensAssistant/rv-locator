@@ -22,7 +22,10 @@ import {
 	type LessonSpec,
 } from '../src/catalog';
 import { formatGlanceableCounter } from '../src/dates';
+import { pinStateIcon } from '../src/map-pins';
+import { interpolatePalette, shadeHeats } from '../src/map-shade';
 import { insidePriorityFloor } from '../src/scoring';
+import { equalPillWidth } from '../src/sort-pills';
 import { DEFAULT_IDEALITY_FLOOR_DAYS, compactModeFrom, mergeSettings } from '../src/types';
 import { newestLessonEnd, shareFromLine, visitExtraMarkup } from '../src/visit-share';
 
@@ -101,8 +104,24 @@ describe('visit share markup', () => {
 		assert.equal(read.lessonFrom, 'Intro');
 		assert.equal(read.lessonTo, '3');
 		assert.equal(newestLessonEnd(`${line}\nolder`), '3');
-		assert.match(line, /· Left «Tract»/);
+		assert.match(line, /· «book» «Tract»/);
+		assert.match(line, /· «film» «Video»/);
+		assert.match(line, /· «lesson» «Sample lesson»/);
+		assert.doesNotMatch(line, /Left|Shared|Covered/);
 		assert.doesNotMatch(line, /<span/);
+		const many = visitExtraMarkup({
+			...emptyShare(),
+			publications: 'Tract',
+			publicationList: ['Tract', 'Brochure'],
+			media: 'Video',
+			mediaList: ['Video', 'Another film'],
+		});
+		assert.match(many, /· «book» «Tract» · «book» «Brochure» · «film» «Video» · «film» «Another film»/);
+		const legacy = shareFromLine('##### Sat · Left «Tract» · Shared «Video» · Covered «Sample lesson» «Intro»–«3»');
+		assert.equal(legacy.publications, 'Tract');
+		assert.equal(legacy.media, 'Video');
+		assert.equal(legacy.lesson, 'Sample lesson');
+		assert.equal(legacy.lessonTo, '3');
 	});
 
 	it('advances a finished lesson and stays in a lesson that is still open', () => {
@@ -152,7 +171,33 @@ describe('glanceable counters and floors', () => {
 		assert.equal(mergeSettings({}).studyRatio, 'lessons-studies');
 		assert.equal(mergeSettings({ studyShowSpoke: true }).studyShowSpoke, true);
 		assert.equal(mergeSettings({}).studyShowAttempted, false);
+		assert.equal(mergeSettings({}).mapShade, 'urgency');
+		assert.equal(mergeSettings({ mapShade: 'city' }).mapShade, 'city');
+		assert.equal(mergeSettings({ mapShade: 'distance' as 'urgency' }).mapShade, 'urgency');
 		assert.equal(compactModeFrom({ compactMode: false }), false);
 		assert.equal(compactModeFrom({ compactCardDates: false }), false);
+	});
+});
+
+describe('map pin state and shade', () => {
+	it('uses a distinct ghost icon and lets cooldown win', () => {
+		assert.equal(pinStateIcon(true, false), 'hourglass');
+		assert.equal(pinStateIcon(false, true), 'ban');
+		assert.equal(pinStateIcon(true, true), 'hourglass');
+		assert.equal(pinStateIcon(false, false), null);
+	});
+
+	it('shades every sort except nearness inside the palette', () => {
+		const rows = [
+			{ priority: 1, spokeDays: 1, attemptedDays: 2, metDays: 9, city: 'Austin', ideality: 0.2 },
+			{ priority: 5, spokeDays: 40, attemptedDays: 3, metDays: 1, city: 'Zion', ideality: 0.9 },
+		];
+		assert.deepEqual(shadeHeats('urgency', rows), [0, 0]);
+		assert.deepEqual(shadeHeats('priority', rows), [0, 1]);
+		assert.equal(shadeHeats('city', rows)[0], 0);
+		assert.equal(shadeHeats('city', rows)[1], 1);
+		assert.equal(interpolatePalette(0, ['#000000', '#ffffff']), '#000000');
+		assert.equal(interpolatePalette(1, ['#000000', '#ffffff']), '#ffffff');
+		assert.equal(equalPillWidth([12, 40, 18]), 40);
 	});
 });

@@ -161,7 +161,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const compactDates = this.plugin.settings.compactMode;
 		if (showSpoke || showAttempted || showMet || showStudied) {
 			const when = card.createDiv(compactDates ? 'rv-locator-when is-compact' : 'rv-locator-when');
-			if (showStudied) this.frontmatterDateSlot(when, readProperty(note, 'Last Studied'), 'book-marked', 'Last Studied', glancableLineId(2), compactDates);
+			if (showStudied) this.frontmatterDateSlot(when, readProperty(note, 'Last Studied'), 'book-marked', 'Last Studied', glancableLineId(2), compactDates, row.path);
 			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2), compactDates);
 			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3), compactDates);
 			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
@@ -179,14 +179,21 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const ratio = this.lineOn('visits')
 			? (study ? studyRatio(note, this.plugin.settings.studyRatio) : visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits')))
 			: null;
-		if (ratio && !this.plugin.settings.showCardReturnStatus) {
+		const overrideLabel = this.plugin.settings.showCardReturnStatus ? this.plugin.cardOverrideLabel(row.path) : null;
+		if (overrideLabel) {
+			foot.createSpan({
+				cls: 'rv-locator-slot rv-locator-override-label',
+				text: overrideLabel,
+				attr: { 'aria-label': `Return override ${overrideLabel}` },
+			});
+		} else if (ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-visits',
 				attr: { 'aria-label': ratio.title },
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		if (ratio && this.plugin.settings.showCardReturnStatus) {
+		if (!overrideLabel && ratio && this.plugin.settings.showCardReturnStatus) {
 			const line = foot.createSpan('rv-locator-return-inline');
 			line.createSpan({
 				cls: 'rv-locator-return-visits',
@@ -292,11 +299,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 		label: string,
 		lineId: string,
 		compact: boolean,
+		path: string,
 	): void {
 		const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
 		const days = raw ? calendarDaysSince(raw, new Date()) : null;
 		const text = days == null ? '—' : (compact ? formatGlanceableCounter(days) : raw);
-		this.plainSlot(parent, icon, text, label, days == null, '', lineId);
+		this.plainSlot(parent, icon, text, label, days == null, '', lineId, raw ? path : '', raw);
 	}
 
 	private iconSlot(parent: HTMLElement, row: RowModel, name: string, icon: string, label: string, lineId: string, compact = false): void {
@@ -307,11 +315,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 			return;
 		}
 		const slot = parent.createSpan({
-			cls: 'rv-locator-slot',
-			attr: { 'aria-label': cell.title || label, 'data-line': lineId },
+			cls: 'rv-locator-slot is-dated',
+			attr: { 'aria-label': cell.title || label, 'data-line': lineId, role: 'link' },
 		});
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
+		slot.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			this.plugin.jumpCardDate(row.path, cell.title || text);
+		});
 		if (compact) {
 			const days = cell.daysSince;
 			slot.createSpan({ cls: 'rv-locator-slot-text', text: days == null ? '—' : formatGlanceableCounter(days) });
@@ -324,11 +337,18 @@ export class NearbyGlancableView extends NearbyBasesView {
 		slot.createSpan({ cls: 'rv-locator-slot-text', text });
 	}
 
-	private plainSlot(parent: HTMLElement, icon: string, text: string, title: string, empty: boolean, extra = '', lineId = ''): void {
+	private plainSlot(parent: HTMLElement, icon: string, text: string, title: string, empty: boolean, extra = '', lineId = '', jumpPath = '', jumpRaw = ''): void {
 		const slot = parent.createSpan({
-			cls: `rv-locator-slot${empty ? ' is-empty' : ''}${extra ? ` ${extra}` : ''}`,
-			attr: { 'aria-label': title, ...(lineId ? { 'data-line': lineId } : {}) },
+			cls: `rv-locator-slot${empty ? ' is-empty' : ''}${jumpRaw ? ' is-dated' : ''}${extra ? ` ${extra}` : ''}`,
+			attr: { 'aria-label': title, ...(lineId ? { 'data-line': lineId } : {}), ...(jumpRaw ? { role: 'link' } : {}) },
 		});
+		if (jumpPath && jumpRaw) {
+			slot.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				this.plugin.jumpCardDate(jumpPath, jumpRaw);
+			});
+		}
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
 		slot.createSpan({ cls: 'rv-locator-slot-text', text });

@@ -174,7 +174,7 @@ function wrapShareTail(heading: HTMLElement): void {
 	while (node) {
 		const text = node.textContent ?? '';
 		const at = text.indexOf('·');
-		if (at < 0 || !/·\s+(?:Left|Shared|Covered|Also)\s+«/.test(text)) {
+		if (at < 0 || !/·\s+(?:«(?:book|film|lesson)»|Left|Shared|Covered|Also)\s+«/.test(text)) {
 			node = walker.nextNode();
 			continue;
 		}
@@ -189,14 +189,20 @@ function wrapShareTail(heading: HTMLElement): void {
 			leadEl.textContent = lead;
 			parent.insertBefore(leadEl, node.nextSibling);
 		}
-		const piece = /·\s+(?:Left|Shared|Covered|Also)\s+«[^»]*»(?:\s+«[^»]*»–«[^»]*»)?/g;
+		const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»(?:\s+«[^»]*»–«[^»]*»)?/g;
 		let match = piece.exec(tail);
 		let cursor = 0;
 		let after: Node = node;
 		while (match) {
 			const span = doc.createElement('span');
 			span.className = 'rv-visit-extra';
-			span.textContent = ` ${match[0]}`;
+			const icon = doc.createElement('span');
+			icon.className = 'rv-stamp-kind';
+			setIcon(icon, stampKindIcon(match[1] || match[2] || ''));
+			const title = doc.createElement('span');
+			title.className = 'rv-stamp-title';
+			title.textContent = match[3] ?? '';
+			span.append(icon, title);
 			const anchor = after.nextSibling;
 			parent.insertBefore(span, anchor);
 			after = span;
@@ -207,6 +213,12 @@ function wrapShareTail(heading: HTMLElement): void {
 		if (rest) parent.insertBefore(doc.createTextNode(rest), after.nextSibling);
 		return;
 	}
+}
+
+function stampKindIcon(kind: string): string {
+	if (kind === 'book' || kind === 'Left') return 'book';
+	if (kind === 'film' || kind === 'Shared') return 'film';
+	return 'book-open';
 }
 
 /** The 🗺️ link beside Address becomes an earth button the size of the Hub plus. */

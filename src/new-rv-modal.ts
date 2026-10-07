@@ -3,8 +3,8 @@ import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
-import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne, matchingAddress } from './address';
-import { companionChoices, matchingCompanion } from './companions';
+import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne } from './address';
+import { companionChoices, exactCompanion, matchingCompanion } from './companions';
 import { ADDRESS_LOOKUP_IDLE_MS, addressLookupDecision } from './lookup-cadence';
 import type { RvGender } from './status';
 import type { GeocodeHit } from './types';
@@ -20,6 +20,8 @@ export interface NewRvIdentity {
 	verifiedHit: GeocodeHit | null;
 	publications: string;
 	media: string;
+	publicationList?: string[];
+	mediaList?: string[];
 }
 
 export interface NewRvModalOptions {
@@ -87,6 +89,7 @@ export class NewRvIdentityModal extends Modal {
 			text: this.options.intro ?? 'Choose man or woman, a name if you have one, the address, and a priority. Companion is optional.',
 		});
 		const gender = new Setting(contentEl).setName('Man / Woman');
+		gender.settingEl?.addClass('rv-gender-choice');
 		gender.addButton((button) => {
 			button.setButtonText('♂');
 			button.buttonEl.dataset.gender = 'Man';
@@ -227,6 +230,8 @@ export class NewRvIdentityModal extends Modal {
 			verifiedHit: verified,
 			publications: this.share.publications.trim(),
 			media: this.share.media.trim(),
+			publicationList: this.share.publicationList,
+			mediaList: this.share.mediaList,
 		});
 		this.close();
 	}
@@ -366,7 +371,14 @@ export class NewRvIdentityModal extends Modal {
 			this.releaseAddressList();
 			return;
 		}
-		const match = matchingAddress(this.addressResults, this.address);
+		const needle = this.address.replace(/\s+/g, ' ').trim().toLowerCase();
+		if (!needle) return;
+		const match = this.addressResults.find((hit) => {
+			const full = hit.formattedAddress.replace(/\s+/g, ' ').trim().toLowerCase();
+			return addressesMatchOneForOne(hit.formattedAddress, this.address)
+				|| abbreviateAddress(hit.formattedAddress).toLowerCase() === needle
+				|| full === needle;
+		});
 		if (!match) return;
 		this.selectAddress(match);
 	}
@@ -395,7 +407,7 @@ export class NewRvIdentityModal extends Modal {
 
 	private commitCompanionMatch(): void {
 		if (this.companionPicked) return;
-		const match = matchingCompanion(companionChoices(this.options.companions, this.companion), this.companion);
+		const match = exactCompanion(companionChoices(this.options.companions, this.companion), this.companion);
 		if (!match) return;
 		this.selectCompanion(match.value);
 	}

@@ -1,5 +1,20 @@
+import { interpolatePalette, type MapShadeMode } from './map-shade';
 import { urgencyAccentColor, urgencyMark, urgencyScore, insidePriorityFloor } from './scoring';
 import type { PriorityDays } from './types';
+
+/** Ghost pin while the return is inside its cool-down floor. Not the Last Attempted clock. */
+export const COOLDOWN_PIN_ICON = 'hourglass';
+/** Ghost pin when the current daypart is Avoid. Cooldown wins if both apply. */
+export const AVOID_PIN_ICON = 'ban';
+
+export type PinStateIcon = typeof COOLDOWN_PIN_ICON | typeof AVOID_PIN_ICON;
+
+/** Cooldown wins when the pin is both cooling down and in Avoid. */
+export function pinStateIcon(cooldown: boolean, avoid: boolean): PinStateIcon | null {
+	if (cooldown) return COOLDOWN_PIN_ICON;
+	if (avoid) return AVOID_PIN_ICON;
+	return null;
+}
 
 export interface MapPinSource {
 	path: string;
@@ -11,6 +26,10 @@ export interface MapPinSource {
 	days: number | null;
 	/** Inactive notes are not pins. Study and Active are. */
 	inactive: boolean;
+	/** Current daypart is Avoid, before the cooldown-wins rule. */
+	avoid?: boolean;
+	/** 0–1 heat used when the map is not shaded by urgency bands. */
+	shadeHeat?: number;
 	card: MapPinCard;
 }
 
@@ -43,6 +62,8 @@ export interface MapPin {
 	glyph: string;
 	/** Inside the priority floor: same size, ghost fill, dotted urgency ring. */
 	fresh: boolean;
+	/** Ghost icon. Null keeps the urgency mark. Cooldown's hourglass wins over Avoid's ban. */
+	stateIcon: PinStateIcon | null;
 	card: MapPinCard;
 }
 
@@ -52,6 +73,7 @@ export function buildMapPins(
 	floors: PriorityDays,
 	thresholds: PriorityDays,
 	colors: readonly string[],
+	shade: MapShadeMode = 'urgency',
 ): MapPin[] {
 	const pins: MapPin[] = [];
 	for (const row of rows) {
@@ -59,6 +81,7 @@ export function buildMapPins(
 		if (!Number.isFinite(row.lat) || !Number.isFinite(row.lon)) continue;
 		const urgency = urgencyScore(row.days, row.priority, thresholds);
 		const mark = urgencyMark(urgency, row.priority);
+		const fresh = row.days != null && insidePriorityFloor(row.days, row.priority, floors);
 		pins.push({
 			path: row.path,
 			name: row.name,
@@ -67,9 +90,12 @@ export function buildMapPins(
 			priority: row.priority,
 			urgency,
 			days: row.days,
-			color: urgencyAccentColor(urgency, row.priority, colors),
+			color: shade === 'urgency'
+				? urgencyAccentColor(urgency, row.priority, colors)
+				: interpolatePalette(row.shadeHeat ?? 0, colors),
 			glyph: mark.glyphs,
-			fresh: row.days != null && insidePriorityFloor(row.days, row.priority, floors),
+			fresh,
+			stateIcon: pinStateIcon(fresh, row.avoid === true),
 			card: row.card,
 		});
 	}

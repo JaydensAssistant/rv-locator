@@ -348,8 +348,10 @@ describe('visit resolution', () => {
 describe('past visit form', () => {
 	it('builds the local date and hour', () => {
 		assert.equal(visitWhenFrom('2026-09-23', 19)?.getTime(), new Date(2026, 8, 23, 19).getTime());
+		assert.equal(visitWhenFrom('2026-09-23', 19, 5)?.getTime(), new Date(2026, 8, 23, 19, 5).getTime());
 		assert.equal(visitWhenFrom('2026-02-30', 9), null);
 		assert.equal(visitWhenFrom('', 9), null);
+		assert.equal(visitWhenFrom('2026-09-23', 19, 60), null);
 		assert.equal(hourLabel(0), '12am');
 		assert.equal(hourLabel(12), '12pm');
 		assert.equal(hourLabel(19), '7pm');

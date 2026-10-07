@@ -50,6 +50,13 @@ export function matchingCompanion(choices: readonly CompanionSuggestion[], typed
 	return partial.length === 1 ? partial[0] ?? null : null;
 }
 
+/** Enter and blur keep a partial name. Only an exact name may replace the field. */
+export function exactCompanion(choices: readonly CompanionSuggestion[], typed: string): CompanionSuggestion | null {
+	const needle = typed.trim().toLowerCase();
+	if (!needle) return null;
+	return listedCompanions(choices).find((choice) => choice.value.trim().toLowerCase() === needle) ?? null;
+}
+
 /**
  * Display text for a Met With / Taken value.
  * A wikilink uses its alias, otherwise the note basename.

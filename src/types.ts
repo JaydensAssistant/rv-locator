@@ -27,6 +27,7 @@ import {
 	type UrgencyColors,
 	type UrgencyPaletteId,
 } from './urgency-palette';
+import { sanitizeMapShade, type MapShadeMode } from './map-shade';
 import { sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, type CampaignListFilter, type GenderFilter, type ReturnScope } from './status';
 
 export type DistanceUnit = 'miles' | 'kilometers';
@@ -104,6 +105,8 @@ export interface RVLocatorSettings {
 	urgencyPalette: UrgencyPaletteId;
 	/** Low to high urgency. Used when {@link urgencyPalette} is `custom`. */
 	urgencyCustomColors: UrgencyColors;
+	/** How map pins are colored. Urgency bands unless this is changed. Nearness is not a mode. */
+	mapShade: MapShadeMode;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -331,6 +334,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	centerSuggestions: true,
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
+	mapShade: 'urgency',
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -498,6 +502,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		centerSuggestions: input.centerSuggestions !== false,
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
+		mapShade: sanitizeMapShade(input.mapShade),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),

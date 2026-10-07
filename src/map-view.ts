@@ -212,14 +212,18 @@ export class RvMapView extends ItemView {
 
 	private paintPin(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		const selected = this.selectedPath === pin.path;
+		const ghost = pin.stateIcon != null;
 		const button = layer.createEl('button', {
-			cls: `rv-map-pin${pin.fresh ? ' is-fresh' : ''}${selected ? ' is-selected' : ''}`,
+			cls: `rv-map-pin${ghost ? ' is-fresh' : ''}${selected ? ' is-selected' : ''}`,
 			attr: { type: 'button', 'aria-label': pin.name },
 		});
 		button.style.setProperty('--pin-color', pin.color);
-		button.style.color = pin.fresh ? pin.color : urgencyInk(pin.color);
-		if (!pin.fresh) button.style.background = pin.color;
-		button.textContent = pin.glyph;
+		button.style.color = ghost ? pin.color : urgencyInk(pin.color);
+		if (!ghost) button.style.background = pin.color;
+		if (pin.stateIcon) {
+			button.dataset.pinState = pin.stateIcon;
+			setIcon(button, pin.stateIcon);
+		} else button.textContent = pin.glyph;
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
 		button.addEventListener('click', (event) => {
@@ -316,13 +320,13 @@ export class RvMapView extends ItemView {
 		}
 		if (pin.card.met) this.cardLine(card, 'home', `Met ${pin.card.met}`);
 		this.cardLine(card, 'user', pin.card.metWith || '—');
-		this.cardLine(card, 'list-checks', pin.card.study ? pin.card.studyRatio : pin.card.visits);
-		this.cardLine(card, 'book-open', pin.card.literature || '—');
-		this.cardLine(card, 'clapperboard', pin.card.media || '—');
+		this.cardLine(card, pin.card.study ? 'percent' : 'list-checks', pin.card.study ? pin.card.studyRatio : pin.card.visits);
+		this.cardLine(card, 'book', pin.card.literature || '—');
+		this.cardLine(card, 'film', pin.card.media || '—');
 		if (pin.card.study) {
 			card.createDiv({ cls: 'rv-map-section', text: 'Lessons Studied' });
 			const lessons = pin.card.lessons.length ? pin.card.lessons : ['—'];
-			for (const lesson of lessons) this.cardLine(card, 'book-marked', lesson);
+			for (const lesson of lessons) this.cardLine(card, 'book-open', lesson);
 		}
 	}
 

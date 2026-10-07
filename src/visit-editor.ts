@@ -28,6 +28,8 @@ export interface VisitFacts {
 	companion: string;
 	publications?: string;
 	media?: string;
+	publicationList?: string[];
+	mediaList?: string[];
 	lesson?: string;
 	lessonFrom?: string;
 	lessonTo?: string;
@@ -185,6 +187,8 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 			extraLesson: facts.extraLesson ?? '',
 			extraFrom: facts.extraFrom ?? '',
 			extraTo: facts.extraTo ?? '',
+			publicationList: facts.publicationList,
+			mediaList: facts.mediaList,
 		});
 		const heading = extra ? `##### ${stamp} ${extra}` : `##### ${stamp}`;
 		const block = options.notesBlock && options.notesBlock.length > 0
@@ -496,16 +500,24 @@ export function dateInputValue(date: Date): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Local date from `2026-09-29` at `hour` o'clock. Null for a blank or invalid date. */
-export function visitWhenFrom(dateText: string, hour: number): Date | null {
+/** Local date from `2026-09-29` at `hour`:`minute`. Minute defaults to 00. Null for a blank or invalid date. */
+export function visitWhenFrom(dateText: string, hour: number, minute = 0): Date | null {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText.trim());
 	if (!match || !Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+	if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
 	const year = Number(match[1]);
 	const month = Number(match[2]) - 1;
 	const day = Number(match[3]);
-	const date = new Date(year, month, day, hour, 0, 0, 0);
+	const date = new Date(year, month, day, hour, minute, 0, 0);
 	if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
 	return date;
+}
+
+/** Nearest 5-minute mark. 60 rolls to 0 so the caller can bump the hour. */
+export function snapFiveMinutes(minute: number): number {
+	if (!Number.isInteger(minute)) return 0;
+	const snapped = Math.round(Math.max(0, Math.min(59, minute)) / 5) * 5;
+	return snapped >= 60 ? 0 : snapped;
 }
 
 /** `12am` … `11pm`. */
