@@ -212,7 +212,7 @@ export type GlancableLineId = (typeof GLANCABLE_LINE_IDS)[number];
 export type GlancableLineFlags = Record<GlancableLineId, boolean>;
 
 export interface GlancableChromeFlags {
-	/** Hide the whole Bases top bar. Off by default. */
+	/** Hide the whole Bases top bar. On when unset. A saved true or false is kept. */
 	hideToolbar: boolean;
 	hideViews: boolean;
 	hideSort: boolean;
@@ -265,7 +265,7 @@ export function defaultSortChips(): SortChipFlags {
 
 export function defaultGlancableChrome(): GlancableChromeFlags {
 	return {
-		hideToolbar: false,
+		hideToolbar: true,
 		hideViews: false,
 		hideSort: false,
 		hideFilter: false,

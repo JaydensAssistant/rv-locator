@@ -246,7 +246,7 @@ export function renderGlancableChrome(containerEl: HTMLElement, plugin: ScoringH
 		cls: 'setting-item-description',
 		text: 'These apply only while Glancable is the view on screen. Other Bases views keep the full bar.',
 	});
-	chromeToggle(containerEl, plugin, 'hideToolbar', 'Hide the Bases bar', 'Hides the whole top bar. Off by default.');
+	chromeToggle(containerEl, plugin, 'hideToolbar', 'Hide the Bases bar', 'Hides the whole top bar. On by default.');
 	chromeToggle(containerEl, plugin, 'hideViews', 'Hide view switcher', 'Hides the view name menu.');
 	chromeToggle(containerEl, plugin, 'hideSort', 'Hide Bases sort', 'Hides the Bases sort menu. The chip row under it stays.');
 	chromeToggle(containerEl, plugin, 'hideFilter', 'Hide filter', 'Hides the Bases filter menu.');

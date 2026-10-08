@@ -2,7 +2,7 @@
 
 ## 1.3.5
 
-`main.js` SHA-256: `074b06fbe99fff3754259a3708264cae7a8070ff29e0c47a28c2e435ac48ac5b`
+`main.js` SHA-256: `804f7c0abc64cf413016ec82935b89c237cc930a52909a10d6eff1f197e73a9a`
 
 `styles.css` SHA-256: `37b9c89140892b9525f0abc90b4dea392f3ff35b8210a0c32795865f8beb5fcc`
 
@@ -38,7 +38,8 @@ Phone-first: Obsidian mobile around 390px, 40px touch targets on the hub bar, ma
 22. **Claimed.** The native calendar and list indicators are hidden on `.rv-suggest-host` inputs. The chevron beside the box stays visible, 40px.
 23. **Claimed** in `.rv-locator-modal` for text, search, and date inputs: one control width (`min(16.5rem, 100%)`), a 40px chevron column, and fields without a chevron shortened by that same 40px so the boxes line up. On a phone the label stacks above the control. Sliders and the gender buttons are not in that column. New RV, Log visit, past visit, edit visit, and the in-note log.
 24. **Claimed** on those same literature and media fields. Placeholders are "Tract or book (optional)" and "Video (optional)".
-25. **Claimed** when Hide the Bases bar is on. `.bases-toolbar` and `.bases-header` collapse (no height, margin, padding, or border), standalone and embedded. The file tab (`.view-header`) stays. The stored default is still off, so the bar shows until the setting is turned on.
+25. **Claimed** when Hide the Bases bar is on. `.bases-toolbar` and `.bases-header` collapse (no height, margin, padding, or border), standalone and embedded. The file tab (`.view-header`) stays. Item 28 turns that on unless a saved value says otherwise.
+28. **Claimed.** Hide the Bases bar defaults on. A fresh install, or saved settings with no `hideToolbar` value, collapses the Bases toolbar with no gap. A saved `true` or `false` is kept, including someone who turned the bar back on. Resetting that settings group returns to hidden. The settings line says on by default. Same flag for a standalone base and an embedded one, on phone and desktop. Other Bases views are unchanged.
 26. **Claimed.** A campaign does not remove literature, media, or the lesson disclosure. Log visit, the in-note log, and log a past visit still show them as items 17 and 18 define, and a home save writes Left Publications, Shared Media, and Lessons Studied. Covered by tests that read the share back through frontmatter and the visit stamp.
 27. **Claimed** on every `mountAlwaysChevron` list (literature, media, lesson, companion, address, and the rest) in every modal from item 17, including the in-note path. The box is about five rows tall and scrolls inside itself. It is limited to the modal and to `visualViewport` (the space above the keyboard). If there is more room above the field, it opens above. Titles wrap to at most two lines.
 

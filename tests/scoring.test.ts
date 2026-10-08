@@ -996,7 +996,10 @@ describe('settings defaults', () => {
 		assert.equal(settings.digestAvoidSoftMax, 0.3);
 		assert.equal(settings.digestAvoidMinTrials, 3);
 		assert.equal(settings.digestTryMinHomes, 1);
-		assert.equal(settings.glancableChrome.hideToolbar, false);
+		assert.equal(settings.glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({}).glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({ glancableChrome: {} }).glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({ glancableChrome: { hideToolbar: false } }).glancableChrome.hideToolbar, false);
 		assert.equal(settings.glancableChrome.hideNew, true);
 		assert.equal(settings.glancableChrome.hideSort, false);
 		assert.equal(mergeSettings({ digestTrySoftMin: 0.5 }).digestTrySoftMin, 0.5);
