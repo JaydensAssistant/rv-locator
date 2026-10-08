@@ -453,6 +453,7 @@ describe('glancable smart search', () => {
 		assert.match(css, /\.rv-locator-view\.is-side-map \.rv-hub-map \{[^}]*min-height:\s*70vh/);
 		assert.match(css, /font-size:\s*12px/);
 		assert.doesNotMatch(css, /\.rv-locator-sort-pills \.rv-sort-label \{[^}]*text-overflow:\s*ellipsis/);
+		const chips = visibleSortPresets(defaultSortChips()).length;
 		assert.equal(glancePillContentPx(390, chips) > 42, true);
 		assert.equal(glancePillContentPx(430, chips) > glancePillContentPx(390, chips), true);
 		assert.equal(stackedEmbedCap(844, 110), 734);
@@ -499,7 +500,6 @@ describe('glancable smart search', () => {
 		assert.match(map, /focus: \(path, center, source\) => \{ this\.focusPath\(path, center, source\)/);
 		assert.match(map, /clearPinFlash/);
 		assert.doesNotMatch(map, /openCard\(pins, selected\.pin/);
-		const chips = visibleSortPresets(defaultSortChips()).length;
 		assert.equal(glancePillsThatFit(390, chips), chips);
 		assert.equal(glancePillsThatFit(430, chips), chips);
 		assert.equal(glanceBarHeight(), 84);

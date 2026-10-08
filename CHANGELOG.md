@@ -2,9 +2,9 @@
 
 ## 1.3.5
 
-`main.js` SHA-256: `f7557509edbb77272bb8937409d12a554d2fdf60b27b1f91f66d672396fd20d2`
+`main.js` SHA-256: `bf380dff71d29441f280be4d5cb06d219d1e5d99e0b06b049421cd28cc04dbe6`
 
-`styles.css` SHA-256: `3c4c06210b7ff3ae88f5f4dcf98b2cbbe3762ae8f7794e170e72b961040abf3e`
+`styles.css` SHA-256: `8b2a8f8e60b9ac8dbdb89b8c929442959d24d1fcc40e2104400779ca080f2e6e`
 
 `manifest.json` SHA-256: `dbf47c2188d9abcdda12f0242dbffe93a835852e2cf21e9b476278e7fbd92591`
 
@@ -35,7 +35,7 @@ Phone-first: Obsidian mobile around 390px, 40px touch targets on the hub bar, ma
 19. **Claimed.** Literature, media, and the lesson list are gone from Glancable cards and map popup cards. Last Studied stays. Quick Facts in the note still lists Literature, Media, and Lessons.
 20. **Claimed** on every chevron suggester: literature, media, lesson, companion, address, and the other `mountAlwaysChevron` fields, in New RV, Log visit, campaign log, past visit, edit visit, and the in-note companion dialog. Focus or click opens the list under the field. Mount does not focus the field, so opening the modal does not open the companion list. A programmatic focus (the chevron already painted) does not toggle it shut.
 21. **Claimed** on those same fields. `autocomplete=off`, and the native datalist is gone from New RV, the visit editor companion, and the in-note companion.
-22. **Claimed.** The native calendar and list indicators are hidden on `.rv-suggest-host` inputs. The chevron beside the box stays visible, 40px.
+22. **Claimed.** The native calendar and list indicators are hidden on `.rv-suggest-host` inputs, and on every date and time input in every `.rv-locator-modal` (New RV, Log visit, campaign log, log a past visit, edit visit, in-note Home, companion dialog). A phone tap still opens the native picker. A desktop click calls `showPicker()` where the browser supports it. The chevron beside a suggester stays visible, 40px. `rvLog.js` is unchanged.
 23. **Claimed** in `.rv-locator-modal` for every field row: one control width (`min(16.5rem, 100%)`), a 40px chevron column, and fields without a chevron shortened by that same 40px so the boxes line up. On a phone, or when the modal itself is narrower than 520px, the label stacks above the control, including New RV (gender, name, address, companion, literature, media, lesson), Log visit, the campaign log, log a past visit, edit visit, and the in-note log. New RV now carries `rv-locator-modal`.
 24. **Claimed** on those same literature and media fields. Placeholders are "Tract or book (optional)" and "Video (optional)".
 25. **Claimed** when Hide the Bases bar is on. `.bases-toolbar` and `.bases-header` collapse (no height, margin, padding, or border), standalone and embedded. The file tab (`.view-header`) stays. Item 28 turns that on unless a saved value says otherwise.
