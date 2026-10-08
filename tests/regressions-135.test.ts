@@ -14,7 +14,7 @@ import { mountShareFields, type ShareFieldOptions } from '../src/catalog-fields'
 import { pinLookForHub } from '../src/map-pins';
 import { CompanionSuggestModal } from '../src/modals';
 import type { GeocodeHit } from '../src/types';
-import { HUB_STACK_BELOW_PX, hubUsesStackedMap, revealHubCard } from '../src/hub-layout';
+import { HUB_STACK_BELOW_PX, hubStackMeasure, hubUsesStackedMap, revealHubCard, splitMapLeafAction } from '../src/hub-layout';
 import { applyVisitChangeFrontmatter, editVisit, insertVisit, listVisits } from '../src/visit-editor';
 import { LiteraturePromptModal, VisitEditModal } from '../src/visit-modals';
 import { appendShareToFirstStamp, applyVisitFrontmatter } from '../src/visit-log';
@@ -631,8 +631,31 @@ describe('hub pin scroll and narrow stack', () => {
 		assert.match(glance, /ensureHubScroller\(\)/);
 		assert.match(glance, /registerHubScroller\(\(path\) => this\.flashCard\(path\)\)/);
 		assert.equal(glance.includes('if (!(Platform.isMobile || Platform.isMobileApp)) return;'), false);
-		assert.match(glance, /hubUsesStackedMap\(Boolean\(Platform\.isMobile \|\| Platform\.isMobileApp\), width, this\.plugin\.hubPaneNarrow\)/);
+		assert.match(glance, /hubStackMeasure\(width, this\.plugin\.splitMapWidth\(\), frame\)/);
+		assert.match(glance, /splitMapLeafAction\(stacked, this\.plugin\.splitMapIsOpen\(\), this\.plugin\.splitMapParked\)/);
+		assert.match(glance, /hubMapIsFullscreen\(\)/);
 		assert.match(main, /Platform\.isMobile \|\| Platform\.isMobileApp \|\| this\.hubPaneNarrow/);
+		assert.match(main, /concealSplitMap\(\)/);
+		assert.match(main, /revealSplitMap\(\)/);
+		const map = readFileSync('src/map-view.ts', 'utf8');
+		assert.match(map, /fullscreenScope === 'hub'/);
+		assert.match(map, /setHubMapFullscreen\?\.\(on\)/);
+		assert.equal(map.includes('setMapFullscreen'), false);
+		assert.equal(map.includes('mapIsFullscreen'), false);
+	});
+
+	it('stacks a narrow window even when the split leaf squeezes the hub, and parks that leaf', () => {
+		assert.equal(hubStackMeasure(162, 228, 390), 390);
+		assert.equal(hubUsesStackedMap(false, hubStackMeasure(162, 228, 390)), true);
+		assert.equal(hubStackMeasure(390, 0, 390), 390);
+		assert.equal(hubUsesStackedMap(false, hubStackMeasure(400, 0, 1200)), true);
+		assert.equal(hubUsesStackedMap(false, hubStackMeasure(162, 700, 1200)), false);
+		assert.equal(hubUsesStackedMap(false, hubStackMeasure(162, 0, 1200)), true);
+		assert.equal(splitMapLeafAction(true, true, false), 'park');
+		assert.equal(splitMapLeafAction(true, false, true), 'keep');
+		assert.equal(splitMapLeafAction(false, false, true), 'restore');
+		assert.equal(splitMapLeafAction(false, true, false), 'keep');
+		assert.equal(splitMapLeafAction(false, false, false), 'keep');
 	});
 
 	it('scrolls the Glancable .rv-locator-scroll column to the tapped card and flashes it', () => {

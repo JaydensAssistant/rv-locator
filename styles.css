@@ -2601,6 +2601,12 @@ h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
 .rv-visit-folded,
 .rv-dashboard :is(.el-h3, .el-h5).is-collapsed + :is(.el-p, .el-div, p):has(textarea, .mb-input),
 .rv-dashboard .cm-line:has(.cm-foldPlaceholder) + .cm-line:has(textarea, .mb-input),
+.cm-line.rv-older-hidden,
+.cm-line.rv-visit-folded,
+.cm-line.rv-older-hidden :is(textarea, .mb-input, .cm-widget),
+.cm-line.rv-visit-folded :is(textarea, .mb-input, .cm-widget),
+.rv-older-hidden :is(textarea, .mb-input),
+.rv-visit-folded :is(textarea, .mb-input),
 body.rv-center-visit-notes .rv-dashboard .rv-older-hidden:is(p, .el-p):has(textarea),
 body.rv-center-visit-notes .rv-dashboard .rv-visit-folded:is(p, .el-p):has(textarea) {
 	display: none !important;
@@ -2802,8 +2808,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	padding: 0;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
-	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	/* Same base as the card. The badge is this 13% mix over transparent, painted on --background-secondary. */
+	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
+	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
 	opacity: 1;
 	color: var(--pin-color, var(--interactive-accent));
 	font-size: 22px;
@@ -2865,8 +2872,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	height: 63px;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
-	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
+	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
 	opacity: 1;
 	font-size: 22px;
 	color: var(--pin-color, var(--interactive-accent));

@@ -1,5 +1,5 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
-import { HUB_STACK_BELOW_PX, hubUsesStackedMap, revealHubCard } from './hub-layout';
+import { hubStackMeasure, hubUsesStackedMap, revealHubCard, splitMapLeafAction } from './hub-layout';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
@@ -37,6 +37,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private hubMapRatio = 0.4;
 	private stackedLayout = false;
 	private hubScrollerStop: (() => void) | null = null;
+	private hubFullscreenStop: (() => void) | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -83,22 +84,32 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 */
 	private syncHubMapMount(): void {
 		const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
-		if (width > 0) this.plugin.hubPaneNarrow = width < HUB_STACK_BELOW_PX;
-		const stacked = hubUsesStackedMap(Boolean(Platform.isMobile || Platform.isMobileApp), width, this.plugin.hubPaneNarrow);
+		const frame = this.root.win?.innerWidth || this.root.ownerDocument?.defaultView?.innerWidth || 0;
+		const measure = hubStackMeasure(width, this.plugin.splitMapWidth(), frame);
+		const stacked = hubUsesStackedMap(
+			Boolean(Platform.isMobile || Platform.isMobileApp),
+			measure > 0 ? measure : width,
+			this.plugin.hubPaneNarrow,
+		);
+		if (measure > 0 || width > 0) this.plugin.hubPaneNarrow = stacked;
 		if (stacked) {
 			const entered = !this.stackedLayout;
 			this.stackedLayout = true;
 			this.ensureHubMap();
 			if (entered) this.plugin.hubMapOpen = true;
-		} else if (width > 0) {
+		} else if (width > 0 || frame > 0) {
 			this.stackedLayout = false;
 			this.removeHubMap();
 			this.plugin.hubMapOpen = false;
 		}
+		const splitAction = splitMapLeafAction(stacked, this.plugin.splitMapIsOpen(), this.plugin.splitMapParked);
+		if (splitAction === 'park') this.plugin.concealSplitMap();
+		else if (splitAction === 'restore') this.plugin.revealSplitMap();
 		this.syncHubMap();
 	}
 
 	private ensureHubMap(): void {
+		this.ensureHubFullscreenSync();
 		if (this.hubMapEl) return;
 		const map = this.root.createDiv('rv-hub-map');
 		const handle = this.root.createDiv('rv-hub-map-handle');
@@ -111,6 +122,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.hubMapHandle = handle;
 		this.hubMapApi = this.plugin.mountHubMap(map);
 		this.bindHubHandle(handle);
+	}
+
+	private ensureHubFullscreenSync(): void {
+		if (this.hubFullscreenStop) return;
+		this.hubFullscreenStop = this.plugin.registerHubFullscreen(() => this.syncHubMap());
+		this.register(() => {
+			this.hubFullscreenStop?.();
+			this.hubFullscreenStop = null;
+		});
 	}
 
 	private removeHubMap(): void {
@@ -574,9 +594,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const map = this.hubMapEl;
 		if (!map) return;
 		const open = this.plugin.hubMapOpen;
+		const full = open && this.plugin.hubMapIsFullscreen();
 		this.root.toggleClass('is-hub-map', open);
-		this.root.toggleClass('is-map-fullscreen', open && this.plugin.mapIsFullscreen());
-		map.style.height = open && !this.plugin.mapIsFullscreen() ? `${Math.round(this.hubMapRatio * 100)}%` : '';
+		this.root.toggleClass('is-map-fullscreen', full);
+		map.toggleClass('is-fullscreen', full);
+		map.style.height = open && !full ? `${Math.round(this.hubMapRatio * 100)}%` : '';
 	}
 
 	private bindHubHandle(handle: HTMLElement): void {

@@ -307,7 +307,7 @@ describe('in-note urgency chrome', () => {
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-lead \{[^}]*flex-grow:\s*0/);
 		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard :is\(h3, h5\)\.rv-visit-stamp > \.rv-stamp-ago[^{]*\{[^}]*margin-left:\s*0/);
 		assert.match(css, /\.workspace-leaf-content:not\(\.is-urgency-ready\) :is\([\s\S]*\.mb-button\.rv-visit-btn/);
-		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, var\(--background-primary\)\)/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, var\(--background-secondary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \.rv-urgency-glyph \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
 		const ghostPin = css.match(/\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{([^}]*)\}/)?.[1] ?? '';
@@ -317,7 +317,7 @@ describe('in-note urgency chrome', () => {
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin svg \{[^}]*width: 38px !important;[^}]*height: 38px !important/);
 		assert.match(css, /\.rv-map-card\.rv-locator-glancable \{[^}]*--rv-control-size: 38px/);
-		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, var\(--background-primary\)\)/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, var\(--background-secondary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
 		const themeButton = selectorSpecificity('button:not(.clickable-icon)');
 		for (const selector of [

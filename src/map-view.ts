@@ -17,9 +17,9 @@ export interface MapHost {
 	openMapNote(path: string): void;
 	openRoute(path: string): Promise<void>;
 	currentMapFix(): { lat: number; lon: number } | null;
-	/** False while the map sits beside or inside the hub. */
-	mapIsFullscreen?(): boolean;
-	setMapFullscreen?(on: boolean): void;
+	/** Hub stack only. The split map keeps its own fullscreen flag. */
+	hubMapIsFullscreen?(): boolean;
+	setHubMapFullscreen?(on: boolean): void;
 	notifyPin?(path: string): void;
 	notifyMapCleared?(): void;
 	hubSort?(): { property: string; direction: 'ASC' | 'DESC' };
@@ -47,6 +47,9 @@ export class RvMapView extends ItemView {
 	private selectedPath: string | null = null;
 	private sortRow: HTMLElement | null = null;
 	private detachMap: (() => void) | null = null;
+	/** This map only. The hub stack and the split leaf do not share it. */
+	private mapFullscreen = false;
+	private fullscreenScope: 'hub' | 'split' = 'split';
 
 	constructor(leaf: WorkspaceLeaf, private host: MapHost) {
 		super(leaf);
@@ -87,15 +90,10 @@ export class RvMapView extends ItemView {
 		fit.addEventListener('click', () => this.fitAll());
 		locate.addEventListener('click', () => this.locateMe());
 		fullscreen.addEventListener('click', () => {
-			const next = !this.isFullscreen();
-			this.host.setMapFullscreen?.(next);
-			this.syncFullscreen();
-			this.paint();
+			this.setFullscreen(!this.isFullscreen());
 		});
 		back.addEventListener('click', () => {
-			this.host.setMapFullscreen?.(false);
-			this.syncFullscreen();
-			this.paint();
+			this.setFullscreen(false);
 		});
 		this.sortRow = this.contentEl.createDiv('rv-map-sorts');
 		this.paintSorts();
@@ -142,7 +140,16 @@ export class RvMapView extends ItemView {
 	}
 
 	private isFullscreen(): boolean {
-		return this.host.mapIsFullscreen?.() === true;
+		if (this.fullscreenScope === 'hub') return this.host.hubMapIsFullscreen?.() === true;
+		return this.mapFullscreen === true;
+	}
+
+	/** Full screen stays on the map that was toggled. */
+	private setFullscreen(on: boolean): void {
+		if (this.fullscreenScope === 'hub') this.host.setHubMapFullscreen?.(on);
+		else this.mapFullscreen = on;
+		this.syncFullscreen();
+		this.paint();
 	}
 
 	private syncFullscreen(): void {
@@ -578,6 +585,8 @@ export function mountEmbeddedMap(
 		selectedPath: null as string | null,
 		sortRow: null as HTMLElement | null,
 		detachMap: null as (() => void) | null,
+		mapFullscreen: false,
+		fullscreenScope: 'hub' as const,
 	};
 	const map = Object.assign(Object.create(RvMapView.prototype), shell) as RvMapView;
 	void map.onOpen();

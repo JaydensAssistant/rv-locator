@@ -12,6 +12,26 @@ export function hubUsesStackedMap(isMobile: boolean, width: number, knownNarrow 
 }
 
 /**
+ * Width for the stack decision. A narrow window is stacked even when the split
+ * map leaf has squeezed the hub column. A wide window adds that leaf's width
+ * so the two columns together can stay a split.
+ */
+export function hubStackMeasure(hubWidth: number, splitWidth: number, frameWidth = 0): number {
+	const frame = Math.max(0, frameWidth);
+	if (frame > 0 && frame < HUB_STACK_BELOW_PX) return frame;
+	const columns = Math.max(0, hubWidth) + Math.max(0, splitWidth);
+	if (columns > 0) return columns;
+	return frame;
+}
+
+/** Park the split leaf while stacked, and bring it back only after the hub is wide. */
+export function splitMapLeafAction(stacked: boolean, splitOpen: boolean, parked: boolean): 'park' | 'restore' | 'keep' {
+	if (stacked && splitOpen) return 'park';
+	if (!stacked && parked && !splitOpen) return 'restore';
+	return 'keep';
+}
+
+/**
  * Scroll the Glancable hub to one card and flash it.
  * Cards are `[data-rv-path]` inside `.rv-locator-scroll` (overflow-y: auto),
  * which is the scroll child of `.rv-locator-view`. That column is the hub

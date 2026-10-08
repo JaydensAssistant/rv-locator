@@ -410,6 +410,197 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(olderLine.classList.contains('rv-visit-folded'), false);
 	});
 
+	it('collapses older Live Preview visits under Older Visits and hides their text areas', () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
+		const doc = createDoc();
+		const preview = doc.createElement('div');
+		preview.className = 'markdown-source-view';
+		const content = doc.createElement('div');
+		content.className = 'cm-content';
+		preview.appendChild(content);
+		for (const stamp of stamps) {
+			const heading = doc.createElement('div');
+			heading.className = 'cm-line HyperMD-header HyperMD-header-5';
+			heading.textContent = `##### ${stamp}`;
+			const line = doc.createElement('div');
+			line.className = 'cm-line';
+			const area = doc.createElement('textarea');
+			area.setAttribute('style', 'display: inline-block; height: 100px');
+			line.appendChild(area);
+			content.appendChild(heading);
+			content.appendChild(line);
+		}
+		layoutVisitNotes(preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		const control = content.querySelector('h3.rv-older-visits');
+		assert.equal(control?.textContent, 'Older Visits');
+		assert.equal(control?.parentElement?.classList.contains('cm-line'), true);
+		const hidden = content.children.filter((node) => node.classList.contains('rv-older-hidden'));
+		assert.ok(hidden.some((node) => (node.textContent ?? '').includes('Thu, 4pm')));
+		const hiddenArea = hidden.find((node) => node.querySelector('textarea'));
+		assert.equal(hiddenArea?.classList.contains('rv-older-hidden'), true);
+		assert.equal(content.querySelectorAll('h3.rv-older-visits').length, 1);
+		layoutVisitNotes(preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assert.equal(content.querySelectorAll('h3.rv-older-visits').length, 1);
+		assert.equal(markdown, stamps.map((stamp) => `##### ${stamp}`).join('\n'));
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /\.cm-line\.rv-older-hidden :is\(textarea, \.mb-input, \.cm-widget\)/);
+	});
+
+	it('hides every Live Preview widget line under a folded visit heading', () => {
+		const doc = createDoc();
+		const preview = doc.createElement('div');
+		preview.className = 'markdown-source-view';
+		const heading = doc.createElement('div');
+		heading.className = 'cm-line HyperMD-header HyperMD-header-5';
+		heading.textContent = '##### Thu, 4pm — Sep 4, 2026';
+		const fold = doc.createElement('span');
+		fold.className = 'cm-foldPlaceholder';
+		heading.appendChild(fold);
+		const first = doc.createElement('div');
+		first.className = 'cm-line';
+		first.appendChild(doc.createElement('textarea'));
+		const second = doc.createElement('div');
+		second.className = 'cm-line';
+		second.appendChild(doc.createElement('textarea'));
+		const next = doc.createElement('div');
+		next.className = 'cm-line HyperMD-header HyperMD-header-5';
+		next.textContent = '##### Wed, 3pm — Sep 3, 2026';
+		const after = doc.createElement('div');
+		after.className = 'cm-line';
+		after.appendChild(doc.createElement('textarea'));
+		preview.appendChild(heading);
+		preview.appendChild(first);
+		preview.appendChild(second);
+		preview.appendChild(next);
+		preview.appendChild(after);
+		concealCollapsedVisitNotes(preview as unknown as HTMLElement);
+		assert.equal(first.classList.contains('rv-visit-folded'), true);
+		assert.equal(second.classList.contains('rv-visit-folded'), true);
+		assert.equal(after.classList.contains('rv-visit-folded'), false);
+	});
+
+	it('does not loop when the latest visit heading fold notifies observers immediately', () => {
+		const host = globalThis as { MutationObserver?: unknown };
+		const previous = host.MutationObserver;
+		let observerCalls = 0;
+		const observers: SyncObserver[] = [];
+		class SyncObserver {
+			target: DomEl | null = null;
+			subtree = false;
+			constructor(private cb: (records: MutationRecord[]) => void) {}
+			observe(target: DomEl, options?: { subtree?: boolean }): void {
+				this.target = target;
+				this.subtree = options?.subtree === true;
+				observers.push(this);
+			}
+			disconnect(): void { /* test */ }
+			takeRecords(): MutationRecord[] { return []; }
+			notify(el: DomEl): void {
+				if (!this.target) return;
+				const hit = this.target === el || (this.subtree && this.target.contains(el));
+				if (!hit) return;
+				observerCalls += 1;
+				if (observerCalls > 25) throw new Error('fold observer loop');
+				this.cb([{
+					type: 'attributes',
+					attributeName: 'class',
+					target: el,
+					oldValue: null,
+					addedNodes: [] as unknown as NodeList,
+					removedNodes: [] as unknown as NodeList,
+				} as MutationRecord]);
+			}
+		}
+		host.MutationObserver = SyncObserver;
+		try {
+			const stamps = ['Thu, 4pm — Sep 4, 2026', 'Wed, 3pm — Sep 3, 2026'];
+			const markdown = `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`;
+			const doc = createDoc();
+			const preview = doc.createElement('div');
+			preview.className = 'markdown-preview-view';
+			const sizer = doc.createElement('div');
+			sizer.className = 'markdown-preview-section';
+			preview.appendChild(sizer);
+			const notesWrap = doc.createElement('div');
+			notesWrap.className = 'el-h3';
+			const notes = doc.createElement('h3');
+			notes.textContent = 'Recent Notes:';
+			notesWrap.appendChild(notes);
+			sizer.appendChild(notesWrap);
+			const thuWrap = doc.createElement('div');
+			thuWrap.className = 'el-h5';
+			const thu = doc.createElement('h5');
+			thu.className = 'rv-visit-stamp';
+			thu.textContent = stamps[0] ?? '';
+			thuWrap.appendChild(thu);
+			const thuNotes = doc.createElement('div');
+			thuNotes.className = 'el-p';
+			thuNotes.appendChild(doc.createElement('textarea'));
+			const wedWrap = doc.createElement('div');
+			wedWrap.className = 'el-h5';
+			const wed = doc.createElement('h5');
+			wed.className = 'rv-visit-stamp';
+			wed.textContent = stamps[1] ?? '';
+			wedWrap.appendChild(wed);
+			const wedNotes = doc.createElement('div');
+			wedNotes.className = 'el-p';
+			wedNotes.appendChild(doc.createElement('textarea'));
+			sizer.appendChild(thuWrap);
+			sizer.appendChild(thuNotes);
+			sizer.appendChild(wedWrap);
+			sizer.appendChild(wedNotes);
+			layoutVisitNotes(preview as unknown as HTMLElement, markdown, {
+				newestFirst: true,
+				collapseOlder: true,
+				limit: 3,
+			});
+			const fire = (el: DomEl): void => {
+				for (const observer of observers.slice()) observer.notify(el);
+			};
+			const wrapList = (el: DomEl): void => {
+				const list = el.classList as DomEl['classList'] & {
+					add: (...values: string[]) => void;
+					remove: (...values: string[]) => void;
+					toggle: (value: string, force?: boolean) => boolean;
+				};
+				const add = list.add.bind(list);
+				const remove = list.remove.bind(list);
+				const toggle = list.toggle.bind(list);
+				list.add = (...values: string[]) => { add(...values); fire(el); };
+				list.remove = (...values: string[]) => { remove(...values); fire(el); };
+				list.toggle = (value: string, force?: boolean) => {
+					const result = toggle(value, force);
+					fire(el);
+					return result;
+				};
+				for (const kid of el.children) wrapList(kid);
+			};
+			wrapList(preview);
+			thuWrap.classList.add('is-collapsed');
+			assert.ok(observerCalls < 20);
+			assert.equal(thuNotes.classList.contains('rv-visit-folded'), true);
+			assert.equal(wedNotes.classList.contains('rv-visit-folded'), false);
+			assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
+		} finally {
+			if (previous === undefined) delete host.MutationObserver;
+			else host.MutationObserver = previous;
+		}
+	});
+
 	it('hides a text area that mounts after Older Visits is collapsed', () => {
 		const stamps = [
 			'Mon, 9am — Sep 1, 2026',

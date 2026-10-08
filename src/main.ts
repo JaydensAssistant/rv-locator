@@ -26,6 +26,7 @@ import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIc
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
+import { HUB_STACK_BELOW_PX } from './hub-layout';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
@@ -1346,8 +1347,13 @@ export default class RVLocatorPlugin extends Plugin {
 
 	mapFocusPath: string | null = null;
 	mapSelectedPath: string | null = null;
-	mapFullscreen = false;
+	/** In-hub stacked map only. The split leaf does not read this. */
+	hubMapFullscreen = false;
 	hubMapOpen = false;
+	/** The split map leaf was closed because the hub stacked. Restored when wide. */
+	splitMapParked = false;
+	private splitMapOpening = false;
+	private hubFullscreenSync: (() => void) | null = null;
 	/** Hub column is narrower than the stacked-map breakpoint. Width 0 does not set this. */
 	hubPaneNarrow = false;
 	/** Last GPS fix reported by a hub view, for address bias. */
@@ -1361,7 +1367,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (path) this.mapFocusPath = path;
 		if (Platform.isMobile || Platform.isMobileApp || this.hubPaneNarrow) {
 			this.hubMapOpen = true;
-			this.mapFullscreen = false;
+			this.setHubMapFullscreen(false);
 			for (const callback of this.viewRefreshers) callback();
 			if (path) this.focusMapPin(path, true);
 			return;
@@ -1369,16 +1375,31 @@ export default class RVLocatorPlugin extends Plugin {
 		const leaves = this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE);
 		const existing = leaves[0];
 		if (existing) {
+			this.splitMapParked = false;
 			await this.app.workspace.revealLeaf(existing);
 			const view = existing.view;
 			if (view instanceof RvMapView) view.recenter();
 			if (path) this.focusMapPin(path, true);
 			return;
 		}
+		if (this.splitMapParked) {
+			this.revealSplitMap();
+			if (path) this.focusMapPin(path, true);
+			return;
+		}
+		if (this.splitMapOpening) {
+			if (path) this.focusMapPin(path, true);
+			return;
+		}
+		this.splitMapOpening = true;
 		const hub = this.glancableLeaf();
 		if (hub) this.app.workspace.setActiveLeaf(hub, { focus: false });
 		const leaf = this.app.workspace.getLeaf('split', 'vertical');
-		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
+		try {
+			await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
+		} finally {
+			this.splitMapOpening = false;
+		}
 		if (path) this.focusMapPin(path, true);
 	}
 
@@ -1390,14 +1411,62 @@ export default class RVLocatorPlugin extends Plugin {
 		return null;
 	}
 
-	mapIsFullscreen(): boolean {
-		return this.mapFullscreen;
+	hubMapIsFullscreen(): boolean {
+		return this.hubMapFullscreen;
 	}
 
-	setMapFullscreen(on: boolean): void {
-		this.mapFullscreen = on;
-		for (const callback of this.viewRefreshers) callback();
-		for (const canvas of this.mapCanvases) canvas.refresh();
+	/** Hub stack only. Does not fullscreen the split map. */
+	setHubMapFullscreen(on: boolean): void {
+		this.hubMapFullscreen = on;
+		this.hubFullscreenSync?.();
+	}
+
+	registerHubFullscreen(sync: () => void): () => void {
+		this.hubFullscreenSync = sync;
+		return () => {
+			if (this.hubFullscreenSync === sync) this.hubFullscreenSync = null;
+		};
+	}
+
+	splitMapIsOpen(): boolean {
+		return this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE).length > 0;
+	}
+
+	/** Width of open split map leaves. An unmeasured leaf still counts as room on a wide window. */
+	splitMapWidth(): number {
+		let total = 0;
+		for (const leaf of this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE)) {
+			const el = leaf.view?.containerEl;
+			const width = el?.clientWidth || el?.offsetWidth || 0;
+			total += width > 0 ? width : HUB_STACK_BELOW_PX;
+		}
+		return total;
+	}
+
+	/** Close the split map while the hub is stacked. A missing split is not parked. */
+	concealSplitMap(): void {
+		const leaves = this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE);
+		if (leaves.length === 0) return;
+		this.splitMapParked = true;
+		for (const leaf of [...leaves]) leaf.detach();
+	}
+
+	/** Open the parked split again once the hub is wide. */
+	revealSplitMap(): void {
+		if (!this.splitMapParked || this.splitMapOpening) return;
+		if (Platform.isMobile || Platform.isMobileApp || this.hubPaneNarrow) return;
+		if (this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE).length > 0) {
+			this.splitMapParked = false;
+			return;
+		}
+		this.splitMapParked = false;
+		this.splitMapOpening = true;
+		const hub = this.glancableLeaf();
+		if (hub) this.app.workspace.setActiveLeaf(hub, { focus: false });
+		const leaf = this.app.workspace.getLeaf('split', 'vertical');
+		void leaf.setViewState({ type: MAP_VIEW_TYPE, active: false }).finally(() => {
+			this.splitMapOpening = false;
+		});
 	}
 
 	notifyPin(path: string): void {
