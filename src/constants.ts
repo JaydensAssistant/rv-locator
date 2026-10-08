@@ -16,10 +16,22 @@ export const URGENCY_COLUMN_ID = 'rv-locator.urgency';
 export const IDEALITY_COLUMN_ID = 'rv-locator.ideality';
 
 /**
- * Geoapify documents `api-eu.geoapify.com` as the EU-focused service endpoint
- * (EU infrastructure via BunnyCDN). The default `api.geoapify.com` host is not used.
+ * Global Geoapify host. It is the default because it is closer for most
+ * vaults. `api-eu.geoapify.com` stays available when the region setting is EU.
  */
-export const GEOCODE_ENDPOINT = 'https://api-eu.geoapify.com/v1/geocode/search';
+export const GEOCODE_ENDPOINT = 'https://api.geoapify.com/v1/geocode/search';
+export const GEOCODE_ENDPOINT_EU = 'https://api-eu.geoapify.com/v1/geocode/search';
+
+export type GeoapifyRegion = 'global' | 'eu';
+
+export function geocodeEndpoint(region: GeoapifyRegion | undefined): string {
+	return region === 'eu' ? GEOCODE_ENDPOINT_EU : GEOCODE_ENDPOINT;
+}
+
+/** Type-ahead. The full search endpoint stays for saving a chosen address. */
+export function autocompleteEndpoint(region: GeoapifyRegion | undefined): string {
+	return geocodeEndpoint(region).replace('/v1/geocode/search', '/v1/geocode/autocomplete');
+}
 
 /** About 1.3 requests/second, under Geoapify's free-tier burst of ~5/second. */
 export const REQUEST_GAP_MS = 750;
@@ -30,5 +42,6 @@ export const CACHE_LIMIT = 2000;
 export const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
 export const GEOAPIFY_ATTRIBUTION = 'Powered by Geoapify';
 export const PRIVACY_NOTICE = 'Addresses are sent to Geoapify to look up coordinates.';
+export const NON_AFFILIATION_NOTICE = 'This plugin is not created, endorsed by, or managed in affiliation with the organization of Jehovah\'s Witnesses or any of their legal entities.';
 
 export const HOVER_SOURCE = 'rv-locator';

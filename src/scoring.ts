@@ -60,11 +60,11 @@ export interface UrgencyMark {
 /**
  * Priority above 0 and urgency under 1 is band 0: a green circle plus an inner ring.
  * Bands 1–3 are one to three heavy marks. The glyph size does not shrink as marks are added.
- * Priority 0 has no urgency glyph.
+ * Priority 0, an archived note, draws a dash instead of a circle or bangs.
  */
 export function urgencyMark(urgency: number | null, priority: number | null): UrgencyMark {
 	const band = urgencyBand(urgency);
-	if (priority == null || priority <= 0) return { glyphs: '', band: 0 };
+	if (priority == null || priority <= 0) return { glyphs: '—', band: 0 };
 	if (band === 0) return { glyphs: '○', band: 0 };
 	if (band === 1) return { glyphs: '!', band: 1 };
 	if (band === 2) return { glyphs: '!!', band: 2 };
@@ -80,9 +80,23 @@ export interface UrgencyBangShape {
  * Heavy marks in a 28×28 viewBox, drawn large enough to match the priority digit.
  * Stem width tracks that digit and the map pin. One, two, or three marks stay
  * the same size and sit inset inside the circle.
- * Band 0 draws an inner ring (stroke, not a fill). Priority 0 returns nothing.
+ * Band 0 draws an inner ring (stroke, not a fill). Priority 0 draws a dash.
  */
 export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
+	if (glyphs === '—' || glyphs === '-') {
+		return [{
+			kind: 'rect',
+			attr: {
+				class: 'is-dash',
+				x: '6',
+				y: '12.4',
+				width: '16',
+				height: '3.2',
+				rx: '1.15',
+				fill: 'currentColor',
+			},
+		}];
+	}
 	if (glyphs === '○') {
 		return [{
 			kind: 'circle',
@@ -191,11 +205,18 @@ export function idealityScore(args: {
 		weight = weighted;
 	}
 	let score = urgency * weight;
-	const floor = args.floors[args.priority];
-	if (Number.isFinite(floor) && floor > 0 && args.days < floor) {
+	if (insidePriorityFloor(args.days, args.priority, args.floors)) {
+		const floor = args.floors[args.priority];
 		score *= args.days / floor;
 	}
 	return score;
+}
+
+/** The ideality cliff. Inside this window a day is still "fresh" for that priority. */
+export function insidePriorityFloor(days: number, priority: number | null, floors: PriorityDays): boolean {
+	if (!isPriorityBand(priority)) return false;
+	const floor = floors[priority];
+	return Number.isFinite(floor) && floor > 0 && days < floor;
 }
 
 /**

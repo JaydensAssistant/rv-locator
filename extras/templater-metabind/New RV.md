@@ -12,67 +12,12 @@ Last Attempted: "<% rv.created %>"
 <% rv.companionYaml %>
 Visits: 1
 Successful Visits: 1
-icon: door-open
-color: purple
 Hub:
   - "[[Return Visits Hub]]"
 cssclasses:
   - hide-props
   - rv-dashboard
 ---
-
-> [!quote] RV Dashboard
->**Hub:** `INPUT[inlineList:Hub]`
->**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
-> 
-> `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`
->
-> > [!rv]- Quick Facts
-> >
-> >**Status**
-> > `INPUT[inlineSelect(option(Study), option(Active), option(Inactive)):Status]`
-> >
-> >**Priority**
-> > `INPUT[slider(minValue(0), maxValue(5)):Priority]` `VIEW[{Priority}]`
-> >
-> >**Visits**
-> >
-> > `INPUT[number:["Successful Visits"]]` / `INPUT[number:Visits]`
-> >
-> >**Last Spoke**
-> >`INPUT[dateTime:["Last Spoke"]]`
-> >
-> >**Last Attempted**
-> >`INPUT[dateTime:["Last Attempted"]]`
-> >
-> >**Met**
-> >`INPUT[dateTime:["Met"]]`
-> >
-> >**Taken**
-> >`INPUT[inlineList:Taken]`
-
----
-### Visit Notes:
-##### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
-`INPUT[textArea:sVisit1Notes]`
-
----
-> [!example] Return Suggestions
-> No May-go-out days
->
-> > [!note]- Attempt Log
-> >
-> >| | Mor | Aft | Eve |
-> >| --- | --- | --- | --- |
-> >| Sun | 0/0 | 0/0 | 0/0 |
-> >| Mon | 0/0 | 0/0 | 0/0 |
-> >| Tue | 0/0 | 0/0 | 0/0 |
-> >| Wed | 0/0 | 0/0 | 0/0 |
-> >| Thu | 0/0 | 0/0 | 0/0 |
-> >| Fri | 0/0 | 0/0 | 0/0 |
-> >| Sat | 0/0 | 0/0 | 0/0 |
-> >
-> >- <% rv.stamp %> — success<% rv.companionSuffix %>
 
 ```meta-bind-button
 label: ""
@@ -115,6 +60,19 @@ actions:
 
 ```meta-bind-button
 label: ""
+icon: user-plus
+tooltip: Add a housemate
+style: default
+class: rv-visit-btn
+id: rv-log-housemate
+hidden: true
+actions:
+  - type: command
+    command: rv-locator:add-housemate
+```
+
+```meta-bind-button
+label: ""
 icon: archive
 tooltip: Archive
 style: default
@@ -125,3 +83,56 @@ actions:
   - type: command
     command: rv-locator:archive-rv
 ```
+
+> [!quote] RV Dashboard
+>**Hub:** `INPUT[inlineList:Hub]`
+>**Address:** `INPUT[text:Address]` [🗺️](<% rv.mapUrl %>)
+> 
+> `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`
+>
+> > [!rv]- Quick Facts
+> >
+> >**Status**
+> > `INPUT[inlineSelect(option(Study), option(Active), option(Inactive)):Status]`
+> >
+> >**Priority**
+> > `INPUT[slider(minValue(0), maxValue(5)):Priority]` `VIEW[{Priority}]`
+> >
+> >**Visits**
+> >
+> > `INPUT[number:["Successful Visits"]]` / `INPUT[number:Visits]`
+> >
+> >**Last Spoke**
+> >`INPUT[dateTime:["Last Spoke"]]`
+> >
+> >**Last Attempted**
+> >`INPUT[dateTime:["Last Attempted"]]`
+> >
+> >**Met**
+> >`INPUT[dateTime:["Met"]]`
+> >
+> >**Taken**
+> >`INPUT[inlineList:Taken]`
+
+---
+### Recent Notes:
+##### <% rv.stamp %> <span class="rv-stamp-ago"><% rv.ago %></span>
+`INPUT[textArea:sVisit1Notes]`
+
+---
+> [!example] Return Suggestions
+> No May-go-out days
+>
+> > [!note]- Attempt Log
+> >
+> >| | Mor | Aft | Eve |
+> >| --- | --- | --- | --- |
+> >| Sun | 0/0 | 0/0 | 0/0 |
+> >| Mon | 0/0 | 0/0 | 0/0 |
+> >| Tue | 0/0 | 0/0 | 0/0 |
+> >| Wed | 0/0 | 0/0 | 0/0 |
+> >| Thu | 0/0 | 0/0 | 0/0 |
+> >| Fri | 0/0 | 0/0 | 0/0 |
+> >| Sat | 0/0 | 0/0 | 0/0 |
+> >
+> >- <% rv.stamp %> — success<% rv.companionSuffix %>

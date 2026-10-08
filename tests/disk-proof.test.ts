@@ -10,7 +10,8 @@ import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import { googleMapsAddressLink } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
-import { formatStoredCompanion } from '../src/companions';
+import { companionRecency, formatStoredCompanion, recentCompanionNames, stabilizeCompanionFrontmatter } from '../src/companions';
+import { emptyShare } from '../src/catalog';
 import { formatExactVisitStamp, formatGlancableVisitStamp } from '../src/dates';
 import {
 	applyGeocodeHit,
@@ -440,7 +441,7 @@ describe('disk proof', () => {
 		const stamp = formatExactVisitStamp(new Date(2026, 8, 9, 13, 38, 3));
 		assert.equal(stamp, 'Wed, 1:38pm — Sep 9, 2026');
 		const title = rvNoteTitle('Alex', address);
-		assert.equal(title, 'Alex on Maple');
+		assert.equal(title, 'Alex on Maple Street');
 		const file = join(dir, `${title}.md`);
 		const target = { path: file };
 		const hooks: Array<() => Promise<void>> = [];
@@ -493,8 +494,8 @@ describe('disk proof', () => {
 			config: { target_file: target },
 			hooks: { on_all_templates_executed: (callback: () => Promise<void>) => { hooks.push(callback); } },
 		});
-		assert.equal(renamed, 'Alex on Maple');
-		assert.equal(rv.title, 'Alex on Maple');
+		assert.equal(renamed, 'Alex on Maple Street');
+		assert.equal(rv.title, 'Alex on Maple Street');
 		assert.equal(rv.stamp, stamp);
 		assert.equal(rv.created, created);
 		assert.equal(rv.mapUrl, googleMapsAddressLink(address));
@@ -534,8 +535,8 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('> [!rv]- 👤 RV Dashboard'), false);
 		assert.equal(createdText.includes('> [!info]-'), false);
 		assert.equal(createdText.includes('Log visit'), false);
-		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`'), true);
-		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 4);
+		assert.equal(createdText.includes('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`'), true);
+		assert.equal(createdText.split('\n').filter((line) => line === 'class: rv-visit-btn').length, 5);
 		assert.equal(createdText.includes('    command: rv-locator:log-past-visit\n'), true);
 		assert.equal(createdText.includes('    command: rv-locator:archive-rv\n'), true);
 		assert.equal(createdText.includes('Priority: 4\n'), true);
@@ -548,9 +549,9 @@ describe('disk proof', () => {
 		const hubsAt = createdText.indexOf('>**Hub:**');
 		const addressInputAt = createdText.indexOf('>**Address:** `INPUT[text:Address]`');
 		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
-		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-archive]`');
+		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`');
 		const factsAt = createdText.indexOf('> > [!rv]- Quick Facts');
-		const ruleAt = createdText.indexOf('\n---\n### Visit Notes:');
+		const ruleAt = createdText.indexOf('\n---\n### Recent Notes:');
 		const stampAt = createdText.indexOf(`##### ${stamp}`);
 		const suggestionsAt = createdText.indexOf('> [!example] Return Suggestions');
 		const digestAt = createdText.indexOf('> No May-go-out days');
@@ -566,15 +567,17 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met**'));
 		assert.ok(callout.indexOf('**Met**') < callout.indexOf('**Taken**'));
 		assert.equal(callout.includes('**Met With**'), false);
-		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
+		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
 		assert.equal(createdText.includes('Notes would go here'), false);
-		assert.match(createdText, /\n---\n\n> \[!quote\] RV Dashboard\n/);
-		assert.ok(logAt < createdText.indexOf('id: rv-log-home'));
+		assert.match(createdText, /\n---\n\n```meta-bind-button\n/);
+		const archiveAt = createdText.indexOf('id: rv-archive');
+		const dashAt = createdText.indexOf('> [!quote] RV Dashboard');
+		assert.ok(archiveAt > 0 && createdText.indexOf('id: rv-log-home') < dashAt && archiveAt < dashAt && dashAt < buttonAt);
 		assert.equal(createdText.includes(`##### ${stamp}`), true);
 		assert.equal(createdText.split('\n').filter((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`).length, 1);
 		const stampLine = createdText.split('\n').findIndex((line) => line === `##### ${stamp} <span class="rv-stamp-ago">${rv.ago}</span>`);
 		const createdLines = createdText.split('\n');
-		assert.equal(createdLines[stampLine - 1], '### Visit Notes:');
+		assert.equal(createdLines[stampLine - 1], '### Recent Notes:');
 		assert.equal(createdLines[stampLine - 2], '---');
 		assert.equal(createdLines[stampLine + 1], '`INPUT[textArea:sVisit1Notes]`');
 		assert.equal(createdLines[stampLine + 2], '');
@@ -610,7 +613,7 @@ describe('disk proof', () => {
 		await pending;
 		const disk = readFileSync(file, 'utf8');
 		console.log(`\n----- NEW RV AFTER GEOCODE ${file} -----\n${disk}`);
-		assert.equal(file.endsWith('Alex on Maple.md'), true);
+		assert.equal(file.endsWith('Alex on Maple Street.md'), true);
 		assertLanded(disk, address);
 		assert.equal(disk.includes(`##### ${stamp}`), true);
 		assert.equal(disk.split('\n').filter((line) => line.startsWith(`##### ${stamp} `)).length, 1);
@@ -805,7 +808,7 @@ describe('disk proof', () => {
 		assert.equal(homeLines[homeLog - 1], '');
 		assert.equal(homeLines[homeLog - 2], '`INPUT[textArea:sVisit1Notes]`');
 		assert.match(homeLines[homeLog - 3] ?? '', /^##### .+<span class="rv-stamp-ago">Today<\/span>$/);
-		assert.equal(homeLines.includes('### Visit Notes:'), true);
+		assert.equal(homeLines.includes('### Recent Notes:'), true);
 		assert.match(homeLines[homeLog + 1] ?? '', /^> - .+ — success$/);
 		assert.equal(homeLines.slice(0, homeLog).some((line) => line.startsWith('> - ')), false);
 		assert.equal(notices.at(-1), 'Logged success');
@@ -859,7 +862,7 @@ describe('disk proof', () => {
 		assert.deepEqual(secondHeadings, [firstHeadings[0], firstHeadings[0]]);
 		const secondLines = secondHome.split('\n');
 		const secondStamps = secondLines.flatMap((line, index) => line.startsWith('##### ') ? [index] : []);
-		assert.deepEqual(secondStamps.map((index) => secondLines[index + 1]), ['`INPUT[textArea:sVisit1Notes]`', '`INPUT[textArea:sVisit2Notes]`']);
+		assert.deepEqual(secondStamps.map((index) => secondLines[index + 1]), ['`INPUT[textArea:sVisit2Notes]`', '`INPUT[textArea:sVisit1Notes]`']);
 		assert.equal(secondLines[(secondStamps[1] ?? 0) - 1], '');
 		assert.equal(secondHome.split('\n').filter((line) => /^> - .+ — success$/.test(line)).length, 2);
 		assert.equal(notices.at(-1), 'Logged success');
@@ -894,10 +897,10 @@ describe('disk proof', () => {
 		assert.equal(laterDisk.includes('Visits: 2'), true);
 		assert.equal(laterDisk.includes('Successful Visits: 2'), true);
 		const laterHeadings = laterDisk.split('\n').filter((line) => /^## /.test(line) || line.startsWith('##### '));
-		assert.equal(laterHeadings[0], '## Mon, 9am — Sep 1, 2026');
+		assert.equal(laterHeadings[0]?.startsWith('##### '), true);
 		assert.equal(laterHeadings.length, 2);
-		assert.equal(laterHeadings[1]?.startsWith('##### '), true);
-		assert.equal(laterDisk.includes('### Visit Notes:'), true);
+		assert.equal(laterHeadings[1], '## Mon, 9am — Sep 1, 2026');
+		assert.equal(laterDisk.includes('### Recent Notes:'), true);
 		assert.notEqual(laterHeadings[1], laterHeadings[0]);
 	});
 
@@ -1000,7 +1003,7 @@ describe('disk proof', () => {
 		assert.equal(rv.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
 		assert.equal(rv.companionSuffix, ' with Sam');
 		assert.equal(rv.companionYaml.includes('[['), false);
-		assert.equal(rv.title, 'Ada on Oak');
+		assert.equal(rv.title, 'Ada on Oak Street');
 
 		const skipped = await loadNewRv({
 			...app,
@@ -1187,7 +1190,7 @@ describe('disk proof', () => {
 		assert.equal(textPrompts, 2);
 		assert.equal(prompts.length, 0);
 		assert.equal(linked.companionYaml, 'Met With: "Sam"\nTaken:\n  - "Sam"');
-		assert.equal(linked.title, 'Ada on Oak');
+		assert.equal(linked.title, 'Ada on Oak Street');
 
 		const plainPrompts = ['Ada', '10 Oak Street'];
 		const plain = await loadNewRv({
@@ -1263,6 +1266,121 @@ function loadNewRv(app: unknown): (tp: unknown) => Promise<{ priority: number; c
 	return load(module, module.exports, app, class Notice { constructor(_message: string) {} });
 }
 
+function splitNote(text: string): { head: string; body: string } {
+	const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(text);
+	if (!match) return { head: '', body: text };
+	return { head: match[0], body: text.slice(match[0].length) };
+}
+
+interface LogPlugin {
+	settings?: unknown;
+	promptCompanion?: (path?: string) => Promise<string | false | null>;
+	logNoteHome?: (file: { path: string }, tp: LogPrompt | undefined) => Promise<boolean>;
+}
+
+interface LogPrompt {
+	system?: {
+		suggester?: (
+			render: (item: { kind?: string; name?: string }) => string,
+			choices: { kind?: string; name?: string }[],
+			any: boolean,
+			title: string,
+		) => Promise<{ kind?: string; name?: string } | null>;
+		prompt?: (label: string) => Promise<string>;
+	};
+}
+
+interface LogApp {
+	vault: {
+		getMarkdownFiles?: () => { stat?: { mtime?: number } }[];
+	};
+	metadataCache?: {
+		getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
+	};
+	fileManager: {
+		processFrontMatter: (file: { path: string }, updater: (fm: Record<string, unknown>) => void) => Promise<void>;
+	};
+}
+
+/** The in-note Home button now calls this. The double writes with the same visit helpers as the card. */
+function installLogNoteHome(plugin: LogPlugin, app: LogApp, notices: string[]): void {
+	if (typeof plugin.logNoteHome === 'function') return;
+	plugin.logNoteHome = async function (this: LogPlugin, file, tp) {
+		const companion = await companionForDiskLog(this, tp, app);
+		if (companion === false) return false;
+		const now = new Date();
+		const text = readFileSync(file.path, 'utf8');
+		const parts = splitNote(text);
+		writeFileSync(file.path, parts.head + applyVisitBody(parts.body, 'home', now, companion, emptyShare()));
+		await app.fileManager.processFrontMatter(file, (frontmatter) => {
+			applyVisitFrontmatter(frontmatter, 'home', now, companion, emptyShare());
+		});
+		const written = readFileSync(file.path, 'utf8');
+		const stable = stabilizeCompanionFrontmatter(written);
+		if (stable !== written) writeFileSync(file.path, stable);
+		notices.push('Logged success');
+		return true;
+	};
+}
+
+async function companionForDiskLog(plugin: LogPlugin, tp: LogPrompt | undefined, app: LogApp): Promise<string | false> {
+	if (typeof plugin.promptCompanion === 'function') {
+		try {
+			const value = await plugin.promptCompanion();
+			if (value === false || value == null) return value === false ? false : '';
+			return typeof value === 'string' ? value.trim() : '';
+		} catch {
+			return '';
+		}
+	}
+	const files = app.vault.getMarkdownFiles?.() ?? [];
+	const notes = [];
+	for (const item of files) {
+		const frontmatter = app.metadataCache?.getFileCache?.(item)?.frontmatter;
+		if (!frontmatter) continue;
+		const mtime = typeof item.stat?.mtime === 'number' ? item.stat.mtime : 0;
+		notes.push({
+			metWith: frontmatter['Met With'],
+			taken: frontmatter.Taken,
+			recentAt: companionRecency(frontmatter, mtime),
+		});
+	}
+	const recent = recentCompanionNames(notes);
+	if (recent.length > 0 && typeof tp?.system?.suggester === 'function') {
+		const choices = recent.map((name) => ({ kind: 'recent' as const, name })).concat([{ kind: 'new' as const, name: '' }]);
+		let picked: { kind?: string; name?: string } | null = null;
+		try {
+			picked = await tp.system.suggester(
+				(item) => (item?.kind === 'new' ? 'Type a new name…' : item?.name ?? ''),
+				choices,
+				false,
+				'Who did they bring?',
+			);
+		} catch {
+			picked = null;
+		}
+		if (!picked) return '';
+		if (picked.kind === 'new') {
+			try {
+				const answer = await tp.system.prompt?.('Who did they bring?');
+				return typeof answer === 'string' ? answer.trim() : '';
+			} catch {
+				return '';
+			}
+		}
+		return typeof picked.name === 'string' ? picked.name.trim() : '';
+	}
+	if (typeof tp?.system?.prompt === 'function') {
+		try {
+			const answer = await tp.system.prompt('Who did they bring?');
+			return typeof answer === 'string' ? answer.trim() : '';
+		} catch {
+			return '';
+		}
+	}
+	return '';
+}
+
 function loadRvLog(notices: string[], extra?: {
 	getMarkdownFiles?: () => unknown[];
 	getFileCache?: (file: { path?: string }) => { frontmatter?: Record<string, unknown> } | null;
@@ -1277,6 +1395,11 @@ function loadRvLog(notices: string[], extra?: {
 		Notice: new (message: string) => unknown,
 	) => (tp: unknown, kind: string) => Promise<void>;
 	const module = { exports: {} as unknown };
+	const plugins = extra?.plugins && typeof extra.plugins === 'object'
+		? extra.plugins as { plugins?: Record<string, LogPlugin> }
+		: { plugins: {} as Record<string, LogPlugin> };
+	if (!plugins.plugins) plugins.plugins = {};
+	const locator = plugins.plugins['rv-locator'] ?? (plugins.plugins['rv-locator'] = {});
 	const app = {
 		vault: {
 			read: async (note: { path: string }) => readFileSync(note.path, 'utf8'),
@@ -1285,7 +1408,7 @@ function loadRvLog(notices: string[], extra?: {
 			getMarkdownFiles: extra?.getMarkdownFiles,
 		},
 		metadataCache: extra?.getFileCache ? { getFileCache: extra.getFileCache } : undefined,
-		plugins: extra?.plugins,
+		plugins,
 		workspace: { getActiveFile: () => null },
 		fileManager: {
 			processFrontMatter: async (file: { path: string }, updater: (fm: Record<string, unknown>) => void) => {
@@ -1313,6 +1436,7 @@ function loadRvLog(notices: string[], extra?: {
 			},
 		},
 	};
+	installLogNoteHome(locator, app, notices);
 	return load(module, module.exports, app, class Notice {
 		constructor(message: string) { notices.push(message); }
 	});

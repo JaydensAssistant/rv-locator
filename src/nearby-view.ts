@@ -1,7 +1,10 @@
-import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
-import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextGenderFilter, nextReturnScope } from './status';
-import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, OSM_ATTRIBUTION } from './constants';
+import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
+import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { equalizeSortPills } from './sort-pills';
+import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
+import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
+import { formatGlanceableCounter } from './dates';
+import { Notice } from 'obsidian';
 import { domInstanceOf } from './dom';
 import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
 import { LivePosition, type GeoState } from './live-position';
@@ -18,8 +21,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected root: HTMLElement;
 	protected bannerEl!: HTMLElement;
 	protected bannerText!: HTMLElement;
+	private toastedBanner = '';
 	protected scrollEl!: HTMLElement;
 	protected sortEl!: HTMLElement;
+	/** Glancable search sits in the sort bar and replaces the pills while it is open. */
+	protected searchSlot: HTMLElement | null = null;
 	/** Sort chips live here so they can scroll without moving the New button. */
 	protected sortButtonsEl!: HTMLElement;
 	protected groups: GroupModel[] = [];
@@ -55,6 +61,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const win = this.root.win ?? window;
 		this.position = new LivePosition(win, (state) => {
 			this.geoState = state;
+			this.plugin.noteLiveFix(state.fix);
 			this.onGeoChanged();
 		});
 		this.syncPositionSource();
@@ -67,6 +74,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		});
 		this.register(() => this.unsubSettings?.());
 		this.plugin.nudgeIncompleteSetup();
+		if (this.mode === 'glancable') this.plugin.resetHubFilters();
 	}
 
 	override onunload(): void {
@@ -96,6 +104,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		} else {
 			this.paint();
 		}
+		this.paintListTail();
 		this.scrollEl.scrollTop = top;
 		this.scrollEl.scrollLeft = left;
 		this.syncResultCount();
@@ -105,6 +114,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	/** Glancable retags the Bases toolbar after each paint. */
 	protected afterRender(): void {}
+
+	/** Last thing in the scrolling list. Glancable puts the disclaimer here. */
+	protected paintListTail(): void {}
+
+	/** Glancable opens the search field in place of the pills. */
+	protected openGlanceSearch(): void {}
 
 	protected sortedGroups(): GroupModel[] {
 		const sorts = this.effectiveSorts();
@@ -201,11 +216,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (cell.rest) wrap.createSpan({ cls: 'rv-locator-cal', text: cell.rest });
 		if (cell.daysSince != null) {
 			const days = cell.daysSince;
-			const label = days === 1 ? '1 calendar day' : `${days} calendar days`;
 			parent.createSpan({
 				cls: 'rv-locator-days',
-				text: `${days}d`,
-				attr: { title: label },
+				text: formatGlanceableCounter(days),
+				attr: { title: formatGlanceableCounter(days) },
 			});
 		}
 	}
@@ -269,6 +283,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			scope: this.scope,
 			returnScope: this.mode === 'glancable' ? this.plugin.settings.returnScope : undefined,
 			genderFilter: this.mode === 'glancable' ? this.plugin.settings.genderFilter : undefined,
+			campaignListFilter: this.mode === 'glancable' ? this.plugin.settings.campaignListFilter : undefined,
+			campaignMark: (path) => this.plugin.campaignMark(path),
 			noteValue: (file, name) => readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, name),
 		});
 		this.columns = model.columns;
@@ -291,9 +307,16 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.bannerEl.hide();
 		this.sortEl = this.root.createDiv('rv-locator-sortbar');
 		this.scrollEl = this.root.createDiv('rv-locator-scroll');
-		const attr = this.root.createDiv('rv-locator-attr');
-		attr.setText(`${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}`);
+		if (this.mode !== 'glancable') {
+			const attr = this.root.createDiv('rv-locator-attr');
+			attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
+			attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
+		}
+		this.afterChrome();
 	}
+
+	/** Phone hub inserts the map stack once the scroll column exists. */
+	protected afterChrome(): void {}
 
 	private renderBanner(): void {
 		if (!this.chromeReady) return;
@@ -301,6 +324,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (!message) {
 			this.bannerEl.hide();
 			this.bannerEl.removeClass('is-test');
+			return;
+		}
+		if (message.test || message.error) {
+			this.bannerEl.hide();
+			this.plugin.notifyLocationOnce(message.text);
 			return;
 		}
 		this.bannerText.setText(message.text);
@@ -393,8 +421,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		return haversineMeters(fix, { lat: row.lat, lon: row.lon });
 	}
 
-	private totalRows(): number {
-		return this.groups.reduce((sum, group) => sum + group.rows.length, 0);
+	protected totalRows(): number {
+		return this.sortedGroups().reduce((sum, group) => sum + group.rows.length, 0);
 	}
 
 	private readOrder(): BasesPropertyId[] {
@@ -412,26 +440,65 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	private paintSortPresets(): void {
+		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
+		const search = this.searchSlot;
+		if (search?.parentElement === this.sortEl) search.remove();
 		this.sortEl.empty();
+		const glancable = this.mode === 'glancable';
+		const actions = glancable ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
+		const pillHost = glancable ? this.sortButtonsEl.createDiv('rv-locator-sort-pills') : this.sortButtonsEl;
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
 			const active = current.property.toLowerCase() === preset.property.toLowerCase();
-			const button = this.sortButtonsEl.createEl('button', {
+			const label = sortPresetChipLabel(preset, active ? current.direction : null);
+			const button = pillHost.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
-				text: sortPresetChipLabel(preset, active ? current.direction : null),
 				attr: {
 					type: 'button',
 					'aria-pressed': active ? 'true' : 'false',
+					'aria-label': label,
 				},
 			});
+			const marks = glancable ? button.createSpan('rv-sort-marks') : button;
+			const icon = marks.createSpan('rv-sort-icon');
+			setIcon(icon, sortPresetIcon(preset.id));
+			if (active) {
+				button.addClass(current.direction === 'ASC' ? 'is-asc' : 'is-desc');
+				const arrow = marks.createSpan('rv-sort-arrow');
+				arrow.setAttr('aria-hidden', 'true');
+				setIcon(arrow, sortDirectionArrow(current.direction));
+			}
+			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
 		}
-		if (this.mode === 'glancable') this.paintListFilters();
 		this.paintSortExtras();
-		const create = this.sortEl.createEl('button', {
+		const actionHost = actions ?? this.sortEl;
+		if (glancable) {
+			const searchButton = actionHost.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Search', title: 'Search' },
+			});
+			setIcon(searchButton, 'search');
+			searchButton.addEventListener('click', () => { this.openGlanceSearch(); });
+			const map = actionHost.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Map', title: 'Map' },
+			});
+			setIcon(map, 'earth');
+			map.toggleClass('is-on', this.plugin.hubMapOpen);
+			map.addEventListener('click', () => { void this.plugin.openMapSoon(); });
+			const campaign = actionHost.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Campaign', title: 'Campaign' },
+			});
+			setIcon(campaign, 'book-alert');
+			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
+			this.paintFilterButton(actionHost);
+		}
+		const create = actionHost.createEl('button', {
 			cls: 'rv-locator-new-rv',
 			attr: {
 				type: 'button',
@@ -443,32 +510,45 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
 		});
+		equalizeSortPills(pillHost);
+		if (search) this.sortEl.appendChild(search);
+		this.sortButtonsEl.scrollLeft = savedScroll;
 	}
 
 	protected paintSortExtras(): void {
 		// Ideality planner was removed in 1.2.6. It may return later.
 	}
 
-	/** Active → RVs Only → Studies → Archive, then Men+Women → Men → Women. */
-	private paintListFilters(): void {
-		if (!this.sortButtonsEl) return;
+	/**
+	 * Campaign, Active, and Men+Women leave the pill row.
+	 * One button cycles the same three filters from a menu.
+	 */
+	private paintFilterButton(host: HTMLElement): void {
 		const scope = this.plugin.settings.returnScope;
 		const gender = this.plugin.settings.genderFilter;
-		const scopeButton = this.sortButtonsEl.createEl('button', {
-			cls: 'rv-locator-sort-preset is-filter',
-			text: RETURN_SCOPE_LABEL[scope],
-			attr: { type: 'button', 'aria-label': `Showing ${RETURN_SCOPE_LABEL[scope]}` },
+		const campaignFilter = this.plugin.settings.campaignListFilter;
+		const narrowed = filtersDifferFromDefault(scope, gender, campaignFilter);
+		const button = host.createEl('button', {
+			cls: `rv-locator-toolbar-quiet rv-locator-filter${narrowed ? ' is-filtering' : ''}`,
+			attr: { type: 'button', 'aria-label': 'Filters', title: 'Filters' },
 		});
-		scopeButton.addEventListener('click', () => {
-			void this.plugin.setReturnScope(nextReturnScope(scope));
-		});
-		const genderButton = this.sortButtonsEl.createEl('button', {
-			cls: 'rv-locator-sort-preset is-filter',
-			text: GENDER_FILTER_LABEL[gender],
-			attr: { type: 'button', 'aria-label': `Showing ${GENDER_FILTER_LABEL[gender]}` },
-		});
-		genderButton.addEventListener('click', () => {
-			void this.plugin.setGenderFilter(nextGenderFilter(gender));
+		setIcon(button, 'list-filter');
+		if (narrowed) button.createSpan({ cls: 'rv-filter-dot', attr: { 'aria-hidden': 'true' } });
+		button.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.addItem((item) => item
+				.setTitle(CAMPAIGN_LIST_LABEL[campaignFilter])
+				.setIcon('book-alert')
+				.onClick(() => { void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter)); }));
+			menu.addItem((item) => item
+				.setTitle(RETURN_SCOPE_LABEL[scope])
+				.setIcon('layers')
+				.onClick(() => { void this.plugin.setReturnScope(nextReturnScope(scope)); }));
+			menu.addItem((item) => item
+				.setTitle(GENDER_FILTER_LABEL[gender])
+				.setIcon(gender === 'women' ? 'venus' : gender === 'men' ? 'mars' : 'venus-and-mars')
+				.onClick(() => { void this.plugin.setGenderFilter(nextGenderFilter(gender)); }));
+			menu.showAtMouseEvent(event);
 		});
 	}
 
@@ -710,4 +790,18 @@ function replaceToken(raw: string, token: string, next: string): string {
 	const index = raw.indexOf(token);
 	if (index < 0) return next;
 	return raw.slice(0, index) + next + raw.slice(index + token.length);
+}
+
+function sortPresetIcon(id: string): string {
+	const icons: Record<string, string> = {
+		ideality: 'sparkles',
+		urgency: 'siren',
+		distance: 'ruler',
+		priority: 'gauge',
+		spoke: 'message-circle',
+		attempted: 'clock',
+		met: 'home',
+		city: 'building-2',
+	};
+	return icons[id] ?? 'arrow-up-down';
 }

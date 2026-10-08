@@ -31,6 +31,32 @@ export function companionChoices(recent: readonly string[], query: string): Comp
 	return choices;
 }
 
+/** Names already in the recent list. The “Use …” row is typed text, not a suggestion. */
+export function listedCompanions(choices: readonly CompanionSuggestion[]): CompanionSuggestion[] {
+	return choices.filter((choice) => !choice.label.startsWith('Use “') && !choice.label.startsWith('Use "'));
+}
+
+/**
+ * Enter or leaving the field selects a suggestion only when the text matches one.
+ * An exact name wins. A single remaining match also wins. Several matches do not.
+ */
+export function matchingCompanion(choices: readonly CompanionSuggestion[], typed: string): CompanionSuggestion | null {
+	const needle = typed.trim().toLowerCase();
+	if (!needle) return null;
+	const listed = listedCompanions(choices);
+	const exact = listed.find((choice) => choice.value.trim().toLowerCase() === needle);
+	if (exact) return exact;
+	const partial = listed.filter((choice) => choice.value.toLowerCase().includes(needle));
+	return partial.length === 1 ? partial[0] ?? null : null;
+}
+
+/** Enter and blur keep a partial name. Only an exact name may replace the field. */
+export function exactCompanion(choices: readonly CompanionSuggestion[], typed: string): CompanionSuggestion | null {
+	const needle = typed.trim().toLowerCase();
+	if (!needle) return null;
+	return listedCompanions(choices).find((choice) => choice.value.trim().toLowerCase() === needle) ?? null;
+}
+
 /**
  * Display text for a Met With / Taken value.
  * A wikilink uses its alias, otherwise the note basename.

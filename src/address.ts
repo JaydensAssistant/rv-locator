@@ -1,6 +1,6 @@
 import { parseDisplayAddress } from './address-display';
-import { GEOCODE_ENDPOINT } from './constants';
-import type { GeocodeHit } from './types';
+import { autocompleteEndpoint, geocodeEndpoint, type GeoapifyRegion } from './constants';
+import type { GeocodeHit, RouteProvider } from './types';
 
 export interface AddressParts {
 	housenumber?: string;
@@ -33,11 +33,23 @@ export function addressForQuery(address: string): string {
 	return address.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+/** Soft Geoapify proximity. This is a bias, not a filter, so other places can still return. */
+export interface GeocodeBias {
+	lat: number;
+	lon: number;
+}
+
 /**
  * Build a forward-geocode URL.
  * `text` is the address string only. Do not append names, phones, or note bodies.
+ * `bias` adds `bias=proximity:lon,lat` when present. It does not switch the host.
  */
-export function buildGeocodeUrl(address: string, apiKey: string): string {
+export function buildGeocodeUrl(
+	address: string,
+	apiKey: string,
+	region: GeoapifyRegion = 'global',
+	bias?: GeocodeBias | null,
+): string {
 	const text = addressForQuery(address);
 	if (!text) {
 		throw new Error('Address is empty.');
@@ -45,12 +57,140 @@ export function buildGeocodeUrl(address: string, apiKey: string): string {
 	if (!apiKey.trim()) {
 		throw new Error('API key is empty.');
 	}
-	const url = new URL(GEOCODE_ENDPOINT);
+	const url = new URL(geocodeEndpoint(region));
 	url.searchParams.set('text', text);
 	url.searchParams.set('format', 'json');
 	url.searchParams.set('limit', '5');
 	url.searchParams.set('apiKey', apiKey.trim());
+	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+	}
 	return url.toString();
+}
+
+/** Autocomplete type-ahead. `limit` stays 5. A circle filter is the home-first pass. */
+export function buildAutocompleteUrl(
+	address: string,
+	apiKey: string,
+	region: GeoapifyRegion = 'global',
+	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null },
+): string {
+	const text = addressForQuery(address);
+	if (!text) throw new Error('Address is empty.');
+	if (!apiKey.trim()) throw new Error('API key is empty.');
+	const url = new URL(autocompleteEndpoint(region));
+	url.searchParams.set('text', text);
+	url.searchParams.set('format', 'json');
+	url.searchParams.set('limit', '5');
+	url.searchParams.set('apiKey', apiKey.trim());
+	const bias = options?.bias;
+	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+		const radius = options?.filterRadiusM;
+		if (radius && radius > 0) {
+			url.searchParams.set('filter', `circle:${bias.lon},${bias.lat},${Math.round(radius)}`);
+		}
+	}
+	return url.toString();
+}
+
+export function directionsUrl(
+	provider: RouteProvider,
+	input: { lat?: number | null; lon?: number | null; address?: string | null; city?: string | null },
+): string {
+	const lat = input.lat;
+	const lon = input.lon;
+	const point = typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon);
+	const query = mapsSearchQuery(input.address ?? '', input.city);
+	if (provider === 'apple') {
+		if (point) return `https://maps.apple.com/?daddr=${lat},${lon}`;
+		return `https://maps.apple.com/?daddr=${encodeURIComponent(query)}`;
+	}
+	if (provider === 'waze') {
+		if (point) return `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
+		return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+	}
+	if (point) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lon}`)}`;
+	return googleMapsDirectionsLink(input.address ?? '', input.city);
+}
+
+/** Same characters, one for one, after trimming and collapsing whitespace. */
+export function addressesMatchOneForOne(left: string, right: string): boolean {
+	return collapseSpaces(left) === collapseSpaces(right);
+}
+
+function collapseSpaces(value: string): string {
+	return value.replace(/\s+/g, ' ').trim();
+}
+
+/** Street and city, for a one-line suggestion. The stored value stays the full address. */
+export function abbreviateAddress(formatted: string): string {
+	const parts = formatted.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
+	if (parts.length <= 2) return parts.join(', ');
+	return `${parts[0]}, ${parts[1]}`;
+}
+
+/** How many stored addresses the New RV chevron offers before a lookup. */
+export const RECENT_ADDRESS_LIMIT = 24;
+
+/**
+ * Newest addresses first. The same address, ignoring case and spacing, is kept once
+ * from the newest note.
+ */
+export function recentAddresses(
+	notes: readonly { address: string; recentAt: number }[],
+	limit = RECENT_ADDRESS_LIMIT,
+): string[] {
+	const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : RECENT_ADDRESS_LIMIT;
+	const sorted = [...notes].sort((a, b) => b.recentAt - a.recentAt);
+	const seen = new Set<string>();
+	const labels: string[] = [];
+	for (const note of sorted) {
+		const label = note.address.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+		if (!label) continue;
+		const key = normalizeAddress(label);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		labels.push(label);
+		if (labels.length >= cap) return labels;
+	}
+	return labels;
+}
+
+/**
+ * Address chevron before a lookup shows stored addresses, most recent first.
+ * A finished lookup replaces that list. Hits stay in lookup order.
+ */
+export function addressChevronLabels(
+	recent: readonly string[],
+	lookupHits: readonly string[],
+	query: string,
+): string[] {
+	const hits = lookupHits.map((item) => item.trim()).filter(Boolean);
+	if (hits.length > 0) return hits;
+	const labels = recent.map((item) => item.trim()).filter(Boolean);
+	const needle = query.trim().toLowerCase();
+	if (!needle) return labels;
+	return labels.filter((item) => item.toLowerCase().includes(needle));
+}
+
+/**
+ * Enter or leaving the field selects a hit only when the text matches one.
+ * Several remaining hits do not count as a choice.
+ */
+export function matchingAddress<T extends { formattedAddress: string }>(hits: readonly T[], typed: string): T | null {
+	const needle = typed.replace(/\s+/g, ' ').trim().toLowerCase();
+	if (!needle) return null;
+	const exact = hits.find((hit) => {
+		const full = hit.formattedAddress.replace(/\s+/g, ' ').trim().toLowerCase();
+		return addressesMatchOneForOne(hit.formattedAddress, typed) || abbreviateAddress(hit.formattedAddress).toLowerCase() === needle || full === needle;
+	});
+	if (exact) return exact;
+	const partial = hits.filter((hit) => {
+		const full = hit.formattedAddress.toLowerCase();
+		return full.includes(needle) || abbreviateAddress(hit.formattedAddress).toLowerCase().includes(needle);
+	});
+	return partial.length === 1 ? partial[0] ?? null : null;
 }
 
 /**
@@ -115,6 +255,12 @@ export function mapsSearchQuery(address: string, city?: string | null): string {
 export function googleMapsAddressLink(address: string, city?: string | null): string {
 	const query = mapsSearchQuery(address, city);
 	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+/** Turn-by-turn starts in Google Maps. OpenStreetMap is the basemap, not the route. */
+export function googleMapsDirectionsLink(address: string, city?: string | null): string {
+	const query = mapsSearchQuery(address, city);
+	return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
 }
 
 const BODY_MAP_LINK = /\[🗺️\]\(https?:\/\/[^)\s]+\)/g;

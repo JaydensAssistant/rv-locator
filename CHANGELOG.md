@@ -1,5 +1,79 @@
 # Changelog
 
+## 1.3.5
+
+`main.js` SHA-256: `bf380dff71d29441f280be4d5cb06d219d1e5d99e0b06b049421cd28cc04dbe6`
+
+`styles.css` SHA-256: `8b2a8f8e60b9ac8dbdb89b8c929442959d24d1fcc40e2104400779ca080f2e6e`
+
+`manifest.json` SHA-256: `dbf47c2188d9abcdda12f0242dbffe93a835852e2cf21e9b476278e7fbd92591`
+
+`extras/templater-metabind/rvLog.js` SHA-256 unchanged: `0fd68b7830811db052164b95a7a1696d113caba5d85c3b26881e9a38d3499152`
+
+### Dogfood pack (claimed vs not)
+
+Phone-first: Obsidian mobile around 390px, 40px touch targets on the hub bar, map controls, chevrons, disclosure rows, and suggester rows. The page itself does not scroll sideways. The sort bar sticks to the bottom of a stacked hub. Modals scroll inside the visible viewport, and suggesters stay above the on-screen keyboard.
+
+1. **Claimed.** Hub and Address share one `max-content` label column, sized to the longer label ("Address:"), with a 0.22em gap, so the boxes share a left edge. Labels are not truncated. Applied to the plugin note dashboard in `styles.css` (normal and wide hubs, Reading view and Live Preview) and the vault snippet `extras/templater-metabind/rv-dashboard.css`. Not the Glancable card.
+2. **Claimed.** Stacked hub (phone, or hub narrower than 600px) puts the list, then the drag handle, then the map. The visible strip is 14px. A transparent 40px hit target is centered on that strip and overlaps only the bottom of the list and the top of the map, clear of the map buttons. Applied to the in-view Glancable stage, standalone and embedded. Desktop side-by-side stays a 10px vertical handle.
+3. **Claimed** for the Glancable card list: the non-affiliation notice is the last list row, not a pinned footer. OSM and Geoapify stay in the map credit corner. The vanilla table footer and the settings-tab notice are unchanged.
+4. **Claimed.** One fullscreen button on the in-view map. It swaps to Back to Hub in the same slot. Desktop fullscreen keeps the map and that button on screen: the hub map stays `display: flex` when `.is-map-fullscreen` (it no longer collapses to 0×0 when the side-by-side class drops), and the map repaints after layout. Standalone and embedded, phone and desktop. There is no second split-leaf map button.
+5. **Claimed.** Glancable sort pills and action buttons are two rows, on the phone bottom bar and at the top of a desktop list. The pill row holds only the 7 sort pills (Urgent, Near, Priority, Oldest, Tries, Met, City). They share the width equally, do not scroll, and the label is 12px above an 11px icon so the word is fully visible at 390px and at 430px. The action row is 40×40 squares: search, map, campaign, Filter, New RV. Filter opens a menu with the same Campaign, Active, and Men+Women cycles, and shows an accent dot when any of those is not the default. The bar is 84px tall, plus a device safe-area inset only when the hub is stacked. Search replaces the pill row and leaves the buttons. Vanilla sort row is unchanged. Standalone and embedded.
+6. **Claimed.** Desktop opens the map inside the same view, to the right of the list, with a drag handle. No workspace leaf. Standalone and embedded.
+7. **Claimed.** The map has no sort pills. Pin rank is the index in the rendered card list, after sort, filters, and search, and it is republished on every sort, filter, search, and data refresh. Clusters list members in that order. The fullscreen popup is the pin that was tapped, placed clear of the control column. Phone and desktop, standalone and embedded. Cluster color is still the hottest pin.
+8. **Claimed.** The only overlaid controls are Fullscreen, Locate, and Show all, stacked down the right edge, 40×40, 8px gaps, 8px from the top and right. There are no + or − buttons. Pinch, scroll-wheel, double-click, and keyboard zoom stay. Fullscreen becomes Back to Hub in the same slot. Split and fullscreen, phone and desktop, standalone and embedded.
+9. **Claimed** for Glancable, standalone and embedded, phone and desktop. Search is an icon on the action row. Tapping it replaces the pill row with the field and leaves the action buttons. X or Escape brings the pills back. AND facet parsing is unchanged. The vanilla table does not get this search slot.
+10. **Claimed.** Tapping the map button again hides the map. `openMapSoon()` toggles. Standalone and embedded, phone and desktop.
+11. **Claimed.** On a stacked hub the two-row bar sits flush on the bottom of the view. A phone embed is capped to the visible viewport (viewport minus header, nav, and safe area; 110px when those cannot be measured), so the cards scroll inside, the map keeps the standalone 42% split, and the bar stays on the embed. A desktop embedded side map is at least 70vh tall and repaints after layout. Standalone and embedded.
+12. **Claimed.** Pins are 48px and clusters 53px, glyphs 21px: 15% over the original 42/18/46, not the later 50% enlargement. Popup badges stay 38px. Hub badges stay 28px. Ghost pins use the same diameter.
+13. **Claimed.** The same in-view split uses the view root width, so items 2, 6, 7, 10, and 11 apply to a base opened on its own and to a base embedded in a note, including `cssclasses: wide-base-page`. Smoke note: `extras/smoke/Embedded Hub.md` (`![[Active RVs.base]]`). There is still no `.base` file in the repo.
+14. **Claimed** for the startup polish and the accent check: they no longer rewrite markdown. Stamp ages already on a note are replaced on screen from the date. **Not removed:** saving a digest setting (orientation, day columns, suggestion callout) still rewrites the stored table. Logging, editing, or creating a visit still writes the note, and the age span is refreshed on that explicit write. Vaults that never received digest polish versions 1–11 do not get those structural migrations (markers, callout wrap, buttons, Status/Hub rename, bullet lines) on launch. `DIGEST_POLISH_VERSION` was not bumped.
+15. **Claimed.** Deleted `dist/main.js`, `dist/styles.css`, and `dist/manifest.json`. The plugin files are the ones at the repo root.
+16. **Claimed.** Reading view and Live Preview inline titles on an RV dashboard note get the same status icon as the cards (active, study, inactive), to the left of the name. Render only. Cards already had the icon. Quick Facts still has its status row.
+17. **Claimed.** "Studied a lesson?" is a disclosure, collapsed by default, in New RV, Log visit (`LiteraturePromptModal`, card and urgency Home, with or without a campaign), in-note Home (`CompanionSuggestModal` via `rvLog.js` `logNoteHome`), log a past visit, and edit visit (`VisitEditModal`). A study starts expanded and prefills only when the lesson is empty. Collapsing still clears the lesson. `VisitConfirmModal` has no share fields. A miss does not ask. `askCampaignCovered` stays the coverage-only fallback when no decision was recorded.
+18. **Claimed** on the same modals as item 17. Literature and media always show. On a study they sit in a collapsed "Literature and media" disclosure. On an active or inactive RV they stay visible. The "Literature on a study" setting no longer hides them. Its stored default is still off.
+19. **Claimed.** Literature, media, and the lesson list are gone from Glancable cards and map popup cards. Last Studied stays. Quick Facts in the note still lists Literature, Media, and Lessons.
+20. **Claimed** on every chevron suggester: literature, media, lesson, companion, address, and the other `mountAlwaysChevron` fields, in New RV, Log visit, campaign log, past visit, edit visit, and the in-note companion dialog. Focus or click opens the list under the field. Mount does not focus the field, so opening the modal does not open the companion list. A programmatic focus (the chevron already painted) does not toggle it shut.
+21. **Claimed** on those same fields. `autocomplete=off`, and the native datalist is gone from New RV, the visit editor companion, and the in-note companion.
+22. **Claimed.** The native calendar and list indicators are hidden on `.rv-suggest-host` inputs, and on every date and time input in every `.rv-locator-modal` (New RV, Log visit, campaign log, log a past visit, edit visit, in-note Home, companion dialog). A phone tap still opens the native picker. A desktop click calls `showPicker()` where the browser supports it. The chevron beside a suggester stays visible, 40px. `rvLog.js` is unchanged.
+23. **Claimed** in `.rv-locator-modal` for every field row: one control width (`min(16.5rem, 100%)`), a 40px chevron column, and fields without a chevron shortened by that same 40px so the boxes line up. On a phone, or when the modal itself is narrower than 520px, the label stacks above the control, including New RV (gender, name, address, companion, literature, media, lesson), Log visit, the campaign log, log a past visit, edit visit, and the in-note log. New RV now carries `rv-locator-modal`.
+24. **Claimed** on those same literature and media fields. Placeholders are "Tract or book (optional)" and "Video (optional)".
+25. **Claimed** when Hide the Bases bar is on. `.bases-toolbar` and `.bases-header` collapse (no height, margin, padding, or border), standalone and embedded. The file tab (`.view-header`) stays. Item 28 turns that on unless a saved value says otherwise.
+28. **Claimed.** Hide the Bases bar defaults on. A fresh install, or saved settings with no `hideToolbar` value, collapses the Bases toolbar with no gap. A saved `true` or `false` is kept, including someone who turned the bar back on. Resetting that settings group returns to hidden. The settings line says on by default. Same flag for a standalone base and an embedded one, on phone and desktop. Other Bases views are unchanged.
+26. **Claimed.** A campaign does not remove literature, media, or the lesson disclosure. Log visit, the in-note log, and log a past visit still show them as items 17 and 18 define, and a home save writes Left Publications, Shared Media, and Lessons Studied. Covered by tests that read the share back through frontmatter and the visit stamp.
+27. **Claimed** on every `mountAlwaysChevron` list (literature, media, lesson, companion, address, and the rest) in every modal from item 17, including the in-note path. The box is about five rows tall and scrolls inside itself. It is limited to the modal and to `visualViewport` (the space above the keyboard). If there is more room above the field, it opens above. Titles wrap to at most two lines.
+
+Left for a decision, not done silently: digest-table shape still rewrites notes when those settings change. Structural digest migrations 1–11 are not applied on launch to a vault that never had them.
+
+- A collapsed visit heading hides its Meta Bind text areas in Live Preview and Reading view, including older visits and the latest visit. Live Preview draws Older Visits with CodeMirror decorations only, so opening the note does not write that heading into the file. Folding the latest visit in Reading view no longer locks the renderer: an unchanged class notification is ignored, fold work is disconnected from its observer, and a pass that finds nothing changed writes nothing. Expanding the heading shows the text areas again.
+- Every visit dialog keeps the collapsed "Studied a lesson?" section. The first Home stamp on a note keeps the lesson tail.
+- Tapping a pin in the desktop split scrolls `.rv-locator-scroll` to that RV's card and flashes it.
+- Map attribution is a 10px / 14px strip flush with the map's bottom-right edge, with clickable OpenStreetMap and Geoapify links, in light and dark. A scale bar sits flush at the bottom-left. Split, stacked, fullscreen, and embedded. The map is the custom tile canvas, so there is no Leaflet control and no Leaflet credit.
+- A blank card tap highlights and centers that pin only while the map is open. The pin flashes the way a card does, sits above the others, and a cluster zooms to 13 so the pin is drawn on its own. The same tap does nothing while the map is closed. The title, address, badges, buttons, and Quick Facts keep their own clicks. A pin popup opens only from a pin tap in fullscreen.
+- Fullscreen map popup badges are 38px. Card text stays at the Glancable font scale.
+- The map opens inside the hub view. A phone, or a hub narrower than 600px, stacks the list above the map. A wide desktop pane puts the map on the right. Tapping the map button again hides it. There is no separate workspace leaf.
+- Fullscreen is one button on that map. Back to Hub replaces it in the same slot.
+- Map pins and clusters are opaque. They use the card color as `background-color` and a linear-gradient of the badge's 13% accent over transparent on top, so light and dark match the Glancable badge. Ghost pins are the theme background with no transparency. Pin glyphs are 21px on the 48px pin. Clusters are 53px. Popup badges stay 38px.
+- Hub chips are wikilinks, in note chrome, in the surrounding font, with every hub shown. Move Left and Remove are a right-click or long-press menu. There is no X.
+- The Quick Facts route badge opens the Google Maps link. The earth icon still opens the coming-soon map.
+- Quick Facts dates stay on one line, with a smaller calendar date and age. Labels are Spoke and Attempted. The priority slider sits next to the priority number. Status is Active, then Study, then Inactive. Rows are grouped with horizontal rules. Quick Facts labels stay left aligned when the dashboard is centered.
+- Taken scrolls the middle names. Met With and the latest Taken person stay visible. Met With is a box, not a link.
+- The card earth icon is muted, the same size as the row icons, and lines up with those rows. It scales with the card. Status icons stay their own color and share that icon column. One tooltip on the status icon.
+- Changing sort keeps the chip scroller where it was.
+- Wide visit buttons, wide hubs and address, wide Quick Facts, and Center RV Dashboard default on. Attempt Log width stays wide when the digest swaps rows and columns.
+- Cards side by side redraw and rescale when the window changes and the fit count is not the single-column default.
+- New RV is one dialog: Man/Woman, name, address, Met companion, and a priority slider prefilled from the default.
+- Page Preview stays off on the RV Dashboard and Glancable cards unless the setting is turned on.
+- Each settings tab has a reset button for that tab only. The Geoapify API key is not cleared.
+- Visit notes display newest first. Only the latest 3 stay open. The rest sit under a collapsed `## Older Visits` heading. The file is not rewritten.
+- Geoapify defaults to the global endpoint. EU is a setting.
+- A card can show the current return bucket. Off by default.
+- Quick Facts badge toggles repaint an open note.
+- Street suffixes stay in the note title (`Lake Dr`, `Maple Street`).
+- Glancable adds a map button and a Campaign button to the left of New RV. One campaign at a time. An at-home visit asks whether this RV was covered. Covered cards use book-check. Uncovered cards use book-alert.
+- The Attempt Log can mark a daypart Try or Avoid. Return suggestion lines are bullets, one bucket per line.
+- Extras sync is pinned to tag `v1.3.5`. This build does not create that git tag.
+
 ## 1.3.4
 
 `main.js` SHA-256: `28fe4ee5e9b9f11854e1825e24a9e38af3bfbe0fd9b60c83bacc47e28f0b5cbb`

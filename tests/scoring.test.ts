@@ -7,7 +7,7 @@ import { isRvDashboardNote, refreshStampAgeLabels } from '../src/rv-note-view';
 import { formatDaysAgo, stampAgeFromHeadingText } from '../src/dates';
 import { classifyChromeControl } from '../src/glancable-chrome';
 import { IDEALITY_COLUMN_ID } from '../src/constants';
-import { glancableColumns } from '../src/glancable-density';
+import { compactBadgePx, glancableColumns } from '../src/glancable-density';
 import { displayedUrgency, likelihoodForNow } from '../src/row-score';
 import {
 	IDEALITY_ALPHA,
@@ -97,7 +97,7 @@ describe('urgency', () => {
 		assert.deepEqual(urgencyMark(2, 4), { glyphs: '!!', band: 2 });
 		assert.deepEqual(urgencyMark(3, 4), { glyphs: '!!!', band: 3 });
 		assert.deepEqual(urgencyMark(8, 4), { glyphs: '!!!', band: 3 });
-		assert.deepEqual(urgencyMark(8, 0), { glyphs: '', band: 0 });
+		assert.deepEqual(urgencyMark(8, 0), { glyphs: '—', band: 0 });
 		assert.equal(urgencyAccentColor(0), '#1f8a4c');
 		assert.equal(urgencyAccentColor(1), '#d6a100');
 		assert.equal(urgencyAccentColor(2), '#e06a00');
@@ -113,7 +113,12 @@ describe('urgency', () => {
 	});
 
 	it('offers urgency palettes and keeps custom colors as hex', () => {
-		assert.deepEqual(urgencyColorsFor('default', ['#000000', '#000000', '#000000', '#000000']), ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c']);
+		assert.deepEqual(urgencyColorsFor('default', ['#000000', '#000000', '#000000', '#000000']), [
+			'#1f8a4c',
+			'#d6a100',
+			'#e06a00',
+			'#d63c3c',
+		]);
 		for (const id of ['pastel', 'purple', 'green', 'blue', 'pink', 'color-blind', 'sunset', 'accent'] as const) {
 			assert.equal(URGENCY_PALETTES.some((palette) => palette.id === id), true, id);
 			assert.equal(urgencyColorsFor(id, defaultUrgencyColors()).length, 4);
@@ -130,7 +135,24 @@ describe('urgency', () => {
 		assert.deepEqual(merged.urgencyCustomColors, defaultUrgencyColors());
 		assert.equal(merged.abbreviateDayparts, true);
 		assert.equal(merged.attemptLogWidth, 'full');
-		assert.equal(merged.centerDashboard || merged.centerVisitNotes || merged.centerSuggestions, false);
+		assert.equal(merged.centerDashboard, true);
+		assert.equal(merged.centerVisitNotes, true);
+		assert.equal(merged.centerSuggestions, true);
+		assert.equal(mergeSettings({ centerVisitNotes: true }).centerVisitNotes, true);
+		assert.equal(mergeSettings({ centerVisitNotes: false }).centerVisitNotes, false);
+		assert.equal(mergeSettings({ centerSuggestions: false }).centerSuggestions, false);
+		assert.equal(merged.cardTitleNameOnly, true);
+		assert.equal(mergeSettings({ cardTitleNameOnly: false }).cardTitleNameOnly, false);
+		assert.equal(merged.compactMode, true);
+		assert.equal(mergeSettings({ compactCardDates: true }).compactMode, true);
+		assert.equal(mergeSettings({ compactCardDates: false }).compactMode, false);
+		assert.equal(mergeSettings({ compactMode: false, compactCardDates: true }).compactMode, false);
+		assert.equal(mergeSettings({ compactMode: true, compactCardDates: false }).compactMode, true);
+		assert.equal(merged.cardReturnFormat, 'short');
+		assert.equal(mergeSettings({ cardReturnFormat: 'long' }).cardReturnFormat, 'long');
+		assert.equal(merged.wideQuickFacts, true);
+		assert.equal(merged.geoapifyRegion, 'global');
+		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'auto', digestOrientation: 'rows' }), true);
 		assert.equal(attemptLogFullWidth(merged), true);
 		assert.equal(attemptLogFullWidth({ ...merged, digestOrientation: 'columns' }), true);
 		assert.equal(attemptLogFullWidth({ attemptLogWidth: 'column', digestOrientation: 'columns' }), false);
@@ -170,7 +192,7 @@ describe('ideality', () => {
 			priority: 1,
 			miles: 1,
 			thresholds,
-			floors,
+			floors: { ...floors, 1: 21 },
 			territorySpan: span,
 		});
 		assert.ok(due != null && Math.abs(due - 1) < 0.01);
@@ -240,7 +262,7 @@ describe('ideality', () => {
 			floors,
 			territorySpan: span,
 		});
-		assert.ok(p4 != null && Math.abs(p4 - (4 / 63)) < 1e-9);
+		assert.ok(p4 != null && Math.abs(p4 - (16 / 315)) < 1e-9);
 		const custom = idealityScore({
 			days: 5,
 			priority: 5,
@@ -371,8 +393,8 @@ describe('dayparts and return suggester', () => {
 			'| Sat | 0/0 | — | — |',
 		].join('\n'));
 		assert.deepEqual(digest.sentences, [
-			'Avoid: **Fri morning/afternoon/evening (1/5)**',
-			'Untried: Sat',
+			'- Avoid: **Fri morning/afternoon/evening (1/5)**',
+			'- Untried: Sat',
 		]);
 		assert.match(digest.table, /^\| \| Morning \|/);
 		assert.equal(digest.markdown.includes('— Home'), false);
@@ -419,53 +441,53 @@ describe('dayparts and return suggester', () => {
 			grid: halfGrid,
 			now: new Date(2026, 8, 24, 12, 0, 0),
 		});
-		assert.deepEqual(half.sentences, ['Try: **Wed evening (5/10)**']);
+		assert.deepEqual(half.sentences, ['- Try: **Wed evening (5/10)**']);
 		assert.equal(half.markdown.includes('Avoid:'), false);
 		assert.equal(half.markdown.includes('Untried:'), false);
 	});
 
 	it('buckets may-go-out cells by soft rate and omits empty lines', () => {
 		const one = voiceFor({ '5:morning': { homes: 1, trials: 1 } }, ['5:morning']);
-		assert.deepEqual(one, ['Try: **Fri morning (1/1)**']);
+		assert.deepEqual(one, ['- Try: **Fri morning (1/1)**']);
 		const miss = voiceFor({ '5:morning': { homes: 0, trials: 1 } }, ['5:morning']);
-		assert.deepEqual(miss, ['Unsure: Fri morning (0/1)']);
+		assert.deepEqual(miss, ['- Unsure: Fri morning (0/1)']);
 		const strong = voiceFor({ '5:morning': { homes: 2, trials: 5 } }, ['5:morning']);
-		assert.deepEqual(strong, ['Try: **Fri morning (2/5)**']);
+		assert.deepEqual(strong, ['- Try: **Fri morning (2/5)**']);
 		const cold = voiceFor({ '5:morning': { homes: 1, trials: 5 } }, ['5:morning']);
-		assert.deepEqual(cold, ['Avoid: **Fri morning (1/5)**']);
+		assert.deepEqual(cold, ['- Avoid: **Fri morning (1/5)**']);
 		const thin = voiceFor({ '5:morning': { homes: 1, trials: 4 } }, ['5:morning']);
-		assert.deepEqual(thin, ['Unsure: Fri morning (1/4)']);
+		assert.deepEqual(thin, ['- Unsure: Fri morning (1/4)']);
 		const empty = voiceFor({ '5:morning': { homes: 0, trials: 3 } }, ['5:morning']);
-		assert.deepEqual(empty, ['Avoid: **Fri morning (0/3)**']);
-		assert.equal(empty.some((line) => line.startsWith('Try:')), false);
+		assert.deepEqual(empty, ['- Avoid: **Fri morning (0/3)**']);
+		assert.equal(empty.some((line) => line.startsWith('- Try:')), false);
 
 		const tied = voiceFor({
 			'6:afternoon': { homes: 1, trials: 1 },
 			'6:evening': { homes: 2, trials: 2 },
 			'6:morning': { homes: 1, trials: 1 },
 		}, ['6:morning', '6:afternoon', '6:evening']);
-		assert.equal(tied[0], 'Try: **Sat evening (2/2)** · Sat morning (1/1) · Sat afternoon (1/1)');
+		assert.equal(tied[0], '- Try: **Sat evening (2/2)** · Sat morning (1/1) · Sat afternoon (1/1)');
 		const same = voiceFor({
 			'6:afternoon': { homes: 1, trials: 1 },
 			'6:evening': { homes: 1, trials: 1 },
 		}, ['6:afternoon', '6:evening']);
-		assert.equal(same[0], 'Try: **Sat afternoon (1/1)** · **Sat evening (1/1)**');
+		assert.equal(same[0], '- Try: **Sat afternoon (1/1)** · **Sat evening (1/1)**');
 
 		const collapsed = voiceFor({}, ['3:morning', '3:afternoon', '3:evening', '5:morning', '5:afternoon']);
-		assert.deepEqual(collapsed, ['Untried: Wed · Fri']);
+		assert.deepEqual(collapsed, ['- Untried: Wed · Fri']);
 		const partialDay = voiceFor(
 			{ '5:evening': { homes: 1, trials: 1 } },
 			['5:morning', '5:afternoon', '5:evening'],
 		);
-		assert.equal(partialDay[0], 'Try: **Fri evening (1/1)**');
-		assert.equal(partialDay[1], 'Untried: Fri morning/afternoon');
+		assert.equal(partialDay[0], '- Try: **Fri evening (1/1)**');
+		assert.equal(partialDay[1], '- Untried: Fri morning/afternoon');
 		const mixed = voiceFor({
 			'5:morning': { homes: 0, trials: 1 },
 			'5:afternoon': { homes: 0, trials: 1 },
 		}, ['5:morning', '5:afternoon', '5:evening']);
 		assert.deepEqual(mixed, [
-			'Unsure: Fri morning/afternoon (0/1)',
-			'Untried: Fri evening',
+			'- Unsure: Fri morning/afternoon (0/1)',
+			'- Untried: Fri evening',
 		]);
 	});
 
@@ -479,16 +501,16 @@ describe('dayparts and return suggester', () => {
 			'6:afternoon': { homes: 1, trials: 5 },
 		}, ['1:morning', '2:evening', '3:afternoon', '5:morning', '6:afternoon', '6:evening']);
 		assert.deepEqual(lines, [
-			'Avoid: **Fri morning (0/3)** · Sat afternoon (1/5) · **Sat evening (0/3)**',
-			'Try: **Wed afternoon (1/1)**',
-			'Unsure: Mon morning (0/1)',
-			'Untried: Tue',
+			'- Avoid: **Fri morning (0/3)** · Sat afternoon (1/5) · **Sat evening (0/3)**',
+			'- Try: **Wed afternoon (1/1)**',
+			'- Unsure: Mon morning (0/1)',
+			'- Untried: Tue',
 		]);
-		assert.equal(lines.some((line) => line.startsWith('Try:')) , true);
+		assert.equal(lines.some((line) => line.startsWith('- Try:')) , true);
 		const noTry = voiceFor({
 			'5:morning': { homes: 0, trials: 3 },
 		}, ['5:morning']);
-		assert.equal(noTry.some((line) => line.startsWith('Try:')), false);
+		assert.equal(noTry.some((line) => line.startsWith('- Try:')), false);
 	});
 
 	it('counts Home and Not home from Attempt Log stamps, not a stale 0/0 table', () => {
@@ -519,7 +541,7 @@ describe('dayparts and return suggester', () => {
 		assert.equal(digest.table.includes('—'), false);
 		assert.equal(digest.markdown.includes('Wed, 2pm — Sep 9, 2026 — Home'), false);
 		assert.equal(digest.markdown.includes('Wed, 10am — Sep 16, 2026 — Not home'), false);
-		assert.equal(digest.sentences[0]?.startsWith('Try:'), true);
+		assert.equal(digest.sentences[0]?.startsWith('- Try:'), true);
 		const homeWord = readAttemptLog('> - Fri, 1pm — Sep 18, 2026 — Home');
 		assert.deepEqual(homeWord.buckets['5:afternoon'], { homes: 1, trials: 1 });
 		const headingsOnly = readAttemptLog('### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>');
@@ -610,8 +632,8 @@ describe('dayparts and return suggester', () => {
 		assert.match(all.table, /\| Sun \| 2\/3 \| 0\/0 \| 0\/0 \|/);
 		assert.match(all.table, /\| Tue \| 0\/0 \| 1\/1 \| 0\/0 \|/);
 		assert.equal(all.table.includes('—'), false);
-		assert.equal(all.sentences[0], 'Try: **Tue afternoon (1/1)** · Sun morning (2/3)');
-		assert.equal(all.sentences.some((line) => line.startsWith('Untried:') && line.includes('Sun')), false);
+		assert.equal(all.sentences[0], '- Try: **Tue afternoon (1/1)** · Sun morning (2/3)');
+		assert.equal(all.sentences.some((line) => line.startsWith('- Untried:') && line.includes('Sun')), false);
 		const may = suggestReturnDigest({ buckets, grid, days: 'may' });
 		assert.match(may.table, /\| Sun \| 2\/3 \| — \| — \|/);
 		assert.match(may.table, /\| Tue \| — \| 1\/1 \| — \|/);
@@ -644,16 +666,16 @@ describe('dayparts and return suggester', () => {
 		const digest = suggestReturnDigest({ buckets: log.buckets, entries: log.entries, grid });
 		assert.match(digest.table, /\| Tue \| 0\/0 \| 0\/0 \| 2\/3 \|/);
 		assert.deepEqual(digest.sentences, [
-			'Try: **Tue evening (2/3)**',
-			'Untried: Sun · Tue morning/afternoon · Wed · Fri · Sat',
+			'- Try: **Tue evening (2/3)**',
+			'- Untried: Sun · Tue morning/afternoon · Wed · Fri · Sat',
 		]);
 
 		const coldGrid = defaultAvailabilityGrid();
 		coldGrid['2:morning'] = 'may';
 		const cold = suggestReturnDigest({ buckets: { '2:evening': { homes: 0, trials: 4 } }, grid: coldGrid });
-		assert.deepEqual(cold.sentences, ['Avoid: **Tue evening (0/4)**', 'Untried: Tue morning']);
+		assert.deepEqual(cold.sentences, ['- Avoid: **Tue evening (0/4)**', '- Untried: Tue morning']);
 		const none = suggestReturnDigest({ buckets: log.buckets, grid: defaultAvailabilityGrid() });
-		assert.deepEqual(none.sentences, ['Try: **Tue evening (2/3)**', 'No May-go-out days']);
+		assert.deepEqual(none.sentences, ['- Try: **Tue evening (2/3)**', 'No May-go-out days']);
 	});
 
 	it('maps the theme accent to a Return Suggestions callout and lets the color setting win', () => {
@@ -690,8 +712,9 @@ describe('dayparts and return suggester', () => {
 		assert.equal(blue?.includes('> [!info] Return Suggestions'), true);
 		assert.equal(blue?.includes('> [!example] Return Suggestions'), false);
 		assert.equal(blue?.includes('> >- Mon, 9am — Sep 1, 2026 — success'), true);
-		assert.equal(ensureVisitNotesHeading('##### Tue, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">0 days ago</span>\n').startsWith('### Visit Notes:\n#####'), true);
-		assert.equal(ensureVisitNotesHeading('### Visit Notes:\n##### Tue, 2pm — Sep 9, 2026\n').split('### Visit Notes:').length, 2);
+		assert.equal(ensureVisitNotesHeading('##### Tue, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">0 days ago</span>\n').startsWith('### Recent Notes:\n#####'), true);
+		assert.equal(ensureVisitNotesHeading('### Visit Notes:\n##### Tue, 2pm — Sep 9, 2026\n').includes('### Visit Notes:'), false);
+		assert.equal(ensureVisitNotesHeading('### Visit Notes:\n##### Tue, 2pm — Sep 9, 2026\n').split('### Recent Notes:').length, 2);
 	});
 
 	it('places the suggester quote above Attempt Log and the table inside it', () => {
@@ -708,8 +731,8 @@ describe('dayparts and return suggester', () => {
 		});
 		const body = formatDigestNote(digest);
 		assert.equal(body.includes(digest.table), false);
-		assert.equal(body.startsWith('> Avoid:'), true);
-		assert.ok(body.indexOf('> Avoid:') < body.indexOf('> Try:'));
+		assert.equal(body.startsWith('> - Avoid:'), true);
+		assert.ok(body.indexOf('> - Avoid:') < body.indexOf('> - Try:'));
 		assert.equal(body.includes('> [!note]'), false);
 		const note = [
 			'### Mon, 9am — Sep 1, 2026',
@@ -734,8 +757,8 @@ describe('dayparts and return suggester', () => {
 		assert.ok(next);
 		const lines = (next ?? '').split('\n');
 		const suggestionsAt = lines.findIndex((line) => line === '> [!example] Return Suggestions');
-		const avoidAt = lines.findIndex((line) => line.startsWith('> Avoid:'));
-		const tryAt = lines.findIndex((line) => line.startsWith('> Try:'));
+		const avoidAt = lines.findIndex((line) => line.startsWith('> - Avoid:'));
+		const tryAt = lines.findIndex((line) => line.startsWith('> - Try:'));
 		const logAt = lines.findIndex((line) => line === '> > [!note]+ Attempt Log');
 		const tableAt = lines.findIndex((line) => line.startsWith('> >| |'));
 		const bulletAt = lines.findIndex((line) => line.startsWith('> >- Mon, 9am'));
@@ -813,7 +836,7 @@ describe('dayparts and return suggester', () => {
 		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
 		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
 		assert.equal(urgencyMark(0.2, 4).band, 0);
-		assert.equal(urgencyMark(4, 0).glyphs, '');
+		assert.equal(urgencyMark(4, 0).glyphs, '—');
 	});
 
 	it('moves a raised Try threshold into Unsure and keeps the Avoid baseline', () => {
@@ -821,19 +844,19 @@ describe('dayparts and return suggester', () => {
 		grid['5:morning'] = 'may';
 		const buckets = { '5:morning': { homes: 1, trials: 1 } };
 		const baseline = suggestReturnDigest({ buckets, grid });
-		assert.equal(baseline.sentences[0]?.startsWith('Try:'), true);
+		assert.equal(baseline.sentences[0]?.startsWith('- Try:'), true);
 		const raised = suggestReturnDigest({
 			buckets,
 			grid,
 			thresholds: { trySoftMin: 0.9 },
 		});
-		assert.equal(raised.sentences[0]?.startsWith('Unsure:'), true);
+		assert.equal(raised.sentences[0]?.startsWith('- Unsure:'), true);
 		const cold = suggestReturnDigest({
 			buckets: { '5:morning': { homes: 0, trials: 3 } },
 			grid,
 			thresholds: { avoidMinTrials: 5 },
 		});
-		assert.equal(cold.sentences[0]?.startsWith('Unsure:'), true);
+		assert.equal(cold.sentences[0]?.startsWith('- Unsure:'), true);
 	});
 });
 
@@ -885,15 +908,9 @@ describe('RV note view', () => {
 		assert.equal(lines[1], '> [!quote] RV Dashboard');
 		const at = lines.indexOf('##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>');
 		assert.ok(at > 0);
-		assert.deepEqual(lines.slice(at - 3, at + 4), [
-			'##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>',
-			'`INPUT[textArea:sVisit1Notes]`',
-			'',
-			'##### Tue, 4pm — Sep 29, 2026 <span class="rv-stamp-ago">Today</span>',
-			'`INPUT[textArea:sVisit2Notes]`',
-			'',
-			'---',
-		]);
+		assert.equal(lines[at - 1], '### Recent Notes:');
+		assert.equal(lines[at + 1], '`INPUT[textArea:sVisit2Notes]`');
+		assert.ok(lines.indexOf('##### Wed, 2pm — Sep 9, 2026 <span class="rv-stamp-ago">20 days ago</span>') > at);
 		assert.equal(applyVisitBody(next, 'miss', now).startsWith('\n> [!quote] RV Dashboard'), true);
 		assert.equal(ensureDashboardLeadBlank('\n> [!quote]+ RV Dashboard\n'), '\n> [!quote]+ RV Dashboard\n');
 		assert.equal(ensureDashboardLeadBlank('Plain note.\n'), 'Plain note.\n');
@@ -979,7 +996,10 @@ describe('settings defaults', () => {
 		assert.equal(settings.digestAvoidSoftMax, 0.3);
 		assert.equal(settings.digestAvoidMinTrials, 3);
 		assert.equal(settings.digestTryMinHomes, 1);
-		assert.equal(settings.glancableChrome.hideToolbar, false);
+		assert.equal(settings.glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({}).glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({ glancableChrome: {} }).glancableChrome.hideToolbar, true);
+		assert.equal(mergeSettings({ glancableChrome: { hideToolbar: false } }).glancableChrome.hideToolbar, false);
 		assert.equal(settings.glancableChrome.hideNew, true);
 		assert.equal(settings.glancableChrome.hideSort, false);
 		assert.equal(mergeSettings({ digestTrySoftMin: 0.5 }).digestTrySoftMin, 0.5);
@@ -998,12 +1018,15 @@ describe('settings defaults', () => {
 		assert.equal(glancableColumns(360, settings), 1);
 		assert.equal(glancableColumns(679, settings), 1);
 		assert.equal(glancableColumns(680, settings), 2);
+		assert.equal(compactBadgePx(1, 8, ['name', 'place', 'dates', 'foot'], 3), 28);
+		assert.ok(compactBadgePx(1, 8, ['name', 'foot'], 3) < 28);
+		assert.ok(glancableColumns(2000, settings) > 2);
 		const cramped = mergeSettings({
 			glancableMaxLineChars: 10,
 			glancableFontScale: 0.6,
 			glancablePaddingX: 0,
 		});
-		assert.equal(glancableColumns(420, cramped), 2);
+		assert.ok(glancableColumns(420, cramped) > 2);
 
 		const graphs = settingsGraphs(settings);
 		assert.equal(graphs.likelihood, '');

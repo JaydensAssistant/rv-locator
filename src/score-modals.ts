@@ -1,4 +1,5 @@
 import { Modal, Setting, type App } from 'obsidian';
+import { iconizeModal } from './modal-chrome';
 import { digestVoiceClass } from './attempt-digest';
 import type { SnoozeChoice } from './snooze';
 
@@ -25,6 +26,7 @@ export class ReturnSuggestModal extends Modal {
 			button.setButtonText('Close');
 			button.onClick(() => this.close());
 		});
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {
@@ -84,6 +86,7 @@ export class UrgencySnoozeModal extends Modal {
 				});
 			});
 		}
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {
@@ -134,6 +137,7 @@ export class PriorityNudgeModal extends Modal {
 					this.close();
 				});
 			});
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {

@@ -3,6 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
+import { mountHeadingChevron } from './visit-display';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
 export interface VisitTarget {
@@ -76,11 +77,29 @@ function wrapLogStamp(item: HTMLElement): void {
 	first.textContent = '';
 }
 
+function directIndicator(heading: HTMLElement): HTMLElement | null {
+	for (const kid of Array.from(heading.children)) {
+		if (domInstanceOf(kid, HTMLElement) && kid.classList.contains('collapse-indicator')) return kid;
+	}
+	return null;
+}
+
 function tagVisitNotesHeading(root: HTMLElement): void {
 	const headings = root.matches('h3') ? [root] : Array.from(root.querySelectorAll('h3'));
 	for (const heading of headings) {
 		if (!domInstanceOf(heading, HTMLElement)) continue;
-		if (textWithout(heading, '.heading-collapse-indicator') === 'Visit Notes:') heading.addClass(NOTES_HEADING_CLASS);
+		const title = textWithout(heading, '.heading-collapse-indicator');
+		if (title === 'Visit Notes:' || title === 'Recent Notes:') {
+			heading.addClass(NOTES_HEADING_CLASS);
+			let mark = directIndicator(heading);
+			if (!mark) {
+				mark = heading.createSpan({ cls: 'collapse-indicator collapse-icon' });
+				heading.insertBefore(mark, heading.firstChild);
+			}
+			mountHeadingChevron(mark);
+			const parentCollapsed = heading.parentElement?.hasClass('is-collapsed') === true;
+			heading.toggleClass('is-open', !heading.hasClass('is-collapsed') && !parentCollapsed);
+		}
 	}
 }
 
@@ -91,9 +110,12 @@ function tagVisitNotesHeading(root: HTMLElement): void {
 export function decorateVisitControls(root: HTMLElement, sectionLine: () => number | null, open: VisitMenuOpener): void {
 	tagVisitNotesHeading(root);
 	for (const heading of stampHeadings(root)) {
-		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .${MORE_CLASS}, .heading-collapse-indicator`));
+		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator`));
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
+		markStampDate(heading);
+		wireStampJump(heading, when);
+		wrapShareTail(heading);
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
@@ -116,6 +138,135 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 	}
 }
 
+/** The calendar date on a visit heading stays the small muted style. Literature stays full size. */
+function markStampDate(heading: HTMLElement): void {
+	if (heading.querySelector('.rv-stamp-date')) return;
+	const doc = heading.ownerDocument;
+	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
+	const walker = doc.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const text = node.textContent ?? '';
+		const match = /([—–-]\s+)([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/.exec(text);
+		const parent = node.parentElement;
+		if (match && match.index != null && parent) {
+			const start = match.index + (match[1]?.length ?? 0);
+			const date = match[2] ?? '';
+			const after = text.slice(start + date.length);
+			node.textContent = text.slice(0, start);
+			const span = doc.createElement('span');
+			span.className = 'rv-stamp-date';
+			span.textContent = date;
+			parent.insertBefore(span, node.nextSibling);
+			if (after) parent.insertBefore(doc.createTextNode(after), span.nextSibling);
+			return;
+		}
+		node = walker.nextNode();
+	}
+}
+
+/** Date and day-count jump to that day's attempt-log line, not the visit notes. */
+function wireStampJump(heading: HTMLElement, when: Date): void {
+	heading.querySelectorAll('.rv-stamp-date, .rv-stamp-ago').forEach((node) => {
+		if (!domInstanceOf(node, HTMLElement) || node.dataset.rvJump === '1') return;
+		node.dataset.rvJump = '1';
+		node.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			jumpStampToAttempt(heading, when);
+		});
+	});
+}
+
+function jumpStampToAttempt(heading: HTMLElement, when: Date): void {
+	const host = heading.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered');
+	const root = domInstanceOf(host, HTMLElement) ? host : heading.ownerDocument.body;
+	if (!domInstanceOf(root, HTMLElement)) return;
+	let match: HTMLElement | null = null;
+	for (const callout of attemptLogCallouts(root)) {
+		for (const item of Array.from(callout.querySelectorAll('li'))) {
+			if (match || !domInstanceOf(item, HTMLElement)) continue;
+			const bullet = parseLogBullet(`- ${item.textContent ?? ''}`);
+			if (!bullet || !sameLocalDay(bullet.when, when)) continue;
+			match = item;
+		}
+	}
+	if (!match) return;
+	let node: HTMLElement | null = match;
+	while (node && node !== root) {
+		node.classList.remove('is-collapsed');
+		if (node.style.display === 'none') node.style.removeProperty('display');
+		node = node.parentElement;
+	}
+	match.scrollIntoView({ block: 'center' });
+	match.classList.add('rv-day-flash');
+	const flashed = match;
+	window.setTimeout(() => flashed.classList.remove('rv-day-flash'), 1600);
+}
+
+function sameLocalDay(left: Date, right: Date): boolean {
+	return left.getFullYear() === right.getFullYear()
+		&& left.getMonth() === right.getMonth()
+		&& left.getDate() === right.getDate();
+}
+
+/** Plugin-owned spans around a plain-text share tail. The note file is not rewritten. */
+function wrapShareTail(heading: HTMLElement): void {
+	if (heading.querySelector('.rv-visit-extra')) return;
+	const doc = heading.ownerDocument;
+	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
+	const walker = doc.createTreeWalker(heading, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const text = node.textContent ?? '';
+		const at = text.indexOf('·');
+		if (at < 0 || !/·\s+(?:«(?:book|film|lesson)»|Left|Shared|Covered|Also)\s+«/.test(text)) {
+			node = walker.nextNode();
+			continue;
+		}
+		const parent = node.parentElement;
+		if (!parent) return;
+		const lead = text.slice(0, at).trimEnd();
+		const tail = text.slice(at);
+		node.textContent = '';
+		if (lead) {
+			const leadEl = doc.createElement('span');
+			leadEl.className = 'rv-stamp-lead';
+			leadEl.textContent = lead;
+			parent.insertBefore(leadEl, node.nextSibling);
+		}
+		const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»(?:\s+«[^»]*»–«[^»]*»)?/g;
+		let match = piece.exec(tail);
+		let cursor = 0;
+		let after: Node = node;
+		while (match) {
+			const span = doc.createElement('span');
+			span.className = 'rv-visit-extra';
+			const icon = doc.createElement('span');
+			icon.className = 'rv-stamp-kind';
+			setIcon(icon, stampKindIcon(match[1] || match[2] || ''));
+			const title = doc.createElement('span');
+			title.className = 'rv-stamp-title';
+			title.textContent = match[3] ?? '';
+			span.append(icon, title);
+			const anchor = after.nextSibling;
+			parent.insertBefore(span, anchor);
+			after = span;
+			cursor = match.index + match[0].length;
+			match = piece.exec(tail);
+		}
+		const rest = tail.slice(cursor);
+		if (rest) parent.insertBefore(doc.createTextNode(rest), after.nextSibling);
+		return;
+	}
+}
+
+function stampKindIcon(kind: string): string {
+	if (kind === 'book' || kind === 'Left') return 'book';
+	if (kind === 'film' || kind === 'Shared') return 'film';
+	return 'book-open';
+}
+
 /** The 🗺️ link beside Address becomes an earth button the size of the Hub plus. */
 export function decorateMapLink(root: HTMLElement, onOpen?: () => void): void {
 	root.querySelectorAll('.callout[data-callout="quote"] a').forEach((link) => {
@@ -125,7 +276,7 @@ export function decorateMapLink(root: HTMLElement, onOpen?: () => void): void {
 		if (gap && gap.nodeType === Node.TEXT_NODE && !(gap.textContent ?? '').trim()) gap.remove();
 		link.empty();
 		link.addClass(MAP_CLASS);
-		link.setAttribute('aria-label', 'Map, coming soon');
+		link.setAttribute('aria-label', 'Map');
 		setIcon(link, 'earth');
 		if (onOpen) {
 			link.addEventListener('click', (event) => {

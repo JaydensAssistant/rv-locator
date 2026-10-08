@@ -101,10 +101,37 @@
 }
 
 .rv-locator-attr {
+	display: flex;
 	flex: 0 0 auto;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.35em 1.25em;
 	padding: 6px 12px 8px;
 	color: var(--text-faint);
 	font-size: var(--font-ui-smaller);
+}
+
+.rv-locator-disclaimer {
+	flex: 1 1 16rem;
+	min-width: 0;
+	color: var(--text-muted);
+	text-align: left;
+}
+
+.rv-locator-attr-credits {
+	flex: 0 1 auto;
+	margin-left: auto;
+	text-align: right;
+}
+
+.rv-locator-settings .rv-locator-disclaimer {
+	margin: 0 0 0.8em;
+	padding: 0.7em 0.85em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+	line-height: 1.4;
 }
 
 .rv-locator-empty-value {
@@ -319,17 +346,48 @@
 }
 
 .rv-locator-sort-preset {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.22em;
+	box-sizing: border-box;
 	flex: 0 0 auto;
+	width: max-content;
+	min-width: max-content;
+	overflow: visible;
+	justify-content: center;
 	margin: 0;
-	padding: 4px 10px;
+	padding: 2px 6px;
+	letter-spacing: -0.02em;
 	white-space: nowrap;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 999px;
 	background: var(--background-primary);
 	color: var(--text-normal);
 	font: inherit;
-	font-size: var(--font-ui-small);
+	font-size: var(--font-ui-smaller);
 	line-height: 1.2;
+}
+
+.rv-sort-icon {
+	display: inline-flex;
+	flex: 0 0 16px;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+}
+
+.rv-sort-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-sort-label {
+	display: block;
+	min-width: max-content;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
 }
 
 .rv-locator-sort-preset.is-active {
@@ -415,20 +473,157 @@
 }
 
 .rv-locator-glancable .rv-locator-sortbar {
+	display: flex;
 	flex: 0 0 auto;
+	flex-direction: column;
 	flex-wrap: nowrap;
+	align-items: stretch;
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
 	margin: 0;
-	padding: 6px 10px 4px;
+	gap: 2px;
+	padding: 2px 4px 0;
 	border: 0;
 	background: var(--background-primary);
 }
 
+.rv-locator-glancable .rv-locator-sort-scroll {
+	flex: 0 0 auto;
+	width: 100%;
+	min-width: 0;
+	min-height: 40px;
+	overflow: hidden;
+	gap: 0;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: stretch;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	gap: 2px;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills .rv-locator-sort-preset {
+	flex: 1 1 0;
+	flex-direction: column;
+	width: 0;
+	min-width: 0;
+	max-width: none;
+	gap: 0;
+	min-height: 40px;
+	height: 40px;
+	max-height: 50px;
+	padding: 1px 0;
+	overflow: visible;
+	font-size: 12px;
+	line-height: 14px;
+	letter-spacing: 0;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills .rv-sort-marks {
+	display: inline-flex;
+	flex: 0 0 12px;
+	align-items: center;
+	justify-content: center;
+	height: 12px;
+	gap: 0;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills .rv-sort-label {
+	display: block;
+	width: max-content;
+	max-width: none;
+	min-width: 0;
+	overflow: visible;
+	text-overflow: clip;
+	font-size: 12px;
+	line-height: 14px;
+	text-align: center;
+}
+
+.rv-locator-glancable .rv-sort-icon,
+.rv-locator-glancable .rv-sort-arrow {
+	flex: 0 0 11px;
+	width: 11px;
+	height: 11px;
+}
+
+.rv-locator-glancable .rv-sort-icon svg,
+.rv-locator-glancable .rv-sort-arrow svg {
+	width: 11px;
+	height: 11px;
+}
+
+.rv-locator-filter {
+	position: relative;
+}
+
+.rv-filter-dot {
+	position: absolute;
+	top: 5px;
+	right: 5px;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	pointer-events: none;
+}
+
+.rv-sort-arrow {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 12px;
+	height: 12px;
+}
+
+.rv-locator-toolbar-quiet.is-on {
+	border-color: var(--interactive-accent);
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.rv-locator-glancable .rv-locator-search-slot {
+	display: none;
+	flex: 0 0 auto;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	min-height: 40px;
+	padding: 0;
+}
+
+.rv-locator-glancable.is-search-open .rv-locator-sort-scroll {
+	display: none;
+}
+
+.rv-locator-glancable.is-search-open .rv-locator-search-slot {
+	display: flex;
+}
+
+.rv-locator-glancable .rv-locator-search-slot.is-focused .rv-locator-search-input {
+	border-color: var(--interactive-accent);
+	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+}
+
+.rv-locator-glancable .rv-locator-toolbar-quiet,
 .rv-locator-glancable .rv-locator-new-rv {
-	width: var(--rv-control-size, 28px);
-	height: var(--rv-control-size, 28px);
+	box-sizing: border-box;
+	flex: 0 0 40px;
+	width: 40px;
+	height: 40px;
+	min-width: 40px;
+	max-width: 40px;
+	min-height: 40px;
+	margin: 0;
+	padding: 0;
 }
 
 .rv-locator-glancable .rv-locator-new-rv svg {
@@ -463,6 +658,12 @@
 
 .rv-locator-glancable .rv-locator-card.has-actions {
 	padding-right: calc(var(--rv-pad-x, 10px) + var(--rv-control-size, 28px) + 14px);
+	min-height: calc(var(--rv-badge-count, 1) * var(--rv-control-size, 28px) + (var(--rv-badge-count, 1) + 1) * 0.45em);
+}
+
+/* Compact mode sizes the badges to the text stack. The min-height above would add a blank line. */
+.rv-locator-glancable .rv-locator-card.has-actions.is-compact-mode {
+	min-height: 0;
 }
 
 .rv-locator-glancable .rv-locator-card.is-priority-zero {
@@ -471,11 +672,13 @@
 
 .rv-locator-glancable .rv-locator-place {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: baseline;
 	gap: 2px 8px;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
+	white-space: nowrap;
 }
 
 .rv-locator-glancable .rv-locator-card-name {
@@ -493,10 +696,15 @@
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
 	color: var(--text-normal);
 	font-size: inherit;
 	font-weight: 700;
 	line-height: inherit;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link:hover {
@@ -571,23 +779,27 @@
 
 .rv-locator-glancable .rv-locator-card-foot {
 	display: flex;
-	flex-wrap: wrap;
+	flex-wrap: nowrap;
 	align-items: center;
-	gap: 4px 10px;
+	gap: 0.35em;
 	max-width: 100%;
 	margin: 0;
 	min-width: 0;
+	overflow: hidden;
 }
 
 .rv-locator-glancable .rv-locator-slot {
 	display: inline-flex;
+	flex-wrap: nowrap;
 	align-items: center;
 	gap: 4px;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
 	color: var(--text-muted);
 	font-size: calc(12px * var(--rv-font-scale, 1));
 	line-height: 1.2;
+	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
 }
 
@@ -602,8 +814,8 @@
 }
 
 .rv-locator-glancable .rv-locator-slot-icon svg {
-	width: calc(14px * var(--rv-font-scale, 1));
-	height: calc(14px * var(--rv-font-scale, 1));
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
 }
 
 .rv-locator-glancable .rv-locator-slot-text,
@@ -614,7 +826,7 @@
 	white-space: nowrap;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-map-pin {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin {
 	display: inline-flex;
 	box-sizing: border-box;
 	flex: 0 0 auto;
@@ -630,7 +842,7 @@
 	text-decoration: none;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-map-pin svg {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg {
 	width: 100%;
 	height: 100%;
 	stroke-width: calc(var(--rv-control-size, 28px) * 0.08);
@@ -640,9 +852,9 @@
 
 .rv-locator-glancable .rv-locator-card-actions {
 	position: absolute;
-	top: var(--rv-pad-y, 8px);
+	top: 0;
 	right: var(--rv-pad-x, 10px);
-	bottom: var(--rv-pad-y, 8px);
+	bottom: 0;
 	display: flex;
 	flex-direction: column;
 	align-items: center;
@@ -651,12 +863,18 @@
 	margin: 0;
 }
 
+.rv-locator-glancable .rv-locator-card-actions > * {
+	flex: 0 0 auto;
+}
+
 .rv-locator-date {
 	display: inline-flex;
+	flex: 1 1 auto;
 	align-items: baseline;
 	gap: 0.4em;
 	min-width: 0;
 	max-width: 100%;
+	overflow: hidden;
 	vertical-align: baseline;
 }
 
@@ -689,8 +907,8 @@
 	white-space: nowrap;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-priority-pill,
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill,
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency {
 	display: inline-flex;
 	box-sizing: border-box;
 	flex: 0 0 auto;
@@ -713,17 +931,17 @@
 }
 
 /* Band 0 keeps the outer circle and adds the inner ring drawn in the glyph. */
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency[data-band="0"] {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency[data-band="0"] {
 	border-width: calc(1.25px * var(--rv-font-scale, 1));
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-priority-pill {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
 	padding: 0;
 	font-size: calc(var(--rv-control-size, 28px) * 0.46);
 	font-weight: 700;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph {
 	display: block;
 	flex: 0 0 auto;
 	width: calc(var(--rv-control-size, 28px) * 0.7);
@@ -733,13 +951,13 @@
 	fill: currentColor;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph rect,
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph circle {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph rect,
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph circle {
 	fill: currentColor;
 	stroke: none;
 }
 
-:is(.rv-locator-view, .rv-qf-badges) .rv-locator-urgency .rv-urgency-glyph circle.is-ring {
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph circle.is-ring {
 	fill: none;
 	stroke: currentColor;
 	stroke-width: calc(var(--rv-control-size, 28px) * 0.08);
@@ -1001,6 +1219,14 @@ table.rv-locator-digest-table,
 	color: var(--text-muted);
 }
 
+.callout.rv-locator-attempt-log > .callout-title {
+	align-items: center;
+}
+
+.callout.rv-locator-attempt-log:not(.is-collapsed) > .callout-content {
+	padding-top: calc(var(--rv-control-size, 28px) * 0.45 + 0.35em);
+}
+
 /*
   Bases chrome, only while this leaf's Glancable view is active.
   The host class is removed when that view unloads.
@@ -1044,7 +1270,11 @@ table.rv-locator-digest-table,
 .markdown-rendered :is(h3, h5) .rv-stamp-ago,
 .markdown-preview-view :is(h3, h5) .rv-stamp-ago,
 .cm-header .rv-stamp-ago,
-.rv-stamp-ago {
+.rv-stamp-ago,
+.markdown-rendered :is(h3, h5) .rv-stamp-date,
+.markdown-preview-view :is(h3, h5) .rv-stamp-date,
+.cm-header .rv-stamp-date,
+.rv-stamp-date {
 	margin-left: 0.45em;
 	color: var(--text-muted);
 	font-size: 0.62em;
@@ -1052,8 +1282,14 @@ table.rv-locator-digest-table,
 	letter-spacing: 0;
 	vertical-align: baseline;
 }
-.rv-glancable-host[data-rv-hide-toolbar] .bases-toolbar {
-	display: none;
+.rv-glancable-host[data-rv-hide-toolbar] :is(.bases-toolbar, .bases-header) {
+	display: none !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+	overflow: hidden !important;
 }
 
 .rv-glancable-host[data-rv-hide-views] .bases-toolbar [data-rv-chrome="views"],
@@ -1093,7 +1329,7 @@ table.rv-locator-digest-table,
 
 .rv-locator-return-line {
 	margin: 0;
-	white-space: pre-wrap;
+	white-space: nowrap;
 }
 
 .rv-locator-suggest-title {
@@ -1114,8 +1350,147 @@ table.rv-locator-digest-table,
 	padding: 8px 12px;
 }
 
+.rv-locator-modal > .rv-locator-modal-copy {
+	padding: 0.35em 1.15em 0.9em;
+}
+
+.rv-locator-modal .rv-locator-suggest-actions,
+.modal .rv-locator-suggest-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.45em 0.5em;
+}
+
+.rv-locator-companion-modal .rv-locator-suggest-actions.is-end {
+	justify-content: flex-end;
+}
+
+.modal .rv-field-host {
+	position: relative;
+}
+
+.modal .rv-inline-hits {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: calc(100% + 1px);
+	z-index: 5;
+	display: flex;
+	flex-wrap: nowrap;
+	gap: 0.35em;
+	height: 1.35em;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.modal .rv-inline-hits button {
+	flex: 1 1 0;
+	min-width: 0;
+	height: 1.35em;
+	margin: 0;
+	padding: 0 0.35em;
+	overflow: hidden;
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35em;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.modal .setting-item:has(.rv-inline-hits),
+.modal .setting-item-control:has(.rv-inline-hits) {
+	overflow: visible;
+}
+
 .rv-locator-modal {
-	width: min(560px, calc(100vw - 24px));
+	width: min(560px, calc(100vw - 16px));
+	max-width: calc(100vw - 16px);
+	max-height: 100dvh;
+	overflow-x: hidden;
+}
+
+.rv-locator-modal .modal-content {
+	overflow-x: hidden;
+	overflow-y: auto;
+	max-height: min(70dvh, 640px);
+	padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+
+.rv-locator-modal input,
+.rv-locator-modal select,
+.rv-locator-modal textarea,
+.rv-locator-modal button {
+	scroll-margin-block: 24vh;
+}
+
+.rv-locator-modal .setting-item,
+.rv-locator-modal .setting-item-control,
+.rv-locator-modal .rv-suggest-host,
+.rv-locator-modal .rv-share-list {
+	overflow: visible;
+}
+
+.rv-locator-modal .setting-item:has(input[type="text"], input[type="search"], input[type="date"], input:not([type])) .setting-item-control {
+	flex: 1 1 auto;
+	width: min(16.5rem, 100%);
+	max-width: 100%;
+}
+
+.rv-locator-modal .rv-suggest-host {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 40px;
+	width: 100%;
+	align-items: center;
+}
+
+.rv-locator-modal .setting-item-control > input[type="text"],
+.rv-locator-modal .setting-item-control > input[type="search"],
+.rv-locator-modal .setting-item-control > input[type="date"],
+.rv-locator-modal .setting-item-control > input:not([type]) {
+	width: calc(100% - 40px);
+	min-height: 40px;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.rv-locator-modal .rv-locator-suggest-actions button,
+.rv-locator-modal .setting-item-control button {
+	min-width: 40px;
+	min-height: 40px;
+}
+
+.rv-locator-modal {
+	container-type: inline-size;
+	container-name: rvmodal;
+}
+
+/* Phone width, and a modal that is itself narrow. Every field row, not only text inputs. */
+@media (max-width: 520px) {
+	.rv-locator-modal .setting-item {
+		flex-direction: column !important;
+		align-items: stretch !important;
+		gap: 6px;
+	}
+
+	.rv-locator-modal .setting-item-info,
+	.rv-locator-modal .setting-item-control {
+		width: 100%;
+		max-width: 100%;
+	}
+}
+
+@container rvmodal (max-width: 520px) {
+	.setting-item {
+		flex-direction: column !important;
+		align-items: stretch !important;
+		gap: 6px;
+	}
+
+	.setting-item-info,
+	.setting-item-control {
+		width: 100%;
+		max-width: 100%;
+	}
 }
 
 .rv-locator-check-list {
@@ -1312,7 +1687,7 @@ body.rv-wide-visit-buttons .mb-button-group.mb-button-group-inline:has(> .mb-but
 	width: 100%;
 }
 
-/* Four icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
+/* Five icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
 span.mb-button.rv-visit-btn {
 	display: inline-flex;
 	flex: 1 1 0;
@@ -1363,21 +1738,26 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
   when the browser has it; color-mix is the fallback.
 */
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 78%, oklch(0.62 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.52, l, 0.68) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 82%, oklch(0.64 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.54, l, 0.68) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 62%, oklch(0.48 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.44, calc(l - 0.08), 0.6) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 70%, oklch(0.54 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.48, calc(l - 0.06), 0.62) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
-	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 48%, oklch(0.38 0 0));
-	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.16), 0.52) c h);
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 58%, oklch(0.46 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.42, calc(l - 0.12), 0.56) c h);
 }
 
 .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 46%, oklch(0.38 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.18), 0.5) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(5) > button.mb-button-inner {
 	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 36%, oklch(0.32 0 0));
 	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.3, calc(l - 0.24), 0.46) c h);
 }
@@ -1435,7 +1815,7 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 	--rv-dash-label: 4.6em;
 	--rv-dash-field: 11em;
 	--rv-dash-plus: 2.1em;
-	--rv-dash-gap: 0.4em;
+	--rv-dash-gap: 0.15em;
 	--rv-dash-column: calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em);
 }
 
@@ -1577,6 +1957,7 @@ body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > 
 	--rv-notes-pad: 0.3em;
 	box-sizing: border-box;
 	width: 100%;
+	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
 	padding: var(--rv-notes-pad) 0.6em;
 	line-height: 1.45;
 	resize: none;
@@ -1648,12 +2029,35 @@ body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-lo
 	text-align: start;
 }
 
-body.rv-center-visit-notes .rv-dashboard :is(h3.rv-visit-notes-heading, h5.rv-visit-stamp) {
+body.rv-center-visit-notes .rv-dashboard :is(h3.rv-visit-notes-heading, h3.rv-visit-stamp, h5.rv-visit-stamp) {
 	text-align: center;
+	justify-content: center;
+}
+
+/* The stamp is a flex row. A growing lead and an auto margin on the age pill pin the row to the edges. Center the date, extras, and pill as one cluster. */
+body.rv-center-visit-notes .rv-dashboard :is(h3, h5).rv-visit-stamp > .rv-stamp-lead {
+	flex-grow: 0;
+	flex-basis: auto;
+}
+
+body.rv-center-visit-notes .rv-dashboard :is(h3, h5).rv-visit-stamp > .rv-stamp-ago,
+body.rv-center-visit-notes .markdown-preview-view .rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+body.rv-center-visit-notes .markdown-rendered .rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago {
+	margin-left: 0;
+}
+
+body.rv-center-visit-notes .rv-dashboard :is(p, .el-p):has(textarea) {
+	display: block;
+	width: 100%;
+	min-width: 0;
 }
 
 body.rv-center-visit-notes .rv-dashboard textarea {
-	text-align: center;
+	text-align: start;
+	width: 100%;
+	min-width: 100%;
+	max-width: 100%;
+	margin-inline: 0;
 }
 
 body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-title {
@@ -1673,9 +2077,51 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	text-align: center;
 }
 
-body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions ul {
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(ul, ol) {
+	width: max-content;
+	max-width: 100%;
+	margin-inline: auto;
 	padding-inline-start: 0;
 	list-style-position: inside;
+	text-align: left;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions li {
+	padding-inline-start: 0;
+	list-style-position: inside;
+	text-align: left;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
+	width: auto;
+	margin-inline: 0;
+	padding-inline-start: 1.2em;
+	list-style-position: outside;
+	text-align: left;
+}
+
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol),
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) :is(ul, ol) {
+	width: auto;
+	margin-inline: 0;
+	padding-inline-start: 1.2em;
+	list-style-position: outside;
+	text-align: left;
+}
+
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol) > li,
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) li {
+	padding-inline-start: 0;
+	list-style-position: outside;
+	text-align: left;
+}
+
+body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
+	width: auto;
+	margin-inline: 0;
+	padding-inline-start: 1.2em;
+	list-style-position: outside;
+	text-align: left;
 }
 
 .rv-qf-badges {
@@ -1691,17 +2137,43 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	gap: 0.4em;
 }
 
+.rv-qf-badges {
+	margin-inline-end: 0.15em;
+}
+
 .rv-qf-body {
 	display: flex;
 	flex-direction: column;
-	gap: 0.2em;
+	gap: 0;
+	padding-top: 0.55em;
 }
 
 .rv-qf-row {
 	display: grid;
-	grid-template-columns: 1.25em 8.2em minmax(0, 1fr);
+	grid-template-columns: 1.25em minmax(0, 8.2em) minmax(0, 1fr);
 	align-items: center;
 	column-gap: 0.4em;
+	padding-block: 0.28em;
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rv-qf-row.is-status {
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.rv-qf-label {
+	justify-self: start;
+	text-align: left;
+}
+
+body.rv-center-dashboard .rv-qf-body,
+body.rv-center-dashboard .rv-qf-row,
+body.rv-center-dashboard .rv-qf-label {
+	text-align: left;
+}
+
+body.rv-center-dashboard .rv-qf-label {
+	justify-self: start;
 }
 
 .rv-qf-icon {
@@ -1730,35 +2202,197 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	font-weight: 650;
 }
 
-.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest) {
+.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest),
+.rv-hub-owned > br {
 	display: none;
 }
 
-.rv-hub-row {
-	display: inline-flex;
+/*
+  Hub and Address share one paragraph. The hub line spans that grid so the
+  chips stay on the hub row, and Address, its field, and the map stay on the next.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	--rv-hub-gap: 0.22em;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	justify-items: start;
+	text-align: start;
 	align-items: center;
-	gap: 0.25em;
-	box-sizing: border-box;
-	width: var(--rv-dash-field);
-	max-width: var(--rv-dash-field);
-	vertical-align: middle;
+	column-gap: var(--rv-hub-gap);
 }
 
-.rv-hub-chip {
-	display: inline-flex;
-	flex: 1 1 0;
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	justify-items: start;
+	text-align: start;
+}
+
+.rv-hub-line {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	justify-items: start;
+	text-align: start;
 	align-items: center;
+	column-gap: var(--rv-hub-gap, 0.22em);
+	width: 100%;
+	box-sizing: border-box;
+}
+
+body.rv-wide-hubs .rv-hub-line {
+	grid-template-columns: max-content minmax(0, 1fr);
+	justify-items: start;
+	text-align: start;
+}
+
+body.rv-wide-hubs .rv-hub-row {
+	display: flex;
+	flex-wrap: nowrap;
+	justify-self: stretch;
+	width: 100%;
 	min-width: 0;
-	overflow: hidden;
-	padding: 0 0.35em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s, 4px);
-	text-overflow: ellipsis;
+	max-width: 100%;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .rv-hub-chip {
+	box-sizing: border-box;
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+	max-width: 100%;
+	padding-inline: var(--rv-hub-chip-inset, 0.35em);
+}
+
+@supports (grid-template-columns: subgrid) {
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+		grid-template-columns: subgrid;
+		column-gap: inherit;
+	}
+}
+
+.rv-hub-line > strong {
+	margin: 0;
 	white-space: nowrap;
 }
 
-.rv-hub-remove,
-.rv-hub-add {
+.rv-hub-line > .rv-hub-add {
+	justify-self: center;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--rv-dash-plus);
+	min-width: var(--rv-dash-plus);
+	height: var(--input-height, 2em);
+	margin: 0;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--button-radius, var(--radius-s, 4px));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-hub-line > .rv-hub-add:hover {
+	color: var(--text-normal);
+}
+
+.rv-hub-line > .rv-hub-add svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
+}
+
+.rv-hub-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-self: stretch;
+	gap: 0.25em;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	min-height: var(--input-height, 2em);
+	vertical-align: middle;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+.rv-hub-chip {
+	position: relative;
+	display: inline-flex;
+	flex: 0 1 auto;
+	align-items: center;
+	width: auto;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+	margin: 0;
+	overflow: hidden;
+	padding-block: 0;
+	--rv-hub-chip-inset: 0.35em;
+	padding-inline: var(--rv-hub-chip-inset);
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--radius-s, 4px);
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	box-shadow: none;
+	color: var(--text-accent);
+	font: inherit;
+	font-weight: inherit;
+	line-height: inherit;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.rv-hub-chip > .rv-hub-chip-label {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+.rv-hub-chip.is-overflow > .rv-hub-chip-label {
+	-webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 1.2em), transparent calc(100% - 0.45em));
+	mask-image: linear-gradient(90deg, #000 calc(100% - 1.2em), transparent calc(100% - 0.45em));
+}
+
+.rv-hub-chip > .rv-hub-chip-ellipsis {
+	display: none;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	right: var(--rv-hub-chip-inset, 0.35em);
+	align-items: center;
+	pointer-events: none;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+}
+
+.rv-hub-chip.is-overflow > .rv-hub-chip-ellipsis {
+	display: flex;
+}
+
+.rv-dashboard a.internal-link.rv-hub-chip:hover,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover,
+.rv-hub-chip:hover {
+	color: var(--text-accent);
+	text-decoration: underline;
+	background-image: none;
+}
+
+.rv-hub-remove {
 	flex: 0 0 auto;
 	margin: 0;
 	padding: 0 0.25em;
@@ -1768,19 +2402,46 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	cursor: pointer;
 }
 
+.rv-address-input,
+.rv-dashboard input.rv-address-input,
+.markdown-preview-view input.rv-address-input,
+.markdown-rendered input.rv-address-input,
+.markdown-source-view input.rv-address-input {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	height: var(--input-height, 2em);
+	margin: 0;
+	padding: 2px 6px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background: var(--background-modifier-form-field, var(--background-primary));
+	color: var(--text-normal);
+	font-family: var(--font-text) !important;
+	font-size: var(--font-text-size) !important;
+	font-weight: var(--font-normal, inherit);
+	line-height: var(--line-height-normal, 1.5);
+}
+
+.rv-address-hidden,
+a.rv-address-link[hidden],
+input.rv-address-input[hidden] {
+	display: none !important;
+}
+
 body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
 body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
 	max-width: 100%;
 }
 
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong):not(.rv-hub-owned) {
 	display: flex;
 	align-items: center;
 	gap: var(--rv-dash-gap);
 }
 
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) :is(input[type="text"], input:not([type])),
-body.rv-wide-hubs .rv-hub-row {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) :is(input[type="text"], input:not([type])) {
 	flex: 1 1 auto;
 	width: auto;
 	max-width: none;
@@ -1806,4 +2467,1616 @@ body.rv-wide-hubs .rv-hub-row {
 
 .rv-map-soon {
 	padding: 1.5rem 1.25rem;
+}
+
+.rv-qf-when {
+	display: inline-flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	justify-content: flex-end;
+	gap: 0.15em 0.35em;
+	max-width: 100%;
+	min-width: 0;
+	white-space: normal;
+	cursor: pointer;
+}
+
+.rv-qf-when-date,
+.rv-qf-when-ago {
+	color: var(--text-faint);
+	font-size: 0.72em;
+	font-weight: var(--font-normal, 400);
+}
+
+.rv-qf-priority {
+	width: 7em;
+	max-width: 70%;
+	margin: 0;
+	vertical-align: middle;
+}
+
+.rv-qf-priority-num {
+	margin-left: 0.4em;
+}
+
+.rv-qf-taken-line {
+	display: inline-flex;
+	align-items: center;
+	max-width: min(46vw, 100%);
+	min-width: 0;
+}
+
+.rv-qf-taken-scroll {
+	display: inline-flex;
+	min-width: 0;
+	max-width: 100%;
+	overflow-x: auto;
+}
+
+.rv-qf-taken {
+	white-space: nowrap;
+}
+
+.rv-qf-taken.is-met {
+	padding: 0 0.28em;
+	border: 1px solid color-mix(in srgb, var(--text-accent) 55%, transparent);
+	border-radius: var(--radius-s, 4px);
+	color: inherit;
+	text-decoration: none;
+}
+
+.rv-qf-badges .rv-attempt-override svg {
+	width: calc(var(--rv-control-size, 28px) * 0.55);
+	height: calc(var(--rv-control-size, 28px) * 0.55);
+}
+
+.rv-locator-glancable .rv-locator-card-name {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+}
+
+.rv-locator-glancable .rv-locator-place {
+	align-items: center;
+	gap: 4px;
+}
+
+.rv-locator-glancable .rv-locator-status-icon,
+.rv-locator-glancable .rv-locator-place-earth {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	margin: 0;
+}
+
+.rv-locator-glancable .rv-locator-status-icon {
+	color: var(--text-normal);
+}
+
+.rv-locator-glancable .rv-locator-place-earth {
+	color: var(--text-faint);
+}
+
+.rv-locator-glancable .rv-locator-status-icon svg,
+.rv-locator-glancable .rv-locator-place-earth svg {
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+}
+
+.rv-locator-glancable .rv-locator-return-line {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	width: 100%;
+	margin-top: 2px;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.rv-locator-glancable .rv-locator-card-foot > .rv-locator-slot {
+	flex: 0 1 auto;
+}
+
+.rv-locator-glancable .rv-locator-when.is-compact {
+	flex-direction: row;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 0.65em;
+}
+
+.rv-locator-glancable .rv-locator-when > .rv-locator-slot,
+.rv-locator-glancable .rv-locator-when.is-compact > .rv-locator-slot {
+	width: auto;
+	max-width: 100%;
+	flex: 0 1 auto;
+	justify-content: flex-start;
+}
+
+.rv-locator-glancable .rv-locator-when.is-compact .rv-locator-slot-text {
+	color: var(--text-normal);
+	font-weight: 700;
+}
+
+.rv-locator-glancable .rv-locator-date {
+	flex: 0 1 auto;
+}
+
+.rv-locator-glancable .rv-locator-card,
+.rv-locator-glancable .rv-locator-place,
+.rv-locator-glancable .rv-locator-when,
+.rv-locator-glancable .rv-locator-card-foot,
+.rv-locator-glancable .rv-locator-city-lg,
+.rv-locator-glancable .rv-locator-distance-lg,
+.rv-locator-glancable .rv-locator-days,
+.rv-locator-glancable .rv-locator-date {
+	text-align: left;
+	justify-content: flex-start;
+}
+
+.rv-locator-glancable .rv-locator-card-foot .rv-locator-return-inline {
+	display: inline-flex;
+	flex: 0 0 auto;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	width: auto;
+	max-width: 100%;
+	margin: 0;
+	overflow: hidden;
+	color: var(--text-normal);
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 600;
+	line-height: 1.25;
+	white-space: nowrap;
+}
+
+.rv-locator-return-visits,
+.rv-locator-return-bucket {
+	flex: 0 0 auto;
+	font-size: inherit;
+	font-weight: 600;
+	line-height: inherit;
+}
+
+.rv-locator-return-visits {
+	color: var(--text-normal);
+	font-weight: 700;
+}
+
+.rv-locator-return-when {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	color: var(--text-muted);
+	font-size: calc(12px * 0.72 * var(--rv-font-scale, 1));
+	font-weight: 400;
+	line-height: 1.15;
+	text-overflow: ellipsis;
+}
+
+.rv-locator-return-bucket {
+	color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-locator-campaign-mark {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+	margin: 0;
+	color: var(--text-muted);
+}
+
+.rv-locator-campaign-mark svg {
+	width: calc(14px * var(--rv-font-scale, 1));
+	height: calc(14px * var(--rv-font-scale, 1));
+}
+
+.rv-locator-toolbar-actions {
+	display: flex;
+	flex: 0 0 auto;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	margin: 0;
+}
+
+.rv-locator-toolbar-actions .rv-locator-new-rv {
+	margin-left: 0;
+}
+
+.rv-locator-toolbar-quiet {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 28px;
+	height: 28px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-locator-toolbar-quiet svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-older-visits {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	cursor: pointer;
+}
+
+.rv-older-visits .collapse-indicator {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	margin: 0;
+	padding: 0;
+	border: 0;
+	background: none;
+	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+	position: static;
+	top: auto;
+	opacity: 1 !important;
+	visibility: visible;
+	transform: none;
+}
+
+.markdown-preview-view h3.rv-older-visits > .collapse-indicator,
+.markdown-rendered h3.rv-older-visits > .collapse-indicator,
+h3.rv-older-visits > .collapse-indicator,
+h3.rv-older-visits > .collapse-indicator > svg {
+	opacity: 1 !important;
+	visibility: visible;
+}
+
+.rv-older-visits .collapse-indicator svg {
+	display: block;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	fill: none;
+	stroke: currentColor;
+	opacity: 1 !important;
+	visibility: visible;
+}
+
+.rv-older-visits.is-open .collapse-indicator {
+	transform: rotate(90deg);
+}
+
+h3.rv-visit-notes-heading {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	cursor: pointer;
+}
+
+h3.rv-visit-notes-heading > .collapse-indicator,
+h3.rv-visit-notes-heading > .collapse-indicator > svg {
+	display: inline-flex;
+	flex: 0 0 auto;
+	opacity: 1 !important;
+	visibility: visible;
+	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+}
+
+h3.rv-visit-notes-heading > .collapse-indicator > svg {
+	display: block;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	fill: none;
+	stroke: currentColor;
+	transform: none !important;
+}
+
+/* Same chevron-right as Older Visits: down while open, right while collapsed.
+   Obsidian puts is-collapsed on the heading wrapper, not the h3.
+   The indicator stays in the flex row so the 0.35em gap matches Older Visits. */
+h3.rv-visit-notes-heading > .collapse-indicator {
+	position: static !important;
+	top: auto !important;
+	inset: auto !important;
+	width: var(--icon-size, 16px);
+	height: var(--icon-size, 16px);
+	margin: 0 !important;
+	transform: rotate(90deg) !important;
+}
+
+.is-collapsed > h3.rv-visit-notes-heading > .collapse-indicator,
+h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
+	transform: none !important;
+}
+
+/*
+  Collapsed visit sections hide their Meta Bind textAreas. display:none on the
+  same paragraph loses to the center-notes rule, and a late Meta Bind mount
+  clears the inline fold style. !important keeps the field hidden in Reading
+  view and Live Preview until the section is expanded. The note file is not rewritten.
+*/
+.rv-dashboard .rv-older-hidden,
+.rv-dashboard .rv-visit-folded,
+.rv-older-hidden,
+.rv-visit-folded,
+.rv-dashboard :is(.el-h3, .el-h5).is-collapsed + :is(.el-p, .el-div, p):has(textarea, .mb-input),
+.rv-dashboard .cm-line:has(.cm-foldPlaceholder) + .cm-line:has(textarea, .mb-input),
+.cm-line.rv-older-hidden,
+.cm-line.rv-visit-folded,
+.cm-line.rv-older-hidden :is(textarea, .mb-input, .cm-widget),
+.cm-line.rv-visit-folded :is(textarea, .mb-input, .cm-widget),
+.rv-older-hidden :is(textarea, .mb-input),
+.rv-visit-folded :is(textarea, .mb-input),
+body.rv-center-visit-notes .rv-dashboard .rv-older-hidden:is(p, .el-p):has(textarea),
+body.rv-center-visit-notes .rv-dashboard .rv-visit-folded:is(p, .el-p):has(textarea) {
+	display: none !important;
+}
+
+.rv-notes-fold-stop,
+.rv-notes-fold-stop > h3 {
+	height: 0;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong) {
+	display: grid;
+	align-items: center;
+	column-gap: var(--rv-hub-gap, 0.22em);
+	grid-template-columns: max-content minmax(0, 1fr);
+	justify-items: start;
+	text-align: start;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned :is(input[type="text"], input:not([type])) {
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+.rv-qf-label,
+.rv-qf-value {
+	min-width: 0;
+	max-width: 100%;
+}
+
+:is(h3, h5).rv-visit-stamp,
+.markdown-rendered :is(h3, h5).rv-visit-stamp {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: baseline;
+	gap: 0.35em;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+.rv-stamp-lead {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-visit-extra {
+	flex: 0 1 auto;
+	min-width: 0;
+	max-width: 46%;
+	overflow: hidden;
+	color: inherit;
+	font-size: 1em;
+	font-weight: inherit;
+	letter-spacing: inherit;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	vertical-align: baseline;
+}
+
+.rv-modal-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	margin-right: 0.35em;
+	color: var(--text-muted);
+	vertical-align: -0.15em;
+}
+
+.rv-modal-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-suggest-host {
+	position: relative;
+}
+
+.rv-suggest-chevron {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	min-width: 40px;
+	min-height: 40px;
+	margin-left: 0;
+	padding: 0;
+	border: 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-suggest-host input::-webkit-calendar-picker-indicator,
+.rv-suggest-host input::-webkit-list-button,
+.rv-locator-modal :is(input[type="date"], input[type="time"], input[type="datetime-local"])::-webkit-calendar-picker-indicator,
+.rv-locator-modal :is(input[type="date"], input[type="time"], input[type="datetime-local"])::-webkit-clear-button {
+	display: none !important;
+	-webkit-appearance: none;
+	appearance: none;
+	opacity: 0;
+	width: 0;
+	margin: 0;
+	padding: 0;
+	pointer-events: none;
+}
+
+.rv-suggest-chevron svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-suggest-panel {
+	position: absolute;
+	z-index: 40;
+	top: calc(100% + 2px);
+	right: 0;
+	left: 0;
+	box-sizing: border-box;
+	max-height: calc(5 * 44px);
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+}
+
+.rv-suggest-panel.is-above {
+	top: auto;
+	bottom: calc(100% + 2px);
+}
+
+.rv-suggest-option {
+	display: block;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 40px;
+	padding: 0.45em 0.6em;
+	border: 0;
+	background: transparent;
+	color: var(--text-normal);
+	line-height: 1.3;
+	text-align: left;
+	white-space: normal;
+	overflow-wrap: break-word;
+	cursor: pointer;
+}
+
+.rv-suggest-option:not(.rv-title-option) {
+	display: -webkit-box;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+}
+
+.rv-suggest-option:hover {
+	background: var(--background-modifier-hover);
+}
+
+.rv-map {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.rv-map-bar {
+	position: absolute;
+	z-index: 6;
+	top: 8px;
+	right: 8px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	padding: 0;
+	margin: 0;
+	pointer-events: none;
+}
+
+.rv-map-bar button {
+	pointer-events: auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 40px;
+	height: 40px;
+	margin: 0;
+	padding: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 75%, transparent);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--background-primary) 72%, transparent);
+	color: var(--text-normal);
+	font-size: 16px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.rv-map-bar button svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-map-stage {
+	position: relative;
+	flex: 1 1 auto;
+	min-height: 16rem;
+	overflow: hidden;
+	background: var(--background-secondary);
+	cursor: grab;
+}
+
+.rv-map-stage.is-grabbing {
+	cursor: grabbing;
+}
+
+.theme-dark .rv-map-tile {
+	filter: invert(1) hue-rotate(180deg) saturate(0.65) brightness(0.95);
+}
+
+.rv-map-tile {
+	position: absolute;
+	width: 256px;
+	height: 256px;
+	pointer-events: none;
+	user-select: none;
+}
+
+.rv-map-pins {
+	position: absolute;
+	inset: 0;
+}
+
+/* Ancestor + button beats Obsidian's `button:not(.clickable-icon)` on fill and glyph color. */
+.rv-map .rv-map-pins > button.rv-map-pin {
+	--rv-control-size: 30px;
+	position: absolute;
+	z-index: 1;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 48px;
+	height: 48px;
+	margin: 0;
+	padding: 0;
+	border: 1.25px solid var(--pin-color, var(--interactive-accent));
+	border-radius: 999px;
+	/* Same paint as the badge: 13% accent over transparent, layered on the card color. */
+	background-color: var(--background-secondary);
+	background: linear-gradient(color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent), color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent)), var(--background-secondary);
+	opacity: 1;
+	color: var(--pin-color, var(--interactive-accent));
+	font-size: 17px;
+	font-weight: 700;
+	line-height: 1;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+	transform: translate(-50%, -50%);
+	cursor: pointer;
+}
+
+/* 21px is 15% over the original 18px glyph. !important beats app `svg { width: 1em }`. */
+.rv-map .rv-map-pins > button.rv-map-pin svg {
+	width: 21px !important;
+	height: 21px !important;
+	min-width: 21px !important;
+	min-height: 21px !important;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph {
+	color: var(--pin-color, var(--interactive-accent));
+	fill: currentColor;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph :is(rect, circle):not(.is-ring) {
+	fill: currentColor;
+	stroke: none;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph circle.is-ring {
+	fill: none;
+	stroke: currentColor;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin.is-fresh {
+	width: 48px;
+	height: 48px;
+	font-size: 17px;
+	filter: none;
+	opacity: 1;
+	background-color: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
+	background: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
+	border: 2.5px dotted var(--pin-color, currentColor);
+	color: var(--pin-color, currentColor);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin.is-selected {
+	z-index: 3;
+	box-shadow: 0 0 0 3px var(--background-primary), 0 0 0 6px var(--interactive-accent);
+}
+
+.rv-map .rv-map-pins > button.rv-map-cluster {
+	position: absolute;
+	z-index: 2;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 53px;
+	height: 53px;
+	border: 1.25px solid var(--pin-color, var(--interactive-accent));
+	border-radius: 999px;
+	background-color: var(--background-secondary);
+	background: linear-gradient(color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent), color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent)), var(--background-secondary);
+	opacity: 1;
+	font-size: 17px;
+	color: var(--pin-color, var(--interactive-accent));
+	font-weight: 700;
+	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+	transform: translate(-50%, -50%);
+	cursor: pointer;
+}
+
+.rv-map .rv-map-pins > button.rv-map-cluster.is-fresh {
+	opacity: 1;
+	background-color: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
+	background: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
+	border: 2.5px dotted var(--pin-color, currentColor);
+	color: var(--pin-color, currentColor);
+	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+}
+
+.rv-map-user {
+	position: absolute;
+	width: 14px;
+	height: 14px;
+	border: 2px solid var(--background-primary);
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+.rv-map-card {
+	position: absolute;
+	z-index: 4;
+	width: min(20rem, calc(100vw - 24px));
+	text-align: start;
+}
+
+.rv-map-card.rv-locator-glancable {
+	--rv-control-size: 38px;
+	height: auto;
+	overflow: visible;
+	background: transparent;
+}
+
+/* Popup badges stay ~38px even if an app rule sizes svg as 1em. Hub badges stay on the 28px control. */
+.rv-map-card .rv-locator-urgency,
+.rv-map-card .rv-locator-priority-pill,
+.rv-map-card .rv-locator-map-pin {
+	width: 38px !important;
+	height: 38px !important;
+}
+
+.rv-map-card .rv-locator-urgency .rv-urgency-glyph {
+	width: calc(38px * 0.7) !important;
+	height: calc(38px * 0.7) !important;
+}
+
+.rv-map-card .rv-locator-map-pin svg {
+	width: 100% !important;
+	height: 100% !important;
+}
+
+.rv-map-card .rv-locator-card {
+	width: 100%;
+	cursor: pointer;
+	box-shadow: var(--shadow-s), inset 4px 0 0 var(--rv-urgency-accent, var(--background-modifier-border));
+}
+
+.rv-map-card-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.4em;
+}
+
+.rv-map-fact {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+	min-width: 0;
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+.rv-map-fact-icon,
+.rv-map-action {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	height: 16px;
+}
+
+.rv-map-action {
+	width: 1.7em;
+	height: 1.7em;
+	padding: 0;
+	border: 0;
+	border-radius: 999px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	cursor: pointer;
+}
+
+.rv-map-fact-icon svg,
+.rv-map-card button.rv-map-action,
+.rv-map-card button.rv-map-action svg {
+	width: 16px !important;
+	height: 16px !important;
+	min-width: 16px;
+	min-height: 16px;
+}
+
+.rv-map-fact-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-map-section {
+	margin-top: 0.2em;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+}
+
+.rv-map-card-badges {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+}
+
+.rv-map-badge {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.6em;
+	height: 1.6em;
+	padding: 0 0.3em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+}
+
+.rv-map-badge:not(button) svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-map-open {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+}
+
+.rv-map-credit,
+.rv-map-scale {
+	position: absolute;
+	z-index: 5;
+	bottom: 0;
+	margin: 0;
+	padding: 0 4px;
+	background: color-mix(in srgb, var(--background-primary) 62%, transparent);
+	color: var(--text-normal);
+	font-size: 10px;
+	line-height: 14px;
+	text-shadow: 0 0 2px var(--background-primary);
+	pointer-events: auto;
+}
+
+.rv-map-credit {
+	right: 0;
+	bottom: 0;
+	left: auto;
+	max-width: calc(100% - 72px);
+	text-align: right;
+}
+
+.rv-map-scale {
+	left: 0;
+	right: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 4px 0 2px;
+}
+
+.rv-map-scale-bar {
+	display: block;
+	height: 4px;
+	margin: 0;
+	border: 1px solid var(--text-normal);
+	border-top: 0;
+}
+
+.theme-dark .rv-map-credit,
+.theme-dark .rv-map-scale {
+	background: color-mix(in srgb, var(--background-primary) 70%, transparent);
+	color: var(--text-normal);
+}
+
+.rv-map-credit a {
+	color: inherit;
+	pointer-events: auto;
+}
+
+.rv-label-icon {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 0.3em;
+	color: var(--text-muted);
+	vertical-align: -0.15em;
+}
+
+.rv-label-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-hub-owned,
+.rv-hub-line,
+.rv-hub-chip-label,
+.rv-address-input,
+.rv-address-link {
+	text-align: start;
+}
+
+a.rv-address-link {
+	color: var(--link-color, var(--interactive-accent));
+	text-decoration: underline;
+	cursor: pointer;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	box-sizing: border-box;
+	grid-column: 1;
+	width: max-content;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
+	display: block;
+	grid-column: 2;
+	justify-self: stretch;
+	align-self: center;
+	box-sizing: border-box;
+	width: auto;
+	max-width: 100%;
+	min-width: 0;
+	margin: 0;
+	overflow: hidden;
+	text-align: start;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+	color: var(--link-color, var(--interactive-accent));
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input {
+	grid-column: 2;
+	justify-self: stretch;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
+a.rv-address-link.is-empty {
+	color: var(--text-faint);
+}
+
+.rv-address-input {
+	text-align: start;
+	color: var(--link-color, var(--interactive-accent));
+}
+
+.rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+.markdown-preview-view .rv-dashboard :is(h3, h5) .rv-stamp-ago,
+.markdown-rendered .rv-dashboard :is(h3, h5) .rv-stamp-ago,
+.rv-dashboard .rv-stamp-ago {
+	margin-left: auto;
+	flex: 0 0 auto;
+	color: var(--rv-urgency-ink, #fff);
+	background: var(--rv-urgency-accent, transparent);
+	border-radius: 999px;
+	padding: 0.05em 0.45em;
+	font-size: 0.72em;
+	font-weight: 700;
+}
+
+.rv-qf-when-ago,
+.rv-locator-days {
+	color: var(--rv-urgency-ink, var(--text-normal));
+	background: var(--rv-urgency-accent, transparent);
+	border-radius: 999px;
+	padding: 0 0.35em;
+}
+
+.rv-dashboard .rv-visit-line {
+	position: relative;
+	box-shadow: none;
+	list-style-position: outside;
+	margin-left: 0.85em;
+	padding-left: 0.45em;
+}
+
+.rv-dashboard .rv-visit-line::before {
+	content: '';
+	position: absolute;
+	left: -0.95em;
+	top: 0.2em;
+	bottom: 0.2em;
+	width: 3px;
+	border-radius: 2px;
+	background: var(--rv-urgency-accent, transparent);
+	pointer-events: none;
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions {
+	--callout-color: var(--rv-urgency-accent);
+	background-color: color-mix(in srgb, var(--rv-urgency-accent, transparent) 14%, var(--background-primary));
+	border-color: color-mix(in srgb, var(--rv-urgency-accent, transparent) 48%, var(--background-modifier-border));
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-title,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-title .callout-title-inner {
+	color: var(--rv-urgency-accent, var(--text-normal));
+	background-color: transparent;
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) {
+	background-color: color-mix(in srgb, var(--rv-urgency-accent, transparent) 14%, var(--background-primary));
+}
+
+.rv-locator-modal .rv-study-block .setting-item,
+.rv-study-block .setting-item,
+.rv-study-block .rv-lesson-range > .setting-item {
+	border-top: none !important;
+	padding-top: 0.35em;
+}
+
+.rv-study-heading {
+	margin: 0.6em 0 0.2em;
+	font-size: var(--font-ui-medium);
+}
+
+.rv-study-toggle {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	width: 100%;
+	min-height: 40px;
+	margin: 0.35em 0;
+	padding: 0 0.75em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 6px);
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font: inherit;
+	text-align: start;
+	cursor: pointer;
+}
+
+.rv-study-toggle::before {
+	content: '';
+	flex: 0 0 auto;
+	width: 0.45em;
+	height: 0.45em;
+	margin-right: 0.6em;
+	border-right: 2px solid currentColor;
+	border-bottom: 2px solid currentColor;
+	transform: rotate(-45deg);
+}
+
+.rv-study-toggle[aria-expanded='true']::before {
+	transform: rotate(45deg);
+}
+
+.rv-study-optional-body[hidden] {
+	display: none !important;
+}
+
+.inline-title .rv-note-status {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 0.35em;
+	color: var(--text-muted);
+	vertical-align: -0.12em;
+}
+
+.inline-title .rv-note-status svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-study-extra-select {
+	margin: 0.4em 0;
+}
+
+.rv-suggest-option.rv-title-option {
+	display: flex;
+	align-items: baseline;
+	gap: 0.45em;
+	width: 100%;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.rv-title-text {
+	display: -webkit-box;
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	white-space: normal;
+	overflow-wrap: break-word;
+	text-align: start;
+}
+
+.rv-title-suffix {
+	flex: 0 0 auto;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.rv-qf-section {
+	margin-top: 0.45em;
+}
+
+.rv-qf-section-title {
+	margin: 0.2em 0;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	font-weight: 700;
+	text-align: start;
+}
+
+/*
+  Visit buttons, Quick Facts, stamps, and suggestions stay hidden until the
+  leaf has the note's urgency vars. Otherwise the first frame uses the theme accent.
+*/
+.workspace-leaf-content:not(.is-urgency-ready) :is(
+	.mb-button.rv-visit-btn,
+	.rv-qf-badges,
+	.rv-stamp-ago,
+	.rv-hub-chip,
+	.rv-qf-when-ago,
+	.rv-locator-return-suggestions
+),
+.workspace-leaf-content:not(.is-urgency-ready) .rv-visit-line::before {
+	opacity: 0;
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner,
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner svg {
+	color: #fff;
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner svg {
+	stroke: #fff;
+}
+
+/*
+  Same hue as the live urgency accent. The leftmost step keeps that
+  lightness unless the accent is washed out (ceiling 0.80) or near-black
+  (floor 0.46). Later steps move down, and the darkest stays at or above 0.34
+  so a white icon still reads. Chroma stays in a sane band so yellow does
+  not collapse into brown. Outside the note the accent steps still apply.
+*/
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
+	--rv-visit-btn-bg: var(--rv-urgency-accent, var(--interactive-accent));
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 88%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.42, calc(l - 0.06), 0.74) clamp(0.05, c, 0.16) h);
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 76%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.38, calc(l - 0.12), 0.68) clamp(0.05, c, 0.16) h);
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 64%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.36, calc(l - 0.18), 0.62) clamp(0.05, c, 0.16) h);
+}
+
+.rv-dashboard .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(5) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in srgb, var(--rv-urgency-accent, var(--interactive-accent)) 52%, black);
+	--rv-visit-btn-bg: oklch(from var(--rv-urgency-accent, var(--interactive-accent)) clamp(0.34, calc(l - 0.24), 0.56) clamp(0.05, c, 0.16) h);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content a.internal-link.rv-hub-chip:hover,
+.markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip:hover,
+.markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip:hover {
+	color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
+	justify-self: stretch;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
+	padding: 0.12em 0.45em;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--radius-s, 4px);
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	color: var(--rv-urgency-accent, var(--text-accent));
+	text-decoration: underline;
+	text-underline-offset: 0.12em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-stamp-kind {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	margin-right: 0.2em;
+	color: var(--rv-urgency-accent, var(--text-muted));
+}
+
+.rv-stamp-kind svg {
+	width: 0.95em;
+	height: 0.95em;
+}
+
+.rv-visit-extra {
+	display: inline-flex;
+	align-items: baseline;
+	gap: 0.15em;
+	max-width: 14em;
+	color: var(--text-muted);
+}
+
+.rv-stamp-title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-qf-value.is-collapsible {
+	cursor: pointer;
+}
+
+.rv-qf-clamp {
+	display: -webkit-box;
+	-webkit-box-orient: vertical;
+	-webkit-line-clamp: 2;
+	overflow: hidden;
+	white-space: normal;
+}
+
+.rv-qf-value.is-expanded .rv-qf-clamp {
+	display: block;
+	-webkit-line-clamp: unset;
+	overflow: visible;
+}
+
+.rv-qf-companion .rv-qf-icon,
+.rv-qf-companion .rv-qf-label {
+	cursor: pointer;
+}
+
+.rv-locator-slot.is-dated {
+	cursor: pointer;
+}
+
+.rv-day-flash {
+	animation: rv-day-flash 1.4s ease;
+	border-radius: 4px;
+}
+
+@keyframes rv-day-flash {
+	0% { background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-accent)) 42%, transparent); }
+	100% { background: transparent; }
+}
+
+.rv-gender-choice .setting-item-control button {
+	min-width: 3.2rem;
+	min-height: 2.6rem;
+	padding: 0.35rem 0.85rem;
+	font-size: 1.35rem;
+	line-height: 1;
+}
+
+.rv-suggest-option.is-highlighted {
+	background: var(--background-modifier-hover);
+}
+
+.rv-dashboard .callout-content textarea {
+	width: 100%;
+	min-width: 100%;
+	max-width: 100%;
+	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
+}
+
+.rv-locator-search {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.rv-locator-search-input {
+	flex: 1 1 auto;
+	box-sizing: border-box;
+	width: 100%;
+	min-width: 0;
+	min-height: 40px;
+	margin: 0;
+	padding: 4px 10px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 999px;
+	background: var(--background-primary);
+	color: var(--text-normal);
+	font: inherit;
+	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
+	outline: none;
+	transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.rv-stamp-date,
+.rv-stamp-ago {
+	cursor: pointer;
+}
+
+.rv-card-flash,
+.rv-map .rv-map-pins > button.rv-map-pin.rv-pin-flash {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.rv-suggest-pending {
+	padding: 0.35em 0.6em;
+	color: var(--text-muted);
+	letter-spacing: 0.2em;
+	animation: rv-ellipsis 0.9s ease-in-out infinite;
+}
+
+@keyframes rv-ellipsis {
+	0%, 100% { opacity: 0.25; }
+	50% { opacity: 1; }
+}
+
+.rv-share-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.3em;
+	margin: 0.25em 0 0.6em;
+}
+
+.rv-share-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25em;
+	padding: 0.1em 0.45em;
+	border-radius: 999px;
+	background: var(--background-modifier-hover);
+	font-size: var(--font-ui-smaller);
+}
+
+.rv-share-chip-x {
+	border: none;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.rv-locator-companion-modal .setting-item {
+	border: none;
+}
+
+.rv-locator-glancable .rv-locator-stage {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: row;
+	min-width: 0;
+	min-height: 0;
+}
+
+.rv-locator-glancable.is-stacked .rv-locator-stage {
+	flex-direction: column;
+}
+
+.rv-locator-glancable.is-stacked .rv-locator-banner {
+	order: 0;
+}
+
+.rv-locator-glancable.is-stacked .rv-locator-stage {
+	order: 1;
+}
+
+.rv-locator-glancable.is-stacked .rv-locator-stage {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.rv-locator-glancable.is-stacked .rv-locator-sortbar {
+	order: 2;
+	position: relative;
+	bottom: auto;
+	z-index: 6;
+	flex: 0 0 auto;
+	margin: 0;
+	border-top: 0;
+	border-bottom: 0;
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+	background: var(--background-primary);
+}
+
+.rv-hub-map,
+.rv-hub-map-handle {
+	display: none;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map,
+.rv-locator-view.is-hub-map.is-stacked .rv-hub-map,
+.rv-locator-view.is-map-fullscreen .rv-hub-map {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	overflow: hidden;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map {
+	flex: 0 0 var(--rv-map-size, 42%);
+	align-self: stretch;
+	min-width: 160px;
+	min-height: 70vh;
+	height: auto;
+}
+
+.rv-locator-view.is-side-map .rv-locator-stage {
+	align-items: stretch;
+	min-height: 70vh;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map .rv-map,
+.rv-locator-view.is-side-map .rv-hub-map .rv-map-stage {
+	flex: 1 1 auto;
+	min-height: 70vh;
+	height: auto;
+}
+
+.rv-locator-view.is-hub-map.is-stacked .rv-hub-map {
+	flex: 0 0 var(--rv-map-size, 42%);
+	min-height: 120px;
+}
+
+.rv-hub-map .rv-map,
+.rv-hub-map .rv-map-stage {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map-handle {
+	display: block;
+	flex: 0 0 10px;
+	cursor: ew-resize;
+	background: linear-gradient(var(--background-modifier-border), var(--background-modifier-border)) center / 3px 2.5rem no-repeat;
+}
+
+.rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle {
+	position: relative;
+	z-index: 8;
+	display: block;
+	flex: 0 0 14px;
+	height: 14px;
+	margin: 0;
+	padding: 0;
+	overflow: visible;
+	cursor: ns-resize;
+	background: linear-gradient(var(--background-modifier-border), var(--background-modifier-border)) center / 2.5rem 3px no-repeat;
+}
+
+/* Finger target around the 14px strip. It overlaps the list bottom and the map top only.
+   The right 56px stays clear so the control column keeps its taps. */
+.rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle::before {
+	content: '';
+	position: absolute;
+	left: 0;
+	right: 56px;
+	top: 50%;
+	height: 40px;
+	transform: translateY(-50%);
+	background: transparent;
+}
+
+.rv-locator-view.is-hub-map.is-stacked .rv-map-bar {
+	top: 8px;
+	z-index: 9;
+}
+
+:is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base) .rv-locator-glancable,
+.wide-base-page .rv-locator-glancable {
+	width: 100%;
+	max-width: none;
+	min-height: 0;
+	height: auto;
+	flex: 1 1 auto;
+	margin: 0;
+}
+
+/* Ancestors of the hub, marked in the view, so the bar sits on the frame bottom. */
+.rv-hub-fill {
+	display: flex !important;
+	flex-direction: column !important;
+	flex: 1 1 auto;
+	box-sizing: border-box;
+	min-height: 0;
+	margin-bottom: 0 !important;
+	padding-bottom: 0 !important;
+}
+
+.workspace-leaf-content.rv-hub-fill {
+	height: 100%;
+	overflow: hidden;
+}
+
+:is(.bases-embed, .block-language-base, .internal-embed, .markdown-embed).rv-hub-fill {
+	width: 100%;
+	min-height: 70vh;
+	margin: 0 !important;
+}
+
+/* Phone embed: one screen, same split as the standalone hub. The list scrolls inside. */
+:is(.bases-embed, .block-language-base, .internal-embed, .markdown-embed).rv-hub-fill.is-embed-capped {
+	min-height: 0;
+	height: var(--rv-embed-cap, calc(100dvh - var(--header-height, 0px) - var(--safe-area-inset-bottom, 0px) - 48px));
+	max-height: var(--rv-embed-cap, calc(100dvh - var(--header-height, 0px) - var(--safe-area-inset-bottom, 0px) - 48px));
+	overflow: hidden;
+}
+
+:is(.bases-embed, .block-language-base, .internal-embed, .markdown-embed).rv-hub-fill.is-embed-capped > .rv-locator-glancable {
+	height: 100%;
+	max-height: 100%;
+	min-height: 0;
+}
+
+.rv-hub-fill > .rv-locator-glancable {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: auto;
+	margin-bottom: 0;
+}
+
+.wide-base-page :is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base) {
+	width: 100%;
+	max-width: none;
+}
+
+.rv-locator-list-disclaimer {
+	margin: 10px 4px 14px;
+	color: var(--text-muted);
+	font-size: var(--font-ui-smaller);
+	line-height: 1.35;
+}
+
+.rv-locator-view.is-map-fullscreen .rv-locator-scroll,
+.rv-locator-view.is-map-fullscreen .rv-locator-sortbar,
+.rv-locator-view.is-map-fullscreen .rv-locator-search-slot,
+.rv-locator-view.is-map-fullscreen .rv-hub-map-handle,
+.rv-locator-view.is-map-fullscreen .rv-locator-banner,
+.rv-locator-view.is-map-fullscreen .rv-locator-attr {
+	display: none;
+}
+
+.rv-locator-view.is-map-fullscreen .rv-locator-stage,
+.rv-locator-view.is-map-fullscreen .rv-hub-map,
+.rv-locator-view.is-map-fullscreen .rv-hub-map .rv-map,
+.rv-locator-view.is-map-fullscreen .rv-hub-map .rv-map-stage {
+	display: flex;
+	flex: 1 1 auto;
+	flex-direction: column;
+	width: 100%;
+	height: 100%;
+	min-width: 0;
+	min-height: 0;
+}
+
+.rv-locator-view.is-map-fullscreen .rv-map-bar {
+	top: 8px;
+}
+
+.rv-map.is-fullscreen {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+	background: var(--background-primary);
+}
+
+.rv-map.is-fullscreen .rv-map-stage {
+	width: 100%;
+	height: 100%;
+	min-height: 0;
+}
+
+.rv-pin-mark {
+	font-size: 17px;
+	line-height: 1;
 }

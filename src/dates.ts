@@ -1,3 +1,5 @@
+import { stripShareMarkup } from './visit-share';
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
@@ -59,6 +61,15 @@ export function isWeekdayProperty(propertyName: string, displayName: string, con
  * Accepts `2026-09-09`, `2026-09-09T13:38:03`, `2026-09-20T10:44`, `2026-09-18 16:45`, and `2026-03-28 11:20`.
  * `Met` uses the same shapes as `Last Spoke`. It is never a boolean.
  */
+/** Calendar day from {@link parseFlexibleDate}, plus the clock when the text has one. */
+export function parseDriveInstant(raw: string): Date | null {
+	const date = parseFlexibleDate(raw);
+	if (!date) return null;
+	const clock = parseClock(raw);
+	if (!clock) return date;
+	return new Date(date.getFullYear(), date.getMonth(), date.getDate(), clock.hour, clock.minute, 0, 0);
+}
+
 export function parseFlexibleDate(input: string): Date | null {
 	const text = input.trim();
 	if (!text) return null;
@@ -81,7 +92,21 @@ const VISIT_STAMP_DATE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/;
 
 /** Drop a plugin-written age suffix so the visit stamp can be parsed again. */
 export function stripStampAge(text: string): string {
-	return text.replace(STAMP_AGE_SUFFIX, '').trim();
+	return stripShareMarkup(text)
+		.replace(STAMP_AGE_SUFFIX, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+const STAMP_AGE_WORDS = /\s+(?:Today|\d+ days? ago)\s*$/i;
+
+/** Stamp heading text with the rendered age (`Today`, `3 days ago`) removed. */
+export function visibleStampText(text: string): string {
+	let next = stripShareMarkup(text).replace(/\s+/g, ' ').trim();
+	for (let pass = 0; pass < 3 && STAMP_AGE_WORDS.test(next); pass += 1) {
+		next = next.replace(STAMP_AGE_WORDS, '').trim();
+	}
+	return next;
 }
 
 /**
@@ -105,6 +130,26 @@ export function formatDaysAgo(days: number): string {
 	if (whole === 0) return 'Today';
 	if (whole === 1) return '1 day ago';
 	return `${whole} days ago`;
+}
+
+/**
+ * Glanceable day counter. Days through 20, weeks for 3–9 weeks,
+ * months from 64 days through 365, then years.
+ */
+export function formatGlanceableCounter(days: number): string {
+	const whole = Math.max(0, Math.floor(days));
+	if (whole === 0) return 'Today';
+	if (whole <= 20) return whole === 1 ? '1 day' : `${whole} days`;
+	if (whole < 64) {
+		const weeks = Math.min(9, Math.max(3, Math.round(whole / 7)));
+		return weeks === 1 ? '1 week' : `${weeks} weeks`;
+	}
+	if (whole <= 365) {
+		const months = Math.max(2, Math.round(whole / 30.44));
+		return months === 1 ? '1 month' : `${months} months`;
+	}
+	const years = Math.max(1, Math.round(whole / 365.25));
+	return years === 1 ? '1 year' : `${years} years`;
 }
 
 const STAMP_DATE_ANYWHERE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/;

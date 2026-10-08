@@ -1,6 +1,8 @@
-import { MarkdownView, Menu, Notice, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type IconName, type WorkspaceLeaf } from 'obsidian';
-import type { NearbyScope } from './active-layout';
-import { refreshBodyMapLink } from './address';
+import type { EditorView } from '@codemirror/view';
+import { MarkdownView, Menu, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
+import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { addressesMatchOneForOne, buildAutocompleteUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
@@ -10,31 +12,48 @@ import {
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
-import { decideGeocodePick } from './home-base';
-import { companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
+import { decideGeocodePick, preferHomeRegion } from './home-base';
+import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, nextVisitNotesProperty, refreshHomeStampAges, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
-import { ConfirmActionModal, VisitEditModal, VisitPickModal } from './visit-modals';
+import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
+import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, studyPrefill, type VisitShare } from './catalog';
+import type { ShareFieldOptions } from './catalog-fields';
+import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
-import { decorateNoteChrome, type NoteChromeHost } from './note-chrome';
+import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
+import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
+import { askCampaignCovered, CampaignModal } from './campaign-modal';
+import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
-import { MapSoonView, MAP_SOON_VIEW_TYPE } from './map-soon-view';
+import { SlotOverrideModal } from './override-modal';
+import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
+import { concealCollapsedVisitNotes, layoutVisitNotes } from './visit-display';
+import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
+import { pagePreviewDecision } from './page-preview';
+import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
+import type { MapPin } from './map-pins';
+import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './map-pins';
+import { shadeHeats } from './map-shade';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
-import { applyStatusPriority, resolveStatus, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type GenderFilter, type ReturnScope, type RvStatus } from './status';
+import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { stripStampAge } from './dates';
+import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
-import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, type BulkGeocodeChoice } from './modals';
+import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { readAttemptLog, suggestReturnDigest, type AttemptBuckets } from './schedule';
+import { currentReturnBucket, daypartAt, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
+import { latLonFromUnknown, validLatLon } from './distance';
+import { idealityScore } from './scoring';
+import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
@@ -72,6 +91,12 @@ const NOTES_FIT_DELAYS_MS = [0, 250, 1_000, 2_500] as const;
 /** How long to look for a new visit's notes box after the note re-renders. */
 const FOCUS_ATTEMPTS = 40;
 const FOCUS_STEP_MS = 100;
+/**
+ * The note's Home button is still dispatching its click when Templater asks
+ * for a companion. Opening in that turn lets the click land on the suggester
+ * and dismiss it, so the visit logs with nobody chosen.
+ */
+const COMPANION_PROMPT_DELAY_MS = 40;
 
 const NEARBY_LAYOUTS: readonly NearbyLayout[] = [
 	{ id: GLANCABLE_VIEW_TYPE, name: 'Return Visits', icon: 'smartphone', mode: 'glancable', scope: 'all' },
@@ -101,6 +126,20 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last file each leaf was switched for, so a later switch to editing is kept. */
 	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
 	private newRvDraft: NewRvIdentity | null = null;
+	/** Picked Geoapify hit whose formatted address was submitted unchanged. */
+	private verifiedNewRvHit: GeocodeHit | null = null;
+	/** Set while Add a housemate is creating a note. The template skips geocode. */
+	housemateSourcePath: string | null = null;
+	private homeBiasKey = '';
+	private homeBiasPoint: GeocodeBias | null = null;
+	/** Hub lists written before the metadata cache catches up, so the chip row updates immediately. */
+	private hubOverride = new Map<string, unknown>();
+	/** Address typed into the custom box before the cache catches up. */
+	private addressOverride = new Map<string, string>();
+	/** One campaign at a time. Null when none is saved. */
+	campaign: CampaignRecord | null = null;
+	/** Coverage answers collected beside the companion prompt, keyed by note path. */
+	private coverageDecisions = new Map<string, CoverageDecision>();
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
@@ -180,6 +219,16 @@ export default class RVLocatorPlugin extends Plugin {
 			},
 		});
 
+		this.addCommand({
+			id: 'add-housemate',
+			name: 'Add a housemate',
+			checkCallback: (checking) => {
+				const file = this.activeMarkdownFile();
+				if (file && !checking) void this.addHousemate(file);
+				return file != null;
+			},
+		});
+
 		const registered = NEARBY_LAYOUTS.map((layout) => this.registerBasesView(layout.id, {
 			name: layout.name,
 			icon: layout.icon,
@@ -190,23 +239,32 @@ export default class RVLocatorPlugin extends Plugin {
 		if (registered.some((ok) => !ok)) {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
-		this.registerView(MAP_SOON_VIEW_TYPE, (leaf) => new MapSoonView(leaf));
+		this.registerView(MAP_VIEW_TYPE, (leaf) => new RvMapView(leaf, this));
+		this.registerEditorExtension(visitPreviewExtension(() => ({
+			collapseOlder: this.settings.collapseOlderVisits,
+			limit: this.settings.visibleVisitCount,
+		})));
 
 		this.registerMarkdownPostProcessor((element, context) => {
+			const path = context.sourcePath;
+			applyLiveUrgency(element, path, this.noteChromeHost());
 			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
 			decorateAttemptLog(element, hasCallout ? this.suggestionCalloutType() : undefined);
 			refreshStampAgeLabels(element);
-			this.decorateOpenNote(element, context.sourcePath);
+			this.decorateOpenNote(element, path);
 			decorateVisitControls(
 				element,
 				() => context.getSectionInfo(element)?.lineStart ?? null,
-				(target, evt) => this.openVisitMenu(context.sourcePath, target, evt),
+				(target, evt) => this.openVisitMenu(path, target, evt),
 			);
+			concealCollapsedVisitNotes(element);
+			const lastDelay = NOTES_FIT_DELAYS_MS[NOTES_FIT_DELAYS_MS.length - 1] ?? 2_500;
 			for (const delay of NOTES_FIT_DELAYS_MS) {
 				window.setTimeout(() => {
 					if (this.unloaded) return;
 					fitNotesBoxes(element);
-					this.decorateOpenNote(element, context.sourcePath);
+					applyLiveUrgency(element, path, this.noteChromeHost(), delay === lastDelay);
+					this.decorateOpenNote(element, path);
 				}, delay);
 			}
 		});
@@ -227,6 +285,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerDomEvent(document, 'mouseover', (evt) => longPress.hover(evt));
 		this.registerDomEvent(document, 'click', (evt) => longPress.swallow(evt), { capture: true });
 		this.registerDomEvent(document, 'contextmenu', (evt) => longPress.swallow(evt), { capture: true });
+		this.registerDomEvent(document, 'mouseover', (evt) => this.suppressPagePreview(evt), { capture: true });
 		this.applyLayoutClasses();
 
 		this.registerEvent(this.app.vault.on('create', (file) => {
@@ -265,20 +324,150 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-wide-quick-facts', on && this.settings.wideQuickFacts);
 		body.toggleClass('rv-wide-hubs', on && this.settings.wideHubsAddress);
 		body.toggleClass('rv-wide-visit-buttons', on && this.settings.wideVisitButtons);
+		body.toggleClass('rv-suggestions-outside-left', on && this.settings.leftAlignSuggestionBullets);
 	}
 
 	/** Map earth, archive label, Quick Facts, and the shared Hub row. Meta Bind may remount, so this runs again. */
 	private decorateOpenNote(element: HTMLElement, path: string): void {
-		decorateMapLink(element, () => { void this.openMapSoon(); });
+		decorateMapLink(element, () => { void this.openMapSoon(path); });
 		decorateArchiveButton(element, this.pathIsInactive(path));
 		decorateNoteChrome(element, path, this.noteChromeHost());
+		this.layoutOpenVisits(element, path);
+	}
+
+	/**
+	 * Page Preview stays off on the RV Dashboard and Glancable cards unless the
+	 * setting is on. On uses core's `preview` source. A custom hover source
+	 * does not open the core popover, and returning early left the hover closed.
+	 */
+	private suppressPagePreview(evt: MouseEvent): void {
+		const target = evt.target;
+		if (!(target instanceof Element)) return;
+		const link = target.closest('a.internal-link, a.rv-locator-file-link');
+		const inScope = link instanceof HTMLAnchorElement && !!link.closest('.rv-locator-glancable, .rv-dashboard');
+		const decision = pagePreviewDecision(this.settings.dashboardPagePreview, inScope);
+		if (!decision.suppress || !(link instanceof HTMLAnchorElement)) return;
+		evt.stopPropagation();
+		if (!decision.open) return;
+		const raw = link.dataset.href || link.getAttribute('href') || '';
+		const linktext = raw.replace(/\.md$/i, '').trim();
+		if (!linktext) return;
+		const found = this.previewParent(link);
+		this.app.workspace.trigger('hover-link', {
+			event: evt,
+			source: 'preview',
+			hoverParent: found.parent,
+			targetEl: link,
+			linktext,
+			sourcePath: found.sourcePath,
+		});
+	}
+
+	/** The markdown view when the link is in a note, otherwise the leaf that holds it. */
+	private previewParent(link: Element): { parent: HoverParent; sourcePath: string } {
+		const found: { leaf: WorkspaceLeaf | null; el: HTMLElement | null } = { leaf: null, el: null };
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			const el = leaf.view?.containerEl;
+			if (!el?.contains(link)) return;
+			if (found.el && !found.el.contains(el)) return;
+			found.el = el;
+			found.leaf = leaf;
+		});
+		const leaf = found.leaf;
+		if (leaf?.view instanceof MarkdownView) return { parent: leaf.view, sourcePath: leaf.view.file?.path ?? '' };
+		if (leaf) return { parent: leaf, sourcePath: '' };
+		return { parent: { hoverPopover: null }, sourcePath: '' };
+	}
+
+	private layoutOpenVisits(element: HTMLElement, path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		void this.app.vault.cachedRead(file).then((markdown) => {
+			if (this.unloaded) return;
+			layoutVisitNotes(element, markdown, {
+				newestFirst: this.settings.visitsNewestFirst,
+				collapseOlder: this.settings.collapseOlderVisits,
+				limit: this.settings.visibleVisitCount,
+			});
+		});
+	}
+
+	/** Live Preview Older Visits reads settings at decoration time. Effects only, never the note. */
+	private refreshVisitPreviewEditors(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) continue;
+			const cm = (view.editor as { cm?: EditorView }).cm;
+			if (!cm) continue;
+			dispatchVisitPreviewRefresh(cm);
+		}
+	}
+
+	/** Badge toggles and visit-order settings repaint notes that are already open. */
+	private refreshOpenNoteChrome(): void {
+		if (this.unloaded) return;
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || !view.file) continue;
+			this.decorateOpenNote(view.containerEl, view.file.path);
+		}
 	}
 
 	private onNoteOpened(file: TFile | null): void {
 		this.scheduleAgeRefresh();
 		this.scheduleNotesFit();
+		this.maybeSessionLocationNotice();
 		if (!file) return;
+		this.primeOpenUrgency(file);
 		window.setTimeout(() => this.openInReadingView(file, false), 0);
+	}
+
+	/** Accent vars on the leaf before the preview's first paint. */
+	private primeOpenUrgency(file: TFile): void {
+		const host = this.noteChromeHost();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) continue;
+			applyLiveUrgency(view.containerEl, file.path, host);
+		}
+	}
+
+	private locationNoticeClaimed = false;
+	private locationNoticePending = false;
+
+	/** One no-location or desktop-testing notice per app launch. */
+	notifyLocationOnce(text: string): void {
+		const message = text.trim();
+		if (!message || this.locationNoticeClaimed) return;
+		this.locationNoticeClaimed = true;
+		new Notice(message, 4500);
+	}
+
+	private maybeSessionLocationNotice(): void {
+		if (this.locationNoticeClaimed || this.locationNoticePending) return;
+		if (this.settings.distanceTest) {
+			const lat = this.settings.testLatitude;
+			const lon = this.settings.testLongitude;
+			this.notifyLocationOnce(`Desktop distance testing is on, using ${lat}, ${lon} instead of this device. Distance is not written into notes.`);
+			return;
+		}
+		const geo = typeof navigator === 'undefined' ? undefined : navigator.geolocation;
+		if (!geo) {
+			this.notifyLocationOnce('This desktop has no position, so distance shows a dash. Obsidian Mobile can use GPS. Distance is not written into notes.');
+			return;
+		}
+		this.locationNoticePending = true;
+		geo.getCurrentPosition(
+			() => {
+				this.locationNoticeClaimed = true;
+				this.locationNoticePending = false;
+			},
+			() => {
+				this.locationNoticePending = false;
+				this.notifyLocationOnce('This desktop has no position, so distance shows a dash. Obsidian Mobile can use GPS. Distance is not written into notes.');
+			},
+			{ enableHighAccuracy: false, maximumAge: 60_000, timeout: 4_000 },
+		);
 	}
 
 	/**
@@ -341,9 +530,9 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * With Automatic color, a settled accent change rewrites Return
-	 * Suggestions on every RV note to the nearest callout type. Also catches
-	 * an accent changed while Obsidian was closed.
+	 * With Automatic color, a settled accent change recolors Return
+	 * Suggestions in notes that are already open. The files stay as they are.
+	 * Changing a digest setting still rewrites the stored table.
 	 */
 	private checkAccent(): void {
 		if (this.unloaded || this.settings.suggestionColor !== 'auto') return;
@@ -353,7 +542,6 @@ export default class RVLocatorPlugin extends Plugin {
 		this.digestKeyApplied = this.digestKey();
 		this.recolorOpenSuggestions();
 		void this.persist();
-		void this.rewriteAllDigests();
 	}
 
 	/**
@@ -364,10 +552,90 @@ export default class RVLocatorPlugin extends Plugin {
 	async createNewRv(): Promise<void> {
 		if (this.creatingNewRv) return;
 		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
-			new NewRvIdentityModal(this.app, (value) => resolve(value)).open();
+			new NewRvIdentityModal(this.app, {
+				defaultPriority: this.settings.defaultNewRvPriority,
+				companions: this.recentCompanionNames(),
+				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
+				media: [...MEDIA_TITLES, ...this.settings.customMedia],
+				lessons: [...LESSONS],
+				customLessons: this.settings.customLessons,
+				suggestHome: (query) => this.suggestAddressHome(query),
+				suggestBroad: (query) => this.suggestAddressBroad(query),
+				addressCache: () => this.addressSuggestCacheMap(),
+			}, (value) => resolve(value)).open();
 		});
 		if (!identity || this.unloaded) return;
 		this.newRvDraft = identity;
+		this.housemateSourcePath = null;
+		const verified = identity.verifiedHit;
+		this.verifiedNewRvHit = verified && addressesMatchOneForOne(identity.address, verified.formattedAddress)
+			? verified
+			: null;
+		await this.launchNewRvTemplate();
+	}
+
+	/** Another RV at this address. Same choices as New RV. The address starts filled in. */
+	async addHousemate(file: TFile): Promise<void> {
+		if (this.creatingNewRv) return;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
+		const gender = housemateGender(readProperty(frontmatter, 'Gender'));
+		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? this.settings.defaultNewRvPriority;
+		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
+			new NewRvIdentityModal(this.app, {
+				title: 'Add a housemate',
+				intro: 'Same choices as a new RV. The address starts from this note.',
+				defaultPriority: this.settings.defaultNewRvPriority,
+				companions: this.recentCompanionNames(),
+				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
+				media: [...MEDIA_TITLES, ...this.settings.customMedia],
+				lessons: [...LESSONS],
+				customLessons: this.settings.customLessons,
+				suggestHome: (query) => this.suggestAddressHome(query),
+				suggestBroad: (query) => this.suggestAddressBroad(query),
+				addressCache: () => this.addressSuggestCacheMap(),
+				preset: {
+					gender,
+					address,
+					priority: Math.max(0, Math.min(5, Math.round(priority))),
+				},
+			}, (value) => resolve(value)).open();
+		});
+		if (!identity || this.unloaded) return;
+		this.newRvDraft = identity;
+		this.verifiedNewRvHit = null;
+		this.housemateSourcePath = file.path;
+		await this.launchNewRvTemplate();
+	}
+
+	private async suggestAddresses(query: string): Promise<readonly GeocodeHit[]> {
+		if (!this.settings.geoapifyApiKey.trim()) return [];
+		try {
+			const bias = await this.homeProximity();
+			const hits = await this.lookupAddress(query, true, () => false, bias);
+			return preferHomeRegion(hits, this.settings.homeCounties);
+		} catch {
+			return [];
+		}
+	}
+
+	/** One unbiased lookup of the first home county, reused as a soft proximity bias. */
+	private async homeProximity(): Promise<GeocodeBias | null> {
+		const primary = this.settings.homeCounties.map((line) => line.trim()).find((line) => line.length > 0) ?? '';
+		if (!primary || !this.settings.geoapifyApiKey.trim()) return null;
+		if (this.homeBiasKey === primary) return this.homeBiasPoint;
+		this.homeBiasKey = primary;
+		try {
+			const hits = await this.lookupAddress(primary, false);
+			const hit = hits[0];
+			this.homeBiasPoint = hit ? { lat: hit.lat, lon: hit.lon } : null;
+		} catch {
+			this.homeBiasPoint = null;
+		}
+		return this.homeBiasPoint;
+	}
+
+	private async launchNewRvTemplate(): Promise<void> {
 		this.creatingNewRv = true;
 		try {
 			const templater = readTemplaterPlugin(this.app);
@@ -383,16 +651,61 @@ export default class RVLocatorPlugin extends Plugin {
 				new Notice(message ?? 'Templater could not start New RV.');
 				return;
 			}
+			const sourcePath = this.housemateSourcePath;
+			const draft = this.newRvDraft;
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
-			else if (created instanceof TFile) await this.refreshAttemptDigest(created);
+			else if (created instanceof TFile) {
+				if (draft) await this.writeNewRvShare(created, draft);
+				await this.refreshAttemptDigest(created);
+				if (sourcePath) await this.linkHousehold(sourcePath, created);
+			}
 		} catch (error) {
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
 			new Notice(reason);
 		} finally {
 			this.creatingNewRv = false;
 			this.newRvDraft = null;
+			this.housemateSourcePath = null;
 		}
+	}
+
+	private async writeNewRvShare(file: TFile, identity: NewRvIdentity): Promise<void> {
+		const publications = shareTitles(identity.publications, identity.publicationList);
+		const media = shareTitles(identity.media, identity.mediaList);
+		const share: VisitShare = {
+			...emptyShare(),
+			publications: publications[0] ?? '',
+			media: media[0] ?? '',
+			publicationList: publications,
+			mediaList: media,
+			lesson: identity.lesson ?? '',
+			lessonFrom: identity.lessonFrom ?? '',
+			lessonTo: identity.lessonTo ?? '',
+			extraLesson: identity.extraLesson ?? '',
+			extraFrom: identity.extraFrom ?? '',
+			extraTo: identity.extraTo ?? '',
+		};
+		const lesson = share.lesson.trim() || (share.extraLesson ?? '').trim();
+		if (publications.length === 0 && media.length === 0 && !lesson) return;
+		const now = new Date();
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const publication = publications[0];
+			const shown = media[0];
+			if (publications.length === 1 && publication) assignProperty(data, 'Left Publications', publication);
+			else if (publications.length > 1) assignProperty(data, 'Left Publications', publications);
+			if (media.length === 1 && shown) assignProperty(data, 'Shared Media', shown);
+			else if (media.length > 1) assignProperty(data, 'Shared Media', media);
+			recordLoggedLessons(data, share, formatFrontmatterDateTime(now));
+		});
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			const head = data.slice(0, info.contentStart);
+			const stamped = appendShareToFirstStamp(data.slice(info.contentStart), share);
+			return head + refreshHomeStampAges(stamped, now);
+		});
+		await this.rememberShare(share);
 	}
 
 	/** One-shot gender and optional name for the New RV template. Cleared after it is read. */
@@ -462,11 +775,37 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Callers append the plain name to Taken only and leave Met With unchanged.
 	 * New writes do not create wikilinks.
 	 */
-	async promptCompanion(): Promise<string> {
-		const picked = await new Promise<string | null>((resolve) => {
-			const modal = new CompanionSuggestModal(this.app, this.recentCompanionNames(), resolve);
+	async promptCompanion(path?: string, shareBox?: { share: VisitShare }): Promise<string | false> {
+		await new Promise((resolve) => window.setTimeout(resolve, COMPANION_PROMPT_DELAY_MS));
+		const campaign = path && this.shouldAskCoverage(path) ? this.campaign : null;
+		const note = path ? this.app.vault.getFileByPath(path) : null;
+		const frontmatter = note ? this.app.metadataCache.getFileCache(note)?.frontmatter : null;
+		const gender = readProperty(frontmatter, 'Gender');
+		const status = note ? resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) : null;
+		const study = status === 'Study';
+		const defaults = path ? await this.studyDefaults(path) : studyPrefill(null);
+		const picked = await new Promise<string | null | false>((resolve) => {
+			const modal = new CompanionSuggestModal(
+				this.app,
+				this.recentCompanionNames(),
+				resolve,
+				campaign ? {
+					name: campaign.name,
+					pronoun: coveragePronoun(gender),
+					onDecision: (decision) => {
+						if (path) this.coverageDecisions.set(path, decision);
+					},
+				} : null,
+				path ? {
+					...this.shareFieldOptions(study, defaults),
+					onShare: (share) => {
+						if (shareBox) shareBox.share = share;
+					},
+				} : null,
+			);
 			modal.open();
 		});
+		if (picked === false) return false;
 		const name = picked?.trim() ?? '';
 		if (!name) return '';
 		return formatStoredCompanion(name);
@@ -475,6 +814,124 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Quoted Taken / Met With wikilinks, after processFrontMatter may have flattened them. */
 	stabilizeCompanionFrontmatter(markdown: string): string {
 		return quoteCompanionFrontmatter(markdown);
+	}
+
+	private shareFieldOptions(
+		study: boolean,
+		defaults: { lesson: string; from: string; to: string },
+		_forceLiterature = false,
+	): ShareFieldOptions {
+		return {
+			publications: [...this.settings.customPublications, ...PUBLICATION_TITLES],
+			media: [...this.settings.customMedia, ...MEDIA_TITLES],
+			customLessons: this.settings.customLessons,
+			lessons: [...LESSONS],
+			showLiterature: true,
+			literatureCollapsed: study,
+			lessonExpanded: study,
+			showLesson: false,
+			optionalLesson: true,
+			lessonPrefill: defaults,
+			initial: emptyShare(),
+		};
+	}
+
+	private async studyDefaults(path: string): Promise<{ lesson: string; from: string; to: string }> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return studyPrefill(null);
+		try {
+			return studyPrefill(newestLessonProgress(await this.app.vault.cachedRead(file)));
+		} catch {
+			return studyPrefill(null);
+		}
+	}
+
+	private async promptLiterature(file: TFile, options?: { study?: boolean; campaign?: boolean }): Promise<VisitShare | false> {
+		const study = options?.study === true;
+		const defaults = await this.studyDefaults(file.path);
+		const campaign = options?.campaign && this.shouldAskCoverage(file.path) ? this.campaign : null;
+		const gender = readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender');
+		return new Promise((resolve) => {
+			new LiteraturePromptModal(
+				this.app,
+				this.shareFieldOptions(study, defaults),
+				(share) => resolve(share),
+				campaign ? {
+					name: campaign.name,
+					pronoun: coveragePronoun(gender),
+					onDecision: (yes) => { this.coverageDecisions.set(file.path, yes ? 'yes' : 'no'); },
+				} : null,
+			).open();
+		});
+	}
+
+	private async rememberShare(share: VisitShare): Promise<void> {
+		let publications = this.settings.customPublications;
+		for (const title of shareTitles(share.publications, share.publicationList)) {
+			publications = rememberCustom(publications, title, PUBLICATION_TITLES);
+		}
+		let media = this.settings.customMedia;
+		for (const title of shareTitles(share.media, share.mediaList)) {
+			media = rememberCustom(media, title, MEDIA_TITLES);
+		}
+		const lessons = rememberCustom(
+			rememberCustom(this.settings.customLessons, share.lesson, LESSONS.map((lesson) => lesson.title)),
+			share.extraLesson ?? '',
+			LESSONS.map((lesson) => lesson.title),
+		);
+		const changed = publications.length !== this.settings.customPublications.length
+			|| media.length !== this.settings.customMedia.length
+			|| lessons.length !== this.settings.customLessons.length;
+		if (!changed) return;
+		this.settings.customPublications = publications;
+		this.settings.customMedia = media;
+		this.settings.customLessons = lessons;
+		await this.saveSettings();
+	}
+
+	/** Rename a custom catalog entry and every note that already stores that name. */
+	async renameCatalogEntry(key: 'customPublications' | 'customMedia' | 'customLessons', from: string, to: string): Promise<void> {
+		const nextName = to.trim();
+		const previous = from.trim();
+		if (!nextName || nextName.toLowerCase() === previous.toLowerCase()) return;
+		this.settings[key] = renameCustom(this.settings[key], previous, nextName);
+		await this.saveSettings();
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			let markdown = '';
+			try {
+				markdown = await this.app.vault.read(file);
+			} catch {
+				continue;
+			}
+			const next = renameLabelInMarkdown(markdown, previous, nextName);
+			if (next !== markdown) await this.app.vault.modify(file, next);
+		}
+	}
+
+	/** Hub filters return to their defaults each time the hub view is created. */
+	resetHubFilters(): void {
+		if (this.settings.returnScope === 'active' && this.settings.genderFilter === 'all' && this.settings.campaignListFilter === 'all') return;
+		this.settings.returnScope = 'active';
+		this.settings.genderFilter = 'all';
+		this.settings.campaignListFilter = 'all';
+		void this.saveSettings();
+	}
+
+	private recentAddressLabels(): string[] {
+		const property = this.settings.addressProperty;
+		const notes = this.app.vault.getMarkdownFiles().map((file) => {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const record: Record<string, unknown> = {
+				'Last Spoke': cacheValue(frontmatter, 'Last Spoke'),
+				'Last Attempted': cacheValue(frontmatter, 'Last Attempted'),
+				Met: cacheValue(frontmatter, 'Met'),
+			};
+			return {
+				address: readAddress(frontmatter, property) ?? '',
+				recentAt: companionRecency(record, file.stat.mtime),
+			};
+		});
+		return recentAddresses(notes);
 	}
 
 	private recentCompanionNames(): string[] {
@@ -612,6 +1069,8 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.persist();
 		this.digestKeyApplied = this.digestKey();
 		this.applyLayoutClasses();
+		this.refreshOpenNoteChrome();
+		this.refreshVisitPreviewEditors();
 		for (const callback of this.viewRefreshers) callback();
 		if (digestChanged) {
 			this.recolorOpenSuggestions();
@@ -649,6 +1108,7 @@ export default class RVLocatorPlugin extends Plugin {
 			orientation: this.settings.digestOrientation,
 			days: this.settings.digestDays,
 			thresholds: this.digestThresholds(),
+			overrides: this.slotOverridesFor(file),
 			now: new Date(),
 			abbreviate: this.settings.abbreviateDayparts,
 		});
@@ -675,21 +1135,61 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private noteChromeHost(): NoteChromeHost {
 		return {
-			frontmatter: (path) => {
-				const file = this.app.vault.getFileByPath(path);
-				if (!file) return null;
-				const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-				return frontmatter ? { ...frontmatter } : null;
-			},
+			frontmatter: (path) => this.noteFrontmatter(path),
 			settings: this.settings,
 			snoozeUntil: (path) => this.snoozeUntilFor(path),
 			setStatus: (path, status) => { void this.writeStatus(path, status); },
+			setPriority: (path, priority) => {
+				const file = this.app.vault.getFileByPath(path);
+				if (file) void this.writePriority(file, priority);
+			},
 			openUrgency: (path, name, event) => { this.promptUrgencyMenu(path, name, event); },
 			openPriority: (path, name) => { this.promptPriority(path, name); },
-			openMap: () => { void this.openMapSoon(); },
+			openRoute: (path) => { void this.openRoute(path); },
+			openHub: (path, target) => { void this.app.workspace.openLinkText(target, path); },
 			addHub: (path) => { this.promptAddHub(path); },
 			removeHub: (path, label) => { void this.removeHub(path, label); },
+			moveHub: (path, label) => { void this.moveHub(path, label); },
+			openSlotOverride: (path) => { this.openSlotOverride(path); },
+			setAddress: (path, address) => { void this.writeAddress(path, address); },
+			openMap: (path) => { void this.openMapSoon(path); },
+			openCompanion: (path) => { void this.attachCompanion(path); },
 		};
+	}
+
+	private noteFrontmatter(path: string): Record<string, unknown> | null {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const data: Record<string, unknown> | null = frontmatter ? { ...frontmatter } : null;
+		if (this.hubOverride.has(path)) {
+			const hub = this.hubOverride.get(path);
+			const cached = hubLabelList(data ? readProperty(data, 'Hub') : null);
+			const fresh = hubLabelList(hub);
+			if (cached === fresh) this.hubOverride.delete(path);
+			else if (data) data.Hub = hub;
+			else return { Hub: hub };
+		}
+		if (this.addressOverride.has(path)) {
+			const address = this.addressOverride.get(path) ?? '';
+			const property = this.settings.addressProperty.trim() || 'Address';
+			const cached = readProperty(data, property);
+			const cachedText = typeof cached === 'string' ? cached : '';
+			if (cachedText === address) this.addressOverride.delete(path);
+			else if (data) data[property] = address;
+		}
+		return data;
+	}
+
+	private async writeAddress(path: string, address: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const property = this.settings.addressProperty.trim() || 'Address';
+		const next = address.replace(/\r?\n/g, ' ').trim();
+		this.addressOverride.set(path, next);
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			assignProperty(frontmatter as Record<string, unknown>, property, next);
+		});
 	}
 
 	private async writeStatus(path: string, status: RvStatus): Promise<void> {
@@ -741,7 +1241,9 @@ export default class RVLocatorPlugin extends Plugin {
 			if (list.some((item) => hubLabel(item) === label)) return;
 			list.push(`[[${label}]]`);
 			assignProperty(data, 'Hub', list);
+			this.hubOverride.set(file.path, list.slice());
 		});
+		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -760,7 +1262,9 @@ export default class RVLocatorPlugin extends Plugin {
 				list.push(current);
 			}
 			assignProperty(data, 'Hub', list);
+			this.hubOverride.set(file.path, list.slice());
 		});
+		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -800,6 +1304,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * A miss never asks. Home asks when Successful Visits hits a multiple of N.
 	 */
 	async noteVisitLogged(file: TFile, outcome?: VisitOutcome): Promise<void> {
+		if (outcome === 'home' || outcome === 'miss') await this.consumeCoverage(file.path, outcome);
 		await this.enqueueDigestRewrite(file);
 		await this.maybeNudgePriority(file, outcome);
 		if (outcome === 'home') await this.focusVisitNotes(file, null);
@@ -837,6 +1342,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (this.nearbySort.property === next.property && this.nearbySort.direction === next.direction) return;
 		this.nearbySort = next;
 		void this.persist();
+		for (const canvas of this.mapCanvases) canvas.refresh();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -850,11 +1356,428 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.saveSettings();
 	}
 
-	/** Earth on a card or beside Address. The external route icon stays a maps link. */
-	async openMapSoon(): Promise<void> {
-		const leaf = this.app.workspace.getLeaf('tab');
-		await leaf.setViewState({ type: MAP_SOON_VIEW_TYPE, active: true });
-		void this.app.workspace.revealLeaf(leaf);
+	async setCampaignListFilter(filter: CampaignListFilter): Promise<void> {
+		this.settings.campaignListFilter = sanitizeCampaignListFilter(filter);
+		await this.saveSettings();
+	}
+
+	mapFocusPath: string | null = null;
+	mapSelectedPath: string | null = null;
+	/** In-view map. Fullscreen stays on the map that was toggled. */
+	hubMapFullscreen = false;
+	hubMapOpen = false;
+	private hubFullscreenSync: (() => void) | null = null;
+	/** Hub column is narrower than the stacked-map breakpoint. Width 0 does not set this. */
+	hubPaneNarrow = false;
+	/** Last GPS fix reported by a hub view, for address bias. */
+	liveFix: { lat: number; lon: number } | null = null;
+	private addressSuggestCache = new Map<string, GeocodeHit[]>();
+	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
+	private hubScrollers = new Set<(path: string | null) => void>();
+
+	/**
+	 * Earth on a card focuses a pin and opens the in-view map.
+	 * The hub map icon toggles that map. It never opens a workspace leaf.
+	 */
+	async openMapSoon(path?: string): Promise<void> {
+		if (path) {
+			this.mapFocusPath = path;
+			this.hubMapOpen = true;
+		} else {
+			this.hubMapOpen = !this.hubMapOpen;
+		}
+		if (!this.hubMapOpen) this.setHubMapFullscreen(false);
+		for (const callback of this.viewRefreshers) callback();
+		if (path && this.hubMapOpen) this.focusMapPin(path, true);
+	}
+
+	hubMapIsFullscreen(): boolean {
+		return this.hubMapFullscreen;
+	}
+
+	/** The in-view map only. */
+	setHubMapFullscreen(on: boolean): void {
+		this.hubMapFullscreen = on;
+		this.hubFullscreenSync?.();
+	}
+
+	registerHubFullscreen(sync: () => void): () => void {
+		this.hubFullscreenSync = sync;
+		return () => {
+			if (this.hubFullscreenSync === sync) this.hubFullscreenSync = null;
+		};
+	}
+
+	notifyPin(path: string): void {
+		this.mapSelectedPath = path;
+		for (const scroll of this.hubScrollers) scroll(path);
+		for (const canvas of this.mapCanvases) canvas.focus(path, false);
+	}
+
+	notifyMapCleared(): void {
+		this.mapSelectedPath = null;
+		for (const scroll of this.hubScrollers) scroll(null);
+	}
+
+	focusMapPin(path: string, center = true): void {
+		this.mapSelectedPath = path;
+		for (const canvas of this.mapCanvases) canvas.focus(path, center, 'follow');
+		for (const scroll of this.hubScrollers) scroll(path);
+	}
+
+	/** Blank card body while the map is open. Centers and flashes the pin. No popup. */
+	highlightMapPin(path: string): void {
+		if (!this.hubMapOpen) return;
+		this.mapSelectedPath = path;
+		for (const canvas of this.mapCanvases) canvas.focus(path, true, 'card');
+	}
+
+	registerHubScroller(scroll: (path: string | null) => void): () => void {
+		this.hubScrollers.add(scroll);
+		return () => { this.hubScrollers.delete(scroll); };
+	}
+
+	attachMap(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void {
+		this.mapCanvases.add(canvas);
+		return () => { this.mapCanvases.delete(canvas); };
+	}
+
+	mountHubMap(parent: HTMLElement): { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } {
+		const handle = mountEmbeddedMap(parent, this);
+		return {
+			destroy: () => { handle.destroy(); },
+			applyRenderedOrder: (paths) => { handle.applyRenderedOrder(paths); },
+			invalidateSize: () => { handle.invalidateSize(); },
+		};
+	}
+
+	hubSort(): { property: string; direction: 'ASC' | 'DESC' } {
+		return this.nearbySort;
+	}
+
+	cycleHubSort(property: string): void {
+		const preset = visibleSortPresets(this.settings.sortChips).find((item) => item.property === property);
+		if (!preset) return;
+		this.setNearbySort(nextPresetSort(this.nearbySort, preset));
+	}
+
+	sortChoices(): { property: string; label: string; active: boolean }[] {
+		return visibleSortPresets(this.settings.sortChips).map((preset) => {
+			const active = this.nearbySort.property.toLowerCase() === preset.property.toLowerCase();
+			return {
+				property: preset.property,
+				label: sortPresetChipLabel(preset, active ? this.nearbySort.direction : null),
+				active,
+			};
+		});
+	}
+
+	noteLiveFix(fix: { lat: number; lon: number } | null): void {
+		this.liveFix = fix;
+	}
+
+	addressSuggestCacheMap(): Map<string, GeocodeHit[]> {
+		return this.addressSuggestCache;
+	}
+
+	async suggestAddressHome(query: string): Promise<SuggestFetchResult> {
+		const bias = await this.suggestBias();
+		const hits = await this.autocompleteAddress(query, bias, Boolean(bias));
+		return { hits, allowBroad: Boolean(bias) };
+	}
+
+	async suggestAddressBroad(query: string): Promise<GeocodeHit[]> {
+		const bias = await this.suggestBias();
+		return this.autocompleteAddress(query, bias, false);
+	}
+
+	/** Distance-test point, then a live GPS fix, then one geocode of the first home county. */
+	private async suggestBias(): Promise<GeocodeBias | null> {
+		return this.currentMapFix() ?? this.liveFix ?? await this.homeProximity();
+	}
+
+	/**
+	 * Autocomplete only. Full geocode search stays on the 750ms pacer.
+	 * The home pass adds a circle filter. A broader pass keeps the bias and drops the circle.
+	 */
+	private async autocompleteAddress(query: string, bias: GeocodeBias | null, filterCircle: boolean): Promise<GeocodeHit[]> {
+		const apiKey = this.settings.geoapifyApiKey.trim();
+		const text = query.trim();
+		if (!apiKey || text.length < 3) return [];
+		try {
+			const url = buildAutocompleteUrl(text, apiKey, this.settings.geoapifyRegion, {
+				bias,
+				filterRadiusM: filterCircle && bias ? ADDRESS_SUGGEST_HOME_RADIUS_M : null,
+			});
+			const response = await fetch(url);
+			if (!response.ok) return [];
+			const body: unknown = await response.json();
+			return preferHomeRegion(parseGeocodeBody(body), this.settings.homeCounties);
+		} catch {
+			return [];
+		}
+	}
+
+	listMapPins(): MapPin[] {
+		const colors = urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors);
+		const rows = this.app.vault.getMarkdownFiles().map((file) => {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
+			const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? 0;
+			const status = resolveStatus(readProperty(frontmatter, 'Status'), priority);
+			const spoke = readProperty(frontmatter, 'Last Spoke');
+			const raw = spoke instanceof Date ? spoke.toISOString() : typeof spoke === 'string' ? spoke : '';
+			const days = raw ? calendarDaysSince(raw) : null;
+			const lessons = lessonList(readProperty(frontmatter, 'Lessons Studied'));
+			const studies = finiteVisitCount(readProperty(frontmatter, 'Studies')) ?? 0;
+			const successful = finiteVisitCount(readProperty(frontmatter, 'Successful Visits'));
+			const visits = finiteVisitCount(readProperty(frontmatter, 'Visits'));
+			const cityName = this.settings.cityProperty.trim() || 'City';
+			const city = readProperty(frontmatter, cityName);
+			const cityText = typeof city === 'string' ? city : '';
+			const attemptedDays = propertyDays(readProperty(frontmatter, 'Last Attempted'));
+			const metDays = propertyDays(readProperty(frontmatter, 'Met'));
+			const avoid = currentReturnBucket({
+				buckets: this.cachedAttemptBuckets(file.path) ?? {},
+				grid: this.settings.availabilityGrid,
+				thresholds: this.digestThresholds(),
+				overrides: this.slotOverridesFor(file),
+			}) === 'Avoid';
+			const ideality = idealityScore({
+				days,
+				priority,
+				miles: null,
+				thresholds: this.settings.urgencyThresholdDays,
+				floors: this.settings.idealityFloorDays,
+				territorySpan: this.settings.territorySpanMiles,
+				holdDistance: true,
+			});
+			return {
+				path: file.path,
+				name: file.basename,
+				lat: point?.lat ?? Number.NaN,
+				lon: point?.lon ?? Number.NaN,
+				priority,
+				days,
+				inactive: status === 'Inactive',
+				avoid,
+				spokeDays: days,
+				attemptedDays,
+				metDays,
+				city: cityText,
+				ideality,
+				gender: sanitizeGender(readProperty(frontmatter, 'Gender')),
+				status,
+				card: {
+					address: readAddress(frontmatter, this.settings.addressProperty) ?? '',
+					city: cityText,
+					study: status === 'Study',
+					spoke: days == null ? '' : formatGlanceableCounter(days),
+					attempted: counterText(readProperty(frontmatter, 'Last Attempted')),
+					studied: counterText(readProperty(frontmatter, 'Last Studied')),
+					met: counterText(readProperty(frontmatter, 'Met')),
+					metWith: textProperty(readProperty(frontmatter, 'Met With')),
+					visits: `${successful ?? '—'}/${visits ?? '—'}`,
+					studyRatio: formatStudyFraction(lessons.length, studies, this.settings.studyRatio).ratio,
+					literature: textProperty(readProperty(frontmatter, 'Left Publications')),
+					media: textProperty(readProperty(frontmatter, 'Shared Media')),
+					lessons,
+					driveDates: driveDateRows(frontmatter),
+				},
+			};
+		});
+		const look = pinLookForHub(this.nearbySort.property, this.settings.returnScope, this.settings.genderFilter);
+		const ordered = orderByHubSort(rows, this.nearbySort, this.currentMapFix() ?? this.liveFix, this.settings.urgencyThresholdDays);
+		const heats = shadeHeats(heatModeForSort(this.nearbySort.property), ordered);
+		return buildMapPins(
+			ordered.map((row, index) => ({ ...row, shadeHeat: heats[index] ?? 0 })),
+			this.settings.idealityFloorDays,
+			this.settings.urgencyThresholdDays,
+			colors,
+			look,
+			look === 'status' && this.settings.returnScope === 'archive',
+		);
+	}
+
+	openMapNote(path: string): void {
+		void this.app.workspace.openLinkText(path, path, true);
+	}
+
+	currentMapFix(): { lat: number; lon: number } | null {
+		if (this.settings.distanceTest) {
+			return validLatLon(this.settings.testLatitude, this.settings.testLongitude);
+		}
+		return null;
+	}
+
+	/** Directions from the chosen provider. The stored Map Link property is not read or rewritten. */
+	async openRoute(path: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
+		const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
+		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
+		const cityName = this.settings.cityProperty.trim() || 'City';
+		const city = readProperty(frontmatter, cityName);
+		const cityText = typeof city === 'string' ? city : '';
+		if (!point && !address.trim()) {
+			new Notice('This note has no address to open directions.');
+			return;
+		}
+		const url = directionsUrl(this.settings.routeProvider, {
+			lat: point?.lat,
+			lon: point?.lon,
+			address,
+			city: cityText,
+		});
+		window.open(url, '_blank', 'noopener');
+	}
+
+	openCampaignModal(): void {
+		new CampaignModal(this.app, this.campaign, (next) => {
+			this.campaign = next ? sanitizeCampaign({ ...next, covered: next.covered }) : null;
+			void this.persist().then(() => {
+				for (const callback of this.viewRefreshers) callback();
+			});
+		}).open();
+	}
+
+	/** `covered` or `open` while a campaign is active. Null when there is no active campaign. */
+	campaignMark(path: string): 'covered' | 'open' | null {
+		if (!campaignIsActive(this.campaign)) return null;
+		return isCovered(this.campaign, path) ? 'covered' : 'open';
+	}
+
+	/** Label for the daypart override that is in effect right now. Null when this moment is not overridden. */
+	cardOverrideLabel(path: string): string | null {
+		if (!this.settings.showCardReturnStatus) return null;
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return null;
+		const now = new Date();
+		const hit = this.slotOverridesFor(file).find((item) => item.weekday === now.getDay() && item.daypart === daypartAt(now));
+		if (!hit) return null;
+		const reason = (hit.reason ?? '').trim();
+		return reason || (hit.bucket === 'avoid' ? 'Avoid' : 'Try');
+	}
+
+	/** Open the note and flash the visit that falls on this date. */
+	jumpCardDate(path: string, raw: string): void {
+		const when = parseDriveInstant(raw) ?? stampDateTime(raw);
+		if (!when) return;
+		void this.openNoteDay(path, when);
+	}
+
+	private async openNoteDay(path: string, when: Date): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const workspace = this.app.workspace as { getLeaf?: (split: boolean) => { openFile?: (file: TFile) => Promise<void>; view?: { containerEl?: HTMLElement } } };
+		const leaf = workspace.getLeaf?.(false);
+		if (leaf?.openFile) await leaf.openFile(file);
+		else await this.app.workspace.openLinkText(path, path, false);
+		window.setTimeout(() => {
+			const root = leaf?.view?.containerEl;
+			if (root instanceof HTMLElement) jumpToDayInRoot(root, when);
+		}, 60);
+	}
+
+	/** Met With / Taken only. Does not insert a visit. */
+	private async attachCompanion(path: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const picked = await this.promptCompanion();
+		if (picked === false || !picked.trim()) return;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			assignProperty(data, 'Met With', picked);
+			assignProperty(data, 'Taken', appendCompanionTaken(readProperty(data, 'Taken'), picked));
+		});
+	}
+
+	/** Daypart bucket for the card's return line. Uses cached Attempt Log counts. */
+	cardReturnBucket(path: string): 'Try' | 'Avoid' | 'Unsure' | 'Untried' {
+		const file = this.app.vault.getFileByPath(path);
+		return currentReturnBucket({
+			buckets: this.cachedAttemptBuckets(path) ?? {},
+			grid: this.settings.availabilityGrid,
+			thresholds: this.digestThresholds(),
+			overrides: file ? this.slotOverridesFor(file) : [],
+		});
+	}
+
+	private shouldAskCoverage(path: string): boolean {
+		return campaignIsActive(this.campaign) && !isCovered(this.campaign, path);
+	}
+
+	private async consumeCoverage(path: string, outcome: VisitOutcome): Promise<void> {
+		if (outcome !== 'home') {
+			this.coverageDecisions.delete(path);
+			return;
+		}
+		const decision = this.coverageDecisions.get(path);
+		this.coverageDecisions.delete(path);
+		if (decision === 'yes') {
+			await this.markCovered(path);
+			return;
+		}
+		if (decision === 'no' || decision === 'skip') return;
+		if (!this.shouldAskCoverage(path) || !this.campaign) return;
+		const yes = await askCampaignCovered(this.app, this.campaign.name);
+		if (yes) await this.markCovered(path);
+	}
+
+	private async markCovered(path: string): Promise<void> {
+		if (!this.campaign || isCovered(this.campaign, path)) return;
+		this.campaign = withCovered(this.campaign, path);
+		await this.persist();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private slotOverridesFor(file: TFile): SlotOverride[] {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return parseSlotOverrides(readProperty(frontmatter, SLOT_OVERRIDE_PROPERTY));
+	}
+
+	private openSlotOverride(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		new SlotOverrideModal(this.app, this.slotOverridesFor(file), (next) => {
+			void this.writeSlotOverrides(file, next);
+		}).open();
+	}
+
+	private async writeSlotOverrides(file: TFile, overrides: readonly SlotOverride[]): Promise<void> {
+		const lines = overrides.map((item) => formatSlotOverride(item));
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			if (lines.length === 0) removeProperty(data, SLOT_OVERRIDE_PROPERTY);
+			else assignProperty(data, SLOT_OVERRIDE_PROPERTY, lines);
+		});
+		await this.enqueueDigestRewrite(file, overrides);
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async moveHub(path: string, label: string): Promise<void> {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		let moved = false;
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			const current = readProperty(data, 'Hub');
+			const list: unknown[] = [];
+			if (Array.isArray(current)) {
+				for (const item of current) list.push(item);
+			} else if (current != null && current !== '') {
+				list.push(current);
+			}
+			const next = moveHubLeft(list, label);
+			if (!next) return;
+			moved = true;
+			assignProperty(data, 'Hub', next);
+			this.hubOverride.set(file.path, next.slice());
+		});
+		if (moved) {
+			this.refreshOpenNoteChrome();
+			for (const callback of this.viewRefreshers) callback();
+		}
 	}
 
 	promptUrgencyMenu(path: string, _displayName: string, event: MouseEvent): void {
@@ -1029,6 +1952,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async geocodeCurrent(): Promise<void> {
+		if (this.housemateSourcePath) return;
 		const file = this.app.workspace.getActiveFile();
 		if (!file || file.extension !== 'md') {
 			new Notice('Open a note to look up its address.');
@@ -1062,6 +1986,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): Promise<void> {
+		const verified = this.verifiedNewRvHit;
+		this.verifiedNewRvHit = null;
+		if (verified && addressesMatchOneForOne(address, verified.formattedAddress)) {
+			const fresh = hits.find((hit) => addressesMatchOneForOne(hit.formattedAddress, verified.formattedAddress));
+			await this.writeHit(file, address, fresh ?? verified, fresh ? hits : [verified, ...hits]);
+			return;
+		}
 		const decision = decideGeocodePick(hits, this.settings.homeCounties);
 		if (decision.hit) {
 			await this.writeHit(file, address, decision.hit, hits);
@@ -1094,8 +2025,27 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
+		const share = await this.promptLiterature(file, outcome === 'home' ? { study, campaign: true } : undefined);
+		if (share === false) {
+			if (outcome === 'home') this.coverageDecisions.delete(file.path);
+			return;
+		}
+		await this.commitVisit(file, outcome, '', share);
+	}
+
+	/** In-note Home. Same write as the card, including literature, media, and lessons. */
+	async logNoteHome(file: TFile): Promise<boolean> {
+		const shareBox = { share: emptyShare() };
+		const companion = await this.promptCompanion(file.path, shareBox);
+		if (companion === false) return false;
+		await this.commitVisit(file, 'home', companion, shareBox.share);
+		return true;
+	}
+
+	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare): Promise<void> {
 		const now = new Date();
-		const companion = outcome === 'home' ? await this.promptCompanion() : '';
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
@@ -1103,16 +2053,18 @@ export default class RVLocatorPlugin extends Plugin {
 			const head = data.slice(0, info.contentStart);
 			const body = data.slice(info.contentStart);
 			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
-			const nextBody = applyVisitBody(body, outcome, now, companion);
+			const nextBody = applyVisitBody(body, outcome, now, companion, share);
 			visitsAfter = listVisits(nextBody);
 			return head + nextBody;
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
-			applyVisitFrontmatter(data, outcome, now, companion);
+			applyVisitFrontmatter(data, outcome, now, companion, share);
 			syncMet(data, visitsAfter, now);
 		});
+		await this.rememberShare(share);
 		await this.restabilizeCompanions(file);
+		await this.consumeCoverage(file.path, outcome);
 		const label = outcome === 'home' ? 'Home' : 'Not home';
 		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
 		await this.afterVisitWrite(file, outcome, notesProperty);
@@ -1120,9 +2072,22 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Log past visit, from the priority badge, the note's button, or the command. */
 	promptPastVisit(file: TFile): void {
+		void this.openPastVisit(file);
+	}
+
+	private async openPastVisit(file: TFile): Promise<void> {
+		const campaign = this.shouldAskCoverage(file.path) ? this.campaign : null;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
+		const defaults = await this.studyDefaults(file.path);
 		new VisitEditModal(this.app, {
 			title: `Log past visit on “${file.basename}”`,
 			recentCompanions: this.recentCompanionNames(),
+			campaignName: campaign?.name,
+			share: this.shareFieldOptions(study, defaults),
+			onCovered: (covered) => {
+				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
+			},
 			onSave: (facts) => {
 				void this.writePastVisit(file, facts).catch((error: unknown) => {
 					new Notice(this.friendlyError(error));
@@ -1147,16 +2112,27 @@ export default class RVLocatorPlugin extends Plugin {
 			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, { added: visit, remaining });
 		});
 		await this.restabilizeCompanions(file);
+		await this.rememberShare({
+			publications: visit.publications ?? '',
+			media: visit.media ?? '',
+			lesson: visit.lesson ?? '',
+			lessonFrom: visit.lessonFrom ?? '',
+			lessonTo: visit.lessonTo ?? '',
+			extraLesson: visit.extraLesson ?? '',
+			extraFrom: visit.extraFrom ?? '',
+			extraTo: visit.extraTo ?? '',
+		});
+		await this.consumeCoverage(file.path, visit.home ? 'home' : 'miss');
 		new Notice(`Logged ${describeVisit(visit)} on “${file.basename}”.`);
 		await this.afterVisitWrite(file, visit.home ? 'home' : 'miss', notesProperty);
 	}
 
-	/** Digest, priority nudge, then the caret in the new notes box. */
+	/** Digest, open the new notes box, then the priority nudge. */
 	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
 		await this.enqueueDigestRewrite(file);
 		for (const callback of this.viewRefreshers) callback();
-		await this.maybeNudgePriority(file, outcome);
 		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty);
+		await this.maybeNudgePriority(file, outcome);
 	}
 
 	private async restabilizeCompanions(file: TFile): Promise<void> {
@@ -1222,10 +2198,18 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private promptEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
+		void this.openEditVisit(file, entry, hint);
+	}
+
+	private async openEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): Promise<void> {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
+		const defaults = await this.studyDefaults(file.path);
 		new VisitEditModal(this.app, {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
+			share: this.shareFieldOptions(study, defaults),
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
@@ -1319,9 +2303,10 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Open the note (or bring its tab forward), scroll to the visit, and put
-	 * the caret at the end of its notes box. On iOS the keyboard may stay
-	 * down, because focus here does not come straight from a tap.
+	 * Open the note (or bring its tab forward) and put the caret in the new
+	 * notes box. One scroll lands on that box. The source line is not scrolled
+	 * first, so the preview does not jump away and come back. On iOS the
+	 * keyboard may stay down, because focus here does not come straight from a tap.
 	 */
 	private async focusVisitNotes(file: TFile, property: string | null): Promise<void> {
 		if (this.unloaded) return;
@@ -1340,16 +2325,16 @@ export default class RVLocatorPlugin extends Plugin {
 		let leaf = this.app.workspace.getLeavesOfType('markdown')
 			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
 		if (leaf) {
-			this.app.workspace.setActiveLeaf(leaf, { focus: true });
-			if (leaf.view instanceof MarkdownView) leaf.view.setEphemeralState({ line: fieldAt });
+			this.app.workspace.setActiveLeaf(leaf, { focus: false });
 		} else {
 			leaf = this.app.workspace.getLeaf(false);
-			await leaf.openFile(file, { active: true, eState: { line: fieldAt } });
+			await leaf.openFile(file, { active: true });
 		}
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
 
 		let steady = 0;
+		let placed: HTMLTextAreaElement | null = null;
 		for (let attempt = 0; attempt < FOCUS_ATTEMPTS && steady < 3; attempt += 1) {
 			if (this.unloaded) return;
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
@@ -1357,14 +2342,16 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!area) continue;
 			if (area.ownerDocument.activeElement === area) {
 				steady += 1;
-				continue;
+			} else {
+				steady = 0;
+				area.focus({ preventScroll: true });
+				const end = area.value.length;
+				area.setSelectionRange(end, end);
 			}
-			steady = 0;
-			area.focus();
-			const end = area.value.length;
-			area.setSelectionRange(end, end);
-			area.scrollIntoView({ block: 'center' });
+			if (placed === area) continue;
 			fitNotesBox(area);
+			area.scrollIntoView({ block: 'center' });
+			placed = area;
 		}
 	}
 
@@ -1478,8 +2465,13 @@ export default class RVLocatorPlugin extends Plugin {
 		if (notify) new Notice(`Saved coordinates on “${file.basename}”. Address was not changed.`);
 	}
 
-	async lookupAddress(address: string, ignoreCache: boolean, aborted: () => boolean = () => false): Promise<GeocodeHit[]> {
-		if (!ignoreCache) {
+	async lookupAddress(
+		address: string,
+		ignoreCache: boolean,
+		aborted: () => boolean = () => false,
+		bias?: GeocodeBias | null,
+	): Promise<GeocodeHit[]> {
+		if (!ignoreCache && !bias) {
 			const cached = getCached(this.geocodeCache, address);
 			if (cached) return cached;
 		}
@@ -1489,10 +2481,74 @@ export default class RVLocatorPlugin extends Plugin {
 			sleep: (ms) => new Promise((resolve) => window.setTimeout(resolve, ms)),
 			pacer: this.pacer,
 			aborted,
-		});
-		this.remember([address], results);
-		await this.persist();
+		}, this.settings.geoapifyRegion, bias);
+		if (!bias) {
+			this.remember([address], results);
+			await this.persist();
+		}
 		return results;
+	}
+
+	/**
+	 * Link every note at this address to the others, and copy the source note's
+	 * already confirmed location onto the new note. Does not geocode.
+	 */
+	private async linkHousehold(sourcePath: string, created: TFile): Promise<void> {
+		const source = this.app.vault.getFileByPath(sourcePath);
+		if (!source) return;
+		const sourceFrontmatter = await this.freshFrontmatter(source);
+		const createdFrontmatter = await this.freshFrontmatter(created);
+		const sourceAddress = readAddress(sourceFrontmatter, this.settings.addressProperty) ?? '';
+		const createdAddress = readAddress(createdFrontmatter, this.settings.addressProperty) ?? '';
+		const samePlace = sourceAddress.length > 0 && addressesMatchOneForOne(createdAddress, sourceAddress);
+		if (samePlace) await this.copyConfirmedLocation(created, sourceFrontmatter);
+		const key = normalizeAddress(createdAddress);
+		const files = key
+			? this.app.vault.getMarkdownFiles().filter((file) => {
+				const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+				const noteAddress = readAddress(frontmatter, this.settings.addressProperty) ?? '';
+				return normalizeAddress(noteAddress) === key;
+			})
+			: [];
+		if (!files.some((file) => file.path === created.path)) files.push(created);
+		if (samePlace && !files.some((file) => file.path === source.path)) files.push(source);
+		const names = files.map((file) => file.basename);
+		for (const file of files) {
+			const others = names.filter((name) => name !== file.basename);
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				const data = frontmatter as Record<string, unknown>;
+				const next = mergeHouseholdHubs(readProperty(data, 'Hub'), others);
+				assignProperty(data, 'Hub', next);
+				this.hubOverride.set(file.path, next.slice());
+			});
+		}
+		this.refreshOpenNoteChrome();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async copyConfirmedLocation(
+		created: TFile,
+		sourceFrontmatter: Record<string, unknown> | null,
+	): Promise<void> {
+		if (!sourceFrontmatter) return;
+		const names = locationCopyNames(this.settings);
+		await this.app.fileManager.processFrontMatter(created, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			for (const name of names) {
+				const value = readProperty(sourceFrontmatter, name);
+				if (value == null || value === '') continue;
+				assignProperty(data, name, value);
+			}
+		});
+		const point = latLonFromUnknown(readProperty(sourceFrontmatter, this.settings.locationProperty));
+		if (!point) return;
+		const pair = locationPair(point);
+		await this.app.vault.process(created, (data) => ensureQuotedLocationList(
+			data,
+			this.settings.locationProperty,
+			pair,
+			this.settings.addressProperty,
+		));
 	}
 
 	private friendlyError(error: unknown): string {
@@ -1591,26 +2647,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * First launch of this digest shape rewrites every RV note. Return
-	 * Suggestions wraps the voice lines, and Attempt Log is nested inside it
-	 * with the daypart table above the bullets. The suggestions callout type
-	 * follows the color setting. Visible `%%` and HTML digest markers are
-	 * removed. An opened Attempt Log is collapsed once. Later Home and Not
-	 * home writes leave a fold the person set after that.
+	 * Version bumps do not rewrite notes. Stamp ages and other display-only
+	 * text are computed when the note renders. A digest setting the person
+	 * changes still rewrites the stored table, because that table lives in
+	 * the note.
 	 */
 	private applyDigestPolish(): Promise<void> {
-		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
-		const run = this.digestRewrite.then(async () => {
-			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
-			const type = this.suggestionCalloutType();
-			await this.rewriteVaultDigests(true);
-			if (this.unloaded) return;
-			this.digestPolish = DIGEST_POLISH_VERSION;
-			this.accentGate.markApplied(type);
-			await this.persist();
-		});
-		this.digestRewrite = run.catch(() => undefined);
-		return run;
+		return Promise.resolve();
 	}
 
 	private async rewriteVaultDigests(collapseLog = false): Promise<void> {
@@ -1626,8 +2669,8 @@ export default class RVLocatorPlugin extends Plugin {
 		return folder.length > 0 && (file.path === folder || file.path.startsWith(`${folder}/`));
 	}
 
-	private enqueueDigestRewrite(file: TFile): Promise<void> {
-		const run = this.digestRewrite.then(() => this.rewriteDigestFile(file));
+	private enqueueDigestRewrite(file: TFile, overrides?: readonly SlotOverride[]): Promise<void> {
+		const run = this.digestRewrite.then(() => this.rewriteDigestFile(file, false, overrides));
 		this.digestRewrite = run.catch(() => undefined);
 		return run;
 	}
@@ -1662,7 +2705,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async rewriteDigestFile(file: TFile, collapseLog = false): Promise<void> {
+	private async rewriteDigestFile(file: TFile, collapseLog = false, overrides?: readonly SlotOverride[]): Promise<void> {
 		if (file.extension !== 'md') return;
 		if (this.isTemplateNote(file)) return;
 		const current = this.app.vault.getFileByPath(file.path);
@@ -1671,10 +2714,11 @@ export default class RVLocatorPlugin extends Plugin {
 			await this.app.vault.process(current, (data) => {
 				const info = getFrontMatterInfo(data);
 				let next = data.slice(0, info.contentStart) + ensureVisitButtons(ensureDashboardLeadBlank(unfoldDashboard(data.slice(info.contentStart))));
-				next = refreshHomeStampAges(next, new Date());
+				next = restoreExactVisitClocks(next, frontmatterFromMarkdown(data));
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);
 				const log = readAttemptLog(next);
+				const saved = parseSlotOverrides(readProperty(frontmatterFromMarkdown(data), SLOT_OVERRIDE_PROPERTY));
 				const digest = suggestReturnDigest({
 					buckets: log.buckets,
 					entries: log.entries,
@@ -1682,6 +2726,7 @@ export default class RVLocatorPlugin extends Plugin {
 					orientation: this.settings.digestOrientation,
 					days: this.settings.digestDays,
 					thresholds: this.digestThresholds(),
+					overrides: overrides ?? saved,
 					abbreviate: this.settings.abbreviateDayparts,
 				});
 				const rewritten = upsertAttemptDigest(next, digest, {
@@ -1733,6 +2778,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private async loadPluginData(): Promise<void> {
 		const data = await this.loadData() as StoredPluginData | null;
 		this.settings = mergeSettings(data?.settings);
+		this.campaign = sanitizeCampaign(data?.campaign);
 		this.nearbySort = sanitizeNearbySort(data?.nearbySort);
 		this.geocodeCache = sanitizeCache(data?.geocodeCache);
 		this.digestPolish = data?.digestPolish === DIGEST_POLISH_VERSION ? DIGEST_POLISH_VERSION : 0;
@@ -1770,6 +2816,7 @@ export default class RVLocatorPlugin extends Plugin {
 				nearbySort: this.nearbySort,
 				digestPolish: this.digestPolish,
 				suggestionTypeApplied: this.accentGate.applied,
+				campaign: this.campaign,
 			});
 		}).catch((error: unknown) => {
 			const message = error instanceof Error ? error.message : 'Could not save plugin data.';
@@ -1838,19 +2885,96 @@ function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): 
 	return null;
 }
 
-function hubLabel(value: unknown): string {
-	const text = typeof value === 'string' ? value.trim().replace(/^["']|["']$/g, '') : '';
-	const wiki = /^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/.exec(text);
-	if (!wiki) return text;
-	const alias = wiki[2]?.trim();
-	if (alias) return alias;
-	const target = (wiki[1] ?? '').trim();
-	return (target.split('/').pop() ?? target).replace(/\.md$/i, '');
-}
-
 function finiteVisitCount(value: unknown): number | null {
 	if (typeof value === 'number' && Number.isFinite(value)) return value;
 	if (typeof value !== 'string' || !/^-?\d+(?:\.\d+)?$/.test(value.trim())) return null;
 	const parsed = Number(value.trim());
 	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function textProperty(value: unknown): string {
+	if (typeof value === 'string') return value.trim();
+	if (Array.isArray(value)) return value.filter((item) => typeof item === 'string' && item.trim()).join(' · ');
+	return '';
+}
+
+function propertyDays(value: unknown): number | null {
+	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	return raw ? calendarDaysSince(raw) : null;
+}
+
+function lessonList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (text) names.push(text);
+	}
+	return names;
+}
+
+function driveDateRows(frontmatter: { [key: string]: unknown } | undefined): { icon: string; dow: string; time: string; rest: string; days: string }[] {
+	const specs: readonly [string, string][] = [
+		['book-marked', 'Last Studied'],
+		['message-circle', 'Last Spoke'],
+		['clock', 'Last Attempted'],
+		['home', 'Met'],
+	];
+	const rows: { icon: string; dow: string; time: string; rest: string; days: string }[] = [];
+	for (const [icon, name] of specs) {
+		const value = readProperty(frontmatter, name);
+		const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+		if (!raw.trim()) continue;
+		const display = formatDriveDate(raw);
+		if (display.empty) continue;
+		const days = calendarDaysSince(raw);
+		rows.push({
+			icon,
+			dow: display.dow ?? '',
+			time: display.time ?? '',
+			rest: display.rest ?? '',
+			days: days == null ? '' : formatGlanceableCounter(days),
+		});
+	}
+	return rows;
+}
+
+function counterText(value: unknown): string {
+	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	const days = raw ? calendarDaysSince(raw) : null;
+	return days == null ? '' : formatGlanceableCounter(days);
+}
+
+function locationCopyNames(settings: RVLocatorSettings): string[] {
+	const names = [
+		'City',
+		settings.cityProperty,
+		settings.countyProperty,
+		settings.stateProperty,
+		settings.postcodeProperty,
+		settings.countryProperty,
+		settings.mapLinkProperty,
+	];
+	const address = settings.addressProperty.trim().toLowerCase();
+	const location = settings.locationProperty.trim().toLowerCase();
+	const seen = new Set<string>();
+	const out: string[] = [];
+	for (const name of names) {
+		const trimmed = name.trim();
+		const key = trimmed.toLowerCase();
+		if (!trimmed || key === address || key === location || seen.has(key)) continue;
+		seen.add(key);
+		out.push(trimmed);
+	}
+	return out;
+}
+
+function housemateGender(value: unknown): RvGender {
+	return value === 'Woman' ? 'Woman' : 'Man';
+}
+
+function hubLabelList(value: unknown): string {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	return source.map((item) => hubLabel(item)).join('\n');
 }

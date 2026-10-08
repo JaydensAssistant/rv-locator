@@ -1,5 +1,7 @@
 import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, setIcon, type App, type TextComponent } from 'obsidian';
-import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
+import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
+import { deleteCustom, rememberCustom } from './catalog';
+import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
 import { parseHomeCountyLines } from './home-base';
 import {
@@ -32,6 +34,7 @@ import {
 	renderUrgencySettings,
 } from './settings-scoring';
 import { applyTemplateSettingChange, type TemplateRenameVault } from './template-rename';
+import { resetSettingsTab } from './settings-reset';
 import { attemptLogFullWidth } from './types';
 import { renderUrgencyPalette } from './urgency-palette-ui';
 
@@ -72,6 +75,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		else if (this.section === 'nearby') this.paintNearby(body);
 		else if (this.section === 'templates') this.paintTemplates(body, templateGeneration);
 		else this.paintAdvanced(body);
+		this.paintReset(body);
 	}
 
 	private paintSectionBar(containerEl: HTMLElement): void {
@@ -131,6 +135,19 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 
 		new Setting(containerEl)
+			.setName('Geoapify region')
+			.setDesc('Global is the default. EU sends lookups to api-eu.geoapify.com only when you choose it here.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('global', 'Global');
+				dropdown.addOption('eu', 'EU');
+				dropdown.setValue(this.plugin.settings.geoapifyRegion);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.geoapifyRegion = value === 'eu' ? 'eu' : 'global';
+					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
 			.setName('Home counties')
 			.setDesc('One county per line. Empty means every match asks you to confirm. A fully confident hit is saved only when it is the only hit in one of these counties.')
 			.addTextArea((text) => {
@@ -156,8 +173,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Digest table')
 			.setDesc(this.plugin.settings.digestOrientation === 'columns'
-				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note. With Attempt Log width on Automatic, the Attempt Log is full width.'
-				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note. Days across also makes an Automatic-width Attempt Log full width.')
+				? 'Dayparts run down the side. Days run across. Changing this rewrites the digest on every RV note. It does not change Attempt Log width.'
+				: 'Days run down the side. Dayparts run across. Changing this rewrites the digest on every RV note. It does not change Attempt Log width.')
 			.addButton((button) => {
 				button.setButtonText('Swap rows and columns');
 				button.onClick(() => {
@@ -235,7 +252,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Attempt Log width')
-			.setDesc('Automatic is full width when the digest table has days as columns, and the dashboard column width otherwise.')
+			.setDesc('Full width is the default. Automatic stays full width too. Dashboard column is the narrow width. Swapping digest rows and columns does not change this.')
 			.addDropdown((dropdown) => {
 				dropdown.addOption('auto', `Automatic (now ${attemptLogFullWidth(this.plugin.settings) ? 'full width' : 'dashboard column'})`);
 				dropdown.addOption('full', 'Full width');
@@ -247,8 +264,8 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		const centers: ReadonlyArray<{ key: 'centerDashboard' | 'centerVisitNotes' | 'centerSuggestions'; name: string; desc: string }> = [
-			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, buttons, and Quick Facts.' },
-			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'Centers the Visit Notes heading, each visit stamp, and the text in its notes box.' },
+			{ key: 'centerDashboard', name: 'Center RV Dashboard', desc: 'Centers the RV Dashboard title, Hubs, Address, and buttons. Quick Facts labels stay left aligned.' },
+			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'On when the setting is missing. Centers the Visit Notes heading, each visit stamp, and the notes block. The words in the notes box stay left aligned.' },
 			{ key: 'centerSuggestions', name: 'Center Return Suggestions', desc: 'Centers the Return Suggestions title and lines, the Attempt Log, its table, and its visit lines.' },
 		];
 		for (const center of centers) {
@@ -283,7 +300,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		const badges: ReadonlyArray<{ key: 'showUrgencyBadge' | 'showPriorityBadge' | 'showRouteBadge'; name: string; desc: string }> = [
 			{ key: 'showUrgencyBadge', name: 'Quick Facts urgency badge', desc: 'The urgency circle in the Quick Facts header. On by default. It opens Home, Not home, Log past visit, Archive, and snooze.' },
 			{ key: 'showPriorityBadge', name: 'Quick Facts priority badge', desc: 'The priority circle in the Quick Facts header. On by default. It opens a priority slider.' },
-			{ key: 'showRouteBadge', name: 'Quick Facts route badge', desc: 'The route circle in the Quick Facts header. On by default. It opens the map page.' },
+			{ key: 'showRouteBadge', name: 'Quick Facts route badge', desc: 'The route circle in the Quick Facts header. On by default. It opens the Google Maps link for that RV. It does not open the coming-soon map.' },
 		];
 		for (const badge of badges) {
 			new Setting(containerEl)
@@ -297,6 +314,237 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					});
 				});
 		}
+		new Setting(containerEl)
+			.setName('Newest visits first')
+			.setDesc('A new visit is written at the top of the note and older visits move down in the file. The screen follows that order.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.visitsNewestFirst);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.visitsNewestFirst = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Collapse older visits')
+			.setDesc('Only the most recent visits stay open. The rest sit under an Older Visits heading, collapsed, with a horizontal rule above it.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.collapseOlderVisits);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.collapseOlderVisits = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Visible visit notes')
+			.setDesc('How many of the most recent visit notes stay visible when older visits are collapsed. Default 3.')
+			.addSlider((slider) => {
+				slider.setLimits(1, 30, 1);
+				slider.setValue(this.plugin.settings.visibleVisitCount);
+				slider.setDynamicTooltip();
+				slider.onChange(async (value) => {
+					this.plugin.settings.visibleVisitCount = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Return status on cards')
+			.setDesc('On unless it was turned off. The bottom line of a Glancable card shows the visit count and the current daypart bucket (Avoid, Try, Unsure, or Untried), with the weekday and daypart in front of the bucket.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showCardReturnStatus);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.showCardReturnStatus = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Return status format')
+			.setDesc('Short is the default, like Sat mor. Long keeps the full weekday and daypart, like Friday afternoon.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('short', 'Short (Sat mor)');
+				dropdown.addOption('long', 'Long (Friday afternoon)');
+				dropdown.setValue(this.plugin.settings.cardReturnFormat);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.cardReturnFormat = value === 'long' ? 'long' : 'short';
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Name only on cards')
+			.setDesc('On unless it was turned off. The card title is the person\'s name. Off shows Name on Street.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.cardTitleNameOnly);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.cardTitleNameOnly = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Compact mode')
+			.setDesc('On unless turned off. Last Spoke, Last Attempted, and Met share one line: the symbol and how many days, with no weekday, time, or date. The circles on the right shrink to the lines that are showing. Day values are bold.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.compactMode);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.compactMode = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Literature on a study')
+			.setDesc('Literature and media always show when you log a visit. On a study they start collapsed. This switch no longer hides them.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.showStudyLiterature);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.showStudyLiterature = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Lessons/Studies on a study')
+			.setDesc('On shows Lessons/Studies, such as 2/6 (0.33) in Quick Facts. Off shows Studies/Lessons. The card leaves off the divided number. Missing this setting stays Lessons/Studies.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.studyRatio !== 'studies-lessons');
+				toggle.onChange(async (value) => {
+					this.plugin.settings.studyRatio = value ? 'lessons-studies' : 'studies-lessons';
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Last Spoke on a study')
+			.setDesc('Off unless it was turned on. A study card and Quick Facts show Last Studied instead. This puts Last Spoke back as well.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.studyShowSpoke);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.studyShowSpoke = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Last Attempted on a study')
+			.setDesc('Off unless it was turned on. A study card and Quick Facts show Last Studied instead. This puts Last Attempted back as well.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.studyShowAttempted);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.studyShowAttempted = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Left-align suggestion bullets')
+			.setDesc('On by default. Return-suggestion bullets stay left-aligned even when Center Return Suggestions is on. Attempt Log lines are left-aligned too.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.leftAlignSuggestionBullets);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.leftAlignSuggestionBullets = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('City on its own line')
+			.setDesc('Off by default. City and distance move off the address line, with a building icon.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.splitCityLine);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.splitCityLine = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		new Setting(containerEl)
+			.setName('Card icon scale')
+			.setDesc('Glanceable card icons. 1.2 is about 20% larger than the original size.')
+			.addSlider((slider) => {
+				slider.setLimits(0.8, 2, 0.1);
+				slider.setValue(this.plugin.settings.glancableIconScale);
+				slider.setDynamicTooltip();
+				slider.onChange(async (value) => {
+					this.plugin.settings.glancableIconScale = value;
+					await this.plugin.saveSettings();
+				});
+			});
+		this.renderCatalog(containerEl, 'Publications', 'customPublications');
+		this.renderCatalog(containerEl, 'Media', 'customMedia');
+		this.renderCatalog(containerEl, 'Lessons', 'customLessons');
+		new Setting(containerEl)
+			.setName('Page preview on the dashboard')
+			.setDesc('Off by default. While this is off, hovering a title on the RV Dashboard or a Glancable card does not open Page Preview, even when that core plugin is enabled.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.dashboardPagePreview);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.dashboardPagePreview = value;
+					await this.plugin.saveSettings();
+				});
+			});
+	}
+
+	private renderCatalog(
+		containerEl: HTMLElement,
+		label: string,
+		key: 'customPublications' | 'customMedia' | 'customLessons',
+	): void {
+		new Setting(containerEl).setName(label).setHeading();
+		containerEl.createEl('p', {
+			cls: 'setting-item-description',
+			text: 'The official list is empty until titles are added. Add a custom entry here, or type one while logging. Rename updates every note that stores that name. Delete removes it from future suggestions only.',
+		});
+		for (const name of this.plugin.settings[key]) {
+			new Setting(containerEl)
+				.setName(name)
+				.addButton((button) => {
+					button.setButtonText('Rename');
+					button.onClick(() => {
+						new CatalogRenameModal(this.app, name, (next) => {
+							void this.plugin.renameCatalogEntry(key, name, next).then(() => this.display());
+						}).open();
+					});
+				})
+				.addButton((button) => {
+					button.setButtonText('Delete');
+					button.setWarning();
+					button.onClick(async () => {
+						this.plugin.settings[key] = deleteCustom(this.plugin.settings[key], name);
+						await this.plugin.saveSettings();
+						this.display();
+					});
+				});
+		}
+		let draft = '';
+		new Setting(containerEl)
+			.setName('Add a custom entry')
+			.addText((text) => {
+				text.setPlaceholder(label);
+				text.onChange((value) => { draft = value; });
+			})
+			.addButton((button) => {
+				button.setButtonText('Add');
+				button.onClick(async () => {
+					const next = rememberCustom(this.plugin.settings[key], draft, []);
+					if (next.length === this.plugin.settings[key].length) {
+						new Notice('That entry is already in the list.');
+						return;
+					}
+					this.plugin.settings[key] = next;
+					await this.plugin.saveSettings();
+					this.display();
+				});
+			});
+	}
+
+	private paintReset(containerEl: HTMLElement): void {
+		const section = this.section;
+		const label = SETTINGS_SECTIONS.find((item) => item.id === section)?.label ?? 'this tab';
+		new Setting(containerEl)
+			.setName(`Reset ${label}`)
+			.setDesc(section === 'everyday'
+				? 'Resets only this tab. The Geoapify API key stays. Other tabs and the active campaign stay as they are.'
+				: 'Resets only this tab. Other tabs, the Geoapify API key, and the active campaign stay as they are.')
+			.addButton((button) => {
+				button.setButtonText('Reset this tab');
+				button.setWarning();
+				button.onClick(async () => {
+					this.plugin.settings = resetSettingsTab(this.plugin.settings, section);
+					await this.plugin.saveSettings();
+					this.display();
+				});
+			});
 	}
 
 	private paintUrgency(containerEl: HTMLElement): void {
@@ -373,6 +621,17 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			(value) => { this.plugin.settings.homeLogTemplateFile = value; },
 			true,
 		);
+		new Setting(containerEl)
+			.setName('Return visit hub')
+			.setDesc('The hub chip in each note that points at Return Visits Hub opens this note instead. Other hubs stay as they are written.')
+			.addText((text) => {
+				text.setPlaceholder('Return Visits Hub');
+				text.setValue(this.plugin.settings.returnHubNote);
+				text.onChange(async (value) => {
+					this.plugin.settings.returnHubNote = value.trim() || 'Return Visits Hub';
+					await this.plugin.saveSettings();
+				});
+			});
 		this.templateFileSetting(
 			templateGeneration,
 			'Not home log template file',
@@ -431,9 +690,22 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			() => this.plugin.settings.locationProperty,
 			(value) => { this.plugin.settings.locationProperty = value; },
 		);
+		new Setting(containerEl)
+			.setName('Directions')
+			.setDesc('Where a route opens: Google Maps, Apple Maps, or Waze. Notes keep their stored Map Link. The choice applies when you tap directions.')
+			.addDropdown((dropdown) => {
+				dropdown.addOption('google', 'Google Maps');
+				dropdown.addOption('apple', 'Apple Maps');
+				dropdown.addOption('waze', 'Waze');
+				dropdown.setValue(this.plugin.settings.routeProvider);
+				dropdown.onChange(async (value) => {
+					this.plugin.settings.routeProvider = value === 'apple' || value === 'waze' ? value : 'google';
+					await this.plugin.saveSettings();
+				});
+			});
 		this.propertySetting(
 			'Map link property',
-			'Google Maps search of Address. Leave empty to skip. Re-geocode refreshes this link.',
+			'Written on the first geocode. Leave empty to skip. Changing Directions does not rewrite this property.',
 			'Map Link',
 			() => this.plugin.settings.mapLinkProperty,
 			(value) => { this.plugin.settings.mapLinkProperty = value; },
@@ -475,7 +747,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('Distance testing').setHeading();
 		new Setting(containerEl)
 			.setName('Use test coordinates')
-			.setDesc('Nearby and Glancable use these coordinates instead of this device. A banner says so.')
+			.setDesc('Nearby and Glancable use these coordinates instead of this device. A toast says so, then goes away.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.distanceTest);
 				toggle.onChange(async (value) => {
@@ -503,6 +775,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		new Setting(containerEl).setName('About').setHeading();
 
 		const about = containerEl.createDiv('rv-locator-about');
+		about.createEl('p', { cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
 		about.createEl('p', { text: `Map data ${OSM_ATTRIBUTION}` });
 		about.createEl('p', { text: GEOAPIFY_ATTRIBUTION });
 		about.createEl('p', { text: PRIVACY_NOTICE });
@@ -513,7 +786,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 		});
 		osmLink.setAttr('rel', 'noopener');
 		about.createEl('p', {
-			text: 'Lookups use Geoapify’s EU endpoint (api-eu.geoapify.com). Google Maps is only used to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
+			text: 'Lookups use Geoapify’s global endpoint (api.geoapify.com) unless Geoapify region is set to EU. Google Maps is only used to build a link. This plugin does not call Nominatim or the Google Geocoding API.',
 		});
 	}
 
@@ -712,6 +985,41 @@ interface ExtrasPreviewRow extends ExtrasSyncFile {
 	exists: boolean;
 }
 
+class CatalogRenameModal extends Modal {
+	private nextName: string;
+
+	constructor(app: App, private current: string, private onRename: (next: string) => void) {
+		super(app);
+		this.nextName = current;
+	}
+
+	onOpen(): void {
+		this.setTitle('Rename');
+		this.modalEl.addClass('rv-locator-modal');
+		new Setting(this.contentEl)
+			.setName('Name')
+			.addText((text) => {
+				text.setValue(this.current);
+				text.onChange((value) => { this.nextName = value; });
+			});
+		new Setting(this.contentEl)
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			})
+			.addButton((button) => {
+				button.setButtonText('Rename');
+				button.setCta();
+				button.onClick(() => {
+					const next = this.nextName.trim();
+					this.close();
+					if (next && next.toLowerCase() !== this.current.trim().toLowerCase()) this.onRename(next);
+				});
+			});
+		iconizeModal(this.contentEl);
+	}
+}
+
 class ExtrasSyncConfirmModal extends Modal {
 	private overwriteExisting = false;
 
@@ -775,6 +1083,7 @@ class ExtrasSyncConfirmModal extends Modal {
 					this.onApply(overwrite);
 				});
 			});
+		iconizeModal(this.contentEl);
 	}
 }
 

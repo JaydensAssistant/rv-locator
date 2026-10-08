@@ -245,10 +245,10 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 }
 
 .rv-dashboard {
-	--rv-dash-label: 4.6em;
+	--rv-dash-label: 5.25em;
 	--rv-dash-field: 11em;
 	--rv-dash-plus: 2.1em;
-	--rv-dash-gap: 0.4em;
+	--rv-dash-gap: 0.22em;
 	--rv-dash-column: calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em);
 }
 
@@ -258,6 +258,56 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 	margin: 0;
 	font-weight: var(--font-semibold);
 	white-space: nowrap;
+}
+
+/*
+  Hub and Address share one max-content column, sized to the longer label
+  ("Address:"), with the same 0.22em gap. The label text is never clipped.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	--rv-hub-gap: 0.22em;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: var(--rv-hub-gap);
+	justify-items: start;
+	text-align: start;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: 0.22em;
+	width: 100%;
+}
+
+@supports (grid-template-columns: subgrid) {
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+		grid-template-columns: subgrid;
+		column-gap: inherit;
+	}
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	display: inline-flex;
+	grid-column: 1;
+	width: max-content;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > :is(input.rv-address-input, a.rv-address-link),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row {
+	grid-column: 2;
+	justify-self: stretch;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-item {
@@ -586,7 +636,14 @@ body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-lo
 	max-width: 100%;
 }
 
-body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) {
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong) {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: 0.22em;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong):not(.rv-hub-owned) {
 	display: flex;
 	align-items: center;
 	gap: var(--rv-dash-gap);
@@ -597,6 +654,19 @@ body.rv-wide-hubs .rv-hub-row {
 	flex: 1 1 auto;
 	width: auto;
 	max-width: none;
+}
+
+.inline-title .rv-note-status {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 0.35em;
+	color: var(--text-muted);
+	vertical-align: -0.12em;
+}
+
+.inline-title .rv-note-status svg {
+	width: 1em;
+	height: 1em;
 }
 
 .rv-locator-status-icon,

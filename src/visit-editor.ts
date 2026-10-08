@@ -2,6 +2,7 @@ import { appendCompanionTaken, companionDisplayName, companionKey, takenItems } 
 import { formatGlancableStampFromRaw, stripStampAge } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 import { parseLogBullet, stampDateTime } from './schedule';
+import { shareFromLine, visitExtraMarkup } from './visit-share';
 import {
 	appendLogLine,
 	ensureAttemptLog,
@@ -25,6 +26,16 @@ export interface VisitFacts {
 	when: Date;
 	home: boolean;
 	companion: string;
+	publications?: string;
+	media?: string;
+	publicationList?: string[];
+	mediaList?: string[];
+	lesson?: string;
+	lessonFrom?: string;
+	lessonTo?: string;
+	extraLesson?: string;
+	extraFrom?: string;
+	extraTo?: string;
 }
 
 /**
@@ -88,9 +99,11 @@ export function listVisits(body: string): VisitEntry[] {
 		if (!when) continue;
 		const notesProperty = NOTES_FIELD.exec(lines[index + 1] ?? '')?.[1] ?? null;
 		const partner = entries.find((entry) => entry.home && entry.headingLine == null && entry.bulletLine != null && entry.when.getTime() === when.getTime());
+		const share = shareFromLine(lines[index] ?? '');
 		if (partner) {
 			partner.headingLine = index;
 			partner.notesProperty = notesProperty;
+			Object.assign(partner, share);
 			continue;
 		}
 		entries.push({
@@ -101,6 +114,7 @@ export function listVisits(body: string): VisitEntry[] {
 			bulletLine: null,
 			headingLine: index,
 			notesProperty,
+			...share,
 		});
 	}
 	return entries
@@ -164,24 +178,46 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 	let next = ensureAttemptLog(body);
 	if (facts.home) {
 		const property = options.notesProperty || nextVisitNotesProperty(next);
-		const heading = `##### ${stamp}`;
+		const share = {
+			publications: facts.publications ?? '',
+			media: facts.media ?? '',
+			lesson: facts.lesson ?? '',
+			lessonFrom: facts.lessonFrom ?? '',
+			lessonTo: facts.lessonTo ?? '',
+			extraLesson: facts.extraLesson ?? '',
+			extraFrom: facts.extraFrom ?? '',
+			extraTo: facts.extraTo ?? '',
+			publicationList: facts.publicationList,
+			mediaList: facts.mediaList,
+		};
+		const extra = visitExtraMarkup(share);
+		const heading = extra ? `##### ${stamp} ${extra}` : `##### ${stamp}`;
 		const block = options.notesBlock && options.notesBlock.length > 0
 			? [heading, ...options.notesBlock.slice(1)]
 			: [heading, visitNotesField(property)];
 		const lines = next.split('\n');
 		const region = logRegion(lines);
-		const later = lines.findIndex((line, index) => {
-			if (inRegion(index, region)) return false;
-			const when = headingWhen(line);
-			return when != null && when.getTime() > at;
-		});
-		if (later >= 0) {
-			next = [...lines.slice(0, later), ...block, '', ...lines.slice(later)].join('\n');
-		} else if (options.notesBlock && options.notesBlock.length > 0) {
-			const placeholder = insertHomeHeading(next, stamp, property);
-			next = replaceInsertedBlock(placeholder, heading, visitNotesField(property), block);
+		const headings: Array<{ index: number; when: number }> = [];
+		for (let index = 0; index < lines.length; index += 1) {
+			if (inRegion(index, region)) continue;
+			const when = headingWhen(lines[index] ?? '');
+			if (!when) continue;
+			headings.push({ index, when: when.getTime() });
+		}
+		const newer = headings.filter((item) => item.when >= at).length;
+		if (headings.length === 0) {
+			const placeholder = insertHomeHeading(next, stamp, property, share);
+			next = options.notesBlock && options.notesBlock.length > 0
+				? replaceInsertedBlock(placeholder, heading, visitNotesField(property), block)
+				: placeholder;
+		} else if (newer >= headings.length) {
+			const last = headings[headings.length - 1];
+			const end = last ? notesBlockEnd(lines, last.index) : lines.length;
+			const gap = end < lines.length && (lines[end] ?? '') !== '' ? [''] : [];
+			next = [...lines.slice(0, end), ...block, '', ...gap, ...lines.slice(end)].join('\n');
 		} else {
-			next = insertHomeHeading(next, stamp, property);
+			const atLine = headings[newer]?.index ?? lines.length;
+			next = [...lines.slice(0, atLine), ...block, '', ...lines.slice(atLine)].join('\n');
 		}
 	}
 	const text = `${stamp} — ${visitPhrase(facts.home, facts.companion)}`;
@@ -258,10 +294,53 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	shiftCount(frontmatter, 'Successful Visits', (added?.home ? 1 : 0) - (removed?.home ? 1 : 0));
 	moveLatest(frontmatter, 'Last Attempted', removed, after);
 	moveLatest(frontmatter, 'Last Spoke', removed?.home ? removed : null, after.filter((visit) => visit.home));
+	if (added?.publications?.trim()) assignProperty(frontmatter, 'Left Publications', added.publications.trim());
+	if (added?.media?.trim()) assignProperty(frontmatter, 'Shared Media', added.media.trim());
+	applyLessonChange(frontmatter, change);
 	updateTaken(frontmatter, removed, added, after);
 	syncMet(frontmatter, after, new Date());
 	const property = change.removedNotesProperty?.trim();
 	if (removed?.home && property && !added?.home) removeProperty(frontmatter, property);
+}
+
+function lessonTitles(visit: VisitFacts | null | undefined): string[] {
+	if (!visit) return [];
+	return [visit.lesson, visit.extraLesson].map((item) => item?.trim() ?? '').filter(Boolean);
+}
+
+function applyLessonChange(frontmatter: Record<string, unknown>, change: VisitChange): void {
+	const added = change.added ?? null;
+	const removed = change.removed ?? null;
+	const addedTitles = lessonTitles(added);
+	const removedTitles = lessonTitles(removed);
+	if (addedTitles.length === 0 && removedTitles.length === 0) return;
+	shiftCount(frontmatter, 'Studies', addedTitles.length - removedTitles.length);
+	if (added && addedTitles.length > 0) {
+		assignProperty(frontmatter, 'Last Studied', formatFrontmatterDateTime(added.when));
+	}
+	const kept = new Set(
+		[...change.remaining, ...(added ? [added] : [])]
+			.flatMap((visit) => lessonTitles(visit))
+			.map((title) => title.toLowerCase()),
+	);
+	const list = lessonNameList(readProperty(frontmatter, 'Lessons Studied'));
+	for (const title of addedTitles) {
+		if (!list.some((item) => item.toLowerCase() === title.toLowerCase())) list.push(title);
+	}
+	const next = list.filter((title) => kept.has(title.toLowerCase()) || !removedTitles.some((item) => item.toLowerCase() === title.toLowerCase()));
+	assignProperty(frontmatter, 'Lessons Studied', next);
+}
+
+function lessonNameList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (!text || names.some((name) => name.toLowerCase() === text.toLowerCase())) continue;
+		names.push(text);
+	}
+	return names;
 }
 
 function shiftCount(frontmatter: Record<string, unknown>, name: string, delta: number): void {
@@ -366,7 +445,19 @@ export function describeVisit(entry: VisitFacts): string {
 
 /** Visit facts without the line bookkeeping. */
 export function visitFacts(entry: VisitFacts): VisitFacts {
-	return { when: entry.when, home: entry.home, companion: entry.companion };
+	return {
+		when: entry.when,
+		home: entry.home,
+		companion: entry.companion,
+		publications: entry.publications,
+		media: entry.media,
+		lesson: entry.lesson,
+		lessonFrom: entry.lessonFrom,
+		lessonTo: entry.lessonTo,
+		extraLesson: entry.extraLesson,
+		extraFrom: entry.extraFrom,
+		extraTo: entry.extraTo,
+	};
 }
 
 export interface VisitHint {
@@ -410,16 +501,24 @@ export function dateInputValue(date: Date): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-/** Local date from `2026-09-29` at `hour` o'clock. Null for a blank or invalid date. */
-export function visitWhenFrom(dateText: string, hour: number): Date | null {
+/** Local date from `2026-09-29` at `hour`:`minute`. Minute defaults to 00. Null for a blank or invalid date. */
+export function visitWhenFrom(dateText: string, hour: number, minute = 0): Date | null {
 	const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText.trim());
 	if (!match || !Number.isInteger(hour) || hour < 0 || hour > 23) return null;
+	if (!Number.isInteger(minute) || minute < 0 || minute > 59) return null;
 	const year = Number(match[1]);
 	const month = Number(match[2]) - 1;
 	const day = Number(match[3]);
-	const date = new Date(year, month, day, hour, 0, 0, 0);
+	const date = new Date(year, month, day, hour, minute, 0, 0);
 	if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
 	return date;
+}
+
+/** Nearest 5-minute mark. 60 rolls to 0 so the caller can bump the hour. */
+export function snapFiveMinutes(minute: number): number {
+	if (!Number.isInteger(minute)) return 0;
+	const snapped = Math.round(Math.max(0, Math.min(59, minute)) / 5) * 5;
+	return snapped >= 60 ? 0 : snapped;
 }
 
 /** `12am` … `11pm`. */

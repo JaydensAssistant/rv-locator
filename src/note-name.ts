@@ -1,11 +1,3 @@
-const STREET_SUFFIXES = new Set([
-	'street', 'st', 'avenue', 'ave', 'road', 'rd', 'drive', 'dr', 'lane', 'ln',
-	'boulevard', 'blvd', 'court', 'ct', 'place', 'pl', 'circle', 'cir', 'way',
-	'trail', 'trl', 'parkway', 'pkwy', 'highway', 'hwy', 'terrace', 'ter',
-	'loop', 'alley', 'aly', 'plaza', 'plz', 'square', 'sq', 'run', 'path',
-	'pike', 'route', 'rte', 'expressway', 'expy', 'crossing', 'xing', 'point', 'pt',
-]);
-
 const DIRECTIONALS = new Set([
 	'n', 'north', 's', 'south', 'e', 'east', 'w', 'west',
 	'ne', 'northeast', 'nw', 'northwest', 'se', 'southeast', 'sw', 'southwest',
@@ -15,8 +7,9 @@ const UNIT_MARKERS = new Set(['apt', 'apartment', 'unit', 'ste', 'suite']);
 
 /**
  * Short street name for `{Name} on {Street}`.
- * Drops the house number, a leading directional, a trailing suffix, and an apartment tail.
- * `142 Maple Street, Orlando` → `Maple`. `10 Oak Hammock Lane` → `Oak Hammock`.
+ * Drops the house number, a leading directional, and an apartment tail.
+ * The street suffix stays, so `142 Lake Dr` → `Lake Dr`, not `Lake`.
+ * `10 Oak Hammock Lane` → `Oak Hammock Lane`.
  */
 export function streetShortName(address: string): string {
 	const line = (address.split(',')[0] ?? address).trim();
@@ -29,7 +22,7 @@ export function streetShortName(address: string): string {
 	return chosen.map(titleWord).join(' ');
 }
 
-/** `Alex` + `142 Maple Street` → `Alex on Maple`. Empty pieces are omitted. */
+/** `Alex` + `142 Maple Street` → `Alex on Maple Street`. Empty pieces are omitted. */
 export function rvNoteTitle(householder: string, address: string): string {
 	const name = sanitizeNoteName(householder);
 	const street = sanitizeNoteName(streetShortName(address));
@@ -38,12 +31,25 @@ export function rvNoteTitle(householder: string, address: string): string {
 }
 
 /**
- * A blank name uses Man or Woman. `''` + Man + `142 Maple Street` → `Man on Maple`.
+ * A blank name uses Man or Woman. `''` + Man + `142 Maple Street` → `Man on Maple Street`.
  */
 export function rvNoteTitleFromIdentity(name: string, gender: string, address: string): string {
 	const named = sanitizeNoteName(name);
 	const who = named || (gender === 'Woman' ? 'Woman' : gender === 'Man' ? 'Man' : '');
 	return rvNoteTitle(who, address);
+}
+
+/**
+ * Card title. Name-only keeps the person in `Name on Street`, including a
+ * trailing met date. A title with no ` on ` stays whole so a street form
+ * can ellipsize at the end.
+ */
+export function cardPersonTitle(title: string, nameOnly: boolean): string {
+	const base = title.replace(/\s+\d{4}-\d{2}-\d{2}$/, '').trim();
+	if (!nameOnly) return title.trim();
+	const on = base.toLowerCase().indexOf(' on ');
+	if (on > 0) return base.slice(0, on).trim();
+	return base || title.trim();
 }
 
 /** `Man on Maple` + `2026-10-01T16:32:00` → `Man on Maple 2026-10-01`. */
@@ -68,22 +74,13 @@ function significantStreetTokens(raw: readonly string[]): string[] {
 	let tokens = raw.slice(start);
 	const unitAt = tokens.findIndex((token) => isUnitMarker(token));
 	if (unitAt >= 0) tokens = tokens.slice(0, unitAt);
-	const trimmed = dropTrailingSuffix(tokens);
-	if (trimmed.length > 0) return trimmed;
-	const withDirectional = dropTrailingSuffix(dropUnit(raw));
-	return withDirectional;
+	if (tokens.length > 0) return tokens;
+	return dropUnit(raw);
 }
 
 function dropUnit(tokens: readonly string[]): string[] {
 	const unitAt = tokens.findIndex((token) => isUnitMarker(token));
 	return unitAt >= 0 ? tokens.slice(0, unitAt) : [...tokens];
-}
-
-function dropTrailingSuffix(tokens: readonly string[]): string[] {
-	if (tokens.length === 0) return [];
-	const last = tokenKey(tokens[tokens.length - 1] ?? '');
-	if (!STREET_SUFFIXES.has(last)) return [...tokens];
-	return tokens.slice(0, -1);
 }
 
 function isUnitMarker(token: string): boolean {

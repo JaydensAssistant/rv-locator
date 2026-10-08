@@ -1,4 +1,5 @@
 import { Modal, Setting, type App } from 'obsidian';
+import { iconizeModal } from './modal-chrome';
 
 /** Change priority with a slider. 0 archives. Above 0 on an inactive note restores Active. */
 export class PrioritySliderModal extends Modal {
@@ -41,5 +42,6 @@ export class PrioritySliderModal extends Modal {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.close());
 			});
+		iconizeModal(contentEl);
 	}
 }

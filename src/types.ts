@@ -1,4 +1,5 @@
-import { DISTANCE_COLUMN_ID } from './constants';
+import type { StudyRatioOrder } from './catalog';
+import { DISTANCE_COLUMN_ID, type GeoapifyRegion } from './constants';
 import { uniqueDatePropertyNames, parseDatePropertyNames } from './dates';
 import {
 	DEFAULT_HOME_LOG_TEMPLATE_FILE,
@@ -26,7 +27,8 @@ import {
 	type UrgencyColors,
 	type UrgencyPaletteId,
 } from './urgency-palette';
-import { sanitizeGenderFilter, sanitizeReturnScope, type GenderFilter, type ReturnScope } from './status';
+import { sanitizeMapShade, type MapShadeMode } from './map-shade';
+import { sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, type CampaignListFilter, type GenderFilter, type ReturnScope } from './status';
 
 export type DistanceUnit = 'miles' | 'kilometers';
 
@@ -34,6 +36,8 @@ export type AttemptLogWidth = 'auto' | 'full' | 'column';
 
 export interface RVLocatorSettings {
 	geoapifyApiKey: string;
+	/** `global` uses api.geoapify.com. `eu` is an explicit override. */
+	geoapifyRegion: GeoapifyRegion;
 	addressProperty: string;
 	locationProperty: string;
 	mapLinkProperty: string;
@@ -89,11 +93,11 @@ export interface RVLocatorSettings {
 	abbreviateDayparts: boolean;
 	/** `auto` is full width when days are columns, otherwise the dashboard column. */
 	attemptLogWidth: AttemptLogWidth;
-	/** Quick Facts grows to the note width. Off by default. */
+	/** Quick Facts grows to the note width. On by default. */
 	wideQuickFacts: boolean;
-	/** Hubs and Address grow to the note width. Off by default. */
+	/** Hubs and Address grow to the note width. On by default. */
 	wideHubsAddress: boolean;
-	/** Visit buttons grow to the note width. Off they stop at the Hub column. */
+	/** Visit buttons grow to the note width. On by default. */
 	wideVisitButtons: boolean;
 	centerDashboard: boolean;
 	centerVisitNotes: boolean;
@@ -101,6 +105,10 @@ export interface RVLocatorSettings {
 	urgencyPalette: UrgencyPaletteId;
 	/** Low to high urgency. Used when {@link urgencyPalette} is `custom`. */
 	urgencyCustomColors: UrgencyColors;
+	/** How map pins are colored. Urgency bands unless this is changed. Nearness is not a mode. */
+	mapShade: MapShadeMode;
+	/** Directions built at click time. Stored Map Link text is left alone. */
+	routeProvider: RouteProvider;
 	/** Soft rate at or above this, with {@link digestTryMinHomes}, lands in Try. */
 	digestTrySoftMin: number;
 	/** Soft rate at or below this, with {@link digestAvoidMinTrials}, lands in Avoid. */
@@ -125,12 +133,56 @@ export interface RVLocatorSettings {
 	showUrgencyBadge: boolean;
 	showPriorityBadge: boolean;
 	showRouteBadge: boolean;
+	/** New visits paint newest-first. Display only. On by default. */
+	visitsNewestFirst: boolean;
+	/** Visits after the newest few sit under ### Older Visits. On by default. */
+	collapseOlderVisits: boolean;
+	/** How many of the newest visits stay outside Older Visits. Default 3. */
+	visibleVisitCount: number;
+	/** Bottom line of a glancable card shows the current return bucket. On when the key is absent. */
+	showCardReturnStatus: boolean;
+	/** `short` is `Sat mor`. `long` is `Friday afternoon — `. Short when the key is absent. */
+	cardReturnFormat: 'short' | 'long';
+	/** Card title is the person's name. On when the key is absent. */
+	cardTitleNameOnly: boolean;
+	/**
+	 * Last spoke, last attempted, and met share one line, and the card badges
+	 * fit that stack. On when the key is missing. An explicit off stays off.
+	 * A vault that stored `compactCardDates` still reads that key.
+	 */
+	compactMode: boolean;
+	/** Note opened by the return-visit hub chip. Default Return Visits Hub. */
+	returnHubNote: string;
+	/** Glancable campaign cycle: all, uncovered, covered. */
+	campaignListFilter: CampaignListFilter;
+	/** When on, the core Page Preview plugin may preview RV Dashboard titles. Off by default. */
+	dashboardPagePreview: boolean;
 	/** Folder for notes created with New RV. Empty keeps Templater's folder. */
 	newRvFolder: string;
 	/** Append the Met date `YYYY-MM-DD` to a created RV's file name. Off by default. */
 	appendMetDateToFilename: boolean;
 	returnScope: ReturnScope;
 	genderFilter: GenderFilter;
+	/** Custom publication titles, added when someone types one that is not in the static list. */
+	customPublications: string[];
+	/** Custom media titles. */
+	customMedia: string[];
+	/** Custom lesson titles. Official lessons stay in the catalog. */
+	customLessons: string[];
+	/** Show the literature and media prompts on a study's at-home log. Off by default. */
+	showStudyLiterature: boolean;
+	/** Left-align return-suggestion bullets outside the attempt log. On by default. */
+	leftAlignSuggestionBullets: boolean;
+	/** Glanceable card icon scale. 1.2 is about 20% larger. */
+	glancableIconScale: number;
+	/** City and distance on their own line. Off by default. */
+	splitCityLine: boolean;
+	/** Study card and Quick Facts ratio. Lessons/Studies unless switched. */
+	studyRatio: StudyRatioOrder;
+	/** Study cards hide Last Spoke unless this was turned on. */
+	studyShowSpoke: boolean;
+	/** Study cards hide Last Attempted unless this was turned on. */
+	studyShowAttempted: boolean;
 }
 
 export type PriorityBand = 1 | 2 | 3 | 4 | 5;
@@ -160,7 +212,7 @@ export type GlancableLineId = (typeof GLANCABLE_LINE_IDS)[number];
 export type GlancableLineFlags = Record<GlancableLineId, boolean>;
 
 export interface GlancableChromeFlags {
-	/** Hide the whole Bases top bar. Off by default. */
+	/** Hide the whole Bases top bar. On when unset. A saved true or false is kept. */
 	hideToolbar: boolean;
 	hideViews: boolean;
 	hideSort: boolean;
@@ -181,12 +233,12 @@ export const DEFAULT_URGENCY_THRESHOLD_DAYS: PriorityDays = {
 	5: 4,
 };
 
-/** P5 < 3d, P4 < 4d, P3 < 7d, P2 < 14d, P1 < 6 weeks. */
+/** P5 is 3 days or less, P4 is 5, P3 is 7, P2 is 21, P1 is 63. The cliff is days inside the floor. */
 export const DEFAULT_IDEALITY_FLOOR_DAYS: PriorityDays = {
-	1: 42,
-	2: 14,
+	1: 63,
+	2: 21,
 	3: 7,
-	4: 4,
+	4: 5,
 	5: 3,
 };
 
@@ -213,7 +265,7 @@ export function defaultSortChips(): SortChipFlags {
 
 export function defaultGlancableChrome(): GlancableChromeFlags {
 	return {
-		hideToolbar: false,
+		hideToolbar: true,
 		hideViews: false,
 		hideSort: false,
 		hideFilter: false,
@@ -242,6 +294,7 @@ export const DEFAULT_PRIORITY_NUDGE_EVERY = 3;
 
 export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	geoapifyApiKey: '',
+	geoapifyRegion: 'global',
 	addressProperty: 'Address',
 	locationProperty: 'Location',
 	mapLinkProperty: 'Map Link',
@@ -275,14 +328,16 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	openRvInReadingView: true,
 	abbreviateDayparts: true,
 	attemptLogWidth: 'full',
-	wideQuickFacts: false,
-	wideHubsAddress: false,
-	wideVisitButtons: false,
-	centerDashboard: false,
-	centerVisitNotes: false,
-	centerSuggestions: false,
+	wideQuickFacts: true,
+	wideHubsAddress: true,
+	wideVisitButtons: true,
+	centerDashboard: true,
+	centerVisitNotes: true,
+	centerSuggestions: true,
 	urgencyPalette: 'default',
 	urgencyCustomColors: defaultUrgencyColors(),
+	mapShade: 'urgency',
+	routeProvider: 'google',
 	digestTrySoftMin: DEFAULT_TRY_SOFT_MIN,
 	digestAvoidSoftMax: DEFAULT_AVOID_SOFT_MAX,
 	digestAvoidMinTrials: DEFAULT_AVOID_MIN_TRIALS,
@@ -298,11 +353,38 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	showUrgencyBadge: true,
 	showPriorityBadge: true,
 	showRouteBadge: true,
+	visitsNewestFirst: true,
+	collapseOlderVisits: true,
+	visibleVisitCount: 3,
+	showCardReturnStatus: true,
+	cardReturnFormat: 'short',
+	cardTitleNameOnly: true,
+	compactMode: true,
+	returnHubNote: 'Return Visits Hub',
+	campaignListFilter: 'all',
+	dashboardPagePreview: false,
 	newRvFolder: '',
 	appendMetDateToFilename: false,
 	returnScope: 'active',
 	genderFilter: 'all',
+	customPublications: [],
+	customMedia: [],
+	customLessons: [],
+	showStudyLiterature: false,
+	leftAlignSuggestionBullets: true,
+	glancableIconScale: 1.2,
+	splitCityLine: false,
+	studyRatio: 'lessons-studies',
+	studyShowSpoke: false,
+	studyShowAttempted: false,
 };
+
+export type RouteProvider = 'google' | 'apple' | 'waze';
+
+export function sanitizeRouteProvider(value: unknown): RouteProvider {
+	if (value === 'apple' || value === 'waze') return value;
+	return 'google';
+}
 
 export interface NearbySortPreference {
 	property: string;
@@ -359,6 +441,8 @@ export interface StoredPluginData {
 	digestPolish?: number;
 	/** Return Suggestions callout type the vault was last written with. */
 	suggestionTypeApplied?: string;
+	/** The one campaign, or absent when none is saved. Not a setting, so a tab reset leaves it. */
+	campaign?: unknown;
 }
 
 export interface LatLon {
@@ -369,12 +453,25 @@ export interface LatLon {
 type SettingsInput = Partial<RVLocatorSettings> & {
 	/** Previous string setting. "Last Spc" is rewritten to the real key `Last Spoke`. */
 	weekdayDateProperties?: unknown;
+	/** Compact dates, renamed to {@link RVLocatorSettings.compactMode}. */
+	compactCardDates?: boolean;
 };
+
+/**
+ * Missing means on. An explicit compact mode wins.
+ * An explicit old compact-dates value is kept, including an explicit off.
+ */
+export function compactModeFrom(input: SettingsInput): boolean {
+	if (typeof input.compactMode === 'boolean') return input.compactMode;
+	if (typeof input.compactCardDates === 'boolean') return input.compactCardDates;
+	return true;
+}
 
 export function mergeSettings(partial: SettingsInput | null | undefined): RVLocatorSettings {
 	const input = partial ?? {};
 	return {
 		geoapifyApiKey: typeof input.geoapifyApiKey === 'string' ? input.geoapifyApiKey : DEFAULT_SETTINGS.geoapifyApiKey,
+		geoapifyRegion: input.geoapifyRegion === 'eu' ? 'eu' : 'global',
 		addressProperty: nonEmptyString(input.addressProperty, DEFAULT_SETTINGS.addressProperty),
 		locationProperty: nonEmptyString(input.locationProperty, DEFAULT_SETTINGS.locationProperty),
 		mapLinkProperty: typeof input.mapLinkProperty === 'string' ? input.mapLinkProperty : DEFAULT_SETTINGS.mapLinkProperty,
@@ -407,14 +504,16 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		openRvInReadingView: input.openRvInReadingView !== false,
 		abbreviateDayparts: input.abbreviateDayparts !== false,
 		attemptLogWidth: input.attemptLogWidth === 'auto' || input.attemptLogWidth === 'column' ? input.attemptLogWidth : 'full',
-		wideQuickFacts: input.wideQuickFacts === true,
-		wideHubsAddress: input.wideHubsAddress === true,
-		wideVisitButtons: input.wideVisitButtons === true,
-		centerDashboard: input.centerDashboard === true,
-		centerVisitNotes: input.centerVisitNotes === true,
-		centerSuggestions: input.centerSuggestions === true,
+		wideQuickFacts: input.wideQuickFacts !== false,
+		wideHubsAddress: input.wideHubsAddress !== false,
+		wideVisitButtons: input.wideVisitButtons !== false,
+		centerDashboard: input.centerDashboard !== false,
+		centerVisitNotes: input.centerVisitNotes !== false,
+		centerSuggestions: input.centerSuggestions !== false,
 		urgencyPalette: sanitizeUrgencyPalette(input.urgencyPalette),
 		urgencyCustomColors: sanitizeUrgencyColors(input.urgencyCustomColors),
+		mapShade: sanitizeMapShade(input.mapShade),
+		routeProvider: sanitizeRouteProvider(input.routeProvider),
 		digestTrySoftMin: unitRate(input.digestTrySoftMin, DEFAULT_TRY_SOFT_MIN),
 		digestAvoidSoftMax: unitRate(input.digestAvoidSoftMax, DEFAULT_AVOID_SOFT_MAX),
 		digestAvoidMinTrials: wholeInRange(input.digestAvoidMinTrials, 1, 30, DEFAULT_AVOID_MIN_TRIALS),
@@ -430,18 +529,56 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		showUrgencyBadge: input.showUrgencyBadge !== false,
 		showPriorityBadge: input.showPriorityBadge !== false,
 		showRouteBadge: input.showRouteBadge !== false,
+		visitsNewestFirst: input.visitsNewestFirst !== false,
+		collapseOlderVisits: input.collapseOlderVisits !== false,
+		visibleVisitCount: wholeInRange(input.visibleVisitCount, 1, 30, DEFAULT_SETTINGS.visibleVisitCount),
+		showCardReturnStatus: input.showCardReturnStatus !== false,
+		cardReturnFormat: input.cardReturnFormat === 'long' ? 'long' : 'short',
+		cardTitleNameOnly: input.cardTitleNameOnly !== false,
+		compactMode: compactModeFrom(input),
+		returnHubNote: typeof input.returnHubNote === 'string' && input.returnHubNote.trim()
+			? input.returnHubNote.trim()
+			: DEFAULT_SETTINGS.returnHubNote,
+		campaignListFilter: sanitizeCampaignListFilter(input.campaignListFilter),
+		dashboardPagePreview: input.dashboardPagePreview === true,
 		newRvFolder: folderSetting(input.newRvFolder),
 		appendMetDateToFilename: input.appendMetDateToFilename === true,
 		returnScope: sanitizeReturnScope(input.returnScope),
 		genderFilter: sanitizeGenderFilter(input.genderFilter),
+		customPublications: stringList(input.customPublications),
+		customMedia: stringList(input.customMedia),
+		customLessons: stringList(input.customLessons),
+		showStudyLiterature: input.showStudyLiterature === true,
+		leftAlignSuggestionBullets: input.leftAlignSuggestionBullets !== false,
+		glancableIconScale: boundedNumber(input.glancableIconScale, 0.5, 2.5, DEFAULT_SETTINGS.glancableIconScale),
+		splitCityLine: input.splitCityLine === true,
+		studyRatio: input.studyRatio === 'studies-lessons' ? 'studies-lessons' : 'lessons-studies',
+		studyShowSpoke: input.studyShowSpoke === true,
+		studyShowAttempted: input.studyShowAttempted === true,
 	};
 }
 
-/** Automatic is full width only when days run across the Attempt Log table. */
+function stringList(value: unknown): string[] {
+	if (!Array.isArray(value)) return [];
+	const out: string[] = [];
+	const seen = new Set<string>();
+	for (const item of value) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		const key = text.toLowerCase();
+		if (!text || seen.has(key)) continue;
+		seen.add(key);
+		out.push(text);
+	}
+	return out;
+}
+
+/**
+ * Full width and Automatic are wide. Dashboard column is the narrow width.
+ * Swapping digest rows and columns does not change this.
+ */
 export function attemptLogFullWidth(settings: Pick<RVLocatorSettings, 'attemptLogWidth' | 'digestOrientation'>): boolean {
-	if (settings.attemptLogWidth === 'full') return true;
-	if (settings.attemptLogWidth === 'column') return false;
-	return settings.digestOrientation === 'columns';
+	return settings.attemptLogWidth !== 'column';
 }
 
 export function sanitizeNewRvPriority(value: unknown): number {
