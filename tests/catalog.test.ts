@@ -440,13 +440,16 @@ describe('glancable smart search', () => {
 		assert.match(css, /\.rv-hub-map-handle::before \{[^}]*height:\s*40px/);
 		assert.match(css, /\.rv-map-credit \{[^}]*left:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0/);
 		assert.match(css, /\.rv-hub-fill \{[^}]*padding-bottom:\s*0 !important/);
-		assert.doesNotMatch(css, /height:\s*70vh/);
+		assert.doesNotMatch(css, /[^-\w]height:\s*70vh/);
+		assert.match(css, /min-height:\s*70vh/);
 		assert.match(modal, /rv-locator-modal/);
 		assert.match(css, /@media \(max-width: 520px\) \{[^}]*\.rv-locator-modal \.setting-item \{[^}]*flex-direction:\s*column !important/);
 		assert.match(glance, /highlightMapPin/);
 		assert.match(glance, /cardBlankOpensPin/);
 		assert.match(map, /popupPath/);
 		assert.match(map, /zoomToRevealPin/);
+		assert.match(map, /focus: \(path, center, source\) => \{ this\.focusPath\(path, center, source\)/);
+		assert.match(map, /clearPinFlash/);
 		assert.doesNotMatch(map, /openCard\(pins, selected\.pin/);
 		const chips = visibleSortPresets(defaultSortChips()).length;
 		assert.equal(glancePillsThatFit(390, chips), chips);

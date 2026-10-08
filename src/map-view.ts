@@ -108,7 +108,7 @@ export class RvMapView extends ItemView {
 		this.syncFullscreen();
 		this.detachMap = this.host.attachMap?.({
 			refresh: () => { this.recenter(); },
-			focus: (path, center) => { this.focusPath(path, center); },
+			focus: (path, center, source) => { this.focusPath(path, center, source); },
 		}) ?? null;
 	}
 
@@ -135,6 +135,7 @@ export class RvMapView extends ItemView {
 				this.zoom = zoomToRevealPin(this.zoom);
 				this.flashPath = path;
 				this.flashUntil = Date.now() + 1600;
+				this.clearPinFlash(this.flashUntil);
 			} else {
 				this.zoom = Math.max(this.zoom, 15);
 			}
@@ -154,6 +155,17 @@ export class RvMapView extends ItemView {
 		this.syncFullscreen();
 		this.paint();
 		this.repaintAfterLayout();
+	}
+
+	/** Drop the pin outline when the same 1600ms card flash would end. */
+	private clearPinFlash(until: number): void {
+		if (typeof window === 'undefined') return;
+		window.setTimeout(() => {
+			if (this.flashUntil !== until) return;
+			const layer = this.pinLayer;
+			if (!layer || typeof layer.querySelectorAll !== 'function') return;
+			layer.querySelectorAll('.rv-pin-flash').forEach((node) => node.classList.remove('rv-pin-flash'));
+		}, 1600);
 	}
 
 	/** Layout from the fullscreen class is not settled on the same turn. */
