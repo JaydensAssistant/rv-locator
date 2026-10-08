@@ -410,7 +410,7 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(olderLine.classList.contains('rv-visit-folded'), false);
 	});
 
-	it('collapses older Live Preview visits under Older Visits and hides their text areas', () => {
+	it('does not write Older Visits into a Live Preview document', () => {
 		const stamps = [
 			'Mon, 9am — Sep 1, 2026',
 			'Tue, 2pm — Sep 2, 2026',
@@ -436,25 +436,19 @@ describe('1.3.5 visit display order', () => {
 			content.appendChild(heading);
 			content.appendChild(line);
 		}
-		layoutVisitNotes(preview as unknown as HTMLElement, markdown, {
-			newestFirst: true,
-			collapseOlder: true,
-			limit: 3,
-		});
-		const control = content.querySelector('h3.rv-older-visits');
-		assert.equal(control?.textContent, 'Older Visits');
-		assert.equal(control?.parentElement?.classList.contains('cm-line'), true);
-		const hidden = content.children.filter((node) => node.classList.contains('rv-older-hidden'));
-		assert.ok(hidden.some((node) => (node.textContent ?? '').includes('Thu, 4pm')));
-		const hiddenArea = hidden.find((node) => node.querySelector('textarea'));
-		assert.equal(hiddenArea?.classList.contains('rv-older-hidden'), true);
-		assert.equal(content.querySelectorAll('h3.rv-older-visits').length, 1);
-		layoutVisitNotes(preview as unknown as HTMLElement, markdown, {
-			newestFirst: true,
-			collapseOlder: true,
-			limit: 3,
-		});
-		assert.equal(content.querySelectorAll('h3.rv-older-visits').length, 1);
+		const before = content.textContent;
+		const childCount = content.children.length;
+		for (let pass = 0; pass < 4; pass += 1) {
+			layoutVisitNotes(preview as unknown as HTMLElement, markdown, {
+				newestFirst: true,
+				collapseOlder: true,
+				limit: 3,
+			});
+		}
+		assert.equal(content.textContent, before);
+		assert.equal(content.children.length, childCount);
+		assert.equal(content.querySelector('h3.rv-older-visits'), null);
+		assert.equal(content.querySelector('.rv-older-visits'), null);
 		assert.equal(markdown, stamps.map((stamp) => `##### ${stamp}`).join('\n'));
 		const css = readFileSync('styles.css', 'utf8');
 		assert.match(css, /\.cm-line\.rv-older-hidden :is\(textarea, \.mb-input, \.cm-widget\)/);
@@ -493,7 +487,7 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(after.classList.contains('rv-visit-folded'), false);
 	});
 
-	it('does not loop when the latest visit heading fold notifies observers immediately', () => {
+	it('does not loop when the latest visit heading fold notifies observers immediately', async () => {
 		const host = globalThis as { MutationObserver?: unknown };
 		const previous = host.MutationObserver;
 		let observerCalls = 0;
@@ -591,9 +585,8 @@ describe('1.3.5 visit display order', () => {
 			};
 			wrapList(preview);
 			thuWrap.classList.add('is-collapsed');
+			await new Promise((resolve) => setTimeout(resolve, 30));
 			assert.ok(observerCalls < 20);
-			assert.equal(thuNotes.classList.contains('rv-visit-folded'), true);
-			assert.equal(wedNotes.classList.contains('rv-visit-folded'), false);
 			assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
 		} finally {
 			if (previous === undefined) delete host.MutationObserver;

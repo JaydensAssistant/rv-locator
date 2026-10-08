@@ -1,3 +1,4 @@
+import type { EditorView } from '@codemirror/view';
 import { MarkdownView, Menu, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { addressesMatchOneForOne, buildAutocompleteUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
@@ -32,6 +33,7 @@ import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { concealCollapsedVisitNotes, layoutVisitNotes } from './visit-display';
+import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import type { MapPin } from './map-pins';
@@ -241,6 +243,10 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
 		this.registerView(MAP_VIEW_TYPE, (leaf) => new RvMapView(leaf, this));
+		this.registerEditorExtension(visitPreviewExtension(() => ({
+			collapseOlder: this.settings.collapseOlderVisits,
+			limit: this.settings.visibleVisitCount,
+		})));
 
 		this.registerMarkdownPostProcessor((element, context) => {
 			const path = context.sourcePath;
@@ -387,6 +393,17 @@ export default class RVLocatorPlugin extends Plugin {
 				limit: this.settings.visibleVisitCount,
 			});
 		});
+	}
+
+	/** Live Preview Older Visits reads settings at decoration time. Effects only, never the note. */
+	private refreshVisitPreviewEditors(): void {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) continue;
+			const cm = (view.editor as { cm?: EditorView }).cm;
+			if (!cm) continue;
+			dispatchVisitPreviewRefresh(cm);
+		}
 	}
 
 	/** Badge toggles and visit-order settings repaint notes that are already open. */
@@ -1055,6 +1072,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.digestKeyApplied = this.digestKey();
 		this.applyLayoutClasses();
 		this.refreshOpenNoteChrome();
+		this.refreshVisitPreviewEditors();
 		for (const callback of this.viewRefreshers) callback();
 		if (digestChanged) {
 			this.recolorOpenSuggestions();

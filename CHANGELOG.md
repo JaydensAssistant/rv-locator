@@ -2,19 +2,19 @@
 
 ## 1.3.5
 
-`main.js` SHA-256: `c9b5c5abc7389c63eefa1c0cad18324e2cbdf1ad966c5a3b99bf7e26768c35e5`
+`main.js` SHA-256: `e0b9f20c22813a4c77d9d18195d323bde0b07b2aa56a4e85f719b55f992e2377`
 
-`styles.css` SHA-256: `b66f36c2cc355c1dbb06ff504bf2d650b6c662685d96b10eee899be047589fba`
+`styles.css` SHA-256: `9ea2ee99da656ea83fb655a8f67937a41582d7a369e7acf859f64a06acc01cf0`
 
 `manifest.json` SHA-256: `dbf47c2188d9abcdda12f0242dbffe93a835852e2cf21e9b476278e7fbd92591`
 
-- A collapsed visit heading hides its Meta Bind text areas in Live Preview and Reading view, including older visits and the latest visit. Live Preview headings are `.cm-line.HyperMD-header` lines, so older visits still collapse under Older Visits and their text areas hide. Folding the latest visit in Reading view no longer locks the renderer. Expanding the heading shows the text areas again. The note file is not rewritten.
+- A collapsed visit heading hides its Meta Bind text areas in Live Preview and Reading view, including older visits and the latest visit. Live Preview draws Older Visits with CodeMirror decorations only, so opening the note does not write that heading into the file. Folding the latest visit in Reading view no longer locks the renderer: an unchanged class notification is ignored, fold work is disconnected from its observer, and a pass that finds nothing changed writes nothing. Expanding the heading shows the text areas again.
 - Every visit dialog keeps the collapsed "Studied a lesson?" section. The first Home stamp on a note keeps the lesson tail.
 - Tapping a pin in the desktop split scrolls `.rv-locator-scroll` to that RV's card and flashes it.
 - Fullscreen map popup badges are 38px. Card text stays at the Glancable font scale.
 - The in-hub map and drag handle show on a phone and when the hub is narrower than 600px. A narrow window keeps that one map: the separate split leaf is closed while the hub is stacked and restored when the window is wide again.
 - Fullscreen applies only to the map whose button was used. The hub stack and the split map do not share one flag.
-- Map pins are opaque. The fill is the badge's 13% accent mixed over the card surface (`--background-secondary`), the same base the Glancable badge is painted on, in light and dark. Ghost pins are the theme background with no transparency. Pin icons are 38px on the 63px pin.
+- Map pins and clusters are opaque. They use the card color as `background-color` and a linear-gradient of the badge's 13% accent over transparent on top, so light and dark match the Glancable badge. Ghost pins are the theme background with no transparency. Pin icons are 38px on the 63px pin.
 - Hub chips are wikilinks, in note chrome, in the surrounding font, with every hub shown. Move Left and Remove are a right-click or long-press menu. There is no X.
 - The Quick Facts route badge opens the Google Maps link. The earth icon still opens the coming-soon map.
 - Quick Facts dates stay on one line, with a smaller calendar date and age. Labels are Spoke and Attempted. The priority slider sits next to the priority number. Status is Active, then Study, then Inactive. Rows are grouped with horizontal rules. Quick Facts labels stay left aligned when the dashboard is centered.

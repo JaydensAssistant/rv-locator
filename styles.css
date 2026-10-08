@@ -2808,9 +2808,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	padding: 0;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	/* Same base as the card. The badge is this 13% mix over transparent, painted on --background-secondary. */
-	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
-	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
+	/* Same paint as the badge: 13% accent over transparent, layered on the card color. */
+	background-color: var(--background-secondary);
+	background: linear-gradient(color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent), color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent)), var(--background-secondary);
 	opacity: 1;
 	color: var(--pin-color, var(--interactive-accent));
 	font-size: 22px;
@@ -2872,8 +2872,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	height: 63px;
 	border: 1.25px solid var(--pin-color, var(--interactive-accent));
 	border-radius: 999px;
-	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
-	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-secondary));
+	background-color: var(--background-secondary);
+	background: linear-gradient(color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent), color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, transparent)), var(--background-secondary);
 	opacity: 1;
 	font-size: 22px;
 	color: var(--pin-color, var(--interactive-accent));

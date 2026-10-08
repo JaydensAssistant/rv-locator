@@ -9,6 +9,16 @@ export interface VisitStampRef {
 
 const STAMP_HEADING = /^(?:###|#####)\s+(.+?)\s*$/;
 
+/** A `###` / `#####` visit stamp line, or null when the line is not a visit. */
+export function visitStampLine(line: string): string | null {
+	const match = STAMP_HEADING.exec(line.replace(/\r$/, ''));
+	if (!match) return null;
+	const text = stripStampAge(match[1] ?? '').trim();
+	if (!text || /^(?:visit|recent) notes:?$/i.test(text)) return null;
+	if (stampDateTime(text) == null) return null;
+	return text;
+}
+
 /**
  * Visit headings in file order. `### Recent Notes:` and `### Visit Notes:` are not visits.
  * The stored note is not rewritten. The screen keeps this order.
@@ -17,10 +27,8 @@ export function visitStampsInMarkdown(markdown: string): VisitStampRef[] {
 	const stamps: VisitStampRef[] = [];
 	const lines = markdown.split(/\r?\n/);
 	for (const line of lines) {
-		const match = STAMP_HEADING.exec(line.replace(/\r$/, ''));
-		if (!match) continue;
-		const text = stripStampAge(match[1] ?? '').trim();
-		if (!text || /^(?:visit|recent) notes:?$/i.test(text)) continue;
+		const text = visitStampLine(line);
+		if (!text) continue;
 		const when = stampDateTime(text)?.getTime() ?? Number.NaN;
 		if (!Number.isFinite(when)) continue;
 		stamps.push({ text, when, fileIndex: stamps.length });
@@ -71,16 +79,26 @@ export interface VisitLayoutOptions {
 export function layoutVisitNotes(root: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
 	const preview = visitPreview(root);
 	if (!preview) return;
+	// Live Preview is a CodeMirror document. Inserting nodes there writes the
+	// note. Older Visits in that mode is an editor decoration, never DOM.
+	if (isCodeMirrorSurface(preview)) return;
 	if (preview.dataset.rvLaying === '1') return;
 	preview.dataset.rvLaying = '1';
 	preview.dataset.rvFolding = '1';
+	disconnectRecent(preview);
 	try {
 		layoutVisitNotesNow(preview, markdown, options);
 	} finally {
 		preview.dataset.rvLaying = '0';
 		delete preview.dataset.rvFolding;
 		concealCollapsedVisitNotes(preview);
+		settleRecent(preview);
 	}
+}
+
+function isCodeMirrorSurface(preview: HTMLElement): boolean {
+	if (preview.classList.contains('markdown-source-view') || preview.classList.contains('cm-content') || preview.classList.contains('cm-editor')) return true;
+	return preview.querySelector('.cm-content, .cm-editor') != null;
 }
 
 function layoutVisitNotesNow(
@@ -108,7 +126,10 @@ function layoutVisitNotesNow(
 	const cap = options.collapseOlder ? Math.max(0, Math.floor(options.limit)) : matched.length;
 	const older = matched.slice(cap);
 	for (const block of matched) {
-		for (const node of block.nodes) node.classList.remove('rv-older-visit', 'rv-older-hidden');
+		for (const node of block.nodes) {
+			setClass(node, 'rv-older-visit', false);
+			setClass(node, 'rv-older-hidden', false);
+		}
 	}
 	preview.dataset.rvOlderExpected = older.length > 0 ? '1' : '0';
 	if (older.length === 0) {
@@ -124,11 +145,11 @@ function layoutVisitNotesNow(
 	const collapsed = preview.dataset.rvOlderOpen !== '1';
 	const existing = olderChromeFits(preview, first);
 	const heading = existing ?? insertOlderChrome(preview, parent, first);
-	heading.classList.toggle('is-open', !collapsed);
+	setClass(heading, 'is-open', !collapsed);
 	for (const block of older) {
 		for (const node of block.nodes) {
-			node.classList.add('rv-older-visit');
-			node.classList.toggle('rv-older-hidden', collapsed);
+			setClass(node, 'rv-older-visit', true);
+			setClass(node, 'rv-older-hidden', collapsed);
 		}
 	}
 	releaseRecentNotesTail(preview);
@@ -152,17 +173,17 @@ function olderChromeFits(preview: HTMLElement, first: HTMLElement): HTMLElement 
 }
 
 /**
- * Reading view gets an h3 beside Recent Notes. Live Preview's parent is
- * `.cm-content`, so the control is a `.cm-line` and CodeMirror keeps the editor.
+ * Reading view gets an h3 beside Recent Notes. Never insert into CodeMirror:
+ * its DOM observer would save that text into the note.
  */
 function insertOlderChrome(preview: HTMLElement, parent: HTMLElement, first: HTMLElement): HTMLElement {
+	if (first.classList.contains('cm-line') || parent.classList.contains('cm-content') || isCodeMirrorSurface(parent)) return first;
 	clearOlderChrome(preview);
 	const doc = parent.ownerDocument;
-	const live = first.classList.contains('cm-line');
-	const rule = doc.createElement(live ? 'div' : 'hr');
-	rule.className = live ? 'cm-line rv-older-rule' : 'rv-older-rule';
+	const rule = doc.createElement('hr');
+	rule.className = 'rv-older-rule';
 	const wrap = doc.createElement('div');
-	wrap.className = live ? 'cm-line rv-older-visits-line' : 'el-h3 rv-older-visits-wrap';
+	wrap.className = 'el-h3 rv-older-visits-wrap';
 	const heading = doc.createElement('h3');
 	heading.className = 'rv-older-visits';
 	heading.dataset.heading = 'Older Visits';
@@ -185,18 +206,35 @@ function insertOlderChrome(preview: HTMLElement, parent: HTMLElement, first: HTM
 		const open = root.dataset.rvOlderOpen === '1';
 		root.dataset.rvOlderOpen = open ? '0' : '1';
 		const nowCollapsed = root.dataset.rvOlderOpen !== '1';
-		heading.classList.toggle('is-open', !nowCollapsed);
+		setClass(heading, 'is-open', !nowCollapsed);
 		root.querySelectorAll('.rv-older-visit').forEach((node) => {
-			if (node instanceof HTMLElement) node.classList.toggle('rv-older-hidden', nowCollapsed);
+			if (node instanceof HTMLElement) setClass(node, 'rv-older-hidden', nowCollapsed);
 		});
 	});
 	return heading;
 }
 
+const CHEVRON_PATH = 'm9 18 6-6-6-6';
+
 /** Same lucide chevron-right as Older Visits. Replaces Obsidian's own chevron. Open rotates it down. */
 export function mountHeadingChevron(mark: HTMLElement): void {
+	if (chevronReady(mark)) return;
 	mark.querySelectorAll('svg').forEach((node) => node.remove());
 	appendHeadingChevron(mark);
+}
+
+function chevronReady(mark: HTMLElement): boolean {
+	let svg: HTMLElement | null = null;
+	let count = 0;
+	for (const kid of Array.from(mark.children)) {
+		if (kid instanceof HTMLElement && kid.tagName === 'SVG') {
+			count += 1;
+			svg = kid;
+		}
+	}
+	if (count !== 1 || !svg) return false;
+	const path = svg.querySelector('path');
+	return path instanceof HTMLElement && path.getAttribute('d') === CHEVRON_PATH;
 }
 
 function appendHeadingChevron(mark: HTMLElement): void {
@@ -214,7 +252,7 @@ function appendHeadingChevron(mark: HTMLElement): void {
 	svg.setAttribute('stroke-linejoin', 'round');
 	svg.setAttribute('aria-hidden', 'true');
 	const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
-	path.setAttribute('d', 'm9 18 6-6-6-6');
+	path.setAttribute('d', CHEVRON_PATH);
 	svg.appendChild(path);
 	mark.appendChild(svg);
 }
@@ -233,7 +271,7 @@ function decorateRecentChevron(preview: HTMLElement): void {
 			node.insertBefore(mark, node.children[0] ?? null);
 		}
 		mountHeadingChevron(mark);
-		node.classList.toggle('is-open', !headingIsCollapsed(node));
+		setClass(node, 'is-open', !headingIsCollapsed(node));
 		bindRecentNotesToggle(preview, node);
 	});
 }
@@ -265,8 +303,11 @@ function bindRecentNotesToggle(preview: HTMLElement, heading: HTMLElement): void
 	const host = collapseHost(heading);
 	if (host === heading || typeof MutationObserver === 'undefined') return;
 	try {
-		const observer = new MutationObserver(sync);
-		observer.observe(host, { attributes: true, attributeFilter: ['class'] });
+			const observer = new MutationObserver((records) => {
+			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
+			sync();
+		});
+		observer.observe(host, { attributes: true, attributeOldValue: true, attributeFilter: ['class'] });
 	} catch {
 		/* The layout test document is not a browser node. */
 	}
@@ -286,6 +327,32 @@ interface RecentWatch {
 
 const recentWatches = new WeakMap<HTMLElement, RecentWatch>();
 const recentSchedules = new WeakMap<HTMLElement, () => void>();
+const recentObservers = new WeakMap<HTMLElement, MutationObserver>();
+
+const RECENT_OBSERVE: MutationObserverInit = {
+	childList: true,
+	subtree: true,
+	attributes: true,
+	attributeOldValue: true,
+	attributeFilter: ['class'],
+};
+
+function disconnectRecent(preview: HTMLElement): void {
+	recentObservers.get(preview)?.disconnect();
+}
+
+/** Drop records our own writes queued, then listen again. */
+function settleRecent(preview: HTMLElement): void {
+	const observer = recentObservers.get(preview);
+	if (!observer) return;
+	observer.disconnect();
+	observer.takeRecords();
+	try {
+		observer.observe(preview, RECENT_OBSERVE);
+	} catch {
+		/* The layout test document is not a browser node. */
+	}
+}
 
 /**
  * Collapsing Recent Notes rebuilds the section and drops the injected Older
@@ -316,20 +383,25 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	let soon: ReturnType<typeof globalThis.setTimeout> | undefined;
 	let later: ReturnType<typeof globalThis.setTimeout> | undefined;
 	const rerun = (): void => {
-		restoreRecentTail(preview);
-		if (preview.dataset.rvLaying === '1') return;
-		if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
-			releaseRecentNotesTail(preview);
-			rememberRecentTail(preview);
-			return;
+		disconnectRecent(preview);
+		try {
+			restoreRecentTail(preview);
+			if (preview.dataset.rvLaying === '1') return;
+			if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
+				releaseRecentNotesTail(preview);
+				rememberRecentTail(preview);
+				return;
+			}
+			if (!olderChromeMissing(preview, state.markdown, state.options)) {
+				releaseRecentNotesTail(preview);
+				rememberRecentTail(preview);
+				concealCollapsedVisitNotes(preview);
+				return;
+			}
+			layoutVisitNotes(preview, state.markdown, state.options);
+		} finally {
+			settleRecent(preview);
 		}
-		if (!olderChromeMissing(preview, state.markdown, state.options)) {
-			releaseRecentNotesTail(preview);
-			rememberRecentTail(preview);
-			concealCollapsedVisitNotes(preview);
-			return;
-		}
-		layoutVisitNotes(preview, state.markdown, state.options);
 	};
 	const schedule = (): void => {
 		if (soon !== undefined) globalThis.clearTimeout(soon);
@@ -361,25 +433,21 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	if (typeof MutationObserver === 'undefined') return;
 	try {
 		const observer = new MutationObserver((records) => {
-			if (preview.dataset.rvFolding === '1' || preview.dataset.rvLaying === '1') return;
-			// A visit-heading fold is not Recent Notes. Rebuilding here fights the
-			// renderer and the click never returns.
+			// Empty class diffs and our own tokens are not Recent Notes. A visit
+			// fold's class writes used to schedule another pass forever.
+			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
 			if (records.length > 0 && !records.some((record) => isRecentNotesMutation(preview, record))) return;
 			restoreRecentTail(preview);
 			schedule();
 		});
-		observer.observe(preview, {
-			childList: true,
-			subtree: true,
-			attributes: true,
-			attributeFilter: ['class'],
-		});
+		recentObservers.set(preview, observer);
 	} catch {
 		/* The layout test document is not a browser node. */
 	}
 }
 
 function isRecentNotesMutation(preview: HTMLElement, record: MutationRecord): boolean {
+	if (ownFoldClassChange(record)) return false;
 	if (record.type === 'childList') {
 		const nodes = [...Array.from(record.removedNodes), ...Array.from(record.addedNodes)];
 		return nodes.some((node) => node instanceof HTMLElement && isRecentStructureNode(node));
@@ -409,7 +477,6 @@ function visitPreview(root: HTMLElement): HTMLElement | null {
 }
 
 const FOLD_CLASS = 'rv-visit-folded';
-const foldWatches = new WeakSet<HTMLElement>();
 
 /**
  * Hide Meta Bind text areas under a collapsed visit heading, and any text area
@@ -421,58 +488,103 @@ export function concealCollapsedVisitNotes(root: HTMLElement): void {
 	const preview = visitPreview(root);
 	if (!preview) return;
 	watchCollapsedVisitNotes(preview);
-	if (preview.dataset.rvFolding === '1' || preview.dataset.rvLaying === '1') return;
+	if (preview.dataset.rvLaying === '1') return;
 	applyCollapsedVisitNotes(preview);
 }
 
+const FOLD_OBSERVE: MutationObserverInit = {
+	subtree: true,
+	childList: true,
+	attributes: true,
+	attributeOldValue: true,
+	attributeFilter: ['class', 'style'],
+};
+
+interface FoldSlot {
+	observer: MutationObserver;
+	pending: boolean;
+}
+
+const foldSlots = new WeakMap<HTMLElement, FoldSlot>();
+
 function watchCollapsedVisitNotes(preview: HTMLElement): void {
-	if (foldWatches.has(preview) || typeof MutationObserver === 'undefined') return;
-	foldWatches.add(preview);
-	try {
-		const observer = new MutationObserver((records) => {
-			if (preview.dataset.rvFolding === '1' || preview.dataset.rvLaying === '1') return;
-			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
+	if (foldSlots.has(preview) || typeof MutationObserver === 'undefined') return;
+	const slot: FoldSlot = { observer: null as unknown as MutationObserver, pending: false };
+	const schedule = (): void => {
+		if (slot.pending) return;
+		slot.pending = true;
+		const run = (): void => {
+			slot.pending = false;
 			applyCollapsedVisitNotes(preview);
-		});
-		observer.observe(preview, {
-			subtree: true,
-			childList: true,
-			attributes: true,
-			attributeOldValue: true,
-			attributeFilter: ['class', 'style'],
+		};
+		const raf = globalThis.requestAnimationFrame;
+		if (typeof raf === 'function') raf(() => run());
+		else globalThis.setTimeout(run, 0);
+	};
+	let observer: MutationObserver;
+	try {
+		observer = new MutationObserver((records) => {
+			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
+			schedule();
 		});
 	} catch {
-		/* The layout test document is not a browser node. */
+		return;
+	}
+	slot.observer = observer;
+	foldSlots.set(preview, slot);
+	try {
+		observer.observe(preview, FOLD_OBSERVE);
+	} catch {
+		foldSlots.delete(preview);
 	}
 }
 
 const OWN_FOLD_CLASSES = new Set(['rv-visit-folded', 'rv-older-hidden', 'rv-older-visit', 'is-open']);
+
+/**
+ * True when a class mutation changed nothing, or only tokens this file writes.
+ * An empty diff must be ignored: Obsidian can deliver oldValue === current class,
+ * and treating that as work queues the next observer turn forever.
+ */
+export function foldClassChangeIsOwn(oldValue: string | null, next: string): boolean {
+	const before = new Set((oldValue ?? '').split(/\s+/).filter(Boolean));
+	const after = new Set(next.split(/\s+/).filter(Boolean));
+	const changed = new Set<string>();
+	for (const name of before) if (!after.has(name)) changed.add(name);
+	for (const name of after) if (!before.has(name)) changed.add(name);
+	if (changed.size === 0) return true;
+	for (const name of changed) if (!OWN_FOLD_CLASSES.has(name)) return false;
+	return true;
+}
 
 /** Class edits this file just applied. They must not schedule another pass. */
 function ownFoldClassChange(record: MutationRecord): boolean {
 	if (record.type !== 'attributes' || record.attributeName !== 'class') return false;
 	const target = record.target;
 	if (!(target instanceof HTMLElement)) return false;
-	const next = target.className;
-	if (!next && !record.oldValue) return false;
-	const before = new Set((record.oldValue ?? '').split(/\s+/).filter(Boolean));
-	const after = new Set(next.split(/\s+/).filter(Boolean));
-	const changed = new Set<string>();
-	for (const name of before) if (!after.has(name)) changed.add(name);
-	for (const name of after) if (!before.has(name)) changed.add(name);
-	if (changed.size === 0) return false;
-	for (const name of changed) if (!OWN_FOLD_CLASSES.has(name)) return false;
-	return true;
+	return foldClassChangeIsOwn(record.oldValue, target.className);
 }
 
 function applyCollapsedVisitNotes(preview: HTMLElement): void {
-	if (preview.dataset.rvFolding === '1') return;
-	preview.dataset.rvFolding = '1';
+	const slot = foldSlots.get(preview);
+	slot?.observer.disconnect();
 	try {
 		applyCollapsedVisitNotesNow(preview);
 	} finally {
-		delete preview.dataset.rvFolding;
+		if (!slot) return;
+		slot.observer.takeRecords();
+		try {
+			slot.observer.observe(preview, FOLD_OBSERVE);
+		} catch {
+			/* The layout test document is not a browser node. */
+		}
 	}
+}
+
+function setClass(node: HTMLElement, name: string, on: boolean): void {
+	if (node.classList.contains(name) === on) return;
+	if (on) node.classList.add(name);
+	else node.classList.remove(name);
 }
 
 function applyCollapsedVisitNotesNow(preview: HTMLElement): void {
@@ -484,14 +596,14 @@ function applyCollapsedVisitNotesNow(preview: HTMLElement): void {
 		while (cursor instanceof HTMLElement) {
 			if (endsVisitSection(cursor, level)) break;
 			if (!containsActiveNotes(cursor)) {
-				cursor.classList.add(FOLD_CLASS);
+				setClass(cursor, FOLD_CLASS, true);
 				tagged.add(cursor);
 			}
 			cursor = cursor.nextElementSibling;
 		}
 	}
 	preview.querySelectorAll(`.${FOLD_CLASS}`).forEach((node) => {
-		if (node instanceof HTMLElement && !tagged.has(node)) node.classList.remove(FOLD_CLASS);
+		if (node instanceof HTMLElement && !tagged.has(node)) setClass(node, FOLD_CLASS, false);
 	});
 	concealStrayOlderFields(preview);
 }
@@ -506,7 +618,8 @@ function concealStrayOlderFields(preview: HTMLElement): void {
 		if (!block || block === preview || containsActiveNotes(block)) return;
 		if (block.classList.contains('rv-older-hidden') || block.classList.contains(FOLD_CLASS)) return;
 		if (!belongsToHiddenOlderVisit(block)) return;
-		block.classList.add('rv-older-visit', 'rv-older-hidden');
+		setClass(block, 'rv-older-visit', true);
+		setClass(block, 'rv-older-hidden', true);
 	});
 }
 
@@ -581,6 +694,7 @@ function visitHeadingCollapsed(host: HTMLElement): boolean {
 	if (host.classList.contains('is-collapsed')) return true;
 	const heading = host.matches('h3, h5') ? host : host.querySelector('h3, h5');
 	if (heading instanceof HTMLElement && heading.classList.contains('is-collapsed')) return true;
+	if (host.querySelector('.heading-collapse-indicator.is-collapsed, .collapse-indicator.is-collapsed')) return true;
 	return host.querySelector('.cm-foldPlaceholder') != null;
 }
 
@@ -800,6 +914,7 @@ function sectionFooter(parent: HTMLElement): HTMLElement | null {
 }
 
 function clearInlineHidden(node: HTMLElement): void {
+	if (node.classList.contains(FOLD_CLASS) || node.classList.contains('rv-older-hidden')) return;
 	const style = (node as HTMLElement & { style?: { display?: string; removeProperty?: (name: string) => void } }).style;
 	if (!style || style.display !== 'none') return;
 	if (typeof style.removeProperty === 'function') style.removeProperty('display');
