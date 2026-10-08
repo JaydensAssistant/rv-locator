@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered } from '../src/campaign';
 import { hubRefs, moveHubLeft, resolveReturnHub } from '../src/hub-row';
@@ -14,7 +15,7 @@ import { lastListEntries, layoutTakenNames } from '../src/taken-row';
 import { pickDayJump } from '../src/day-jump';
 import { visibleStampText } from '../src/dates';
 import { DEFAULT_SETTINGS, attemptLogFullWidth, mergeSettings } from '../src/types';
-import { layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
+import { concealCollapsedVisitNotes, layoutVisitNotes, partitionVisits, type VisitStampRef } from '../src/visit-display';
 import { refreshHomeStampAges, restoreExactVisitClocks } from '../src/visit-log';
 import { createDoc, type DomEl } from './visit-dom';
 
@@ -320,6 +321,118 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(stop?.classList.contains('el-h3'), true);
 		assert.equal(stop?.children[0]?.tagName, 'H3');
 		assert.equal(tree.sizer.querySelector('.callout')?.textContent?.includes('Return Suggestions'), true);
+	});
+
+	it('hides folded visit text areas even when center-notes forces display block', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /\.rv-visit-folded,[\s\S]*display:\s*none\s*!important/);
+		assert.match(css, /\.rv-dashboard :is\(\.el-h3, \.el-h5\)\.is-collapsed \+ :is\(\.el-p, \.el-div, p\):has\(textarea, \.mb-input\)/);
+		assert.match(css, /\.rv-dashboard \.cm-line:has\(\.cm-foldPlaceholder\) \+ \.cm-line:has\(textarea, \.mb-input\)/);
+		assert.match(css, /body\.rv-center-visit-notes \.rv-dashboard \.rv-older-hidden:is\(p, \.el-p\):has\(textarea\)/);
+	});
+
+	it('hides text areas under a collapsed visit heading and shows them again when it opens', () => {
+		const doc = createDoc();
+		const preview = doc.createElement('div');
+		preview.className = 'markdown-preview-view rv-dashboard';
+		const sizer = doc.createElement('div');
+		sizer.className = 'markdown-preview-section';
+		preview.appendChild(sizer);
+		const olderWrap = doc.createElement('div');
+		olderWrap.className = 'el-h5 is-collapsed';
+		const older = doc.createElement('h5');
+		older.className = 'rv-visit-stamp';
+		older.textContent = 'Mon, 9am — Sep 1, 2026';
+		olderWrap.appendChild(older);
+		const olderNotes = doc.createElement('div');
+		olderNotes.className = 'el-p';
+		const olderArea = doc.createElement('textarea');
+		olderNotes.appendChild(olderArea);
+		const latestWrap = doc.createElement('div');
+		latestWrap.className = 'el-h5';
+		const latest = doc.createElement('h5');
+		latest.className = 'rv-visit-stamp';
+		latest.textContent = 'Thu, 4pm — Sep 4, 2026';
+		latestWrap.appendChild(latest);
+		const latestNotes = doc.createElement('div');
+		latestNotes.className = 'el-p';
+		const latestArea = doc.createElement('textarea');
+		latestNotes.appendChild(latestArea);
+		sizer.appendChild(olderWrap);
+		sizer.appendChild(olderNotes);
+		sizer.appendChild(latestWrap);
+		sizer.appendChild(latestNotes);
+		concealCollapsedVisitNotes(preview as unknown as HTMLElement);
+		assert.equal(olderNotes.classList.contains('rv-visit-folded'), true);
+		assert.equal(latestNotes.classList.contains('rv-visit-folded'), false);
+		assert.equal(olderWrap.classList.contains('rv-visit-folded'), false);
+		const late = doc.createElement('div');
+		late.className = 'el-p';
+		late.appendChild(doc.createElement('textarea'));
+		sizer.insertBefore(late, latestWrap);
+		concealCollapsedVisitNotes(preview as unknown as HTMLElement);
+		assert.equal(late.classList.contains('rv-visit-folded'), true);
+		olderWrap.classList.remove('is-collapsed');
+		concealCollapsedVisitNotes(preview as unknown as HTMLElement);
+		assert.equal(olderNotes.classList.contains('rv-visit-folded'), false);
+		assert.equal(late.classList.contains('rv-visit-folded'), false);
+		assert.equal(latestNotes.classList.contains('rv-visit-folded'), false);
+	});
+
+	it('hides the next Live Preview line when that visit heading is folded', () => {
+		const doc = createDoc();
+		const preview = doc.createElement('div');
+		preview.className = 'markdown-source-view rv-dashboard';
+		const older = doc.createElement('div');
+		older.className = 'cm-line HyperMD-header HyperMD-header-5';
+		older.textContent = '##### Mon, 9am — Sep 1, 2026';
+		const fold = doc.createElement('span');
+		fold.className = 'cm-foldPlaceholder';
+		older.appendChild(fold);
+		const olderLine = doc.createElement('div');
+		olderLine.className = 'cm-line';
+		olderLine.appendChild(doc.createElement('textarea'));
+		const latest = doc.createElement('div');
+		latest.className = 'cm-line HyperMD-header HyperMD-header-5';
+		latest.textContent = '##### Thu, 4pm — Sep 4, 2026';
+		const latestLine = doc.createElement('div');
+		latestLine.className = 'cm-line';
+		latestLine.appendChild(doc.createElement('textarea'));
+		preview.appendChild(older);
+		preview.appendChild(olderLine);
+		preview.appendChild(latest);
+		preview.appendChild(latestLine);
+		concealCollapsedVisitNotes(preview as unknown as HTMLElement);
+		assert.equal(olderLine.classList.contains('rv-visit-folded'), true);
+		assert.equal(latestLine.classList.contains('rv-visit-folded'), false);
+		fold.remove();
+		concealCollapsedVisitNotes(preview as unknown as HTMLElement);
+		assert.equal(olderLine.classList.contains('rv-visit-folded'), false);
+	});
+
+	it('hides a text area that mounts after Older Visits is collapsed', () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
+		const tree = visitTree(stamps, 'flat');
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		const hidden = tree.sizer.children.find((node) => node.classList.contains('rv-older-hidden') && (node.textContent ?? '').includes('Thu, 4pm'));
+		assert.ok(hidden);
+		const stray = tree.preview.ownerDocument.createElement('p');
+		const area = tree.preview.ownerDocument.createElement('textarea');
+		stray.appendChild(area);
+		tree.sizer.insertBefore(stray, hidden.nextElementSibling);
+		concealCollapsedVisitNotes(tree.preview as unknown as HTMLElement);
+		assert.equal(stray.classList.contains('rv-older-hidden'), true);
+		assert.equal(markdown, stamps.map((stamp) => `##### ${stamp}`).join('\n'));
 	});
 
 	it('keeps Older Visits while a visit notes box is focused', () => {

@@ -2589,8 +2589,21 @@ h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
 	transform: none !important;
 }
 
-.rv-older-hidden {
-	display: none;
+/*
+  Collapsed visit sections hide their Meta Bind textAreas. display:none on the
+  same paragraph loses to the center-notes rule, and a late Meta Bind mount
+  clears the inline fold style. !important keeps the field hidden in Reading
+  view and Live Preview until the section is expanded. The note file is not rewritten.
+*/
+.rv-dashboard .rv-older-hidden,
+.rv-dashboard .rv-visit-folded,
+.rv-older-hidden,
+.rv-visit-folded,
+.rv-dashboard :is(.el-h3, .el-h5).is-collapsed + :is(.el-p, .el-div, p):has(textarea, .mb-input),
+.rv-dashboard .cm-line:has(.cm-foldPlaceholder) + .cm-line:has(textarea, .mb-input),
+body.rv-center-visit-notes .rv-dashboard .rv-older-hidden:is(p, .el-p):has(textarea),
+body.rv-center-visit-notes .rv-dashboard .rv-visit-folded:is(p, .el-p):has(textarea) {
+	display: none !important;
 }
 
 .rv-notes-fold-stop,
@@ -2777,7 +2790,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 /* Ancestor + button beats Obsidian's `button:not(.clickable-icon)` on fill and glyph color. */
 .rv-map .rv-map-pins > button.rv-map-pin {
-	--rv-control-size: 48px;
+	--rv-control-size: 63px;
 	position: absolute;
 	z-index: 1;
 	display: inline-flex;
@@ -2791,6 +2804,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	border-radius: 999px;
 	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
 	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	opacity: 1;
 	color: var(--pin-color, var(--interactive-accent));
 	font-size: 22px;
 	font-weight: 700;
@@ -2798,6 +2812,14 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
 	transform: translate(-50%, -50%);
 	cursor: pointer;
+}
+
+/* 38px is 60% of the 63px pin. !important beats app `svg { width: 1em }` (the 22px pin font-size). */
+.rv-map .rv-map-pins > button.rv-map-pin svg {
+	width: 38px !important;
+	height: 38px !important;
+	min-width: 38px !important;
+	min-height: 38px !important;
 }
 
 .rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph {
@@ -2820,8 +2842,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	height: 63px;
 	font-size: 22px;
 	filter: none;
-	background-color: color-mix(in srgb, var(--background-primary) 88%, transparent);
-	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+	opacity: 1;
+	background-color: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
+	background: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
 	border: 2.5px dotted var(--pin-color, currentColor);
 	color: var(--pin-color, currentColor);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
@@ -2844,6 +2867,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	border-radius: 999px;
 	background-color: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
 	background: color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 13%, var(--background-primary));
+	opacity: 1;
 	font-size: 22px;
 	color: var(--pin-color, var(--interactive-accent));
 	font-weight: 700;
@@ -2853,8 +2877,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-map .rv-map-pins > button.rv-map-cluster.is-fresh {
-	background-color: color-mix(in srgb, var(--background-primary) 88%, transparent);
-	background: color-mix(in srgb, var(--background-primary) 88%, transparent);
+	opacity: 1;
+	background-color: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
+	background: color-mix(in srgb, var(--background-primary) 88%, var(--background-primary));
 	border: 2.5px dotted var(--pin-color, currentColor);
 	color: var(--pin-color, currentColor);
 	box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
@@ -2879,9 +2904,28 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-map-card.rv-locator-glancable {
+	--rv-control-size: 38px;
 	height: auto;
 	overflow: visible;
 	background: transparent;
+}
+
+/* Popup badges stay ~38px even if an app rule sizes svg as 1em. Hub badges stay on the 28px control. */
+.rv-map-card .rv-locator-urgency,
+.rv-map-card .rv-locator-priority-pill,
+.rv-map-card .rv-locator-map-pin {
+	width: 38px !important;
+	height: 38px !important;
+}
+
+.rv-map-card .rv-locator-urgency .rv-urgency-glyph {
+	width: calc(38px * 0.7) !important;
+	height: calc(38px * 0.7) !important;
+}
+
+.rv-map-card .rv-locator-map-pin svg {
+	width: 100% !important;
+	height: 100% !important;
 }
 
 .rv-map-card .rv-locator-card {
@@ -3286,11 +3330,6 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	white-space: nowrap;
 }
 
-.rv-map-pin svg {
-	width: 27px;
-	height: 27px;
-}
-
 .rv-qf-value.is-collapsible {
 	cursor: pointer;
 }
@@ -3479,6 +3518,6 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-pin-mark {
-	font-size: 22px;
+	font-size: 38px;
 	line-height: 1;
 }

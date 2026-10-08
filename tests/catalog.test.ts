@@ -310,7 +310,13 @@ describe('in-note urgency chrome', () => {
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, var\(--background-primary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin \.rv-urgency-glyph \{[^}]*color: var\(--pin-color, var\(--interactive-accent\)\)/);
+		const ghostPin = css.match(/\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{([^}]*)\}/)?.[1] ?? '';
+		assert.doesNotMatch(ghostPin, /transparent/);
+		assert.match(ghostPin, /opacity:\s*1/);
+		assert.match(ghostPin, /background-color: color-mix\(in srgb, var\(--background-primary\) 88%, var\(--background-primary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin svg \{[^}]*width: 38px !important;[^}]*height: 38px !important/);
+		assert.match(css, /\.rv-map-card\.rv-locator-glancable \{[^}]*--rv-control-size: 38px/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, var\(--background-primary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
 		const themeButton = selectorSpecificity('button:not(.clickable-icon)');
@@ -339,6 +345,13 @@ describe('in-note urgency chrome', () => {
 		const map = readFileSync(path.join(process.cwd(), 'src/map-view.ts'), 'utf8');
 		assert.doesNotMatch(map, /file-text/);
 		assert.match(map, /openMapNote\(pin\.path\)/);
+		assert.match(map, /export const MAP_POPUP_BADGE_PX = 38/);
+		assert.match(map, /export const MAP_PIN_PX = 63/);
+		assert.match(map, /export const MAP_PIN_GLYPH_PX = 38/);
+		assert.match(map, /sizePinGlyph\(button\)/);
+		assert.match(map, /setProperty\('--rv-control-size', `\$\{MAP_POPUP_BADGE_PX\}px`\)/);
+		assert.doesNotMatch(map, /getPropertyValue\('--rv-control-size'\)/);
+		assert.equal(38 / 63 >= 0.55 && 38 / 63 <= 0.65, true);
 		assert.match(map, /clusterAppearance\(/);
 		assert.match(map, /mapPressIsClick\(/);
 		const glance = readFileSync(path.join(process.cwd(), 'src/glancable-view.ts'), 'utf8');

@@ -309,6 +309,7 @@ export class RvMapView extends ItemView {
 		} else if (pin.markText) {
 			button.createSpan({ cls: 'rv-pin-mark', text: pin.markText });
 		} else mountUrgencyGlyph(button, pin.glyph);
+		sizePinGlyph(button);
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
 		button.addEventListener('click', (event) => {
@@ -376,9 +377,7 @@ export class RvMapView extends ItemView {
 		card.style.setProperty('--rv-badge-count', '3');
 		card.style.setProperty('--rv-font-scale', '1');
 		card.style.setProperty('--rv-icon-scale', '1.2');
-		const hubSize = this.contentEl.ownerDocument.querySelector('.rv-locator-view');
-		const size = hubSize instanceof HTMLElement ? hubSize.style.getPropertyValue('--rv-control-size') : '';
-		if (size) card.style.setProperty('--rv-control-size', size);
+		card.style.setProperty('--rv-control-size', `${MAP_POPUP_BADGE_PX}px`);
 		const openNote = (): void => { this.host.openMapNote(pin.path); };
 		card.addEventListener('click', (event) => {
 			const target = event.target;
@@ -529,6 +528,24 @@ export class RvMapView extends ItemView {
 			y: (latToTileY(lat, this.zoom) - cy) * TILE + height / 2,
 		};
 	}
+}
+
+/** Fullscreen popup badges. Larger than the 28px hub badges; card text stays at font scale 1. */
+export const MAP_POPUP_BADGE_PX = 38;
+
+/** Map pin diameter. Glyphs are {@link MAP_PIN_GLYPH_PX}, 60% of this. */
+export const MAP_PIN_PX = 63;
+
+/** 38 / 63 ≈ 60%, inside the 55–65% band. Bang glyphs and ghost hourglass/ban icons. */
+export const MAP_PIN_GLYPH_PX = 38;
+
+/** Force pin icons past `svg { width: 1em }`, which followed the 22px pin font-size. */
+export function sizePinGlyph(host: HTMLElement): void {
+	host.querySelectorAll('svg').forEach((node) => {
+		if (!(node instanceof SVGElement)) return;
+		node.style.setProperty('width', `${MAP_PIN_GLYPH_PX}px`, 'important');
+		node.style.setProperty('height', `${MAP_PIN_GLYPH_PX}px`, 'important');
+	});
 }
 
 function average(values: number[]): number {

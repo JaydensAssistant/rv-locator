@@ -178,7 +178,7 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 	let next = ensureAttemptLog(body);
 	if (facts.home) {
 		const property = options.notesProperty || nextVisitNotesProperty(next);
-		const extra = visitExtraMarkup({
+		const share = {
 			publications: facts.publications ?? '',
 			media: facts.media ?? '',
 			lesson: facts.lesson ?? '',
@@ -189,7 +189,8 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 			extraTo: facts.extraTo ?? '',
 			publicationList: facts.publicationList,
 			mediaList: facts.mediaList,
-		});
+		};
+		const extra = visitExtraMarkup(share);
 		const heading = extra ? `##### ${stamp} ${extra}` : `##### ${stamp}`;
 		const block = options.notesBlock && options.notesBlock.length > 0
 			? [heading, ...options.notesBlock.slice(1)]
@@ -205,7 +206,7 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 		}
 		const newer = headings.filter((item) => item.when >= at).length;
 		if (headings.length === 0) {
-			const placeholder = insertHomeHeading(next, stamp, property);
+			const placeholder = insertHomeHeading(next, stamp, property, share);
 			next = options.notesBlock && options.notesBlock.length > 0
 				? replaceInsertedBlock(placeholder, heading, visitNotesField(property), block)
 				: placeholder;

@@ -21,7 +21,7 @@ export interface ShareFieldOptions {
 	lessons: readonly LessonSpec[];
 	showLiterature: boolean;
 	showLesson: boolean;
-	/** Collapsed lesson block for a return visit that is not a study. */
+	/** Collapsed "Studied a lesson?" block. Every visit modal starts here. */
 	optionalLesson?: boolean;
 	lessonPrefill?: { lesson: string; from: string; to: string };
 	initial: VisitShare;
@@ -80,7 +80,7 @@ function mountOptionalLesson(
 	body.hidden = true;
 	let opened = false;
 	toggle.addEventListener('click', (event) => {
-		event.preventDefault();
+		event?.preventDefault();
 		const next = body.hidden;
 		body.hidden = !next;
 		toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
@@ -91,7 +91,7 @@ function mountOptionalLesson(
 		if (opened) return;
 		opened = true;
 		const prefill = options.lessonPrefill;
-		if (prefill?.lesson) {
+		if (!share.lesson.trim() && prefill?.lesson) {
 			share.lesson = prefill.lesson;
 			share.lessonFrom = prefill.from;
 			share.lessonTo = prefill.to;

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { Modal } from 'obsidian';
 import { directionsUrl } from '../src/address';
 import {
 	AddressSuggestController,
@@ -8,9 +9,14 @@ import {
 	type SuggestFetchResult,
 	type SuggestView,
 } from '../src/address-suggest';
-import { LESSONS, emptyShare, lessonPartOptions, studyPrefill } from '../src/catalog';
+import { LESSONS, emptyShare, lessonPartOptions, studyPrefill, type VisitShare } from '../src/catalog';
+import { mountShareFields, type ShareFieldOptions } from '../src/catalog-fields';
 import { pinLookForHub } from '../src/map-pins';
+import { CompanionSuggestModal } from '../src/modals';
 import type { GeocodeHit } from '../src/types';
+import { HUB_STACK_BELOW_PX, hubUsesStackedMap, revealHubCard } from '../src/hub-layout';
+import { applyVisitChangeFrontmatter, editVisit, insertVisit, listVisits } from '../src/visit-editor';
+import { LiteraturePromptModal, VisitEditModal } from '../src/visit-modals';
 import { appendShareToFirstStamp, applyVisitFrontmatter } from '../src/visit-log';
 
 const LESSON_1 = '01 How Can the Bible Help You?';
@@ -430,5 +436,276 @@ describe('address suggest', () => {
 		assert.equal(loading?.hits.some((item) => item.formattedAddress.includes('Abc')), true);
 		release?.({ hits: [hit('Zzz Road')], allowBroad: false });
 		await flush();
+	});
+});
+
+describe('studied a lesson on every visit modal', () => {
+	function options(prefill = studyPrefill(null), initial: VisitShare = emptyShare()): ShareFieldOptions {
+		return {
+			publications: [],
+			media: [],
+			customLessons: [],
+			lessons: [...LESSONS],
+			showLiterature: true,
+			showLesson: false,
+			optionalLesson: true,
+			lessonPrefill: prefill,
+			initial,
+		};
+	}
+
+	function clickLabeled(root: { children: Array<{ text: string; children: never[]; click: () => void }> }, text: string): void {
+		const stack = [root];
+		while (stack.length > 0) {
+			const current = stack.pop();
+			if (!current) continue;
+			if (current.text === text) {
+				current.click();
+				return;
+			}
+			stack.push(...current.children);
+		}
+		throw new Error(`No control labeled ${text}`);
+	}
+
+	it('stays collapsed until opened, then prefills lesson 1 and does not open a suggester', () => {
+		const seen: VisitShare[] = [];
+		const root = new Modal(null).contentEl;
+		const share = mountShareFields(root, options(), (next) => { seen.push(next); });
+		assert.equal(share.lesson, '');
+		assert.equal(seen.length, 0);
+		clickLabeled(root as never, 'Studied a lesson?');
+		assert.equal(seen.at(-1)?.lesson, LESSON_1);
+		assert.equal(seen.at(-1)?.lessonFrom, 'Intro');
+		assert.equal(seen.at(-1)?.lessonTo, 'Review');
+		clickLabeled(root as never, 'Studied a lesson?');
+		assert.equal(seen.at(-1)?.lesson, '');
+		assert.equal(seen.at(-1)?.lessonFrom, '');
+		assert.equal(seen.at(-1)?.lessonTo, '');
+	});
+
+	it('keeps a lesson already on the visit when the section is opened', () => {
+		const stored = { ...emptyShare(), lesson: LESSON_3, lessonFrom: '3', lessonTo: '5' };
+		const seen: VisitShare[] = [];
+		const root = new Modal(null).contentEl;
+		mountShareFields(root, options(studyPrefill(null), stored), (next) => { seen.push(next); });
+		clickLabeled(root as never, 'Studied a lesson?');
+		assert.equal(seen.length, 0);
+	});
+
+	it('uses the same collapsed section on Log visit, past visit, edit, and New RV', () => {
+		const source = readFileSync('src/main.ts', 'utf8');
+		const fields = source.slice(source.indexOf('private shareFieldOptions'), source.indexOf('private async studyDefaults'));
+		assert.match(fields, /showLesson:\s*false/);
+		assert.match(fields, /optionalLesson:\s*true/);
+		assert.match(fields, /lessonPrefill:\s*defaults/);
+		assert.match(fields, /initial:\s*emptyShare\(\)/);
+		assert.equal(fields.includes('showLesson: true'), false);
+		const edit = source.slice(source.indexOf('private async openEditVisit'), source.indexOf('private confirmDeleteVisit'));
+		assert.match(edit, /share:\s*this\.shareFieldOptions\(study, defaults\)/);
+		assert.equal(edit.includes('openLesson'), false);
+		const newRv = readFileSync('src/new-rv-modal.ts', 'utf8');
+		assert.match(newRv, /showLesson:\s*false/);
+		assert.match(newRv, /optionalLesson:\s*true/);
+		assert.match(newRv, /lessonPrefill:\s*studyPrefill\(null/);
+		const suggest = readFileSync('src/suggest-field.ts', 'utf8');
+		assert.equal(suggest.includes("addEventListener('focus'"), false);
+
+		const logged: VisitShare[] = [];
+		const log = new LiteraturePromptModal({} as never, options(), (share) => { logged.push(share as VisitShare); });
+		log.open();
+		clickLabeled(log.contentEl as never, 'Log visit');
+		assert.equal(logged[0]?.lesson, '');
+		const studied: VisitShare[] = [];
+		const again = new LiteraturePromptModal({} as never, options(), (share) => { studied.push(share as VisitShare); });
+		again.open();
+		clickLabeled(again.contentEl as never, 'Studied a lesson?');
+		clickLabeled(again.contentEl as never, 'Log visit');
+		assert.equal(studied[0]?.lesson, LESSON_1);
+		assert.equal(studied[0]?.lessonFrom, 'Intro');
+		assert.equal(studied[0]?.lessonTo, 'Review');
+
+		const shared: VisitShare[] = [];
+		const companion = new CompanionSuggestModal({} as never, [], () => {}, null, {
+			...options(),
+			onShare: (share) => { shared.push(share); },
+		});
+		companion.open();
+		clickLabeled(companion.contentEl as never, 'Studied a lesson?');
+		assert.equal(shared.at(-1)?.lesson, LESSON_1);
+
+		const past: Array<{ lesson?: string; lessonFrom?: string; lessonTo?: string }> = [];
+		const pastModal = new VisitEditModal({} as never, {
+			title: 'Log past visit',
+			recentCompanions: [],
+			share: options(),
+			onSave: (facts) => { past.push(facts); },
+		});
+		pastModal.open();
+		clickLabeled(pastModal.contentEl as never, 'Studied a lesson?');
+		clickLabeled(pastModal.contentEl as never, 'Save');
+		assert.equal(past[0]?.lesson, LESSON_1);
+		const body = insertVisit('', {
+			when: new Date(2026, 8, 9, 14),
+			home: true,
+			companion: '',
+			lesson: past[0]?.lesson,
+			lessonFrom: past[0]?.lessonFrom,
+			lessonTo: past[0]?.lessonTo,
+		}, { now: new Date(2026, 8, 10, 12) });
+		assert.equal(body.split('#####').length - 1, 1);
+		assert.equal(body.includes(`«lesson» «${LESSON_1}» «Intro»–«Review»`), true);
+
+		const note = [
+			'### Recent Notes:',
+			`##### Sat, 10am — Sep 26, 2026 · «lesson» «${LESSON_1}» «Intro»–«Review» <span class="rv-stamp-ago">3 days ago</span>`,
+			'`INPUT[textArea:sVisit1Notes]`',
+			'Kept note.',
+			'',
+			'> [!example] Return Suggestions',
+			'> > [!note]- Attempt Log',
+			'> >- Sat, 10am — Sep 26, 2026 — success',
+		].join('\n');
+		const entry = listVisits(note)[0];
+		assert.ok(entry);
+		assert.equal(entry.lesson, LESSON_1);
+		const edited: Array<{ lesson?: string }> = [];
+		const editModal = new VisitEditModal({} as never, {
+			title: 'Edit visit',
+			initial: entry,
+			recentCompanions: [],
+			share: options(studyPrefill({ lesson: LESSON_1, to: 'Review' })),
+			onSave: (facts) => { edited.push(facts); },
+		});
+		editModal.open();
+		clickLabeled(editModal.contentEl as never, 'Studied a lesson?');
+		clickLabeled(editModal.contentEl as never, 'Save');
+		assert.equal(edited[0]?.lesson, LESSON_1);
+		const replaced = editVisit(note, entry, {
+			when: entry.when,
+			home: true,
+			companion: '',
+			lesson: LESSON_2,
+			lessonFrom: 'Intro',
+			lessonTo: 'Review',
+		}, new Date(2026, 8, 29, 12));
+		assert.equal(replaced.split('\n').filter((line) => line.startsWith('#####')).length, 1);
+		assert.equal(replaced.includes(`«lesson» «${LESSON_2}» «Intro»–«Review»`), true);
+		assert.equal(replaced.includes(LESSON_1), false);
+		assert.match(replaced, /`INPUT\[textArea:sVisit1Notes\]`/);
+		assert.match(replaced, /Kept note\./);
+		const frontmatter: Record<string, unknown> = {
+			Studies: 1,
+			'Lessons Studied': [LESSON_1],
+			'Last Studied': '2026-09-20T10:00:00',
+		};
+		applyVisitChangeFrontmatter(frontmatter, {
+			removed: entry,
+			added: {
+				when: entry.when,
+				home: true,
+				companion: '',
+				lesson: LESSON_2,
+				lessonFrom: 'Intro',
+				lessonTo: 'Review',
+			},
+			remaining: [],
+		});
+		assert.equal(frontmatter.Studies, 1);
+		assert.equal(frontmatter['Last Studied'], '2026-09-26T10:00:00');
+		assert.deepEqual(frontmatter['Lessons Studied'], [LESSON_2]);
+	});
+});
+
+describe('hub pin scroll and narrow stack', () => {
+	it('stacks the in-hub map on a phone and on a narrow desktop pane', () => {
+		assert.equal(hubUsesStackedMap(true, 1200), true);
+		assert.equal(hubUsesStackedMap(false, 335), true);
+		assert.equal(hubUsesStackedMap(false, 390), true);
+		assert.equal(hubUsesStackedMap(false, HUB_STACK_BELOW_PX - 1), true);
+		assert.equal(hubUsesStackedMap(false, HUB_STACK_BELOW_PX), false);
+		assert.equal(hubUsesStackedMap(false, 0), false);
+		assert.equal(hubUsesStackedMap(false, 0, true), true);
+		const glance = readFileSync('src/glancable-view.ts', 'utf8');
+		const main = readFileSync('src/main.ts', 'utf8');
+		assert.match(glance, /ensureHubScroller\(\)/);
+		assert.match(glance, /registerHubScroller\(\(path\) => this\.flashCard\(path\)\)/);
+		assert.equal(glance.includes('if (!(Platform.isMobile || Platform.isMobileApp)) return;'), false);
+		assert.match(glance, /hubUsesStackedMap\(Boolean\(Platform\.isMobile \|\| Platform\.isMobileApp\), width, this\.plugin\.hubPaneNarrow\)/);
+		assert.match(main, /Platform\.isMobile \|\| Platform\.isMobileApp \|\| this\.hubPaneNarrow/);
+	});
+
+	it('scrolls the Glancable .rv-locator-scroll column to the tapped card and flashes it', () => {
+		const host = globalThis as { HTMLElement?: new () => object };
+		if (typeof host.HTMLElement !== 'function') host.HTMLElement = class HTMLElement {};
+		const Base = host.HTMLElement as new () => object;
+		class Box extends Base {
+			parentElement: Box | null = null;
+			ownerDocument: { defaultView: { getComputedStyle(node: Box): { overflowY: string; overflow: string } } };
+			classList: { contains(name: string): boolean; add(name: string): void };
+			scrollTop = 0;
+			clientHeight = 0;
+			scrollHeight = 0;
+			offsetHeight = 0;
+			offsetTop = 0;
+			private names = new Set<string>();
+			private rect = { top: 0, height: 0 };
+			constructor(className: string) {
+				super();
+				for (const name of className.split(/\s+/)) if (name) this.names.add(name);
+				this.classList = {
+					contains: (name: string) => this.names.has(name),
+					add: (name: string) => { this.names.add(name); },
+				};
+				this.ownerDocument = {
+					defaultView: {
+						getComputedStyle: (node: Box) => ({ overflowY: node.overflowY, overflow: 'visible' }),
+					},
+				};
+			}
+			overflowY = 'visible';
+			append(child: Box): void {
+				child.parentElement = this;
+			}
+			closest(selector: string): Box | null {
+				const name = selector.startsWith('.') ? selector.slice(1) : selector;
+				let cursor: Box | null = this;
+				while (cursor) {
+					if (cursor.names.has(name)) return cursor;
+					cursor = cursor.parentElement;
+				}
+				return null;
+			}
+			getBoundingClientRect(): { top: number; height: number } {
+				return this.rect;
+			}
+			place(top: number, height: number): void {
+				this.rect = { top, height };
+				this.offsetHeight = height;
+			}
+			scrollIntoView(): void { /* the scrollTop write is the assertion */ }
+		}
+		const leaf = new Box('workspace-leaf-content');
+		const view = new Box('view-content');
+		view.overflowY = 'auto';
+		view.clientHeight = 800;
+		view.scrollHeight = 3000;
+		view.place(0, 800);
+		const root = new Box('rv-locator-view rv-locator-glancable');
+		const scroll = new Box('rv-locator-scroll');
+		scroll.clientHeight = 335;
+		scroll.scrollHeight = 2400;
+		scroll.place(40, 335);
+		const card = new Box('rv-locator-card');
+		card.place(940, 90);
+		leaf.append(view);
+		view.append(root);
+		root.append(scroll);
+		scroll.append(card);
+		revealHubCard(scroll as unknown as HTMLElement, card as unknown as HTMLElement);
+		assert.equal(scroll.scrollTop, 900 - (335 - 90) / 2);
+		assert.equal(view.scrollTop, 940 - (800 - 90) / 2);
+		assert.equal(card.classList.contains('rv-card-flash'), true);
+		assert.equal(root.scrollTop, 0);
 	});
 });

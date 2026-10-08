@@ -93,6 +93,12 @@ export class DomEl {
 		return this.parentElement.kids[index + 1] ?? null;
 	}
 
+	get previousElementSibling(): DomEl | null {
+		if (!this.parentElement) return null;
+		const index = this.parentElement.kids.indexOf(this);
+		return index > 0 ? this.parentElement.kids[index - 1] ?? null : null;
+	}
+
 	private detach(child: DomEl): void {
 		const parent = child.parentElement;
 		if (!parent) return;

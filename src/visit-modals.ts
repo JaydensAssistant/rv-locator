@@ -166,8 +166,10 @@ export class VisitEditModal extends Modal {
 	}
 
 	private syncCompanion(): void {
-		if (this.companionSetting) this.companionSetting.settingEl.hidden = !this.home;
-		if (this.campaignSetting) this.campaignSetting.settingEl.hidden = !this.home;
+		const companion = this.companionSetting?.settingEl;
+		if (companion) companion.hidden = !this.home;
+		const campaign = this.campaignSetting?.settingEl;
+		if (campaign) campaign.hidden = !this.home;
 	}
 
 	private save(): void {

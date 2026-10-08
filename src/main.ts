@@ -30,7 +30,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { layoutVisitNotes } from './visit-display';
+import { concealCollapsedVisitNotes, layoutVisitNotes } from './visit-display';
 import { pagePreviewDecision } from './page-preview';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import type { MapPin } from './map-pins';
@@ -253,6 +253,7 @@ export default class RVLocatorPlugin extends Plugin {
 				() => context.getSectionInfo(element)?.lineStart ?? null,
 				(target, evt) => this.openVisitMenu(path, target, evt),
 			);
+			concealCollapsedVisitNotes(element);
 			const lastDelay = NOTES_FIT_DELAYS_MS[NOTES_FIT_DELAYS_MS.length - 1] ?? 2_500;
 			for (const delay of NOTES_FIT_DELAYS_MS) {
 				window.setTimeout(() => {
@@ -782,7 +783,7 @@ export default class RVLocatorPlugin extends Plugin {
 					},
 				} : null,
 				path ? {
-					...this.shareFieldOptions(study, defaults, false, !study),
+					...this.shareFieldOptions(study, defaults),
 					onShare: (share) => {
 						if (shareBox) shareBox.share = share;
 					},
@@ -805,21 +806,17 @@ export default class RVLocatorPlugin extends Plugin {
 		study: boolean,
 		defaults: { lesson: string; from: string; to: string },
 		forceLiterature = false,
-		optionalLesson = false,
 	): ShareFieldOptions {
-		const prefilled = study
-			? { ...emptyShare(), lesson: defaults.lesson, lessonFrom: defaults.from, lessonTo: defaults.to }
-			: emptyShare();
 		return {
 			publications: [...this.settings.customPublications, ...PUBLICATION_TITLES],
 			media: [...this.settings.customMedia, ...MEDIA_TITLES],
 			customLessons: this.settings.customLessons,
 			lessons: [...LESSONS],
 			showLiterature: forceLiterature || !study || this.settings.showStudyLiterature,
-			showLesson: study,
-			optionalLesson: optionalLesson && !study,
+			showLesson: false,
+			optionalLesson: true,
 			lessonPrefill: defaults,
-			initial: prefilled,
+			initial: emptyShare(),
 		};
 	}
 
@@ -841,7 +838,7 @@ export default class RVLocatorPlugin extends Plugin {
 		return new Promise((resolve) => {
 			new LiteraturePromptModal(
 				this.app,
-				this.shareFieldOptions(study, defaults, false, !study),
+				this.shareFieldOptions(study, defaults),
 				(share) => resolve(share),
 				campaign ? {
 					name: campaign.name,
@@ -1351,6 +1348,8 @@ export default class RVLocatorPlugin extends Plugin {
 	mapSelectedPath: string | null = null;
 	mapFullscreen = false;
 	hubMapOpen = false;
+	/** Hub column is narrower than the stacked-map breakpoint. Width 0 does not set this. */
+	hubPaneNarrow = false;
 	/** Last GPS fix reported by a hub view, for address bias. */
 	liveFix: { lat: number; lon: number } | null = null;
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
@@ -1360,7 +1359,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Earth on a card, beside Address, or on the hub. Opens the hub split, not a separate tab. */
 	async openMapSoon(path?: string): Promise<void> {
 		if (path) this.mapFocusPath = path;
-		if (Platform.isMobile || Platform.isMobileApp) {
+		if (Platform.isMobile || Platform.isMobileApp || this.hubPaneNarrow) {
 			this.hubMapOpen = true;
 			this.mapFullscreen = false;
 			for (const callback of this.viewRefreshers) callback();
@@ -2065,7 +2064,7 @@ export default class RVLocatorPlugin extends Plugin {
 			title: `Log past visit on “${file.basename}”`,
 			recentCompanions: this.recentCompanionNames(),
 			campaignName: campaign?.name,
-			share: this.shareFieldOptions(study, defaults, false, !study),
+			share: this.shareFieldOptions(study, defaults),
 			onCovered: (covered) => {
 				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
 			},
@@ -2185,16 +2184,12 @@ export default class RVLocatorPlugin extends Plugin {
 	private async openEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): Promise<void> {
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
-		const stored = entry.lesson?.trim() ?? '';
-		const defaults = stored
-			? { lesson: entry.lesson ?? '', from: entry.lessonFrom ?? '', to: entry.lessonTo ?? '' }
-			: await this.studyDefaults(file.path);
-		const openLesson = study || Boolean(stored);
+		const defaults = await this.studyDefaults(file.path);
 		new VisitEditModal(this.app, {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
-			share: this.shareFieldOptions(openLesson, defaults, false, !openLesson),
+			share: this.shareFieldOptions(study, defaults),
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},

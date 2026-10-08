@@ -73,10 +73,13 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 	if (!preview) return;
 	if (preview.dataset.rvLaying === '1') return;
 	preview.dataset.rvLaying = '1';
+	preview.dataset.rvFolding = '1';
 	try {
 		layoutVisitNotesNow(preview, markdown, options);
 	} finally {
 		preview.dataset.rvLaying = '0';
+		delete preview.dataset.rvFolding;
+		concealCollapsedVisitNotes(preview);
 	}
 }
 
@@ -295,6 +298,7 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 		if (!olderChromeMissing(preview, state.markdown, state.options)) {
 			releaseRecentNotesTail(preview);
 			rememberRecentTail(preview);
+			concealCollapsedVisitNotes(preview);
 			return;
 		}
 		layoutVisitNotes(preview, state.markdown, state.options);
@@ -344,10 +348,174 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 }
 
 function visitPreview(root: HTMLElement): HTMLElement | null {
-	const found = root.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered');
+	const found = root.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered, .markdown-source-view');
 	if (found instanceof HTMLElement) return found;
-	if (root.querySelector('h3, h5')) return root;
+	if (root.querySelector('h3, h5, .cm-line')) return root;
 	return root.parentElement;
+}
+
+const FOLD_CLASS = 'rv-visit-folded';
+const foldWatches = new WeakSet<HTMLElement>();
+
+/**
+ * Hide Meta Bind text areas under a collapsed visit heading, and any text area
+ * that mounted late under a collapsed Older Visits group. Render only.
+ * A collapsed heading starts hidden before the next paint when the fold class
+ * is already on the wrapper; a later mount is hidden from the mutation observer.
+ */
+export function concealCollapsedVisitNotes(root: HTMLElement): void {
+	const preview = visitPreview(root);
+	if (!preview) return;
+	watchCollapsedVisitNotes(preview);
+	if (preview.dataset.rvFolding === '1' || preview.dataset.rvLaying === '1') return;
+	applyCollapsedVisitNotes(preview);
+}
+
+function watchCollapsedVisitNotes(preview: HTMLElement): void {
+	if (foldWatches.has(preview) || typeof MutationObserver === 'undefined') return;
+	foldWatches.add(preview);
+	try {
+		const observer = new MutationObserver(() => {
+			if (preview.dataset.rvFolding === '1' || preview.dataset.rvLaying === '1') return;
+			applyCollapsedVisitNotes(preview);
+		});
+		observer.observe(preview, {
+			subtree: true,
+			childList: true,
+			attributes: true,
+			attributeFilter: ['class', 'style'],
+		});
+	} catch {
+		/* The layout test document is not a browser node. */
+	}
+}
+
+function applyCollapsedVisitNotes(preview: HTMLElement): void {
+	const tagged = new Set<HTMLElement>();
+	for (const host of visitHeadingHosts(preview)) {
+		if (!visitHeadingCollapsed(host)) continue;
+		const level = headingLevelOf(host) ?? 5;
+		let cursor = host.nextElementSibling;
+		while (cursor instanceof HTMLElement) {
+			if (endsVisitSection(cursor, level)) break;
+			if (!containsActiveNotes(cursor)) {
+				cursor.classList.add(FOLD_CLASS);
+				tagged.add(cursor);
+			}
+			cursor = cursor.nextElementSibling;
+		}
+	}
+	preview.querySelectorAll(`.${FOLD_CLASS}`).forEach((node) => {
+		if (node instanceof HTMLElement && !tagged.has(node)) node.classList.remove(FOLD_CLASS);
+	});
+	concealStrayOlderFields(preview);
+}
+
+function concealStrayOlderFields(preview: HTMLElement): void {
+	const groupCollapsed = preview.querySelector('.rv-older-visits') != null && preview.dataset.rvOlderOpen !== '1';
+	if (!groupCollapsed) return;
+	preview.querySelectorAll('textarea').forEach((area) => {
+		if (!(area instanceof HTMLElement)) return;
+		if (area.closest('.rv-older-hidden, .rv-visit-folded')) return;
+		const block = sectionBlock(area, preview);
+		if (!block || block === preview || containsActiveNotes(block)) return;
+		if (block.classList.contains('rv-older-hidden') || block.classList.contains(FOLD_CLASS)) return;
+		if (!belongsToHiddenOlderVisit(block)) return;
+		block.classList.add('rv-older-visit', 'rv-older-hidden');
+	});
+}
+
+function containsActiveNotes(node: HTMLElement): boolean {
+	const active = node.ownerDocument?.activeElement;
+	return active instanceof HTMLElement && node.contains(active);
+}
+
+function sectionBlock(node: HTMLElement, preview: HTMLElement): HTMLElement | null {
+	let current: HTMLElement | null = node;
+	while (current && current !== preview) {
+		const parent: HTMLElement | null = current.parentElement;
+		if (!parent || parent === preview || parent.classList.contains('markdown-preview-section') || parent.classList.contains('markdown-preview-sizer') || parent.classList.contains('cm-content')) {
+			return current;
+		}
+		current = parent;
+	}
+	return null;
+}
+
+function belongsToHiddenOlderVisit(block: HTMLElement): boolean {
+	let cursor = block.previousElementSibling;
+	while (cursor instanceof HTMLElement) {
+		if (isOlderWalkStop(cursor)) return false;
+		if (cursor.classList.contains('rv-older-hidden')) return true;
+		cursor = cursor.previousElementSibling;
+	}
+	return false;
+}
+
+function isOlderWalkStop(node: HTMLElement): boolean {
+	if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-notes-fold-stop')) return true;
+	if (node.classList.contains('rv-locator-return-suggestions')) return true;
+	if (node.tagName === 'HR' && !node.classList.contains('rv-older-hidden')) return true;
+	if (node.querySelector('.callout-title')?.textContent?.includes('Return Suggestions')) return true;
+	if (isVisitHeading(node) && !node.classList.contains('rv-older-hidden')) return true;
+	const inner = node.querySelector('h3, h5');
+	return inner instanceof HTMLElement && isVisitHeading(inner) && !node.classList.contains('rv-older-hidden') && !inner.classList.contains('rv-older-hidden');
+}
+
+function visitHeadingHosts(preview: HTMLElement): HTMLElement[] {
+	const hosts: HTMLElement[] = [];
+	preview.querySelectorAll('h3, h5, .cm-line').forEach((node) => {
+		if (!(node instanceof HTMLElement) || !isVisitHeading(node)) return;
+		const host = visitSectionHost(node);
+		if (!hosts.includes(host)) hosts.push(host);
+	});
+	return hosts.filter((host) => !hosts.some((other) => other !== host && other.contains(host)));
+}
+
+function visitSectionHost(heading: HTMLElement): HTMLElement {
+	const parent = heading.parentElement;
+	if (!parent) return heading;
+	for (let level = 1; level <= 6; level += 1) {
+		if (parent.classList.contains(`el-h${level}`)) return parent;
+	}
+	return heading;
+}
+
+function isVisitHeading(node: HTMLElement): boolean {
+	if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading') || node.classList.contains('rv-fold-stop-heading')) return false;
+	const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+	if (/^(?:visit|recent) notes:?$/i.test(text)) return false;
+	if (node.classList.contains('rv-visit-stamp') || node.querySelector('.rv-stamp-ago')) return true;
+	if (headingLevelOf(node) == null) return false;
+	if (!node.classList.contains('cm-line') && !/^H[1-6]$/.test(node.tagName)) return false;
+	const plain = text.replace(/^#{1,6}\s+/, '');
+	return stampDateTime(stripStampAge(plain)) != null;
+}
+
+function visitHeadingCollapsed(host: HTMLElement): boolean {
+	if (host.classList.contains('is-collapsed')) return true;
+	const heading = host.matches('h3, h5') ? host : host.querySelector('h3, h5');
+	if (heading instanceof HTMLElement && heading.classList.contains('is-collapsed')) return true;
+	return host.querySelector('.cm-foldPlaceholder') != null;
+}
+
+function headingLevelOf(node: HTMLElement): number | null {
+	if (/^H[1-6]$/.test(node.tagName)) return Number(node.tagName.slice(1));
+	for (let level = 1; level <= 6; level += 1) {
+		if (node.classList.contains(`el-h${level}`) || node.classList.contains(`HyperMD-header-${level}`)) return level;
+	}
+	return null;
+}
+
+function endsVisitSection(node: HTMLElement, level: number): boolean {
+	if (node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-notes-fold-stop')) return true;
+	if (isStop(node)) return true;
+	const direct = headingLevelOf(node);
+	if (direct != null && direct <= level) return true;
+	const inner = node.querySelector('h1, h2, h3, h4, h5, h6');
+	if (!(inner instanceof HTMLElement)) return false;
+	const innerLevel = headingLevelOf(inner);
+	return innerLevel != null && innerLevel <= level && node.classList.contains(`el-h${innerLevel}`);
 }
 
 function stampHeads(preview: HTMLElement): HTMLElement[] {

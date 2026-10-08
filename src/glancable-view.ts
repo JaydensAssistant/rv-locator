@@ -1,4 +1,5 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
+import { HUB_STACK_BELOW_PX, hubUsesStackedMap, revealHubCard } from './hub-layout';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE } from './constants';
 import { domInstanceOf } from './dom';
@@ -31,7 +32,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private parsedKey = '';
 	private parsedQuery: GlanceQuery | null = null;
 	private hubMapEl: HTMLElement | null = null;
+	private hubMapHandle: HTMLElement | null = null;
+	private hubMapApi: { destroy(): void } | null = null;
 	private hubMapRatio = 0.4;
+	private stackedLayout = false;
+	private hubScrollerStop: (() => void) | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -53,22 +58,68 @@ export class NearbyGlancableView extends NearbyBasesView {
 	protected override afterRender(): void {
 		this.syncBasesChrome();
 		this.ensureSearchField();
-		this.syncHubMap();
+		this.syncHubMapMount();
 	}
 
 	protected override afterChrome(): void {
-		if (!(Platform.isMobile || Platform.isMobileApp)) return;
+		this.ensureHubScroller();
+		this.syncHubMapMount();
+	}
+
+	/** Pin taps scroll this hub on desktop and on the phone stack. */
+	private ensureHubScroller(): void {
+		if (this.hubScrollerStop) return;
+		this.hubScrollerStop = this.plugin.registerHubScroller((path) => this.flashCard(path));
+		this.register(() => {
+			this.hubScrollerStop?.();
+			this.hubScrollerStop = null;
+		});
+	}
+
+	/**
+	 * In-hub map above the cards. Real phones, and a hub narrower than
+	 * {@link HUB_STACK_BELOW_PX} (a desktop window sized like a phone).
+	 * Width 0 is not a measurement yet, so a wide desktop is left as a split.
+	 */
+	private syncHubMapMount(): void {
+		const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
+		if (width > 0) this.plugin.hubPaneNarrow = width < HUB_STACK_BELOW_PX;
+		const stacked = hubUsesStackedMap(Boolean(Platform.isMobile || Platform.isMobileApp), width, this.plugin.hubPaneNarrow);
+		if (stacked) {
+			const entered = !this.stackedLayout;
+			this.stackedLayout = true;
+			this.ensureHubMap();
+			if (entered) this.plugin.hubMapOpen = true;
+		} else if (width > 0) {
+			this.stackedLayout = false;
+			this.removeHubMap();
+			this.plugin.hubMapOpen = false;
+		}
+		this.syncHubMap();
+	}
+
+	private ensureHubMap(): void {
+		if (this.hubMapEl) return;
 		const map = this.root.createDiv('rv-hub-map');
 		const handle = this.root.createDiv('rv-hub-map-handle');
 		handle.setAttr('role', 'separator');
+		handle.setAttr('aria-orientation', 'horizontal');
 		handle.setAttr('aria-label', 'Resize map');
 		this.root.insertBefore(map, this.scrollEl);
 		this.root.insertBefore(handle, this.scrollEl);
 		this.hubMapEl = map;
-		this.plugin.mountHubMap(map);
+		this.hubMapHandle = handle;
+		this.hubMapApi = this.plugin.mountHubMap(map);
 		this.bindHubHandle(handle);
-		const stop = this.plugin.registerHubScroller((path) => this.flashCard(path));
-		this.register(stop);
+	}
+
+	private removeHubMap(): void {
+		this.hubMapApi?.destroy();
+		this.hubMapApi = null;
+		this.hubMapEl?.remove();
+		this.hubMapHandle?.remove();
+		this.hubMapEl = null;
+		this.hubMapHandle = null;
 	}
 
 	protected override sortedGroups() {
@@ -555,8 +606,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
 		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
 		if (!(card instanceof HTMLElement)) return;
-		card.scrollIntoView({ block: 'center' });
-		card.classList.add('rv-card-flash');
+		revealHubCard(this.scrollEl, card);
 		window.setTimeout(() => card.classList.remove('rv-card-flash'), 1600);
 	}
 
@@ -609,8 +659,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.layoutObserver = new ResizeObserver(() => {
 			this.applyColumnSnap();
 			if (this.plugin.settings.glancableFitCount !== 0) this.applyDensity();
+			this.syncHubMapMount();
 		});
 		this.layoutObserver.observe(this.scrollEl);
+		this.layoutObserver.observe(this.root);
 		this.register(() => {
 			this.layoutObserver?.disconnect();
 			this.layoutObserver = null;
