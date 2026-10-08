@@ -509,12 +509,6 @@
 	height: 12px;
 }
 
-.rv-locator-glancable .rv-sort-label {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-}
-
 .rv-sort-arrow {
 	display: inline-flex;
 	flex: 0 0 auto;

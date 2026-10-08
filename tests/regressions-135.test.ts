@@ -895,7 +895,18 @@ describe('phone-first visit surfaces', () => {
 		inputs[2]?.emit?.('input', 'Video');
 		inputs[2]?.emit?.('blur');
 		clickLabeled(companion.contentEl as never, 'Studied a lesson?');
-		clickLabeled(companion.contentEl as never, 'Log visit');
+		const priorWindow = (globalThis as { window?: unknown }).window;
+		(globalThis as { window?: { setTimeout: (fn: () => void, ms?: number) => number } }).window = {
+			setTimeout: (fn) => {
+				fn();
+				return 0;
+			},
+		};
+		try {
+			clickLabeled(companion.contentEl as never, 'Log visit');
+		} finally {
+			(globalThis as { window?: unknown }).window = priorWindow;
+		}
 		assert.equal(shared.at(-1)?.publications, 'Tract');
 		assert.equal(shared.at(-1)?.media, 'Video');
 		assert.equal(shared.at(-1)?.lesson, LESSON_1);

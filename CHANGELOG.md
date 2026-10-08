@@ -4,7 +4,7 @@
 
 `main.js` SHA-256: `074b06fbe99fff3754259a3708264cae7a8070ff29e0c47a28c2e435ac48ac5b`
 
-`styles.css` SHA-256: `edd4ce67b0f0f875c1ff04e1e08643fcc043a515d0dd32128d350f4f86d89556`
+`styles.css` SHA-256: `37b9c89140892b9525f0abc90b4dea392f3ff35b8210a0c32795865f8beb5fcc`
 
 `manifest.json` SHA-256: `dbf47c2188d9abcdda12f0242dbffe93a835852e2cf21e9b476278e7fbd92591`
 

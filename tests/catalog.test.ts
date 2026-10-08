@@ -316,7 +316,7 @@ describe('in-note urgency chrome', () => {
 		assert.match(ghostPin, /opacity:\s*1/);
 		assert.match(ghostPin, /background-color: color-mix\(in srgb, var\(--background-primary\) 88%, var\(--background-primary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
-		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin svg \{[^}]*width: 38px !important;[^}]*height: 38px !important/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin svg \{[^}]*width: 21px !important;[^}]*height: 21px !important/);
 		assert.match(css, /\.rv-map-card\.rv-locator-glancable \{[^}]*--rv-control-size: 38px/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: var\(--background-secondary\);/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background: linear-gradient\(color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\), color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)\), var\(--background-secondary\);/);
@@ -367,7 +367,8 @@ describe('in-note urgency chrome', () => {
 		const nearby = readFileSync(path.join(process.cwd(), 'src/nearby-view.ts'), 'utf8');
 		assert.match(glance, /searchReplacesBar/);
 		assert.match(glance, /is-search-open/);
-		assert.match(nearby, /rv-locator-search-slot/);
+		assert.match(glance, /rv-locator-search-slot/);
+		assert.match(nearby, /searchSlot/);
 		assert.match(css, /width: 48px/);
 		assert.match(css, /width: 21px !important/);
 		assert.match(css, /width: 53px/);
