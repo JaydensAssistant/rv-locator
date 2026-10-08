@@ -53,54 +53,64 @@ export const SORT_PRESETS = [
 		id: 'ideality',
 		property: IDEALITY_COLUMN_ID,
 		defaultDirection: 'DESC',
+		short: 'Score',
 		labels: { ASC: 'Ideality (beta) · low', DESC: 'Ideality (beta) · high' },
 	},
 	{
 		id: 'urgency',
 		property: URGENCY_COLUMN_ID,
 		defaultDirection: 'DESC',
+		short: 'Urgent',
 		labels: { ASC: 'Urgency · low', DESC: 'Urgency · high' },
 	},
 	{
 		id: 'distance',
 		property: DISTANCE_COLUMN_ID,
 		defaultDirection: 'ASC',
+		short: 'Near',
 		labels: { ASC: 'Nearest', DESC: 'Furthest' },
 	},
 	{
 		id: 'priority',
 		property: 'note.Priority',
 		defaultDirection: 'DESC',
+		short: 'Priority',
 		labels: { ASC: 'Priority · low', DESC: 'Priority · high' },
 	},
 	{
 		id: 'spoke',
 		property: 'note.Last Spoke',
 		defaultDirection: 'ASC',
+		short: 'Oldest',
 		labels: { ASC: 'Spoke · oldest', DESC: 'Spoke · newest' },
 	},
 	{
 		id: 'attempted',
 		property: 'note.Last Attempted',
 		defaultDirection: 'ASC',
+		short: 'Tries',
 		labels: { ASC: 'Attempted · oldest', DESC: 'Attempted · newest' },
 	},
 	{
 		id: 'met',
 		property: 'note.Met',
 		defaultDirection: 'DESC',
+		short: 'Met',
 		labels: { ASC: 'Met · oldest', DESC: 'Met · newest' },
 	},
 	{
 		id: 'city',
 		property: 'note.City',
 		defaultDirection: 'ASC',
+		short: 'City',
 		labels: { ASC: 'City · nearest', DESC: 'City · furthest' },
 	},
 ] as const satisfies readonly {
 	id: SortChipId;
 	property: string;
 	defaultDirection: 'ASC' | 'DESC';
+	/** Visible pill word. Change these strings to rename a chip. */
+	short: string;
 	labels: { ASC: string; DESC: string };
 }[];
 
@@ -117,6 +127,16 @@ export function visibleSortPresets(chips: SortChipFlags): SortPreset[] {
  */
 export function sortPresetChipLabel(preset: SortPreset, activeDirection: 'ASC' | 'DESC' | null): string {
 	return preset.labels[activeDirection ?? preset.defaultDirection];
+}
+
+/** One word on the pill. The long phrase stays the accessible name. */
+export function sortPresetShortLabel(preset: SortPreset): string {
+	return preset.short;
+}
+
+/** Small arrow on the active pill. ASC points up, DESC points down. */
+export function sortDirectionArrow(direction: 'ASC' | 'DESC'): 'arrow-up' | 'arrow-down' {
+	return direction === 'ASC' ? 'arrow-up' : 'arrow-down';
 }
 
 /** Same property flips ASC/DESC. A different chip starts at that preset’s default. */

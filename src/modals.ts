@@ -547,12 +547,6 @@ export class CompanionSuggestModal extends Modal {
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');
 				this.companionInput = text;
-				const listId = `rv-locator-companions-${Date.now()}`;
-				const list = contentEl.createEl('datalist', { attr: { id: listId } });
-				for (const name of this.recent) {
-					if (name.trim()) list.createEl('option', { attr: { value: name } });
-				}
-				text.inputEl.setAttribute('list', listId);
 				text.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
 					if (event.key !== 'Enter') return;
 					event.preventDefault();

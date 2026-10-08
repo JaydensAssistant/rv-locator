@@ -2,19 +2,55 @@
 
 ## 1.3.5
 
-`main.js` SHA-256: `e0b9f20c22813a4c77d9d18195d323bde0b07b2aa56a4e85f719b55f992e2377`
+`main.js` SHA-256: `074b06fbe99fff3754259a3708264cae7a8070ff29e0c47a28c2e435ac48ac5b`
 
-`styles.css` SHA-256: `9ea2ee99da656ea83fb655a8f67937a41582d7a369e7acf859f64a06acc01cf0`
+`styles.css` SHA-256: `edd4ce67b0f0f875c1ff04e1e08643fcc043a515d0dd32128d350f4f86d89556`
 
 `manifest.json` SHA-256: `dbf47c2188d9abcdda12f0242dbffe93a835852e2cf21e9b476278e7fbd92591`
+
+`extras/templater-metabind/rvLog.js` SHA-256 unchanged: `0fd68b7830811db052164b95a7a1696d113caba5d85c3b26881e9a38d3499152`
+
+### Dogfood pack (claimed vs not)
+
+Phone-first: Obsidian mobile around 390px, 40px touch targets on the hub bar, map controls, chevrons, disclosure rows, and suggester rows. The page itself does not scroll sideways. The sort bar sticks to the bottom of a stacked hub. Modals scroll inside the visible viewport, and suggesters stay above the on-screen keyboard.
+
+1. **Claimed.** Hub and Address share one label column (`--rv-hub-label: 5.25em`) and a 0.22em gap, so the boxes share a left edge. Applied to the plugin note dashboard in `styles.css` (normal and wide hubs) and the vault snippet `extras/templater-metabind/rv-dashboard.css`. Not the Glancable card.
+2. **Claimed.** Stacked hub (phone, or hub narrower than 600px) puts the list, then the drag handle, then the map. Handle is 40px tall. Applied to the in-view Glancable stage, standalone and embedded. Desktop side-by-side is item 6.
+3. **Claimed** for the Glancable card list: the non-affiliation notice is the last list row, not a pinned footer. OSM and Geoapify stay in the map credit corner. The vanilla table footer and the settings-tab notice are unchanged.
+4. **Claimed.** One fullscreen button on the in-view map. It swaps to Back to Hub in the same slot. Standalone and embedded, phone and desktop. There is no second split-leaf map button.
+5. **Claimed.** Sort pills use a short label (Urgent, Near, Priority, Oldest, Tries, and the other presets) plus a direction arrow. Equal width, capped at 78px, 40px tall, scrolling inside the bar. Applied anywhere `paintSortPresets` runs (Glancable and the vanilla sort row). Filter pills stay their own width.
+6. **Claimed.** Desktop opens the map inside the same view, to the right of the list, with a drag handle. No workspace leaf. Standalone and embedded.
+7. **Claimed.** The map has no sort pills. The list pills drive the list and the map. Glancable only (the map is the in-view map).
+8. **Claimed.** Map controls sit on the map, 40px squares, semi-transparent, no Map header row. The one in-view map, phone and desktop.
+9. **Claimed** for Glancable, standalone and embedded, phone and desktop. Search is an icon. Tapping it replaces the pills and the other buttons with the field. X or Escape brings the pills back. AND facet parsing is unchanged. The vanilla table does not get this search slot.
+10. **Claimed.** Tapping the map button again hides the map. `openMapSoon()` toggles. Standalone and embedded, phone and desktop.
+11. **Claimed.** On a stacked hub the sort pills and the search, map, campaign, and New RV buttons sit in a bar stuck to the bottom of the view, with the home-indicator inset. With the map open, the map is just above that bar. Inside an embed the bar stays in the embed, not the whole window. Desktop keeps the bar at the top of the list column.
+12. **Claimed.** Pins are 48px and clusters 53px, glyphs 21px: 15% over the original 42/18/46, not the later 50% enlargement. Popup badges stay 38px. Hub badges stay 28px. Ghost pins use the same diameter.
+13. **Claimed.** The same in-view split uses the view root width, so items 2, 6, 7, 10, and 11 apply to a base opened on its own and to a base embedded in a note, including `cssclasses: wide-base-page`. Smoke note: `extras/smoke/Embedded Hub.md` (`![[Active RVs.base]]`). There is still no `.base` file in the repo.
+14. **Claimed** for the startup polish and the accent check: they no longer rewrite markdown. Stamp ages already on a note are replaced on screen from the date. **Not removed:** saving a digest setting (orientation, day columns, suggestion callout) still rewrites the stored table. Logging, editing, or creating a visit still writes the note, and the age span is refreshed on that explicit write. Vaults that never received digest polish versions 1–11 do not get those structural migrations (markers, callout wrap, buttons, Status/Hub rename, bullet lines) on launch. `DIGEST_POLISH_VERSION` was not bumped.
+15. **Claimed.** Deleted `dist/main.js`, `dist/styles.css`, and `dist/manifest.json`. The plugin files are the ones at the repo root.
+16. **Claimed.** Reading view and Live Preview inline titles on an RV dashboard note get the same status icon as the cards (active, study, inactive), to the left of the name. Render only. Cards already had the icon. Quick Facts still has its status row.
+17. **Claimed.** "Studied a lesson?" is a disclosure, collapsed by default, in New RV, Log visit (`LiteraturePromptModal`, card and urgency Home, with or without a campaign), in-note Home (`CompanionSuggestModal` via `rvLog.js` `logNoteHome`), log a past visit, and edit visit (`VisitEditModal`). A study starts expanded and prefills only when the lesson is empty. Collapsing still clears the lesson. `VisitConfirmModal` has no share fields. A miss does not ask. `askCampaignCovered` stays the coverage-only fallback when no decision was recorded.
+18. **Claimed** on the same modals as item 17. Literature and media always show. On a study they sit in a collapsed "Literature and media" disclosure. On an active or inactive RV they stay visible. The "Literature on a study" setting no longer hides them. Its stored default is still off.
+19. **Claimed.** Literature, media, and the lesson list are gone from Glancable cards and map popup cards. Last Studied stays. Quick Facts in the note still lists Literature, Media, and Lessons.
+20. **Claimed** on every chevron suggester: literature, media, lesson, companion, address, and the other `mountAlwaysChevron` fields, in New RV, Log visit, campaign log, past visit, edit visit, and the in-note companion dialog. Focus or click opens the list under the field. Mount does not focus the field, so opening the modal does not open the companion list. A programmatic focus (the chevron already painted) does not toggle it shut.
+21. **Claimed** on those same fields. `autocomplete=off`, and the native datalist is gone from New RV, the visit editor companion, and the in-note companion.
+22. **Claimed.** The native calendar and list indicators are hidden on `.rv-suggest-host` inputs. The chevron beside the box stays visible, 40px.
+23. **Claimed** in `.rv-locator-modal` for text, search, and date inputs: one control width (`min(16.5rem, 100%)`), a 40px chevron column, and fields without a chevron shortened by that same 40px so the boxes line up. On a phone the label stacks above the control. Sliders and the gender buttons are not in that column. New RV, Log visit, past visit, edit visit, and the in-note log.
+24. **Claimed** on those same literature and media fields. Placeholders are "Tract or book (optional)" and "Video (optional)".
+25. **Claimed** when Hide the Bases bar is on. `.bases-toolbar` and `.bases-header` collapse (no height, margin, padding, or border), standalone and embedded. The file tab (`.view-header`) stays. The stored default is still off, so the bar shows until the setting is turned on.
+26. **Claimed.** A campaign does not remove literature, media, or the lesson disclosure. Log visit, the in-note log, and log a past visit still show them as items 17 and 18 define, and a home save writes Left Publications, Shared Media, and Lessons Studied. Covered by tests that read the share back through frontmatter and the visit stamp.
+27. **Claimed** on every `mountAlwaysChevron` list (literature, media, lesson, companion, address, and the rest) in every modal from item 17, including the in-note path. The box is about five rows tall and scrolls inside itself. It is limited to the modal and to `visualViewport` (the space above the keyboard). If there is more room above the field, it opens above. Titles wrap to at most two lines.
+
+Left for a decision, not done silently: digest-table shape still rewrites notes when those settings change. Structural digest migrations 1–11 are not applied on launch to a vault that never had them.
 
 - A collapsed visit heading hides its Meta Bind text areas in Live Preview and Reading view, including older visits and the latest visit. Live Preview draws Older Visits with CodeMirror decorations only, so opening the note does not write that heading into the file. Folding the latest visit in Reading view no longer locks the renderer: an unchanged class notification is ignored, fold work is disconnected from its observer, and a pass that finds nothing changed writes nothing. Expanding the heading shows the text areas again.
 - Every visit dialog keeps the collapsed "Studied a lesson?" section. The first Home stamp on a note keeps the lesson tail.
 - Tapping a pin in the desktop split scrolls `.rv-locator-scroll` to that RV's card and flashes it.
 - Fullscreen map popup badges are 38px. Card text stays at the Glancable font scale.
-- The in-hub map and drag handle show on a phone and when the hub is narrower than 600px. A narrow window keeps that one map: the separate split leaf is closed while the hub is stacked and restored when the window is wide again.
-- Fullscreen applies only to the map whose button was used. The hub stack and the split map do not share one flag.
-- Map pins and clusters are opaque. They use the card color as `background-color` and a linear-gradient of the badge's 13% accent over transparent on top, so light and dark match the Glancable badge. Ghost pins are the theme background with no transparency. Pin icons are 38px on the 63px pin.
+- The map opens inside the hub view. A phone, or a hub narrower than 600px, stacks the list above the map. A wide desktop pane puts the map on the right. Tapping the map button again hides it. There is no separate workspace leaf.
+- Fullscreen is one button on that map. Back to Hub replaces it in the same slot.
+- Map pins and clusters are opaque. They use the card color as `background-color` and a linear-gradient of the badge's 13% accent over transparent on top, so light and dark match the Glancable badge. Ghost pins are the theme background with no transparency. Pin glyphs are 21px on the 48px pin. Clusters are 53px. Popup badges stay 38px.
 - Hub chips are wikilinks, in note chrome, in the surrounding font, with every hub shown. Move Left and Remove are a right-click or long-press menu. There is no X.
 - The Quick Facts route badge opens the Google Maps link. The earth icon still opens the coming-soon map.
 - Quick Facts dates stay on one line, with a smaller calendar date and age. Labels are Spoke and Attempted. The priority slider sits next to the priority number. Status is Active, then Study, then Inactive. Rows are grouped with horizontal rules. Quick Facts labels stay left aligned when the dashboard is centered.

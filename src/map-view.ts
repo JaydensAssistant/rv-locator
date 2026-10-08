@@ -1,7 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
-import { OSM_ATTRIBUTION } from './constants';
+import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
-import { equalizeSortPills } from './sort-pills';
 import { clusterAppearance, latToTileY, lonToTileX, mapPressIsClick, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import type { RVLocatorSettings } from './types';
@@ -22,9 +21,6 @@ export interface MapHost {
 	setHubMapFullscreen?(on: boolean): void;
 	notifyPin?(path: string): void;
 	notifyMapCleared?(): void;
-	hubSort?(): { property: string; direction: 'ASC' | 'DESC' };
-	cycleHubSort?(property: string): void;
-	sortChoices?(): readonly { property: string; label: string; active: boolean }[];
 	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean): void }): () => void;
 }
 
@@ -45,7 +41,6 @@ export class RvMapView extends ItemView {
 	private watchId: number | null = null;
 	private drag: { x: number; y: number; lat: number; lon: number; moved: boolean } | null = null;
 	private selectedPath: string | null = null;
-	private sortRow: HTMLElement | null = null;
 	private detachMap: (() => void) | null = null;
 	/** This map only. The hub stack and the split leaf do not share it. */
 	private mapFullscreen = false;
@@ -70,21 +65,19 @@ export class RvMapView extends ItemView {
 	async onOpen(): Promise<void> {
 		this.contentEl.empty();
 		this.contentEl.addClass('rv-map');
-		const bar = this.contentEl.createDiv('rv-map-bar');
-		bar.createEl('h2', { text: 'Map' });
+		this.stage = this.contentEl.createDiv('rv-map-stage');
+		const bar = this.stage.createDiv('rv-map-bar');
 		const zoomIn = bar.createEl('button', { text: '+', attr: { type: 'button', 'aria-label': 'Zoom in' } });
 		const zoomOut = bar.createEl('button', { text: '−', attr: { type: 'button', 'aria-label': 'Zoom out' } });
 		const fit = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Fit all pins' } });
 		setIcon(fit, 'maximize');
 		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location' } });
 		setIcon(locate, 'locate');
-		const fullscreen = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Full screen' } });
-		setIcon(fullscreen, 'expand');
-		const back = bar.createEl('button', {
-			cls: 'rv-map-back',
-			text: 'Back to Hub',
-			attr: { type: 'button' },
+		const fullscreen = bar.createEl('button', {
+			cls: 'rv-map-fullscreen',
+			attr: { type: 'button', 'aria-label': 'Full screen', title: 'Full screen' },
 		});
+		setIcon(fullscreen, 'expand');
 		zoomIn.addEventListener('click', () => this.setZoom(this.zoom + 1));
 		zoomOut.addEventListener('click', () => this.setZoom(this.zoom - 1));
 		fit.addEventListener('click', () => this.fitAll());
@@ -92,19 +85,14 @@ export class RvMapView extends ItemView {
 		fullscreen.addEventListener('click', () => {
 			this.setFullscreen(!this.isFullscreen());
 		});
-		back.addEventListener('click', () => {
-			this.setFullscreen(false);
-		});
-		this.sortRow = this.contentEl.createDiv('rv-map-sorts');
-		this.paintSorts();
-		this.stage = this.contentEl.createDiv('rv-map-stage');
 		this.pinLayer = this.stage.createDiv('rv-map-pins');
-		const credit = this.contentEl.createDiv('rv-map-credit');
+		const credit = this.stage.createDiv('rv-map-credit');
 		const link = credit.createEl('a', {
 			text: OSM_ATTRIBUTION,
 			href: 'https://www.openstreetmap.org/copyright',
 		});
 		link.setAttr('rel', 'noopener');
+		credit.createSpan({ text: ` · ${GEOAPIFY_ATTRIBUTION}` });
 		this.pins = this.host.listMapPins();
 		this.user = this.host.currentMapFix();
 		this.centerOnOpen();
@@ -153,9 +141,15 @@ export class RvMapView extends ItemView {
 	}
 
 	private syncFullscreen(): void {
-		this.contentEl.toggleClass('is-fullscreen', this.isFullscreen());
-		const back = this.contentEl.querySelector('.rv-map-back');
-		if (back instanceof HTMLElement) back.toggleClass('is-visible', this.isFullscreen());
+		const on = this.isFullscreen();
+		this.contentEl.toggleClass('is-fullscreen', on);
+		const button = this.contentEl.querySelector('.rv-map-fullscreen');
+		if (!(button instanceof HTMLElement)) return;
+		const label = on ? 'Back to Hub' : 'Full screen';
+		button.setAttr('aria-label', label);
+		button.setAttr('title', label);
+		button.empty();
+		setIcon(button, on ? 'arrow-left' : 'expand');
 	}
 
 	/** Called when an already-open map is asked to center again. */
@@ -163,7 +157,6 @@ export class RvMapView extends ItemView {
 		this.pins = this.host.listMapPins();
 		this.user = this.host.currentMapFix() ?? this.user;
 		this.centerOnOpen();
-		this.paintSorts();
 		this.syncFullscreen();
 		this.paint();
 	}
@@ -201,7 +194,7 @@ export class RvMapView extends ItemView {
 		const stage = this.stage;
 		if (!stage) return;
 		stage.addEventListener('pointerdown', (event) => {
-			if (event.target instanceof Element && event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster')) return;
+			if (event.target instanceof Element && event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster, .rv-map-bar, .rv-map-credit')) return;
 			this.drag = { x: event.clientX, y: event.clientY, lat: this.centerLat, lon: this.centerLon, moved: false };
 		});
 		stage.addEventListener('pointermove', (event) => {
@@ -425,12 +418,6 @@ export class RvMapView extends ItemView {
 		this.cardSlot(foot, 'user', pin.card.metWith || '—', !pin.card.metWith);
 		const ratio = pin.card.study ? pin.card.studyRatio : pin.card.visits;
 		if (ratio) this.cardSlot(foot, pin.card.study ? 'percent' : 'list-checks', ratio, false);
-		if (pin.card.literature || pin.card.media || pin.card.lessons.length > 0) {
-			const extra = card.createDiv('rv-locator-when');
-			if (pin.card.literature) this.cardSlot(extra, 'book', pin.card.literature, false);
-			if (pin.card.media) this.cardSlot(extra, 'film', pin.card.media, false);
-			for (const lesson of pin.card.lessons) this.cardSlot(extra, 'book-open', lesson, false);
-		}
 		const actions = card.createSpan('rv-locator-card-actions');
 		const urgency = actions.createSpan({
 			cls: 'rv-locator-urgency',
@@ -464,21 +451,6 @@ export class RvMapView extends ItemView {
 		if (date.time) clock.createSpan({ cls: 'rv-locator-time', text: `, ${date.time}` });
 		if (date.rest) wrap.createSpan({ cls: 'rv-locator-cal', text: date.rest });
 		if (date.days) slot.createSpan({ cls: 'rv-locator-days', text: date.days });
-	}
-
-	private paintSorts(): void {
-		const row = this.sortRow;
-		if (!row) return;
-		row.empty();
-		for (const choice of this.host.sortChoices?.() ?? []) {
-			const button = row.createEl('button', {
-				cls: `rv-locator-sort-preset${choice.active ? ' is-active' : ''}`,
-				attr: { type: 'button', 'aria-pressed': choice.active ? 'true' : 'false' },
-			});
-			button.createSpan({ cls: 'rv-sort-label', text: choice.label });
-			button.addEventListener('click', () => { this.host.cycleHubSort?.(choice.property); });
-		}
-		equalizeSortPills(row);
 	}
 
 	private cardSlot(parent: HTMLElement, icon: string, text: string, empty: boolean): void {
@@ -540,11 +512,17 @@ export class RvMapView extends ItemView {
 /** Fullscreen popup badges. Larger than the 28px hub badges; card text stays at font scale 1. */
 export const MAP_POPUP_BADGE_PX = 38;
 
-/** Map pin diameter. Glyphs are {@link MAP_PIN_GLYPH_PX}, 60% of this. */
-export const MAP_PIN_PX = 63;
+/**
+ * Map pin diameter. 15% over the original 42px pin, before the 50% enlargement.
+ * Popup badges stay {@link MAP_POPUP_BADGE_PX}. Hub badges stay 28px.
+ */
+export const MAP_PIN_PX = 48;
 
-/** 38 / 63 ≈ 60%, inside the 55–65% band. Bang glyphs and ghost hourglass/ban icons. */
-export const MAP_PIN_GLYPH_PX = 38;
+/** 15% over the original 18px glyph. Bang marks and ghost hourglass/ban icons. */
+export const MAP_PIN_GLYPH_PX = 21;
+
+/** 15% over the original 46px cluster. */
+export const MAP_CLUSTER_PX = 53;
 
 /** Force pin icons past `svg { width: 1em }`, which followed the 22px pin font-size. */
 export function sizePinGlyph(host: HTMLElement): void {
@@ -583,7 +561,6 @@ export function mountEmbeddedMap(
 		watchId: null as number | null,
 		drag: null as { x: number; y: number; lat: number; lon: number; moved: boolean } | null,
 		selectedPath: null as string | null,
-		sortRow: null as HTMLElement | null,
 		detachMap: null as (() => void) | null,
 		mapFullscreen: false,
 		fullscreenScope: 'hub' as const,

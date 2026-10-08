@@ -8,6 +8,7 @@ import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
 import { mountUrgencyGlyph } from './glancable-view';
+import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
@@ -43,9 +44,38 @@ export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteCh
 	const data = host.frontmatter(path);
 	if (!data) return;
 	applyLiveUrgency(root, path, host);
+	decorateNoteTitle(root, data);
 	decorateQuickFacts(root, path, data, host);
 	decorateHubRow(root, path, data, host);
 	decorateSlotOverride(root, path, data, host);
+}
+
+/** Status icon to the left of the note title. Render only; the file is not written. */
+function decorateNoteTitle(root: HTMLElement, data: Record<string, unknown>): void {
+	if (typeof root.closest !== 'function') return;
+	const leaf = root.closest('.workspace-leaf-content');
+	if (!(leaf instanceof HTMLElement) || typeof leaf.querySelectorAll !== 'function') return;
+	const dashboard = isRvDashboardNote(data);
+	const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
+	leaf.querySelectorAll('.inline-title').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const existing = node.querySelector(':scope > .rv-note-status');
+		if (!dashboard) {
+			existing?.remove();
+			return;
+		}
+		let mark = existing instanceof HTMLElement ? existing : null;
+		if (!mark) {
+			mark = node.ownerDocument.createElement('span');
+			mark.className = 'rv-note-status';
+			node.prepend(mark);
+		}
+		if (mark.dataset.status === status && mark.childElementCount > 0) return;
+		mark.dataset.status = status;
+		mark.replaceChildren();
+		setIcon(mark, statusIcon(status));
+		mark.setAttribute('aria-label', status);
+	});
 }
 
 /**

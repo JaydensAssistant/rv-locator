@@ -1,7 +1,7 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
-import { hubStackMeasure, hubUsesStackedMap, revealHubCard, splitMapLeafAction } from './hub-layout';
+import { hubUsesStackedMap, revealHubCard } from './hub-layout';
 import type { NearbyScope } from './active-layout';
-import { GLANCABLE_VIEW_TYPE } from './constants';
+import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
 import { domInstanceOf } from './dom';
 import { compactBadgePx, fittedFontScale, glancableColumns, type CompactLineKind } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
@@ -31,11 +31,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private bodiesLoading = false;
 	private parsedKey = '';
 	private parsedQuery: GlanceQuery | null = null;
+	private stageEl: HTMLElement | null = null;
 	private hubMapEl: HTMLElement | null = null;
 	private hubMapHandle: HTMLElement | null = null;
 	private hubMapApi: { destroy(): void } | null = null;
-	private hubMapRatio = 0.4;
+	private hubMapRatio = 0.42;
 	private stackedLayout = false;
+	private searchOpen = false;
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
 
@@ -63,8 +65,19 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	protected override afterChrome(): void {
+		this.ensureStage();
 		this.ensureHubScroller();
 		this.syncHubMapMount();
+	}
+
+	protected override paintListTail(): void {
+		const note = this.scrollEl.createDiv('rv-locator-list-disclaimer');
+		note.setText(NON_AFFILIATION_NOTICE);
+	}
+
+	protected override openGlanceSearch(): void {
+		this.searchReplacesBar(true);
+		this.searchInput?.focus();
 	}
 
 	/** Pin taps scroll this hub on desktop and on the phone stack. */
@@ -78,46 +91,52 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	/**
-	 * In-hub map above the cards. Real phones, and a hub narrower than
-	 * {@link HUB_STACK_BELOW_PX} (a desktop window sized like a phone).
-	 * Width 0 is not a measurement yet, so a wide desktop is left as a split.
+	 * Map inside this view. A phone, or a view narrower than
+	 * {@link HUB_STACK_BELOW_PX}, stacks the map under the cards.
+	 * A wide view puts the map to the right. The view's own width is the
+	 * measure, so a base embedded in a note uses the embed, not the window.
+	 * The map stays closed until the map icon opens it.
 	 */
 	private syncHubMapMount(): void {
+		this.ensureStage();
+		this.stackedLayout = this.readStacked();
+		if (this.plugin.hubMapOpen) this.ensureHubMap();
+		else this.removeHubMap();
+		this.syncHubMap();
+	}
+
+	/** Width of this view. An embedded base is the embed, not the window. */
+	private readStacked(): boolean {
 		const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
-		const frame = this.root.win?.innerWidth || this.root.ownerDocument?.defaultView?.innerWidth || 0;
-		const measure = hubStackMeasure(width, this.plugin.splitMapWidth(), frame);
 		const stacked = hubUsesStackedMap(
 			Boolean(Platform.isMobile || Platform.isMobileApp),
-			measure > 0 ? measure : width,
+			width,
 			this.plugin.hubPaneNarrow,
 		);
-		if (measure > 0 || width > 0) this.plugin.hubPaneNarrow = stacked;
-		if (stacked) {
-			const entered = !this.stackedLayout;
-			this.stackedLayout = true;
-			this.ensureHubMap();
-			if (entered) this.plugin.hubMapOpen = true;
-		} else if (width > 0 || frame > 0) {
-			this.stackedLayout = false;
-			this.removeHubMap();
-			this.plugin.hubMapOpen = false;
-		}
-		const splitAction = splitMapLeafAction(stacked, this.plugin.splitMapIsOpen(), this.plugin.splitMapParked);
-		if (splitAction === 'park') this.plugin.concealSplitMap();
-		else if (splitAction === 'restore') this.plugin.revealSplitMap();
-		this.syncHubMap();
+		if (width > 0) this.plugin.hubPaneNarrow = stacked;
+		return stacked;
+	}
+
+	private ensureStage(): void {
+		if (this.stageEl?.isConnected) return;
+		const stage = this.root.createDiv('rv-locator-stage');
+		this.root.insertBefore(stage, this.scrollEl);
+		stage.appendChild(this.scrollEl);
+		this.stageEl = stage;
 	}
 
 	private ensureHubMap(): void {
 		this.ensureHubFullscreenSync();
+		this.ensureStage();
 		if (this.hubMapEl) return;
-		const map = this.root.createDiv('rv-hub-map');
-		const handle = this.root.createDiv('rv-hub-map-handle');
+		const stage = this.stageEl ?? this.root;
+		const handle = stage.createDiv('rv-hub-map-handle');
 		handle.setAttr('role', 'separator');
 		handle.setAttr('aria-orientation', 'horizontal');
 		handle.setAttr('aria-label', 'Resize map');
-		this.root.insertBefore(map, this.scrollEl);
-		this.root.insertBefore(handle, this.scrollEl);
+		const map = stage.createDiv('rv-hub-map');
+		stage.appendChild(handle);
+		stage.appendChild(map);
 		this.hubMapEl = map;
 		this.hubMapHandle = handle;
 		this.hubMapApi = this.plugin.mountHubMap(map);
@@ -172,10 +191,22 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.watchLayout();
 	}
 
-	/** Search stays under the pills. The field is created once so typing keeps focus. */
+	/**
+	 * Search replaces the pills and the other bar buttons.
+	 * Closing it brings that bar back. The field is created once so typing keeps focus.
+	 */
+	private searchReplacesBar(open: boolean): void {
+		this.searchOpen = open;
+		this.root.toggleClass('is-search-open', open);
+		if (!open) this.clearSearch();
+	}
+
+	/** Search replaces the pills. The field is created once so typing keeps focus. */
 	private ensureSearchField(): void {
-		const slot = this.searchSlot;
-		if (!slot || this.searchInput) return;
+		if (this.searchInput) return;
+		const slot = this.searchSlot ?? this.sortEl.createDiv('rv-locator-search-slot');
+		this.searchSlot = slot;
+		if (slot.parentElement !== this.sortEl) this.sortEl.appendChild(slot);
 		const row = slot.createDiv('rv-locator-search');
 		const input = row.createEl('input', {
 			cls: 'rv-locator-search-input',
@@ -195,18 +226,17 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.renderBody();
 		});
 		input.addEventListener('keydown', (event) => {
-			if (event.key !== 'Escape' || !this.glanceQuery) return;
+			if (event.key !== 'Escape') return;
 			event.preventDefault();
-			this.clearSearch();
+			this.searchReplacesBar(false);
 		});
 		const clear = row.createEl('button', {
 			cls: 'rv-locator-toolbar-quiet',
-			attr: { type: 'button', 'aria-label': 'Clear search', title: 'Clear search' },
+			attr: { type: 'button', 'aria-label': 'Close search', title: 'Close search' },
 		});
 		setIcon(clear, 'x');
 		clear.addEventListener('click', () => {
-			this.clearSearch();
-			input.focus();
+			this.searchReplacesBar(false);
 		});
 	}
 
@@ -376,16 +406,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (showSpoke) this.iconSlot(when, row, 'Last Spoke', 'message-circle', 'Last Spoke', glancableLineId(2), compactDates);
 			if (showAttempted) this.iconSlot(when, row, 'Last Attempted', 'clock', 'Last Attempted', glancableLineId(3), compactDates);
 			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
-		}
-
-		const literature = joinedProperty(readProperty(note, 'Left Publications'));
-		const media = joinedProperty(readProperty(note, 'Shared Media'));
-		const lessons = stringList(readProperty(note, 'Lessons Studied'));
-		if (literature || media || lessons.length > 0) {
-			const extra = card.createDiv('rv-locator-when');
-			if (literature) this.plainSlot(extra, 'book', literature, 'Literature', false);
-			if (media) this.plainSlot(extra, 'film', media, 'Media', false);
-			for (const lesson of lessons) this.plainSlot(extra, 'book-open', lesson, 'Lesson', false);
 		}
 
 		const foot = card.createDiv('rv-locator-card-foot');
@@ -592,25 +612,36 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private syncHubMap(): void {
 		const map = this.hubMapEl;
-		if (!map) return;
-		const open = this.plugin.hubMapOpen;
+		const open = this.plugin.hubMapOpen && map != null;
 		const full = open && this.plugin.hubMapIsFullscreen();
+		this.root.toggleClass('is-stacked', this.stackedLayout);
+		this.root.toggleClass('is-search-open', this.searchOpen);
 		this.root.toggleClass('is-hub-map', open);
+		this.root.toggleClass('is-side-map', open && !this.stackedLayout && !full);
 		this.root.toggleClass('is-map-fullscreen', full);
-		map.toggleClass('is-fullscreen', full);
-		map.style.height = open && !full ? `${Math.round(this.hubMapRatio * 100)}%` : '';
+		map?.toggleClass('is-fullscreen', full);
+		this.hubMapHandle?.setAttr('aria-orientation', this.stackedLayout ? 'horizontal' : 'vertical');
+		const size = `${Math.round(this.hubMapRatio * 100)}%`;
+		if (this.root.style.getPropertyValue('--rv-map-size') !== size) {
+			this.root.style.setProperty('--rv-map-size', size);
+		}
 	}
 
 	private bindHubHandle(handle: HTMLElement): void {
 		handle.addEventListener('pointerdown', (event) => {
 			if (event.button !== 0) return;
 			event.preventDefault();
+			const startX = event.clientX;
 			const startY = event.clientY;
 			const start = this.hubMapRatio;
-			const height = this.root.clientHeight || 1;
+			const box = this.stageEl ?? this.root;
+			const height = box.clientHeight || 1;
+			const width = box.clientWidth || 1;
+			const stacked = this.stackedLayout;
 			const move = (ev: PointerEvent): void => {
-				const next = start + (ev.clientY - startY) / height;
-				this.hubMapRatio = next < 0.12 ? 0 : Math.min(0.85, Math.max(0.18, next));
+				const delta = stacked ? (startY - ev.clientY) / height : (startX - ev.clientX) / width;
+				const next = start + delta;
+				this.hubMapRatio = Math.min(0.72, Math.max(0.18, next));
 				this.syncHubMap();
 			};
 			const stop = (): void => {
@@ -712,6 +743,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		host.toggleAttribute('data-rv-hide-toolbar', flags.hideToolbar);
 		tagChromeControls(host);
+		collapseBasesBar(host, flags.hideToolbar);
 	}
 
 	private clearBasesChrome(): void {
@@ -784,19 +816,24 @@ function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle', attr: Record<s
 	return node;
 }
 
-function joinedProperty(value: unknown): string {
-	return stringList(value).join(' · ');
-}
-
-function stringList(value: unknown): string[] {
-	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
-	const names: string[] = [];
-	for (const item of source) {
-		if (typeof item !== 'string') continue;
-		const text = item.trim();
-		if (text) names.push(text);
-	}
-	return names;
+/** Hide the Bases bar without leaving its header's min-height as a gap. */
+function collapseBasesBar(host: HTMLElement, hide: boolean): void {
+	if (typeof host.querySelectorAll !== 'function') return;
+	host.querySelectorAll('.bases-toolbar, .bases-header').forEach((node) => {
+		if (!(node instanceof HTMLElement) || node.classList.contains('view-header')) return;
+		const props = ['display', 'height', 'min-height', 'margin', 'padding', 'border', 'overflow'];
+		if (!hide) {
+			for (const prop of props) node.style.removeProperty(prop);
+			return;
+		}
+		node.style.setProperty('display', 'none', 'important');
+		node.style.setProperty('height', '0', 'important');
+		node.style.setProperty('min-height', '0', 'important');
+		node.style.setProperty('margin', '0', 'important');
+		node.style.setProperty('padding', '0', 'important');
+		node.style.setProperty('border', '0', 'important');
+		node.style.setProperty('overflow', 'hidden', 'important');
+	});
 }
 
 function basesChromeHost(root: HTMLElement): HTMLElement | null {

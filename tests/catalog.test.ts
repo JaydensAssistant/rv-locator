@@ -348,19 +348,30 @@ describe('in-note urgency chrome', () => {
 		assert.doesNotMatch(map, /file-text/);
 		assert.match(map, /openMapNote\(pin\.path\)/);
 		assert.match(map, /export const MAP_POPUP_BADGE_PX = 38/);
-		assert.match(map, /export const MAP_PIN_PX = 63/);
-		assert.match(map, /export const MAP_PIN_GLYPH_PX = 38/);
+		assert.match(map, /export const MAP_PIN_PX = 48/);
+		assert.match(map, /export const MAP_PIN_GLYPH_PX = 21/);
+		assert.match(map, /export const MAP_CLUSTER_PX = 53/);
 		assert.match(map, /sizePinGlyph\(button\)/);
 		assert.match(map, /setProperty\('--rv-control-size', `\$\{MAP_POPUP_BADGE_PX\}px`\)/);
 		assert.doesNotMatch(map, /getPropertyValue\('--rv-control-size'\)/);
-		assert.equal(38 / 63 >= 0.55 && 38 / 63 <= 0.65, true);
+		assert.equal(48, Math.round(42 * 1.15));
+		assert.equal(21, Math.round(18 * 1.15));
+		assert.equal(53, Math.round(46 * 1.15));
 		assert.match(map, /clusterAppearance\(/);
 		assert.match(map, /mapPressIsClick\(/);
+		assert.match(map, /rv-map-fullscreen/);
+		assert.match(map, /arrow-left/);
+		assert.doesNotMatch(map, /rv-map-back/);
+		assert.doesNotMatch(map, /paintSorts/);
 		const glance = readFileSync(path.join(process.cwd(), 'src/glancable-view.ts'), 'utf8');
 		const nearby = readFileSync(path.join(process.cwd(), 'src/nearby-view.ts'), 'utf8');
-		assert.doesNotMatch(glance, /searchReplacesBar/);
-		assert.doesNotMatch(nearby, /searchReplacesBar/);
+		assert.match(glance, /searchReplacesBar/);
+		assert.match(glance, /is-search-open/);
 		assert.match(nearby, /rv-locator-search-slot/);
+		assert.match(css, /width: 48px/);
+		assert.match(css, /width: 21px !important/);
+		assert.match(css, /width: 53px/);
+		assert.match(css, /--rv-control-size: 38px/);
 	});
 
 	it('keeps the leftmost visit button on the accent and floors the darkest step', () => {

@@ -17,7 +17,8 @@ import type { GeocodeHit } from '../src/types';
 import { HUB_STACK_BELOW_PX, hubStackMeasure, hubUsesStackedMap, revealHubCard, splitMapLeafAction } from '../src/hub-layout';
 import { applyVisitChangeFrontmatter, editVisit, insertVisit, listVisits } from '../src/visit-editor';
 import { LiteraturePromptModal, VisitEditModal } from '../src/visit-modals';
-import { appendShareToFirstStamp, applyVisitFrontmatter } from '../src/visit-log';
+import { suggestPanelPlacement } from '../src/suggest-field';
+import { appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter } from '../src/visit-log';
 
 const LESSON_1 = '01 How Can the Bible Help You?';
 const LESSON_2 = '02 The Bible Gives Hope';
@@ -142,11 +143,14 @@ describe('logged paths', () => {
 		assert.ok(draft > 0 && draft < create);
 	});
 
-	it('does not open a suggester on focus', () => {
+	it('opens a suggester on a user focus, not when the modal mounts', () => {
 		const source = readFileSync('src/suggest-field.ts', 'utf8');
-		assert.equal(source.includes("addEventListener('focus'"), false);
+		assert.match(source, /addEventListener\('focus'/);
+		assert.match(source, /!event\.isTrusted/);
 		assert.match(source, /export const SUGGEST_PENDING/);
 		assert.match(source, /addEventListener\('input'/);
+		const beforeChevron = source.slice(0, source.indexOf("button.addEventListener('click'"));
+		assert.equal(beforeChevron.includes('.focus('), false);
 	});
 });
 
@@ -509,7 +513,10 @@ describe('studied a lesson on every visit modal', () => {
 		assert.match(newRv, /optionalLesson:\s*true/);
 		assert.match(newRv, /lessonPrefill:\s*studyPrefill\(null/);
 		const suggest = readFileSync('src/suggest-field.ts', 'utf8');
-		assert.equal(suggest.includes("addEventListener('focus'"), false);
+		assert.match(suggest, /addEventListener\('focus'/);
+		assert.match(suggest, /!event\.isTrusted/);
+		const beforeChevron = suggest.slice(0, suggest.indexOf("button.addEventListener('click'"));
+		assert.equal(beforeChevron.includes('.focus('), false);
 
 		const logged: VisitShare[] = [];
 		const log = new LiteraturePromptModal({} as never, options(), (share) => { logged.push(share as VisitShare); });
@@ -631,12 +638,14 @@ describe('hub pin scroll and narrow stack', () => {
 		assert.match(glance, /ensureHubScroller\(\)/);
 		assert.match(glance, /registerHubScroller\(\(path\) => this\.flashCard\(path\)\)/);
 		assert.equal(glance.includes('if (!(Platform.isMobile || Platform.isMobileApp)) return;'), false);
-		assert.match(glance, /hubStackMeasure\(width, this\.plugin\.splitMapWidth\(\), frame\)/);
-		assert.match(glance, /splitMapLeafAction\(stacked, this\.plugin\.splitMapIsOpen\(\), this\.plugin\.splitMapParked\)/);
+		assert.match(glance, /hubUsesStackedMap\(/);
+		assert.doesNotMatch(glance, /splitMapWidth/);
+		assert.doesNotMatch(glance, /splitMapLeafAction/);
+		assert.match(glance, /stage\.appendChild\(map\)/);
+		assert.doesNotMatch(glance, /insertBefore\(map, this\.scrollEl\)/);
 		assert.match(glance, /hubMapIsFullscreen\(\)/);
-		assert.match(main, /Platform\.isMobile \|\| Platform\.isMobileApp \|\| this\.hubPaneNarrow/);
-		assert.match(main, /concealSplitMap\(\)/);
-		assert.match(main, /revealSplitMap\(\)/);
+		assert.match(main, /hubMapOpen = !this\.hubMapOpen/);
+		assert.doesNotMatch(main, /getLeaf\('split'/);
 		const map = readFileSync('src/map-view.ts', 'utf8');
 		assert.match(map, /fullscreenScope === 'hub'/);
 		assert.match(map, /setHubMapFullscreen\?\.\(on\)/);
@@ -730,5 +739,217 @@ describe('hub pin scroll and narrow stack', () => {
 		assert.equal(view.scrollTop, 940 - (800 - 90) / 2);
 		assert.equal(card.classList.contains('rv-card-flash'), true);
 		assert.equal(root.scrollTop, 0);
+	});
+});
+
+describe('phone-first visit surfaces', () => {
+	interface WalkNode {
+		tag?: string;
+		text?: string;
+		children?: WalkNode[];
+		emit?: (type: string, value?: unknown) => void;
+	}
+
+	function collectInputs(root: WalkNode): WalkNode[] {
+		const found: WalkNode[] = [];
+		const walk = (node: WalkNode): void => {
+			if (node.tag === 'input') found.push(node);
+			for (const child of node.children ?? []) walk(child);
+		};
+		walk(root);
+		return found;
+	}
+
+	function options(extra: Partial<ShareFieldOptions> = {}): ShareFieldOptions {
+		return {
+			publications: [],
+			media: [],
+			customLessons: [],
+			lessons: [...LESSONS],
+			showLiterature: true,
+			showLesson: false,
+			optionalLesson: true,
+			lessonPrefill: studyPrefill(null),
+			initial: emptyShare(),
+			...extra,
+		};
+	}
+
+	function clickLabeled(root: { children: Array<{ text: string; children: never[]; click: () => void }> }, text: string): void {
+		const stack = [root];
+		while (stack.length > 0) {
+			const current = stack.pop();
+			if (!current) continue;
+			if (current.text === text) {
+				current.click();
+				return;
+			}
+			stack.push(...current.children);
+		}
+		throw new Error(`No control labeled ${text}`);
+	}
+
+	it('caps a suggester at five rows and flips above a short viewport', () => {
+		const row = 44;
+		const open = suggestPanelPlacement({
+			anchorTop: 100,
+			anchorBottom: 144,
+			limitTop: 0,
+			limitBottom: 800,
+			rowHeight: row,
+		});
+		assert.equal(open.above, false);
+		assert.equal(open.maxHeight, row * 5);
+		const keyboard = suggestPanelPlacement({
+			anchorTop: 220,
+			anchorBottom: 264,
+			limitTop: 0,
+			limitBottom: 300,
+			rowHeight: row,
+		});
+		assert.equal(keyboard.above, true);
+		assert.equal(keyboard.maxHeight, 218);
+		const tight = suggestPanelPlacement({
+			anchorTop: 4,
+			anchorBottom: 48,
+			limitTop: 0,
+			limitBottom: 70,
+			rowHeight: row,
+		});
+		assert.equal(tight.above, false);
+		assert.equal(tight.maxHeight, 20);
+		const suggest = readFileSync('src/suggest-field.ts', 'utf8');
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(suggest, /visualViewport/);
+		assert.match(suggest, /is-above/);
+		assert.match(css, /-webkit-line-clamp:\s*2/);
+		assert.match(css, /max-height:\s*calc\(5 \* 44px\)/);
+		assert.equal(suggest.includes("setAttribute('autocomplete', 'off')"), true);
+	});
+
+	it('writes literature, media, and a lesson from a campaign-active log', () => {
+		const logged: VisitShare[] = [];
+		const modal = new LiteraturePromptModal({} as never, options(), (share) => {
+			if (share) logged.push(share);
+		}, { name: 'Memorial', pronoun: 'them', onDecision: () => {} });
+		modal.open();
+		clickLabeled(modal.contentEl as never, 'Studied a lesson?');
+		const inputs = collectInputs(modal.contentEl as never);
+		assert.ok(inputs.length >= 2);
+		inputs[0]?.emit?.('input', 'Enjoy Life Forever');
+		inputs[0]?.emit?.('blur');
+		inputs[1]?.emit?.('input', 'What Can the Bible Teach Us?');
+		inputs[1]?.emit?.('blur');
+		clickLabeled(modal.contentEl as never, 'Log visit');
+		const share = logged[0];
+		assert.ok(share);
+		assert.equal(share?.publications, 'Enjoy Life Forever');
+		assert.equal(share?.media, 'What Can the Bible Teach Us?');
+		assert.equal(share?.lesson, LESSON_1);
+		const frontmatter: Record<string, unknown> = {};
+		applyVisitFrontmatter(frontmatter, 'home', new Date(2026, 8, 10, 12), '', share);
+		assert.equal(frontmatter['Left Publications'], 'Enjoy Life Forever');
+		assert.equal(frontmatter['Shared Media'], 'What Can the Bible Teach Us?');
+		assert.deepEqual(frontmatter['Lessons Studied'], [LESSON_1]);
+		const body = applyVisitBody('> [!note]- Attempt Log\n', 'home', new Date(2026, 8, 10, 12), '', share);
+		assert.equal(listVisits(body)[0]?.lesson, LESSON_1);
+	});
+
+	it('starts a study lesson open and keeps literature behind a disclosure during a campaign', () => {
+		const logged: VisitShare[] = [];
+		const modal = new LiteraturePromptModal({} as never, options({
+			literatureCollapsed: true,
+			lessonExpanded: true,
+		}), (share) => {
+			if (share) logged.push(share);
+		}, { name: 'Memorial', pronoun: 'her', onDecision: () => {} });
+		modal.open();
+		const before = collectInputs(modal.contentEl as never).length;
+		clickLabeled(modal.contentEl as never, 'Literature and media');
+		const inputs = collectInputs(modal.contentEl as never);
+		assert.equal(inputs.length, before + 2);
+		inputs[0]?.emit?.('input', 'Tract');
+		inputs[0]?.emit?.('blur');
+		inputs[1]?.emit?.('input', 'Video');
+		inputs[1]?.emit?.('blur');
+		clickLabeled(modal.contentEl as never, 'Log visit');
+		assert.equal(logged[0]?.lesson, LESSON_1);
+		assert.equal(logged[0]?.publications, 'Tract');
+		assert.equal(logged[0]?.media, 'Video');
+	});
+
+	it('keeps the same sections on the in-note log and a past visit during a campaign', () => {
+		const shared: VisitShare[] = [];
+		const companion = new CompanionSuggestModal({} as never, ['Ada'], () => {}, {
+			name: 'Memorial',
+			pronoun: 'him',
+			onDecision: () => {},
+		}, {
+			...options(),
+			onShare: (share) => { shared.push(share); },
+		});
+		companion.open();
+		const inputs = collectInputs(companion.contentEl as never);
+		inputs[1]?.emit?.('input', 'Tract');
+		inputs[1]?.emit?.('blur');
+		inputs[2]?.emit?.('input', 'Video');
+		inputs[2]?.emit?.('blur');
+		clickLabeled(companion.contentEl as never, 'Studied a lesson?');
+		clickLabeled(companion.contentEl as never, 'Log visit');
+		assert.equal(shared.at(-1)?.publications, 'Tract');
+		assert.equal(shared.at(-1)?.media, 'Video');
+		assert.equal(shared.at(-1)?.lesson, LESSON_1);
+
+		const saved: Array<{ publications?: string; media?: string; lesson?: string }> = [];
+		const past = new VisitEditModal({} as never, {
+			title: 'Log past visit',
+			recentCompanions: [],
+			campaignName: 'Memorial',
+			share: options(),
+			onSave: (facts) => { saved.push(facts); },
+		});
+		past.open();
+		const fields = collectInputs(past.contentEl as never);
+		fields[2]?.emit?.('input', 'Tract');
+		fields[2]?.emit?.('blur');
+		fields[3]?.emit?.('input', 'Video');
+		fields[3]?.emit?.('blur');
+		clickLabeled(past.contentEl as never, 'Studied a lesson?');
+		clickLabeled(past.contentEl as never, 'Save');
+		assert.equal(saved[0]?.publications, 'Tract');
+		assert.equal(saved[0]?.media, 'Video');
+		assert.equal(saved[0]?.lesson, LESSON_1);
+	});
+
+	it('drops native autocomplete, card share rows, and the digest rewrite', () => {
+		for (const file of ['src/new-rv-modal.ts', 'src/visit-modals.ts', 'src/modals.ts']) {
+			assert.equal(readFileSync(file, 'utf8').includes('datalist'), false);
+		}
+		const fields = readFileSync('src/catalog-fields.ts', 'utf8');
+		assert.match(fields, /Tract or book \(optional\)/);
+		assert.match(fields, /Video \(optional\)/);
+		assert.equal(readFileSync('src/glancable-view.ts', 'utf8').includes('Left Publications'), false);
+		assert.equal(readFileSync('src/map-view.ts', 'utf8').includes('pin.card.literature'), false);
+		assert.match(readFileSync('src/note-chrome.ts', 'utf8'), /rv-note-status/);
+		const main = readFileSync('src/main.ts', 'utf8');
+		const share = main.slice(main.indexOf('private shareFieldOptions'), main.indexOf('private async studyDefaults'));
+		assert.match(share, /showLiterature:\s*true/);
+		assert.match(share, /literatureCollapsed:\s*study/);
+		assert.match(share, /lessonExpanded:\s*study/);
+		assert.equal(share.includes('showStudyLiterature'), false);
+		const polish = main.slice(main.indexOf('private applyDigestPolish'), main.indexOf('private async rewriteVaultDigests'));
+		assert.match(polish, /return Promise\.resolve\(\)/);
+		const rewrite = main.slice(main.indexOf('private async rewriteDigestFile'), main.indexOf('private async applySnooze'));
+		assert.equal(rewrite.includes('refreshHomeStampAges'), false);
+		const accent = main.slice(main.indexOf('private checkAccent'), main.indexOf('async createNewRv'));
+		assert.equal(accent.includes('rewriteAllDigests'), false);
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /data-rv-hide-toolbar[\s\S]*bases-header[\s\S]*min-height:\s*0 !important/);
+		assert.match(css, /min-height:\s*40px/);
+		assert.match(css, /width:\s*40px/);
+		const note = readFileSync('extras/smoke/Embedded Hub.md', 'utf8');
+		assert.match(note, /wide-base-page/);
+		assert.match(note, /!\[\[Active RVs\.base\]\]/);
+		assert.equal(readFileSync('src/new-rv-modal.ts', 'utf8').includes('literatureCollapsed: false'), true);
 	});
 });

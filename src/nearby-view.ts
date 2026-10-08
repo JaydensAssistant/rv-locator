@@ -1,5 +1,5 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
-import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { equalizeSortPills } from './sort-pills';
 import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
@@ -24,7 +24,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private toastedBanner = '';
 	protected scrollEl!: HTMLElement;
 	protected sortEl!: HTMLElement;
-	/** Glancable search stays under the sort bar. Pills never move out for it. */
+	/** Glancable search sits in the sort bar and replaces the pills while it is open. */
 	protected searchSlot: HTMLElement | null = null;
 	/** Sort chips live here so they can scroll without moving the New button. */
 	protected sortButtonsEl!: HTMLElement;
@@ -104,6 +104,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		} else {
 			this.paint();
 		}
+		this.paintListTail();
 		this.scrollEl.scrollTop = top;
 		this.scrollEl.scrollLeft = left;
 		this.syncResultCount();
@@ -113,6 +114,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	/** Glancable retags the Bases toolbar after each paint. */
 	protected afterRender(): void {}
+
+	/** Last thing in the scrolling list. Glancable puts the disclaimer here. */
+	protected paintListTail(): void {}
+
+	/** Glancable opens the search field in place of the pills. */
+	protected openGlanceSearch(): void {}
 
 	protected sortedGroups(): GroupModel[] {
 		const sorts = this.effectiveSorts();
@@ -299,11 +306,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.bannerText = this.bannerEl.createSpan('rv-locator-banner-text');
 		this.bannerEl.hide();
 		this.sortEl = this.root.createDiv('rv-locator-sortbar');
-		this.searchSlot = this.mode === 'glancable' ? this.root.createDiv('rv-locator-search-slot') : null;
 		this.scrollEl = this.root.createDiv('rv-locator-scroll');
-		const attr = this.root.createDiv('rv-locator-attr');
-		attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
-		attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
+		if (this.mode !== 'glancable') {
+			const attr = this.root.createDiv('rv-locator-attr');
+			attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
+			attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
+		}
 		this.afterChrome();
 	}
 
@@ -433,6 +441,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	private paintSortPresets(): void {
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
+		const search = this.searchSlot;
+		if (search?.parentElement === this.sortEl) search.remove();
 		this.sortEl.empty();
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const current = this.localSort;
@@ -449,7 +459,13 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			});
 			const icon = button.createSpan('rv-sort-icon');
 			setIcon(icon, sortPresetIcon(preset.id));
-			button.createSpan({ cls: 'rv-sort-label', text: label });
+			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
+			if (active) {
+				button.addClass(current.direction === 'ASC' ? 'is-asc' : 'is-desc');
+				const arrow = button.createSpan('rv-sort-arrow');
+				arrow.setAttr('aria-hidden', 'true');
+				setIcon(arrow, sortDirectionArrow(current.direction));
+			}
 			button.addEventListener('click', () => {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
@@ -460,11 +476,18 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			? this.sortEl.createDiv('rv-locator-toolbar-actions')
 			: this.sortEl;
 		if (this.mode === 'glancable') {
+			const searchButton = actions.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Search', title: 'Search' },
+			});
+			setIcon(searchButton, 'search');
+			searchButton.addEventListener('click', () => { this.openGlanceSearch(); });
 			const map = actions.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Map', title: 'Map' },
 			});
 			setIcon(map, 'earth');
+			map.toggleClass('is-on', this.plugin.hubMapOpen);
 			map.addEventListener('click', () => { void this.plugin.openMapSoon(); });
 			const campaign = actions.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
@@ -486,6 +509,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			void this.plugin.createNewRv();
 		});
 		equalizeSortPills(this.sortButtonsEl);
+		if (search) this.sortEl.appendChild(search);
 		this.sortButtonsEl.scrollLeft = savedScroll;
 	}
 

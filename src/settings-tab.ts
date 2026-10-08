@@ -390,7 +390,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			});
 		new Setting(containerEl)
 			.setName('Literature on a study')
-			.setDesc('Off by default. A study\'s at-home log, past visit, and edit hide literature and media unless this is on. The lesson prompt stays.')
+			.setDesc('Literature and media always show when you log a visit. On a study they start collapsed. This switch no longer hides them.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.showStudyLiterature);
 				toggle.onChange(async (value) => {

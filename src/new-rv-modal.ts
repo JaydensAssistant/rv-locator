@@ -172,12 +172,6 @@ export class NewRvIdentityModal extends Modal {
 				text.setPlaceholder('Companion (optional)');
 				text.setValue(this.companion);
 				this.companionInput = text;
-				const listId = `rv-locator-companions-${Date.now()}`;
-				const list = contentEl.createEl('datalist', { attr: { id: listId } });
-				for (const name of this.options.companions) {
-					if (name.trim()) list.createEl('option', { attr: { value: name } });
-				}
-				text.inputEl?.setAttribute('list', listId);
 				if (text.inputEl) {
 					mountAlwaysChevron(text.inputEl, () => companionChoices(this.options.companions, this.companion).map((item) => item.label), (picked) => {
 						const match = companionChoices(this.options.companions, this.companion).find((item) => item.label === picked || item.value === picked);
@@ -199,6 +193,8 @@ export class NewRvIdentityModal extends Modal {
 			customLessons: this.options.customLessons ?? [],
 			lessons: this.options.lessons ?? [],
 			showLiterature: true,
+			literatureCollapsed: false,
+			lessonExpanded: false,
 			showLesson: false,
 			optionalLesson: true,
 			lessonPrefill: studyPrefill(null, this.options.lessons),

@@ -109,10 +109,6 @@ export class VisitEditModal extends Modal {
 				text.setPlaceholder('Nobody');
 				text.setValue(this.companion);
 				text.onChange((value) => { this.companion = value; });
-				const listId = `rv-locator-companions-${Date.now()}`;
-				const list = contentEl.createEl('datalist', { attr: { id: listId } });
-				for (const name of this.options.recentCompanions) list.createEl('option', { attr: { value: name } });
-				text.inputEl.setAttribute('list', listId);
 				mountAlwaysChevron(text.inputEl, () => this.options.recentCompanions.filter((name) => {
 					const needle = this.companion.trim().toLowerCase();
 					return !needle || name.toLowerCase().includes(needle);

@@ -21,6 +21,10 @@ export interface ShareFieldOptions {
 	lessons: readonly LessonSpec[];
 	showLiterature: boolean;
 	showLesson: boolean;
+	/** Studies wrap literature and media in a collapsed disclosure. */
+	literatureCollapsed?: boolean;
+	/** Studies start the lesson disclosure open. */
+	lessonExpanded?: boolean;
 	/** Collapsed "Studied a lesson?" block. Every visit modal starts here. */
 	optionalLesson?: boolean;
 	lessonPrefill?: { lesson: string; from: string; to: string };
@@ -42,38 +46,43 @@ export function mountShareFields(
 		onChange({ ...share });
 	};
 	if (options.showLiterature) {
-		mountTitleList(
-			contentEl,
-			'What literature did you leave?',
-			'Optional. Pick or type a title. It becomes a chip so you can add another.',
-			shareTitles(share.publications, share.publicationList),
-			(query) => catalogSuggestions(options.publications, [], query, publicationAliasIndex()),
-			(values) => publish({ publications: values[0] ?? '', publicationList: values }),
-		);
-		mountTitleList(
-			contentEl,
-			'What media did you show?',
-			'Optional. Pick or type a title. It becomes a chip so you can add another.',
-			shareTitles(share.media, share.mediaList),
-			(query) => catalogSuggestions(options.media, [], query, mediaAliasIndex()),
-			(values) => publish({ media: values[0] ?? '', mediaList: values }),
-		);
+		const paintLists = (parent: HTMLElement): void => {
+			mountTitleList(
+				parent,
+				'What literature did you leave?',
+				'Optional. Pick or type a title. It becomes a chip so you can add another.',
+				shareTitles(share.publications, share.publicationList),
+				(query) => catalogSuggestions(options.publications, [], query, publicationAliasIndex()),
+				(values) => publish({ publications: values[0] ?? '', publicationList: values }),
+				'Tract or book (optional)',
+			);
+			mountTitleList(
+				parent,
+				'What media did you show?',
+				'Optional. Pick or type a title. It becomes a chip so you can add another.',
+				shareTitles(share.media, share.mediaList),
+				(query) => catalogSuggestions(options.media, [], query, mediaAliasIndex()),
+				(values) => publish({ media: values[0] ?? '', mediaList: values }),
+				'Video (optional)',
+			);
+		};
+		if (options.literatureCollapsed) mountDisclosure(contentEl, 'Literature and media', paintLists);
+		else paintLists(contentEl);
 	}
 	if (options.showLesson) mountLessonBlock(contentEl, options, share, publish, 'Study');
-	else if (options.optionalLesson) mountOptionalLesson(contentEl, options, share, publish);
+	else if (options.optionalLesson) mountOptionalLesson(contentEl, options, share, publish, options.lessonExpanded === true);
 	return share;
 }
 
-function mountOptionalLesson(
+function mountDisclosure(
 	contentEl: HTMLElement,
-	options: ShareFieldOptions,
-	share: VisitShare,
-	publish: (next: Partial<VisitShare>) => void,
+	label: string,
+	onOpen: (body: HTMLElement) => void,
 ): void {
 	const host = contentEl.createDiv('rv-study-optional');
 	const toggle = host.createEl('button', {
 		cls: 'rv-study-toggle',
-		text: 'Studied a lesson?',
+		text: label,
 		attr: { type: 'button', 'aria-expanded': 'false' },
 	});
 	const body = host.createDiv('rv-study-optional-body');
@@ -84,10 +93,29 @@ function mountOptionalLesson(
 		const next = body.hidden;
 		body.hidden = !next;
 		toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
-		if (!next) {
-			publish({ lesson: '', lessonFrom: '', lessonTo: '', extraLesson: '', extraFrom: '', extraTo: '' });
-			return;
-		}
+		if (!next || opened) return;
+		opened = true;
+		onOpen(body);
+	});
+}
+
+function mountOptionalLesson(
+	contentEl: HTMLElement,
+	options: ShareFieldOptions,
+	share: VisitShare,
+	publish: (next: Partial<VisitShare>) => void,
+	startOpen: boolean,
+): void {
+	const host = contentEl.createDiv('rv-study-optional');
+	const toggle = host.createEl('button', {
+		cls: 'rv-study-toggle',
+		text: 'Studied a lesson?',
+		attr: { type: 'button', 'aria-expanded': startOpen ? 'true' : 'false' },
+	});
+	const body = host.createDiv('rv-study-optional-body');
+	body.hidden = !startOpen;
+	let opened = false;
+	const reveal = (): void => {
 		if (opened) return;
 		opened = true;
 		const prefill = options.lessonPrefill;
@@ -98,6 +126,18 @@ function mountOptionalLesson(
 			publish({ lesson: prefill.lesson, lessonFrom: prefill.from, lessonTo: prefill.to });
 		}
 		mountLessonBlock(body, options, share, publish, 'Study');
+	};
+	if (startOpen) reveal();
+	toggle.addEventListener('click', (event) => {
+		event?.preventDefault();
+		const next = body.hidden;
+		body.hidden = !next;
+		toggle.setAttribute('aria-expanded', next ? 'true' : 'false');
+		if (!next) {
+			publish({ lesson: '', lessonFrom: '', lessonTo: '', extraLesson: '', extraFrom: '', extraTo: '' });
+			return;
+		}
+		reveal();
 	});
 }
 
@@ -254,6 +294,7 @@ function mountTitleList(
 	values: readonly string[],
 	suggestions: (query: string) => readonly string[],
 	onChange: (values: string[]) => void,
+	placeholder: string,
 ): void {
 	const items = values.map((item) => item.trim()).filter(Boolean);
 	const host = parent.createDiv('rv-share-list');
@@ -284,7 +325,7 @@ function mountTitleList(
 	const setting = new Setting(host).setName(name);
 	if (desc) setting.setDesc(desc);
 	setting.addText((text) => {
-		text.setPlaceholder('Optional');
+		text.setPlaceholder(placeholder);
 		const commit = (value: string): void => {
 			const title = value.trim();
 			if (!title) return;

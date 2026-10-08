@@ -245,10 +245,10 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 }
 
 .rv-dashboard {
-	--rv-dash-label: 4.6em;
+	--rv-dash-label: 5.25em;
 	--rv-dash-field: 11em;
 	--rv-dash-plus: 2.1em;
-	--rv-dash-gap: 0.4em;
+	--rv-dash-gap: 0.22em;
 	--rv-dash-column: calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em);
 }
 
@@ -597,6 +597,19 @@ body.rv-wide-hubs .rv-hub-row {
 	flex: 1 1 auto;
 	width: auto;
 	max-width: none;
+}
+
+.inline-title .rv-note-status {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 0.35em;
+	color: var(--text-muted);
+	vertical-align: -0.12em;
+}
+
+.inline-title .rv-note-status svg {
+	width: 1em;
+	height: 1em;
 }
 
 .rv-locator-status-icon,

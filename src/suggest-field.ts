@@ -3,9 +3,43 @@ import { setIcon } from 'obsidian';
 /** Placeholder row while an address lookup is in flight. Not a choice. */
 export const SUGGEST_PENDING = '\u0000pending';
 
+/** About five suggestion rows, then the list scrolls inside the box. */
+export const SUGGEST_VISIBLE_ROWS = 5;
+
+export interface SuggestPlacementInput {
+	anchorTop: number;
+	anchorBottom: number;
+	limitTop: number;
+	limitBottom: number;
+	rowHeight: number;
+	rows?: number;
+}
+
+export interface SuggestPlacement {
+	above: boolean;
+	maxHeight: number;
+}
+
+/**
+ * Keep the list inside the modal and the visible viewport (above the keyboard).
+ * Open above the field when there is more room there than below.
+ */
+export function suggestPanelPlacement(input: SuggestPlacementInput): SuggestPlacement {
+	const rows = input.rows ?? SUGGEST_VISIBLE_ROWS;
+	const gap = 2;
+	const row = input.rowHeight > 0 ? input.rowHeight : 44;
+	const preferred = row * rows;
+	const below = Math.max(0, input.limitBottom - input.anchorBottom - gap);
+	const above = Math.max(0, input.anchorTop - input.limitTop - gap);
+	const openAbove = below < preferred && above > below;
+	const room = openAbove ? above : below;
+	return { above: openAbove, maxHeight: Math.max(0, Math.min(preferred, room)) };
+}
+
 /**
  * A chevron that stays visible, including before the field is typed in.
- * The list stays closed until the user clicks the chevron or types.
+ * The list stays closed until the user clicks the chevron, the field, or types.
+ * Mount does not focus the field, so opening a modal does not open the list.
  * An empty query shows the caller's order (most recently used).
  */
 export function mountAlwaysChevron(
@@ -18,6 +52,11 @@ export function mountAlwaysChevron(
 	if (!parent || typeof input.insertAdjacentElement !== 'function') return;
 	if (parent.querySelector('.rv-suggest-chevron')) return;
 	parent.classList.add('rv-suggest-host');
+	input.setAttribute('autocomplete', 'off');
+	input.setAttribute('autocapitalize', 'off');
+	input.setAttribute('autocorrect', 'off');
+	input.setAttribute('spellcheck', 'false');
+	input.removeAttribute('list');
 	const button = input.ownerDocument.createElement('button');
 	button.type = 'button';
 	button.className = 'rv-suggest-chevron';
@@ -28,6 +67,27 @@ export function mountAlwaysChevron(
 	panel.className = 'rv-suggest-panel';
 	panel.hidden = true;
 	parent.appendChild(panel);
+
+	const place = (): void => {
+		const rect = parent.getBoundingClientRect();
+		const view = input.ownerDocument.defaultView;
+		const modal = parent.closest('.modal-content') ?? parent.closest('.modal');
+		const frame = modal instanceof HTMLElement ? modal.getBoundingClientRect() : null;
+		const viewport = view?.visualViewport;
+		const viewTop = viewport ? viewport.offsetTop : 0;
+		const viewBottom = viewport ? viewport.offsetTop + viewport.height : (view?.innerHeight ?? rect.bottom);
+		const sample = panel.querySelector('.rv-suggest-option, .rv-suggest-pending');
+		const measured = sample instanceof HTMLElement ? sample.getBoundingClientRect().height : 0;
+		const placed = suggestPanelPlacement({
+			anchorTop: rect.top,
+			anchorBottom: rect.bottom,
+			limitTop: Math.max(frame?.top ?? viewTop, viewTop),
+			limitBottom: Math.min(frame?.bottom ?? viewBottom, viewBottom),
+			rowHeight: measured > 0 ? measured : 44,
+		});
+		panel.classList.toggle('is-above', placed.above);
+		panel.style.maxHeight = `${placed.maxHeight}px`;
+	};
 
 	const paint = (): void => {
 		panel.replaceChildren();
@@ -72,6 +132,7 @@ export function mountAlwaysChevron(
 			});
 			panel.appendChild(row);
 		}
+		place();
 	};
 
 	let highlighted = -1;
@@ -89,6 +150,17 @@ export function mountAlwaysChevron(
 		}
 		paint();
 		if (typeof input.focus === 'function') input.focus();
+	});
+	const openFromUser = (): void => {
+		if (panel.hidden) paint();
+		else place();
+	};
+	input.addEventListener('focus', (event) => {
+		if (typeof FocusEvent !== 'undefined' && event instanceof FocusEvent && !event.isTrusted) return;
+		openFromUser();
+	});
+	input.addEventListener('click', () => {
+		openFromUser();
 	});
 	input.addEventListener('input', () => {
 		paint();
@@ -127,4 +199,17 @@ export function mountAlwaysChevron(
 		if (target instanceof Node && parent.contains(target)) return;
 		panel.hidden = true;
 	});
+	const view = input.ownerDocument.defaultView;
+	const onViewport = (): void => {
+		if (!input.isConnected) {
+			view?.visualViewport?.removeEventListener('resize', onViewport);
+			view?.visualViewport?.removeEventListener('scroll', onViewport);
+			view?.removeEventListener('resize', onViewport);
+			return;
+		}
+		if (!panel.hidden) place();
+	};
+	view?.visualViewport?.addEventListener('resize', onViewport);
+	view?.visualViewport?.addEventListener('scroll', onViewport);
+	view?.addEventListener('resize', onViewport);
 }

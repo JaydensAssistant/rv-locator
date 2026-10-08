@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortPresetChipLabel, visiblePropertyText } from '../src/active-layout';
+import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visiblePropertyText } from '../src/active-layout';
 import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne, buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink } from '../src/address';
 import { createCompanionPromptGate } from '../src/companion-prompt';
 import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, matchingCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
@@ -422,6 +422,12 @@ describe('distance and dates', () => {
 			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
 			['Ideality (beta) · low', 'Urgency · low', 'Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest', 'City · furthest'],
 		);
+		assert.deepEqual(
+			SORT_PRESETS.map((preset) => sortPresetShortLabel(preset)),
+			['Score', 'Urgent', 'Near', 'Priority', 'Oldest', 'Tries', 'Met', 'City'],
+		);
+		assert.equal(sortDirectionArrow('ASC'), 'arrow-up');
+		assert.equal(sortDirectionArrow('DESC'), 'arrow-down');
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
 		assert.ok(cased.includes('note.address'));

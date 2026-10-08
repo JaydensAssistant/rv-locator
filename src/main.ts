@@ -6,8 +6,6 @@ import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './addres
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
 import {
-	GLANCABLE_ALL_VIEW_TYPE,
-	GLANCABLE_INACTIVE_VIEW_TYPE,
 	GLANCABLE_VIEW_TYPE,
 	HOVER_SOURCE,
 	REQUEST_GAP_MS,
@@ -27,7 +25,6 @@ import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIc
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
-import { HUB_STACK_BELOW_PX } from './hub-layout';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
@@ -533,9 +530,9 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * With Automatic color, a settled accent change rewrites Return
-	 * Suggestions on every RV note to the nearest callout type. Also catches
-	 * an accent changed while Obsidian was closed.
+	 * With Automatic color, a settled accent change recolors Return
+	 * Suggestions in notes that are already open. The files stay as they are.
+	 * Changing a digest setting still rewrites the stored table.
 	 */
 	private checkAccent(): void {
 		if (this.unloaded || this.settings.suggestionColor !== 'auto') return;
@@ -545,7 +542,6 @@ export default class RVLocatorPlugin extends Plugin {
 		this.digestKeyApplied = this.digestKey();
 		this.recolorOpenSuggestions();
 		void this.persist();
-		void this.rewriteAllDigests();
 	}
 
 	/**
@@ -823,14 +819,16 @@ export default class RVLocatorPlugin extends Plugin {
 	private shareFieldOptions(
 		study: boolean,
 		defaults: { lesson: string; from: string; to: string },
-		forceLiterature = false,
+		_forceLiterature = false,
 	): ShareFieldOptions {
 		return {
 			publications: [...this.settings.customPublications, ...PUBLICATION_TITLES],
 			media: [...this.settings.customMedia, ...MEDIA_TITLES],
 			customLessons: this.settings.customLessons,
 			lessons: [...LESSONS],
-			showLiterature: forceLiterature || !study || this.settings.showStudyLiterature,
+			showLiterature: true,
+			literatureCollapsed: study,
+			lessonExpanded: study,
 			showLesson: false,
 			optionalLesson: true,
 			lessonPrefill: defaults,
@@ -1365,12 +1363,9 @@ export default class RVLocatorPlugin extends Plugin {
 
 	mapFocusPath: string | null = null;
 	mapSelectedPath: string | null = null;
-	/** In-hub stacked map only. The split leaf does not read this. */
+	/** In-view map. Fullscreen stays on the map that was toggled. */
 	hubMapFullscreen = false;
 	hubMapOpen = false;
-	/** The split map leaf was closed because the hub stacked. Restored when wide. */
-	splitMapParked = false;
-	private splitMapOpening = false;
 	private hubFullscreenSync: (() => void) | null = null;
 	/** Hub column is narrower than the stacked-map breakpoint. Width 0 does not set this. */
 	hubPaneNarrow = false;
@@ -1380,60 +1375,27 @@ export default class RVLocatorPlugin extends Plugin {
 	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean): void }>();
 	private hubScrollers = new Set<(path: string | null) => void>();
 
-	/** Earth on a card, beside Address, or on the hub. Opens the hub split, not a separate tab. */
+	/**
+	 * Earth on a card focuses a pin and opens the in-view map.
+	 * The hub map icon toggles that map. It never opens a workspace leaf.
+	 */
 	async openMapSoon(path?: string): Promise<void> {
-		if (path) this.mapFocusPath = path;
-		if (Platform.isMobile || Platform.isMobileApp || this.hubPaneNarrow) {
+		if (path) {
+			this.mapFocusPath = path;
 			this.hubMapOpen = true;
-			this.setHubMapFullscreen(false);
-			for (const callback of this.viewRefreshers) callback();
-			if (path) this.focusMapPin(path, true);
-			return;
+		} else {
+			this.hubMapOpen = !this.hubMapOpen;
 		}
-		const leaves = this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE);
-		const existing = leaves[0];
-		if (existing) {
-			this.splitMapParked = false;
-			await this.app.workspace.revealLeaf(existing);
-			const view = existing.view;
-			if (view instanceof RvMapView) view.recenter();
-			if (path) this.focusMapPin(path, true);
-			return;
-		}
-		if (this.splitMapParked) {
-			this.revealSplitMap();
-			if (path) this.focusMapPin(path, true);
-			return;
-		}
-		if (this.splitMapOpening) {
-			if (path) this.focusMapPin(path, true);
-			return;
-		}
-		this.splitMapOpening = true;
-		const hub = this.glancableLeaf();
-		if (hub) this.app.workspace.setActiveLeaf(hub, { focus: false });
-		const leaf = this.app.workspace.getLeaf('split', 'vertical');
-		try {
-			await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
-		} finally {
-			this.splitMapOpening = false;
-		}
-		if (path) this.focusMapPin(path, true);
-	}
-
-	private glancableLeaf(): WorkspaceLeaf | null {
-		for (const type of [GLANCABLE_VIEW_TYPE, GLANCABLE_ALL_VIEW_TYPE, GLANCABLE_INACTIVE_VIEW_TYPE]) {
-			const leaf = this.app.workspace.getLeavesOfType(type)[0];
-			if (leaf) return leaf;
-		}
-		return null;
+		if (!this.hubMapOpen) this.setHubMapFullscreen(false);
+		for (const callback of this.viewRefreshers) callback();
+		if (path && this.hubMapOpen) this.focusMapPin(path, true);
 	}
 
 	hubMapIsFullscreen(): boolean {
 		return this.hubMapFullscreen;
 	}
 
-	/** Hub stack only. Does not fullscreen the split map. */
+	/** The in-view map only. */
 	setHubMapFullscreen(on: boolean): void {
 		this.hubMapFullscreen = on;
 		this.hubFullscreenSync?.();
@@ -1444,47 +1406,6 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => {
 			if (this.hubFullscreenSync === sync) this.hubFullscreenSync = null;
 		};
-	}
-
-	splitMapIsOpen(): boolean {
-		return this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE).length > 0;
-	}
-
-	/** Width of open split map leaves. An unmeasured leaf still counts as room on a wide window. */
-	splitMapWidth(): number {
-		let total = 0;
-		for (const leaf of this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE)) {
-			const el = leaf.view?.containerEl;
-			const width = el?.clientWidth || el?.offsetWidth || 0;
-			total += width > 0 ? width : HUB_STACK_BELOW_PX;
-		}
-		return total;
-	}
-
-	/** Close the split map while the hub is stacked. A missing split is not parked. */
-	concealSplitMap(): void {
-		const leaves = this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE);
-		if (leaves.length === 0) return;
-		this.splitMapParked = true;
-		for (const leaf of [...leaves]) leaf.detach();
-	}
-
-	/** Open the parked split again once the hub is wide. */
-	revealSplitMap(): void {
-		if (!this.splitMapParked || this.splitMapOpening) return;
-		if (Platform.isMobile || Platform.isMobileApp || this.hubPaneNarrow) return;
-		if (this.app.workspace.getLeavesOfType(MAP_VIEW_TYPE).length > 0) {
-			this.splitMapParked = false;
-			return;
-		}
-		this.splitMapParked = false;
-		this.splitMapOpening = true;
-		const hub = this.glancableLeaf();
-		if (hub) this.app.workspace.setActiveLeaf(hub, { focus: false });
-		const leaf = this.app.workspace.getLeaf('split', 'vertical');
-		void leaf.setViewState({ type: MAP_VIEW_TYPE, active: false }).finally(() => {
-			this.splitMapOpening = false;
-		});
 	}
 
 	notifyPin(path: string): void {
@@ -2714,26 +2635,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * First launch of this digest shape rewrites every RV note. Return
-	 * Suggestions wraps the voice lines, and Attempt Log is nested inside it
-	 * with the daypart table above the bullets. The suggestions callout type
-	 * follows the color setting. Visible `%%` and HTML digest markers are
-	 * removed. An opened Attempt Log is collapsed once. Later Home and Not
-	 * home writes leave a fold the person set after that.
+	 * Version bumps do not rewrite notes. Stamp ages and other display-only
+	 * text are computed when the note renders. A digest setting the person
+	 * changes still rewrites the stored table, because that table lives in
+	 * the note.
 	 */
 	private applyDigestPolish(): Promise<void> {
-		if (this.digestPolish >= DIGEST_POLISH_VERSION) return Promise.resolve();
-		const run = this.digestRewrite.then(async () => {
-			if (this.unloaded || this.digestPolish >= DIGEST_POLISH_VERSION) return;
-			const type = this.suggestionCalloutType();
-			await this.rewriteVaultDigests(this.digestPolish < 10);
-			if (this.unloaded) return;
-			this.digestPolish = DIGEST_POLISH_VERSION;
-			this.accentGate.markApplied(type);
-			await this.persist();
-		});
-		this.digestRewrite = run.catch(() => undefined);
-		return run;
+		return Promise.resolve();
 	}
 
 	private async rewriteVaultDigests(collapseLog = false): Promise<void> {
@@ -2795,7 +2703,6 @@ export default class RVLocatorPlugin extends Plugin {
 				const info = getFrontMatterInfo(data);
 				let next = data.slice(0, info.contentStart) + ensureVisitButtons(ensureDashboardLeadBlank(unfoldDashboard(data.slice(info.contentStart))));
 				next = restoreExactVisitClocks(next, frontmatterFromMarkdown(data));
-				next = refreshHomeStampAges(next, new Date());
 				next = ensureVisitNotesHeading(next);
 				if (collapseLog) next = collapseAttemptLog(next);
 				const log = readAttemptLog(next);
