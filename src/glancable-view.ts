@@ -1,5 +1,5 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
-import { hubUsesStackedMap, revealHubCard } from './hub-layout';
+import { hubUsesStackedMap, revealHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -35,7 +35,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private stageEl: HTMLElement | null = null;
 	private hubMapEl: HTMLElement | null = null;
 	private hubMapHandle: HTMLElement | null = null;
-	private hubMapApi: { destroy(): void } | null = null;
+	private hubMapApi: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
+	private renderedPaths: readonly string[] | null = null;
 	private hubMapRatio = 0.42;
 	private stackedLayout = false;
 	private searchOpen = false;
@@ -142,6 +143,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.hubMapEl = map;
 		this.hubMapHandle = handle;
 		this.hubMapApi = this.plugin.mountHubMap(map);
+		if (this.renderedPaths) this.hubMapApi.applyRenderedOrder(this.renderedPaths);
 		this.bindHubHandle(handle);
 	}
 
@@ -177,20 +179,35 @@ export class NearbyGlancableView extends NearbyBasesView {
 			.filter((group) => group.rows.length > 0);
 	}
 
+	protected override renderBody(): void {
+		super.renderBody();
+		if (this.totalRows() === 0) this.publishPinOrder([]);
+		this.sizeEmbedFrame();
+	}
+
 	protected paint(): void {
 		this.applyDensity();
 		const groups = this.sortedGroups();
+		const paths: string[] = [];
 		groups.forEach((group, groupIndex) => {
 			if (group.label) {
 				this.scrollEl.createDiv({ cls: 'rv-locator-group-label', text: group.label });
 			}
 			const grid = this.scrollEl.createDiv('rv-locator-card-grid');
 			group.rows.forEach((row, rowIndex) => {
+				paths.push(row.path);
 				this.paintCard(grid, row, `${groupIndex}:${rowIndex}:${row.path}`);
 			});
 		});
+		this.publishPinOrder(paths);
 		this.applyColumnSnap();
 		this.watchLayout();
+	}
+
+	/** Rank on the map follows this exact card order, after sort, filters, and search. */
+	private publishPinOrder(paths: readonly string[]): void {
+		this.renderedPaths = paths;
+		this.hubMapApi?.applyRenderedOrder(paths);
 	}
 
 	/**
@@ -629,6 +646,32 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (this.root.style.getPropertyValue('--rv-map-size') !== size) {
 			this.root.style.setProperty('--rv-map-size', size);
 		}
+		this.sizeEmbedFrame();
+		this.hubMapApi?.invalidateSize();
+	}
+
+	/**
+	 * A stacked embed is one screen tall, like the standalone hub.
+	 * A desktop side map keeps the list-column height via min-height 70vh.
+	 */
+	private sizeEmbedFrame(): void {
+		const embed = this.root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
+		if (!(embed instanceof HTMLElement)) return;
+		if (!this.stackedLayout) {
+			embed.classList.remove('is-embed-capped');
+			embed.style.removeProperty('--rv-embed-cap');
+			embed.style.removeProperty('height');
+			embed.style.removeProperty('max-height');
+			return;
+		}
+		const view = this.root.ownerDocument.defaultView;
+		const viewport = view?.visualViewport?.height ?? view?.innerHeight ?? 0;
+		const chrome = embedChromePx(this.root.ownerDocument);
+		const cap = stackedEmbedCap(viewport, chrome);
+		embed.classList.add('is-embed-capped');
+		embed.style.setProperty('--rv-embed-cap', `${cap}px`);
+		embed.style.height = `${cap}px`;
+		embed.style.maxHeight = `${cap}px`;
 	}
 
 	private bindHubHandle(handle: HTMLElement): void {
@@ -857,6 +900,21 @@ function collapseBasesBar(host: HTMLElement, hide: boolean): void {
  * sits on the frame, not above a padding gap. An embed stops at the embed.
  * A base opened on its own stops at the leaf.
  */
+function embedChromePx(doc: Document): number {
+	if (typeof doc.querySelector !== 'function' || typeof getComputedStyle !== 'function') return 0;
+	const style = getComputedStyle(doc.documentElement);
+	const header = cssPx(style, '--header-height');
+	const safe = cssPx(style, '--safe-area-inset-bottom');
+	const nav = doc.querySelector('.mobile-navbar, .mobile-toolbar');
+	const navPx = nav instanceof HTMLElement ? nav.getBoundingClientRect().height : 0;
+	return header + safe + navPx;
+}
+
+function cssPx(style: CSSStyleDeclaration, name: string): number {
+	const value = Number.parseFloat(style.getPropertyValue(name));
+	return Number.isFinite(value) && value > 0 ? value : 0;
+}
+
 function fillHubFrame(root: HTMLElement, marked: HTMLElement[]): void {
 	if (typeof root.closest !== 'function') return;
 	const embed = root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');

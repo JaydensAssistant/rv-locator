@@ -1,6 +1,35 @@
 /** Stack the map in the hub below this width, and on a real phone. */
 export const HUB_STACK_BELOW_PX = 600;
 
+/** Visible drag strip, and the two-row bar without a safe-area inset. */
+export const STACKED_HANDLE_PX = 14;
+export const STACKED_BAR_PX = 84;
+export const DEFAULT_MAP_RATIO = 0.42;
+
+/**
+ * Standalone on an 844px phone leaves a 734px hub (cards 363, handle 14, map 273, bar 84).
+ * Used when the header, nav, and safe area cannot be measured.
+ */
+export const MOBILE_CHROME_FALLBACK_PX = 110;
+
+/** Visible height for a stacked embed: the viewport minus header, nav, and safe area. */
+export function stackedEmbedCap(viewportPx: number, chromePx: number): number {
+	const chrome = chromePx > 0 ? chromePx : MOBILE_CHROME_FALLBACK_PX;
+	return Math.max(0, viewportPx - chrome);
+}
+
+/** Map is `mapRatio` of the stage. The handle is the rest of the stage after the cards. */
+export function stackedStageSplit(stagePx: number, handlePx = STACKED_HANDLE_PX, mapRatio = DEFAULT_MAP_RATIO): { cards: number; map: number } {
+	const map = Math.round(stagePx * mapRatio);
+	const cards = stagePx - handlePx - map;
+	return { cards, map };
+}
+
+/** Desktop embedded side map. 70vh of the viewport, never a zero-height column. */
+export function sideMapMinPx(viewportPx: number): number {
+	return Math.round(viewportPx * 0.7);
+}
+
 /**
  * Phone hub, or a narrow pane. A width of 0 has not been measured, so the
  * caller can keep the last known narrow state instead of treating it as wide.

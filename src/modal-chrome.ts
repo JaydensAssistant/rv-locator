@@ -1,4 +1,4 @@
-import { setIcon, type Setting } from 'obsidian';
+import { Platform, setIcon, type Setting } from 'obsidian';
 
 const PROMPT_ICONS: Array<[RegExp, string]> = [
 	[/literature|publication/i, 'book-open'],
@@ -73,9 +73,22 @@ const BUTTON_ICONS: Array<[RegExp, string]> = [
 	[/^working/i, 'loader'],
 ];
 
-/** A fitting icon before a modal setting name. Safe when the test document has no query API. */
+/** Desktop click opens the native picker. A phone tap already does. */
+export function openDesktopDatePicker(input: HTMLInputElement, isMobile = Platform.isMobile): void {
+	if (isMobile) return;
+	if (input.type !== 'date' && input.type !== 'time' && input.type !== 'datetime-local') return;
+	const show = input.showPicker;
+	if (typeof show !== 'function') return;
+	try {
+		show.call(input);
+	} catch {
+		// The picker is already open, or this browser has no showPicker.
+	}
+}
+
 export function iconizeModal(root: HTMLElement): void {
 	if (typeof root.querySelectorAll !== 'function') return;
+	bindDatePickers(root);
 	root.querySelectorAll('.setting-item-name').forEach((node) => {
 		paintIcon(node, iconFor(node.textContent ?? '', PROMPT_ICONS) ?? 'circle-dot');
 	});
@@ -89,6 +102,16 @@ export function iconizeModal(root: HTMLElement): void {
 		const icon = iconFor(node.textContent ?? '', BUTTON_ICONS);
 		if (!icon) return;
 		paintIcon(node, icon);
+	});
+}
+
+function bindDatePickers(root: HTMLElement): void {
+	if (root.dataset.rvDateBound === '1' || typeof root.addEventListener !== 'function') return;
+	root.dataset.rvDateBound = '1';
+	root.addEventListener('click', (event) => {
+		const target = event.target;
+		if (!(target instanceof HTMLInputElement)) return;
+		openDesktopDatePicker(target);
 	});
 }
 

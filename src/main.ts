@@ -1442,9 +1442,13 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.mapCanvases.delete(canvas); };
 	}
 
-	mountHubMap(parent: HTMLElement): { destroy(): void } {
+	mountHubMap(parent: HTMLElement): { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } {
 		const handle = mountEmbeddedMap(parent, this);
-		return { destroy: () => { handle.destroy(); } };
+		return {
+			destroy: () => { handle.destroy(); },
+			applyRenderedOrder: (paths) => { handle.applyRenderedOrder(paths); },
+			invalidateSize: () => { handle.invalidateSize(); },
+		};
 	}
 
 	hubSort(): { property: string; direction: 'ASC' | 'DESC' } {

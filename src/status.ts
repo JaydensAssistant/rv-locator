@@ -62,6 +62,11 @@ export function nextCampaignListFilter(current: CampaignListFilter): CampaignLis
 	return CAMPAIGN_LIST_ORDER[(index + 1) % CAMPAIGN_LIST_ORDER.length] ?? 'all';
 }
 
+/** True when Campaign, Active, or Men+Women is not the default list. */
+export function filtersDifferFromDefault(scope: ReturnScope, gender: GenderFilter, campaign: CampaignListFilter): boolean {
+	return scope !== 'active' || gender !== 'all' || campaign !== 'all';
+}
+
 export function sanitizeStatus(value: unknown): RvStatus | null {
 	if (typeof value !== 'string') return null;
 	const text = value.trim().toLowerCase();

@@ -24,14 +24,16 @@ import {
 	type LessonSpec,
 } from '../src/catalog';
 import { formatGlanceableCounter } from '../src/dates';
-import { CARD_BLANK_IGNORE, cardBlankOpensPin, clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, orderByHubSort, pinStackZ, pinStateIcon, zoomToRevealPin, type MapPin } from '../src/map-pins';
-import { visibleSortPresets } from '../src/active-layout';
-import { glanceBarHeight, glancePillsThatFit } from '../src/sort-pills';
+import { CARD_BLANK_IGNORE, cardBlankOpensPin, clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, orderByHubSort, pinStackZ, popupClearOfChrome, pinStateIcon, rankPinsFromRenderedList, zoomToRevealPin, type MapPin } from '../src/map-pins';
+import { SORT_PRESETS, visibleSortPresets } from '../src/active-layout';
+import { equalPillWidth, glanceBarHeight, glancePillContentPx, glancePillsThatFit } from '../src/sort-pills';
+import { sideMapMinPx, stackedEmbedCap, stackedStageSplit } from '../src/hub-layout';
+import { filtersDifferFromDefault } from '../src/status';
+import { openDesktopDatePicker } from '../src/modal-chrome';
 import { defaultSortChips } from '../src/types';
 import { interpolatePalette, shadeHeats } from '../src/map-shade';
 import { insidePriorityFloor } from '../src/scoring';
 import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceRecord } from '../src/glance-search';
-import { equalPillWidth } from '../src/sort-pills';
 import { visitButtonLightness } from '../src/visit-buttons';
 import { DEFAULT_IDEALITY_FLOOR_DAYS, compactModeFrom, mergeSettings } from '../src/types';
 import { newestLessonEnd, shareFromLine, visitExtraMarkup } from '../src/visit-share';
@@ -438,7 +440,53 @@ describe('glancable smart search', () => {
 		assert.match(css, /\.rv-locator-view\.is-map-fullscreen \.rv-hub-map/);
 		assert.match(css, /flex:\s*0 0 14px/);
 		assert.match(css, /\.rv-hub-map-handle::before \{[^}]*height:\s*40px/);
-		assert.match(css, /\.rv-map-credit \{[^}]*left:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0/);
+		assert.match(css, /\.rv-map-credit \{[^}]*right:\s*0;[^}]*bottom:\s*0/);
+		assert.match(css, /\.rv-map-credit,\s*\n\.rv-map-scale \{[^}]*font-size:\s*10px;[^}]*line-height:\s*14px/);
+		assert.match(css, /\.rv-map-bar \{[^}]*flex-direction:\s*column/);
+		assert.doesNotMatch(map, /aria-label': 'Zoom in'/);
+		assert.match(map, /aria-label': 'Show all'/);
+		assert.match(map, /invalidateSize/);
+		assert.match(map, /applyRenderedOrder/);
+		assert.match(glance, /publishPinOrder/);
+		assert.match(css, /input\[type="date"\].*::-webkit-calendar-picker-indicator/);
+		assert.match(css, /is-embed-capped/);
+		assert.match(css, /\.rv-locator-view\.is-side-map \.rv-hub-map \{[^}]*min-height:\s*70vh/);
+		assert.match(css, /font-size:\s*12px/);
+		assert.doesNotMatch(css, /\.rv-locator-sort-pills \.rv-sort-label \{[^}]*text-overflow:\s*ellipsis/);
+		assert.equal(glancePillContentPx(390, chips) > 42, true);
+		assert.equal(glancePillContentPx(430, chips) > glancePillContentPx(390, chips), true);
+		assert.equal(stackedEmbedCap(844, 110), 734);
+		assert.deepEqual(stackedStageSplit(650), { cards: 363, map: 273 });
+		assert.equal(sideMapMinPx(900), 630);
+		assert.equal(filtersDifferFromDefault('active', 'all', 'all'), false);
+		assert.equal(filtersDifferFromDefault('archive', 'all', 'all'), true);
+		const shown = ['Dale', 'Marcus', 'Ada', 'Cy', 'Eve', 'Fay', 'Bo'];
+		for (const preset of SORT_PRESETS) {
+			const facts = shown.map((name, index) => ({
+				name,
+				lat: index,
+				lon: index,
+				priority: index + 1,
+				days: index * 3,
+				attemptedDays: 6 - index,
+				metDays: index,
+				city: name,
+				ideality: index / 10,
+			}));
+			const sorted = orderByHubSort(facts, { property: preset.property, direction: preset.defaultDirection }, { lat: 0, lon: 0 }, { 1: 30, 2: 30, 3: 21, 4: 14, 5: 7 });
+			const pins = sorted.map((row) => ({ path: row.name, rank: 0 }));
+			const ranked = rankPinsFromRenderedList(pins.filter((pin) => pin.path !== 'Ada'), shown);
+			assert.deepEqual(ranked.map((pin) => pin.path), shown.filter((name) => name !== 'Ada'));
+			assert.equal(ranked.find((pin) => pin.path === 'Cy')?.rank, shown.indexOf('Cy'));
+			assert.equal(ranked[0]?.rank, 0);
+		}
+		const shifted = popupClearOfChrome({ x: 400, y: 80 }, { width: 280, height: 160 }, { width: 480, height: 320 });
+		assert.equal(shifted.left + 280 <= 480 - 56, true);
+		let opened = 0;
+		openDesktopDatePicker({ type: 'date', showPicker() { opened += 1; } } as HTMLInputElement, false);
+		assert.equal(opened, 1);
+		openDesktopDatePicker({ type: 'date', showPicker() { opened += 1; } } as HTMLInputElement, true);
+		assert.equal(opened, 1);
 		assert.match(css, /\.rv-hub-fill \{[^}]*padding-bottom:\s*0 !important/);
 		assert.doesNotMatch(css, /[^-\w]height:\s*70vh/);
 		assert.match(css, /min-height:\s*70vh/);

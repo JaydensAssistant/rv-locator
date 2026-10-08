@@ -1,7 +1,7 @@
-import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
+import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { equalizeSortPills } from './sort-pills';
-import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
+import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
 import { Notice } from 'obsidian';
@@ -421,7 +421,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		return haversineMeters(fix, { lat: row.lat, lon: row.lon });
 	}
 
-	private totalRows(): number {
+	protected totalRows(): number {
 		return this.sortedGroups().reduce((sum, group) => sum + group.rows.length, 0);
 	}
 
@@ -460,20 +460,20 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 					'aria-label': label,
 				},
 			});
-			const icon = button.createSpan('rv-sort-icon');
+			const marks = glancable ? button.createSpan('rv-sort-marks') : button;
+			const icon = marks.createSpan('rv-sort-icon');
 			setIcon(icon, sortPresetIcon(preset.id));
-			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			if (active) {
 				button.addClass(current.direction === 'ASC' ? 'is-asc' : 'is-desc');
-				const arrow = button.createSpan('rv-sort-arrow');
+				const arrow = marks.createSpan('rv-sort-arrow');
 				arrow.setAttr('aria-hidden', 'true');
 				setIcon(arrow, sortDirectionArrow(current.direction));
 			}
+			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
 		}
-		if (glancable) this.paintListFilters();
 		this.paintSortExtras();
 		const actionHost = actions ?? this.sortEl;
 		if (glancable) {
@@ -496,6 +496,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			});
 			setIcon(campaign, 'book-alert');
 			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
+			this.paintFilterButton(actionHost);
 		}
 		const create = actionHost.createEl('button', {
 			cls: 'rv-locator-new-rv',
@@ -518,38 +519,36 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		// Ideality planner was removed in 1.2.6. It may return later.
 	}
 
-	/** Active → RVs Only → Studies → Archive, then Men+Women → Men → Women. */
-	private paintListFilters(): void {
-		if (!this.sortButtonsEl) return;
+	/**
+	 * Campaign, Active, and Men+Women leave the pill row.
+	 * One button cycles the same three filters from a menu.
+	 */
+	private paintFilterButton(host: HTMLElement): void {
 		const scope = this.plugin.settings.returnScope;
 		const gender = this.plugin.settings.genderFilter;
 		const campaignFilter = this.plugin.settings.campaignListFilter;
-		const campaignButton = this.sortButtonsEl.createEl('button', {
-			cls: `rv-locator-sort-preset is-filter${campaignFilter === 'all' ? '' : ' is-active'}`,
-			attr: { type: 'button', 'aria-label': CAMPAIGN_LIST_LABEL[campaignFilter] },
+		const narrowed = filtersDifferFromDefault(scope, gender, campaignFilter);
+		const button = host.createEl('button', {
+			cls: `rv-locator-toolbar-quiet rv-locator-filter${narrowed ? ' is-filtering' : ''}`,
+			attr: { type: 'button', 'aria-label': 'Filters', title: 'Filters' },
 		});
-		setIcon(campaignButton.createSpan('rv-sort-icon'), 'book-alert');
-		campaignButton.createSpan({ cls: 'rv-sort-label', text: CAMPAIGN_LIST_LABEL[campaignFilter] });
-		campaignButton.addEventListener('click', () => {
-			void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter));
-		});
-		const scopeButton = this.sortButtonsEl.createEl('button', {
-			cls: 'rv-locator-sort-preset is-filter',
-			attr: { type: 'button', 'aria-label': `Showing ${RETURN_SCOPE_LABEL[scope]}` },
-		});
-		setIcon(scopeButton.createSpan('rv-sort-icon'), 'layers');
-		scopeButton.createSpan({ cls: 'rv-sort-label', text: RETURN_SCOPE_LABEL[scope] });
-		scopeButton.addEventListener('click', () => {
-			void this.plugin.setReturnScope(nextReturnScope(scope));
-		});
-		const genderButton = this.sortButtonsEl.createEl('button', {
-			cls: 'rv-locator-sort-preset is-filter',
-			attr: { type: 'button', 'aria-label': `Showing ${GENDER_FILTER_LABEL[gender]}` },
-		});
-		setIcon(genderButton.createSpan('rv-sort-icon'), gender === 'women' ? 'venus' : gender === 'men' ? 'mars' : 'venus-and-mars');
-		genderButton.createSpan({ cls: 'rv-sort-label', text: GENDER_FILTER_LABEL[gender] });
-		genderButton.addEventListener('click', () => {
-			void this.plugin.setGenderFilter(nextGenderFilter(gender));
+		setIcon(button, 'list-filter');
+		if (narrowed) button.createSpan({ cls: 'rv-filter-dot', attr: { 'aria-hidden': 'true' } });
+		button.addEventListener('click', (event) => {
+			const menu = new Menu();
+			menu.addItem((item) => item
+				.setTitle(CAMPAIGN_LIST_LABEL[campaignFilter])
+				.setIcon('book-alert')
+				.onClick(() => { void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter)); }));
+			menu.addItem((item) => item
+				.setTitle(RETURN_SCOPE_LABEL[scope])
+				.setIcon('layers')
+				.onClick(() => { void this.plugin.setReturnScope(nextReturnScope(scope)); }));
+			menu.addItem((item) => item
+				.setTitle(GENDER_FILTER_LABEL[gender])
+				.setIcon(gender === 'women' ? 'venus' : gender === 'men' ? 'mars' : 'venus-and-mars')
+				.onClick(() => { void this.plugin.setGenderFilter(nextGenderFilter(gender)); }));
+			menu.showAtMouseEvent(event);
 		});
 	}
 

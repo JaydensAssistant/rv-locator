@@ -9,7 +9,15 @@ export const GLANCE_BAR_PAD_X = 4;
 export const GLANCE_BAR_PAD_TOP = 2;
 export const GLANCE_BAR_GAP = 2;
 export const GLANCE_ROW_PX = 40;
-export const GLANCE_PILL_GAP = 3;
+export const GLANCE_PILL_GAP = 2;
+
+/** Border on each side of a glancable pill. The label uses the rest of the pill. */
+export const GLANCE_PILL_BORDER_PX = 2;
+
+/** Content box of one equal pill. The label has to fit inside this at 11px or larger. */
+export function glancePillContentPx(viewWidth: number, count: number, pad = GLANCE_BAR_PAD_X, gap = GLANCE_PILL_GAP): number {
+	return glancePillWidth(viewWidth, count, pad, gap) - GLANCE_PILL_BORDER_PX;
+}
 
 /** Width of one equal sort pill when `count` pills share the row. */
 export function glancePillWidth(viewWidth: number, count: number, pad = GLANCE_BAR_PAD_X, gap = GLANCE_PILL_GAP): number {

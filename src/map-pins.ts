@@ -195,6 +195,46 @@ export function clusterAppearance(pins: readonly MapPin[]): ClusterAppearance {
 	};
 }
 
+/**
+ * Pin order is the card list. Rank is the index in that rendered array.
+ * A card with no coordinates keeps its index so later pins stay below it.
+ * A path with no pin, or a pin the list filtered out, is left out.
+ */
+export function rankPinsFromRenderedList<T extends { path: string; rank: number }>(pins: readonly T[], paths: readonly string[]): T[] {
+	const byPath = new Map(pins.map((pin) => [pin.path, pin]));
+	const ranked: T[] = [];
+	paths.forEach((path, index) => {
+		const pin = byPath.get(path);
+		if (!pin) return;
+		ranked.push({ ...pin, rank: index });
+	});
+	return ranked;
+}
+
+/** Right-edge control column and the bottom credit strip. Popup stays clear of both. */
+export const MAP_CONTROL_INSET_PX = 8;
+export const MAP_CONTROL_PX = 40;
+export const MAP_CONTROL_GAP_PX = 8;
+export const MAP_CREDIT_STRIP_PX = 14;
+
+export function popupClearOfChrome(
+	anchor: { x: number; y: number },
+	card: { width: number; height: number },
+	stage: { width: number; height: number },
+): { left: number; top: number } {
+	const column = MAP_CONTROL_INSET_PX + MAP_CONTROL_PX + MAP_CONTROL_INSET_PX;
+	const limitRight = Math.max(4, stage.width - column);
+	const limitBottom = Math.max(4, stage.height - MAP_CREDIT_STRIP_PX);
+	let left = anchor.x + 28;
+	let top = anchor.y - card.height / 2;
+	if (left + card.width > limitRight) left = anchor.x - 28 - card.width;
+	if (left + card.width > limitRight) left = limitRight - card.width;
+	if (left < 4) left = 4;
+	if (top + card.height > limitBottom) top = limitBottom - card.height;
+	if (top < 4) top = 4;
+	return { left, top };
+}
+
 /** Higher in the list (smaller rank) gets a higher z-index. A selected pin stays on top. */
 export function pinStackZ(rank: number, selected = false): number {
 	const place = Number.isFinite(rank) ? Math.max(0, Math.trunc(rank)) : 0;

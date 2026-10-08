@@ -1,7 +1,7 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
-import { clusterAppearance, latToTileY, lonToTileX, mapPressIsClick, pinStackZ, zoomToRevealPin, type MapPin } from './map-pins';
+import { clusterAppearance, latToTileY, lonToTileX, mapPressIsClick, popupClearOfChrome, pinStackZ, rankPinsFromRenderedList, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import type { RVLocatorSettings } from './types';
 import { urgencyInk } from './urgency-palette';
@@ -50,6 +50,10 @@ export class RvMapView extends ItemView {
 	/** This map only. The hub stack and the split leaf do not share it. */
 	private mapFullscreen = false;
 	private fullscreenScope: 'hub' | 'split' = 'split';
+	/** Card order for this hub. Null until the view publishes the rendered list. */
+	private renderedPaths: readonly string[] | null = null;
+	private scaleEl: HTMLElement | null = null;
+	private scaleBarEl: HTMLElement | null = null;
 
 	constructor(leaf: WorkspaceLeaf, private host: MapHost) {
 		super(leaf);
@@ -72,33 +76,39 @@ export class RvMapView extends ItemView {
 		this.contentEl.addClass('rv-map');
 		this.stage = this.contentEl.createDiv('rv-map-stage');
 		const bar = this.stage.createDiv('rv-map-bar');
-		const zoomIn = bar.createEl('button', { text: '+', attr: { type: 'button', 'aria-label': 'Zoom in' } });
-		const zoomOut = bar.createEl('button', { text: '−', attr: { type: 'button', 'aria-label': 'Zoom out' } });
-		const fit = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Fit all pins' } });
-		setIcon(fit, 'maximize');
-		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location' } });
-		setIcon(locate, 'locate');
 		const fullscreen = bar.createEl('button', {
 			cls: 'rv-map-fullscreen',
 			attr: { type: 'button', 'aria-label': 'Full screen', title: 'Full screen' },
 		});
 		setIcon(fullscreen, 'expand');
-		zoomIn.addEventListener('click', () => this.setZoom(this.zoom + 1));
-		zoomOut.addEventListener('click', () => this.setZoom(this.zoom - 1));
-		fit.addEventListener('click', () => this.fitAll());
-		locate.addEventListener('click', () => this.locateMe());
+		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location', title: 'My location' } });
+		setIcon(locate, 'locate');
+		const fit = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Show all', title: 'Show all' } });
+		setIcon(fit, 'maximize');
 		fullscreen.addEventListener('click', () => {
 			this.setFullscreen(!this.isFullscreen());
 		});
+		locate.addEventListener('click', () => this.locateMe());
+		fit.addEventListener('click', () => this.fitAll());
 		this.pinLayer = this.stage.createDiv('rv-map-pins');
+		const scale = this.stage.createDiv('rv-map-scale');
+		this.scaleBarEl = scale.createSpan('rv-map-scale-bar');
+		this.scaleEl = scale.createSpan({ cls: 'rv-map-scale-label', text: '' });
 		const credit = this.stage.createDiv('rv-map-credit');
-		const link = credit.createEl('a', {
+		const osm = credit.createEl('a', {
 			text: OSM_ATTRIBUTION,
 			href: 'https://www.openstreetmap.org/copyright',
 		});
-		link.setAttr('rel', 'noopener');
-		credit.createSpan({ text: ` · ${GEOAPIFY_ATTRIBUTION}` });
-		this.pins = this.host.listMapPins();
+		osm.setAttr('rel', 'noopener');
+		osm.setAttr('target', '_blank');
+		credit.createSpan({ text: ' · ' });
+		const geo = credit.createEl('a', {
+			text: GEOAPIFY_ATTRIBUTION,
+			href: 'https://www.geoapify.com/',
+		});
+		geo.setAttr('rel', 'noopener');
+		geo.setAttr('target', '_blank');
+		this.pins = this.pinsInRenderedOrder();
 		this.user = this.host.currentMapFix();
 		this.centerOnOpen();
 		this.bindStage();
@@ -141,6 +151,25 @@ export class RvMapView extends ItemView {
 			}
 		}
 		this.paint();
+	}
+
+	/** Card list order for this hub. Rank is the index in that array. */
+	applyRenderedOrder(paths: readonly string[]): void {
+		this.renderedPaths = paths;
+		this.pins = this.pinsInRenderedOrder();
+		this.paint();
+	}
+
+	/** Remeasure after the embed or fullscreen layout settles, and on resize. */
+	invalidateSize(): void {
+		this.repaintAfterLayout();
+	}
+
+	private pinsInRenderedOrder(): MapPin[] {
+		const pins = this.host.listMapPins();
+		const order = this.renderedPaths;
+		if (!order) return pins;
+		return rankPinsFromRenderedList(pins, order);
 	}
 
 	private isFullscreen(): boolean {
@@ -187,7 +216,7 @@ export class RvMapView extends ItemView {
 		const cancel = typeof cancelAnimationFrame === 'function' ? cancelAnimationFrame : (): void => {};
 		this.stageObserver = new ResizeObserver(() => {
 			if (frame) cancel(frame);
-			frame = rafOrNow(() => { this.paint(); });
+			frame = rafOrNow(() => { this.invalidateSize(); });
 		});
 		this.stageObserver.observe(stage);
 	}
@@ -206,7 +235,7 @@ export class RvMapView extends ItemView {
 
 	/** Called when an already-open map is asked to center again. */
 	recenter(): void {
-		this.pins = this.host.listMapPins();
+		this.pins = this.pinsInRenderedOrder();
 		this.user = this.host.currentMapFix() ?? this.user;
 		this.centerOnOpen();
 		this.syncFullscreen();
@@ -245,11 +274,30 @@ export class RvMapView extends ItemView {
 	private bindStage(): void {
 		const stage = this.stage;
 		if (!stage) return;
+		stage.tabIndex = 0;
+		const pointers = new Map<number, { x: number; y: number }>();
+		let pinchZoom: number | null = null;
+		let pinchDistance = 0;
+		const onControl = (event: Event): boolean => event.target instanceof Element
+			&& event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster, .rv-map-bar, .rv-map-credit, .rv-map-scale') != null;
 		stage.addEventListener('pointerdown', (event) => {
-			if (event.target instanceof Element && event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster, .rv-map-bar, .rv-map-credit')) return;
+			if (onControl(event)) return;
+			pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			if (pointers.size >= 2) {
+				this.drag = null;
+				pinchZoom = this.zoom;
+				pinchDistance = pointerSpan(pointers);
+				return;
+			}
 			this.drag = { x: event.clientX, y: event.clientY, lat: this.centerLat, lon: this.centerLon, moved: false };
 		});
 		stage.addEventListener('pointermove', (event) => {
+			if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+			if (pointers.size >= 2 && pinchZoom != null && pinchDistance > 0) {
+				const steps = Math.round(Math.log2(pointerSpan(pointers) / pinchDistance));
+				if (steps !== 0) this.setZoom(pinchZoom + steps);
+				return;
+			}
 			if (!this.drag) return;
 			const dx = event.clientX - this.drag.x;
 			const dy = event.clientY - this.drag.y;
@@ -265,7 +313,12 @@ export class RvMapView extends ItemView {
 			this.centerLat = tileYToLat(nextY, this.zoom);
 			this.paint();
 		});
-		stage.addEventListener('pointerup', () => {
+		stage.addEventListener('pointerup', (event) => {
+			pointers.delete(event.pointerId);
+			if (pointers.size < 2) {
+				pinchZoom = null;
+				pinchDistance = 0;
+			}
 			const drag = this.drag;
 			this.drag = null;
 			stage.removeClass('is-grabbing');
@@ -284,7 +337,23 @@ export class RvMapView extends ItemView {
 		});
 		stage.addEventListener('pointerleave', () => {
 			this.drag = null;
+			pointers.clear();
+			pinchZoom = null;
 			stage.removeClass('is-grabbing');
+		});
+		stage.addEventListener('dblclick', (event) => {
+			if (onControl(event)) return;
+			event.preventDefault();
+			this.setZoom(this.zoom + 1);
+		});
+		stage.addEventListener('keydown', (event) => {
+			if (event.key === '+' || event.key === '=') {
+				event.preventDefault();
+				this.setZoom(this.zoom + 1);
+			} else if (event.key === '-' || event.key === '_') {
+				event.preventDefault();
+				this.setZoom(this.zoom - 1);
+			}
 		});
 		stage.addEventListener('wheel', (event) => {
 			event.preventDefault();
@@ -338,6 +407,19 @@ export class RvMapView extends ItemView {
 			? placed.find((item) => item.pin.path === this.popupPath)
 			: null;
 		if (popup) this.openCard(pins, popup.pin, popup.point);
+		this.paintScale(width);
+	}
+
+	private paintScale(stageWidth: number): void {
+		const bar = this.scaleBarEl;
+		const label = this.scaleEl;
+		if (!bar || !label) return;
+		const metersPerPx = (156543.03392 * Math.cos((this.centerLat * Math.PI) / 180)) / 2 ** this.zoom;
+		const target = Math.min(96, Math.max(48, stageWidth * 0.18));
+		const meters = niceMeters(metersPerPx * target);
+		const px = Math.max(24, Math.round(meters / metersPerPx));
+		bar.style.width = `${px}px`;
+		label.textContent = meters >= 1000 ? `${meters / 1000} km` : `${meters} m`;
 	}
 
 	private paintUser(layer: HTMLElement, width: number, height: number, cx: number, cy: number): void {
@@ -434,8 +516,16 @@ export class RvMapView extends ItemView {
 	private openCard(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		layer.querySelectorAll('.rv-map-card').forEach((node) => node.remove());
 		const shell = layer.createDiv('rv-map-card rv-locator-glancable');
-		shell.style.left = `${point.x + 28}px`;
-		shell.style.top = `${point.y}px`;
+		const stage = this.stage;
+		const origin = popupClearOfChrome(point, {
+			width: 280,
+			height: 180,
+		}, {
+			width: stage?.clientWidth || 640,
+			height: stage?.clientHeight || 480,
+		});
+		shell.style.left = `${origin.left}px`;
+		shell.style.top = `${origin.top}px`;
 		shell.style.zIndex = String(pinStackZ(pin.rank, true) + 1);
 		const marks = urgencyMark(pin.urgency, pin.priority);
 		const card = shell.createDiv('rv-locator-card has-actions');
@@ -629,7 +719,13 @@ function spread(values: number[]): number {
 export function mountEmbeddedMap(
 	parent: HTMLElement,
 	host: MapHost,
-): { destroy(): void; refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void } {
+): {
+	destroy(): void;
+	refresh(): void;
+	focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void;
+	applyRenderedOrder(paths: readonly string[]): void;
+	invalidateSize(): void;
+} {
 	const shell = {
 		contentEl: parent,
 		host,
@@ -643,6 +739,9 @@ export function mountEmbeddedMap(
 		watchId: null as number | null,
 		drag: null as { x: number; y: number; lat: number; lon: number; moved: boolean } | null,
 		selectedPath: null as string | null,
+		renderedPaths: null as readonly string[] | null,
+		scaleEl: null as HTMLElement | null,
+		scaleBarEl: null as HTMLElement | null,
 		detachMap: null as (() => void) | null,
 		mapFullscreen: false,
 		fullscreenScope: 'hub' as const,
@@ -653,7 +752,26 @@ export function mountEmbeddedMap(
 		destroy: () => { void map.onClose(); },
 		refresh: () => { map.recenter(); },
 		focus: (path, center, source) => { map.focusPath(path, center, source); },
+		applyRenderedOrder: (paths: readonly string[]) => { map.applyRenderedOrder(paths); },
+		invalidateSize: () => { map.invalidateSize(); },
 	};
+}
+
+function pointerSpan(pointers: ReadonlyMap<number, { x: number; y: number }>): number {
+	const points = [...pointers.values()];
+	const a = points[0];
+	const b = points[1];
+	if (!a || !b) return 0;
+	return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function niceMeters(meters: number): number {
+	const steps = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+	let best = steps[0] ?? 100;
+	for (const step of steps) {
+		if (step <= meters) best = step;
+	}
+	return best;
 }
 
 function tileYToLat(y: number, zoom: number): number {

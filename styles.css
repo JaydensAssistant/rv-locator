@@ -491,59 +491,88 @@
 .rv-locator-glancable .rv-locator-sort-scroll {
 	flex: 0 0 auto;
 	width: 100%;
+	min-width: 0;
 	min-height: 40px;
-	gap: 4px;
+	overflow: hidden;
+	gap: 0;
 }
 
 .rv-locator-glancable .rv-locator-sort-pills {
 	display: flex;
-	flex: 0 0 100%;
+	flex: 1 1 auto;
 	align-items: stretch;
 	box-sizing: border-box;
 	width: 100%;
-	min-width: 100%;
-	gap: 3px;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	gap: 2px;
 }
 
 .rv-locator-glancable .rv-locator-sort-pills .rv-locator-sort-preset {
 	flex: 1 1 0;
+	flex-direction: column;
 	width: 0;
 	min-width: 0;
 	max-width: none;
-	gap: 1px;
+	gap: 0;
 	min-height: 40px;
 	height: 40px;
-	padding: 0 1px;
-	overflow: hidden;
-	font-size: 10px;
+	max-height: 50px;
+	padding: 1px 0;
+	overflow: visible;
+	font-size: 12px;
+	line-height: 14px;
+	letter-spacing: 0;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills .rv-sort-marks {
+	display: inline-flex;
+	flex: 0 0 12px;
+	align-items: center;
+	justify-content: center;
+	height: 12px;
+	gap: 0;
 }
 
 .rv-locator-glancable .rv-locator-sort-pills .rv-sort-label {
-	min-width: 0;
-	overflow: hidden;
-	font-size: 10px;
-}
-
-.rv-locator-glancable .rv-locator-sort-scroll > .rv-locator-sort-preset.is-filter {
-	flex: 0 0 auto;
+	display: block;
 	width: max-content;
-	min-width: max-content;
 	max-width: none;
-	min-height: 40px;
-	height: 40px;
+	min-width: 0;
+	overflow: visible;
+	text-overflow: clip;
+	font-size: 12px;
+	line-height: 14px;
+	text-align: center;
 }
 
 .rv-locator-glancable .rv-sort-icon,
 .rv-locator-glancable .rv-sort-arrow {
-	flex: 0 0 12px;
-	width: 12px;
-	height: 12px;
+	flex: 0 0 11px;
+	width: 11px;
+	height: 11px;
 }
 
 .rv-locator-glancable .rv-sort-icon svg,
 .rv-locator-glancable .rv-sort-arrow svg {
-	width: 12px;
-	height: 12px;
+	width: 11px;
+	height: 11px;
+}
+
+.rv-locator-filter {
+	position: relative;
+}
+
+.rv-filter-dot {
+	position: absolute;
+	top: 5px;
+	right: 5px;
+	width: 8px;
+	height: 8px;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+	pointer-events: none;
 }
 
 .rv-sort-arrow {
@@ -2903,8 +2932,17 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-suggest-host input::-webkit-calendar-picker-indicator,
-.rv-suggest-host input::-webkit-list-button {
+.rv-suggest-host input::-webkit-list-button,
+.rv-locator-modal :is(input[type="date"], input[type="time"], input[type="datetime-local"])::-webkit-calendar-picker-indicator,
+.rv-locator-modal :is(input[type="date"], input[type="time"], input[type="datetime-local"])::-webkit-clear-button {
 	display: none !important;
+	-webkit-appearance: none;
+	appearance: none;
+	opacity: 0;
+	width: 0;
+	margin: 0;
+	padding: 0;
+	pointer-events: none;
 }
 
 .rv-suggest-chevron svg {
@@ -2975,9 +3013,11 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	top: 8px;
 	right: 8px;
 	display: flex;
+	flex-direction: column;
 	align-items: center;
-	gap: 4px;
+	gap: 8px;
 	padding: 0;
+	margin: 0;
 	pointer-events: none;
 }
 
@@ -3272,31 +3312,55 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	gap: 0.3em;
 }
 
-.rv-map-credit {
+.rv-map-credit,
+.rv-map-scale {
 	position: absolute;
 	z-index: 5;
-	left: 0;
-	right: 0;
 	bottom: 0;
-	max-width: none;
 	margin: 0;
-	padding: 0 6px;
-	background: color-mix(in srgb, var(--background-primary) 74%, transparent);
+	padding: 0 4px;
+	background: color-mix(in srgb, var(--background-primary) 62%, transparent);
 	color: var(--text-normal);
-	font-size: 9px;
-	line-height: 1.15;
-	text-align: right;
+	font-size: 10px;
+	line-height: 14px;
 	text-shadow: 0 0 2px var(--background-primary);
 	pointer-events: auto;
 }
 
-.theme-dark .rv-map-credit {
-	background: color-mix(in srgb, var(--background-primary) 78%, transparent);
+.rv-map-credit {
+	right: 0;
+	bottom: 0;
+	left: auto;
+	max-width: calc(100% - 72px);
+	text-align: right;
+}
+
+.rv-map-scale {
+	left: 0;
+	right: auto;
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 0 4px 0 2px;
+}
+
+.rv-map-scale-bar {
+	display: block;
+	height: 4px;
+	margin: 0;
+	border: 1px solid var(--text-normal);
+	border-top: 0;
+}
+
+.theme-dark .rv-map-credit,
+.theme-dark .rv-map-scale {
+	background: color-mix(in srgb, var(--background-primary) 70%, transparent);
 	color: var(--text-normal);
 }
 
 .rv-map-credit a {
 	color: inherit;
+	pointer-events: auto;
 }
 
 .rv-label-icon {
@@ -3837,7 +3901,22 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 .rv-locator-view.is-side-map .rv-hub-map {
 	flex: 0 0 var(--rv-map-size, 42%);
+	align-self: stretch;
 	min-width: 160px;
+	min-height: 70vh;
+	height: auto;
+}
+
+.rv-locator-view.is-side-map .rv-locator-stage {
+	align-items: stretch;
+	min-height: 70vh;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map .rv-map,
+.rv-locator-view.is-side-map .rv-hub-map .rv-map-stage {
+	flex: 1 1 auto;
+	min-height: 70vh;
+	height: auto;
 }
 
 .rv-locator-view.is-hub-map.is-stacked .rv-hub-map {
@@ -3872,12 +3951,13 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	background: linear-gradient(var(--background-modifier-border), var(--background-modifier-border)) center / 2.5rem 3px no-repeat;
 }
 
-/* Finger target around the 14px strip. It overlaps the list bottom and the map top only. */
+/* Finger target around the 14px strip. It overlaps the list bottom and the map top only.
+   The right 56px stays clear so the control column keeps its taps. */
 .rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle::before {
 	content: '';
 	position: absolute;
 	left: 0;
-	right: 0;
+	right: 56px;
 	top: 50%;
 	height: 40px;
 	transform: translateY(-50%);
@@ -3885,7 +3965,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-locator-view.is-hub-map.is-stacked .rv-map-bar {
-	top: 20px;
+	top: 8px;
+	z-index: 9;
 }
 
 :is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base) .rv-locator-glancable,
@@ -3918,6 +3999,20 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	width: 100%;
 	min-height: 70vh;
 	margin: 0 !important;
+}
+
+/* Phone embed: one screen, same split as the standalone hub. The list scrolls inside. */
+:is(.bases-embed, .block-language-base, .internal-embed, .markdown-embed).rv-hub-fill.is-embed-capped {
+	min-height: 0;
+	height: var(--rv-embed-cap, calc(100dvh - var(--header-height, 0px) - var(--safe-area-inset-bottom, 0px) - 48px));
+	max-height: var(--rv-embed-cap, calc(100dvh - var(--header-height, 0px) - var(--safe-area-inset-bottom, 0px) - 48px));
+	overflow: hidden;
+}
+
+:is(.bases-embed, .block-language-base, .internal-embed, .markdown-embed).rv-hub-fill.is-embed-capped > .rv-locator-glancable {
+	height: 100%;
+	max-height: 100%;
+	min-height: 0;
 }
 
 .rv-hub-fill > .rv-locator-glancable {

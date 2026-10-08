@@ -250,6 +250,28 @@ export class Vault {
 
 export type App = object;
 
+export const Platform = {
+	isMobile: false,
+	isMobileApp: false,
+	isDesktop: true,
+	isMacOS: false,
+};
+
+export class Menu {
+	addItem(cb: (item: MenuItem) => void): this {
+		cb(new MenuItem());
+		return this;
+	}
+
+	showAtMouseEvent(_event: MouseEvent): void {}
+}
+
+class MenuItem {
+	setTitle(_title: string): this { return this; }
+	setIcon(_icon: string): this { return this; }
+	onClick(_cb: () => void): this { return this; }
+}
+
 export function setIcon(_parent: unknown, _iconId: string): void {}
 
 export function normalizePath(path: string): string {
