@@ -1,5 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { hubUsesStackedMap, revealHubCard } from './hub-layout';
+import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
 import { domInstanceOf } from './dom';
@@ -40,6 +41,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private searchOpen = false;
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
+	private hubFillNodes: HTMLElement[] = [];
 
 	constructor(
 		controller: QueryController,
@@ -192,8 +194,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	/**
-	 * Search replaces the pills and the other bar buttons.
-	 * Closing it brings that bar back. The field is created once so typing keeps focus.
+	 * Search replaces the pills row. The action buttons stay.
+	 * The field is created once so typing keeps focus.
 	 */
 	private searchReplacesBar(open: boolean): void {
 		this.searchOpen = open;
@@ -301,8 +303,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		card.setAttr('data-rv-path', row.path);
 		card.addEventListener('click', (event) => {
 			const target = event.target;
-			if (target instanceof Element && target.closest('a, button')) return;
-			this.plugin.focusMapPin(row.path, true);
+			const onControl = target instanceof Element && target.closest(CARD_BLANK_IGNORE) != null;
+			if (!cardBlankOpensPin(this.plugin.hubMapOpen, onControl)) return;
+			event.preventDefault();
+			this.plugin.highlightMapPin(row.path);
 		});
 		const rank = priorityRank(this.cellNamed(row, 'Priority'));
 		const priority = rowPriority(row);
@@ -731,12 +735,23 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 * Tag the Bases toolbar that owns this view. The class stays off every
 	 * other leaf, and onunload removes it when Glancable is no longer showing.
 	 */
+	private fillHubToFrame(): void {
+		this.clearHubFill();
+		fillHubFrame(this.root, this.hubFillNodes);
+	}
+
+	private clearHubFill(): void {
+		for (const node of this.hubFillNodes) node.classList.remove('rv-hub-fill');
+		this.hubFillNodes = [];
+	}
+
 	private syncBasesChrome(): void {
 		const host = basesChromeHost(this.root);
 		if (this.chromeHost && this.chromeHost !== host) this.clearBasesChrome();
 		this.chromeHost = host;
 		if (!host) return;
 		host.classList.add('rv-glancable-host');
+		this.fillHubToFrame();
 		const flags = this.plugin.settings.glancableChrome;
 		for (const piece of CHROME_PIECES) {
 			host.toggleAttribute(hideAttr(piece), hidePiece(flags, piece));
@@ -749,6 +764,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private clearBasesChrome(): void {
 		const host = this.chromeHost;
 		this.chromeHost = null;
+		this.clearHubFill();
 		if (!host) return;
 		host.classList.remove('rv-glancable-host');
 		host.removeAttribute('data-rv-hide-toolbar');
@@ -834,6 +850,25 @@ function collapseBasesBar(host: HTMLElement, hide: boolean): void {
 		node.style.setProperty('border', '0', 'important');
 		node.style.setProperty('overflow', 'hidden', 'important');
 	});
+}
+
+/**
+ * Stretch every wrapper between the hub and its frame so the bottom bar
+ * sits on the frame, not above a padding gap. An embed stops at the embed.
+ * A base opened on its own stops at the leaf.
+ */
+function fillHubFrame(root: HTMLElement, marked: HTMLElement[]): void {
+	if (typeof root.closest !== 'function') return;
+	const embed = root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
+	const leaf = root.closest('.workspace-leaf-content');
+	const stop = embed ?? leaf;
+	let node: HTMLElement | null = root.parentElement;
+	while (node) {
+		node.classList.add('rv-hub-fill');
+		marked.push(node);
+		if (node === stop) break;
+		node = node.parentElement;
+	}
 }
 
 function basesChromeHost(root: HTMLElement): HTMLElement | null {

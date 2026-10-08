@@ -34,7 +34,7 @@ import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live
 import { pagePreviewDecision } from './page-preview';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import type { MapPin } from './map-pins';
-import { buildMapPins, heatModeForSort, pinLookForHub } from './map-pins';
+import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './map-pins';
 import { shadeHeats } from './map-shade';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
@@ -1372,7 +1372,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last GPS fix reported by a hub view, for address bias. */
 	liveFix: { lat: number; lon: number } | null = null;
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
-	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean): void }>();
+	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
 	private hubScrollers = new Set<(path: string | null) => void>();
 
 	/**
@@ -1421,8 +1421,15 @@ export default class RVLocatorPlugin extends Plugin {
 
 	focusMapPin(path: string, center = true): void {
 		this.mapSelectedPath = path;
-		for (const canvas of this.mapCanvases) canvas.focus(path, center);
+		for (const canvas of this.mapCanvases) canvas.focus(path, center, 'follow');
 		for (const scroll of this.hubScrollers) scroll(path);
+	}
+
+	/** Blank card body while the map is open. Centers and flashes the pin. No popup. */
+	highlightMapPin(path: string): void {
+		if (!this.hubMapOpen) return;
+		this.mapSelectedPath = path;
+		for (const canvas of this.mapCanvases) canvas.focus(path, true, 'card');
 	}
 
 	registerHubScroller(scroll: (path: string | null) => void): () => void {
@@ -1430,7 +1437,7 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.hubScrollers.delete(scroll); };
 	}
 
-	attachMap(canvas: { refresh(): void; focus(path: string | null, center: boolean): void }): () => void {
+	attachMap(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void {
 		this.mapCanvases.add(canvas);
 		return () => { this.mapCanvases.delete(canvas); };
 	}
@@ -1576,9 +1583,10 @@ export default class RVLocatorPlugin extends Plugin {
 			};
 		});
 		const look = pinLookForHub(this.nearbySort.property, this.settings.returnScope, this.settings.genderFilter);
-		const heats = shadeHeats(heatModeForSort(this.nearbySort.property), rows);
+		const ordered = orderByHubSort(rows, this.nearbySort, this.currentMapFix() ?? this.liveFix, this.settings.urgencyThresholdDays);
+		const heats = shadeHeats(heatModeForSort(this.nearbySort.property), ordered);
 		return buildMapPins(
-			rows.map((row, index) => ({ ...row, shadeHeat: heats[index] ?? 0 })),
+			ordered.map((row, index) => ({ ...row, shadeHeat: heats[index] ?? 0 })),
 			this.settings.idealityFloorDays,
 			this.settings.urgencyThresholdDays,
 			colors,

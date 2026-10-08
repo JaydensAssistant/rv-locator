@@ -444,12 +444,15 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const search = this.searchSlot;
 		if (search?.parentElement === this.sortEl) search.remove();
 		this.sortEl.empty();
+		const glancable = this.mode === 'glancable';
+		const actions = glancable ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
+		const pillHost = glancable ? this.sortButtonsEl.createDiv('rv-locator-sort-pills') : this.sortButtonsEl;
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
 			const active = current.property.toLowerCase() === preset.property.toLowerCase();
 			const label = sortPresetChipLabel(preset, active ? current.direction : null);
-			const button = this.sortButtonsEl.createEl('button', {
+			const button = pillHost.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
 				attr: {
 					type: 'button',
@@ -470,33 +473,31 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 			});
 		}
-		if (this.mode === 'glancable') this.paintListFilters();
+		if (glancable) this.paintListFilters();
 		this.paintSortExtras();
-		const actions = this.mode === 'glancable'
-			? this.sortEl.createDiv('rv-locator-toolbar-actions')
-			: this.sortEl;
-		if (this.mode === 'glancable') {
-			const searchButton = actions.createEl('button', {
+		const actionHost = actions ?? this.sortEl;
+		if (glancable) {
+			const searchButton = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Search', title: 'Search' },
 			});
 			setIcon(searchButton, 'search');
 			searchButton.addEventListener('click', () => { this.openGlanceSearch(); });
-			const map = actions.createEl('button', {
+			const map = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Map', title: 'Map' },
 			});
 			setIcon(map, 'earth');
 			map.toggleClass('is-on', this.plugin.hubMapOpen);
 			map.addEventListener('click', () => { void this.plugin.openMapSoon(); });
-			const campaign = actions.createEl('button', {
+			const campaign = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Campaign', title: 'Campaign' },
 			});
 			setIcon(campaign, 'book-alert');
 			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
 		}
-		const create = actions.createEl('button', {
+		const create = actionHost.createEl('button', {
 			cls: 'rv-locator-new-rv',
 			attr: {
 				type: 'button',
@@ -508,7 +509,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		create.addEventListener('click', () => {
 			void this.plugin.createNewRv();
 		});
-		equalizeSortPills(this.sortButtonsEl);
+		equalizeSortPills(pillHost);
 		if (search) this.sortEl.appendChild(search);
 		this.sortButtonsEl.scrollLeft = savedScroll;
 	}

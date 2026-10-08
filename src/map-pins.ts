@@ -1,7 +1,9 @@
+import { DISTANCE_COLUMN_ID, IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './constants';
 import { interpolatePalette, type MapShadeMode } from './map-shade';
 import { urgencyAccentColor, urgencyMark, urgencyScore, insidePriorityFloor } from './scoring';
+import { sortRowsBy, type Sortable } from './sort';
 import { statusIcon, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
-import type { PriorityDays } from './types';
+import type { LatLon, PriorityDays } from './types';
 
 /** Ghost pin while the return is inside its cool-down floor. Not the Last Attempted clock. */
 export const COOLDOWN_PIN_ICON = 'hourglass';
@@ -73,6 +75,11 @@ export interface MapPin {
 	shadeIcon: string | null;
 	/** Gender mark when the hub is filtered to men or women. */
 	markText: string | null;
+	/**
+	 * Place in the active hub sort. 0 is the top of the list and paints above
+	 * a higher number where pins overlap.
+	 */
+	rank: number;
 	card: MapPinCard;
 }
 
@@ -148,6 +155,7 @@ export function buildMapPins(
 			stateIcon: pinStateIcon(fresh, row.avoid === true),
 			shadeIcon: look === 'status' ? statusIcon(status) : null,
 			markText: look === 'gender' ? genderMark : null,
+			rank: pins.length,
 			card: row.card,
 		});
 	}
@@ -186,6 +194,90 @@ export function clusterAppearance(pins: readonly MapPin[]): ClusterAppearance {
 		ghost: pins.length > 0 && pins.every((pin) => pin.stateIcon != null),
 	};
 }
+
+/** Higher in the list (smaller rank) gets a higher z-index. A selected pin stays on top. */
+export function pinStackZ(rank: number, selected = false): number {
+	const place = Number.isFinite(rank) ? Math.max(0, Math.trunc(rank)) : 0;
+	const layer = 1000 - place;
+	return selected ? layer + 10000 : layer;
+}
+
+export interface PinSortFacts {
+	name: string;
+	lat: number;
+	lon: number;
+	priority: number;
+	days: number | null;
+	attemptedDays: number | null;
+	metDays: number | null;
+	city: string;
+	ideality: number | null;
+}
+
+/**
+ * Same order as the hub pills. Rank 0 is the first row. Distance uses the
+ * live fix. Spoke, attempted, and met use days-ago so oldest and newest match.
+ */
+export function orderByHubSort<T extends PinSortFacts>(
+	rows: readonly T[],
+	sort: { property: string; direction: 'ASC' | 'DESC' },
+	fix: LatLon | null,
+	thresholds: PriorityDays,
+): T[] {
+	const wrapped = rows.map((row) => ({
+		lat: Number.isFinite(row.lat) ? row.lat : null,
+		lon: Number.isFinite(row.lon) ? row.lon : null,
+		sortKeys: pinSortKeys(row, thresholds),
+		row,
+	}));
+	return sortRowsBy(wrapped, [sort], fix, DISTANCE_COLUMN_ID).map((item) => item.row);
+}
+
+function pinSortKeys(row: PinSortFacts, thresholds: PriorityDays): Record<string, Sortable> {
+	const urgency = urgencyScore(row.days, row.priority, thresholds);
+	return {
+		[URGENCY_COLUMN_ID]: numberKey(urgency),
+		[IDEALITY_COLUMN_ID]: numberKey(row.ideality),
+		'note.Priority': numberKey(row.priority),
+		'note.Last Spoke': olderDateKey(row.days),
+		'note.Last Attempted': olderDateKey(row.attemptedDays),
+		'note.Met': olderDateKey(row.metDays),
+		'note.City': row.city.trim() ? { kind: 'text', value: row.city.trim() } : { kind: 'empty' },
+		'file.name': { kind: 'text', value: row.name },
+	};
+}
+
+function numberKey(value: number | null): Sortable {
+	if (value == null || !Number.isFinite(value)) return { kind: 'empty' };
+	return { kind: 'number', value };
+}
+
+/** More days ago is an earlier date, so ascending puts the oldest first. */
+function olderDateKey(days: number | null): Sortable {
+	if (days == null || !Number.isFinite(days)) return { kind: 'empty' };
+	return { kind: 'date', value: -days };
+}
+
+/** Clusters draw at this zoom and below. The next zoom paints each pin. */
+export const CLUSTER_ZOOM_MAX = 12;
+export const PIN_REVEAL_ZOOM = 13;
+
+/** Zoom just far enough that a clustered pin is drawn on its own. */
+export function zoomToRevealPin(zoom: number): number {
+	if (zoom <= CLUSTER_ZOOM_MAX) return PIN_REVEAL_ZOOM;
+	return zoom;
+}
+
+/**
+ * Blank card body highlights a pin only while the hub map is open.
+ * A control (title, address, badge, button, Quick Facts) never does.
+ */
+export function cardBlankOpensPin(mapOpen: boolean, onControl: boolean): boolean {
+	return mapOpen && !onControl;
+}
+
+/** Clicks on these keep their own action and do not highlight a pin. */
+export const CARD_BLANK_IGNORE = 'a, button, [role="link"], .rv-locator-place, .rv-locator-card-name, .rv-locator-when, .rv-locator-card-foot, .rv-locator-card-actions, .rv-locator-slot';
 
 /** Movement under this many pixels is a tap, not a pan. */
 export const MAP_CLICK_SLOP_PX = 5;

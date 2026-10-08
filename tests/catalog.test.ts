@@ -24,7 +24,10 @@ import {
 	type LessonSpec,
 } from '../src/catalog';
 import { formatGlanceableCounter } from '../src/dates';
-import { clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, pinStateIcon, type MapPin } from '../src/map-pins';
+import { CARD_BLANK_IGNORE, cardBlankOpensPin, clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, orderByHubSort, pinStackZ, pinStateIcon, zoomToRevealPin, type MapPin } from '../src/map-pins';
+import { visibleSortPresets } from '../src/active-layout';
+import { glanceBarHeight, glancePillsThatFit } from '../src/sort-pills';
+import { defaultSortChips } from '../src/types';
 import { interpolatePalette, shadeHeats } from '../src/map-shade';
 import { insidePriorityFloor } from '../src/scoring';
 import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceRecord } from '../src/glance-search';
@@ -420,6 +423,49 @@ describe('glancable smart search', () => {
 		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('Spoke yesterday', now)), false);
 		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('', now)), true);
 		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('Austin', now)), true);
+	});
+
+	it('stacks phone labels, fills the hub, and keeps the map credit on the map edge', () => {
+		const css = readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+		const snippet = readFileSync(path.join(process.cwd(), 'extras/templater-metabind/rv-dashboard.css'), 'utf8');
+		const glance = readFileSync(path.join(process.cwd(), 'src/glancable-view.ts'), 'utf8');
+		const map = readFileSync(path.join(process.cwd(), 'src/map-view.ts'), 'utf8');
+		const modal = readFileSync(path.join(process.cwd(), 'src/new-rv-modal.ts'), 'utf8');
+		assert.match(css, /grid-template-columns:\s*max-content minmax\(0, 1fr\)/);
+		assert.match(snippet, /grid-template-columns:\s*max-content minmax\(0, 1fr\)/);
+		assert.match(css, /p\.rv-hub-owned > strong[\s\S]*width:\s*max-content/);
+		assert.doesNotMatch(css, /p\.rv-hub-owned > strong,\s*\n[\s\S]{0,240}text-overflow:\s*ellipsis/);
+		assert.match(css, /\.rv-locator-view\.is-map-fullscreen \.rv-hub-map/);
+		assert.match(css, /flex:\s*0 0 14px/);
+		assert.match(css, /\.rv-hub-map-handle::before \{[^}]*height:\s*40px/);
+		assert.match(css, /\.rv-map-credit \{[^}]*left:\s*0;[^}]*right:\s*0;[^}]*bottom:\s*0/);
+		assert.match(css, /\.rv-hub-fill \{[^}]*padding-bottom:\s*0 !important/);
+		assert.doesNotMatch(css, /height:\s*70vh/);
+		assert.match(modal, /rv-locator-modal/);
+		assert.match(css, /@media \(max-width: 520px\) \{[^}]*\.rv-locator-modal \.setting-item \{[^}]*flex-direction:\s*column !important/);
+		assert.match(glance, /highlightMapPin/);
+		assert.match(glance, /cardBlankOpensPin/);
+		assert.match(map, /popupPath/);
+		assert.match(map, /zoomToRevealPin/);
+		assert.doesNotMatch(map, /openCard\(pins, selected\.pin/);
+		const chips = visibleSortPresets(defaultSortChips()).length;
+		assert.equal(glancePillsThatFit(390, chips), chips);
+		assert.equal(glancePillsThatFit(430, chips), chips);
+		assert.equal(glanceBarHeight(), 84);
+		assert.equal(cardBlankOpensPin(false, false), false);
+		assert.equal(cardBlankOpensPin(true, true), false);
+		assert.equal(cardBlankOpensPin(true, false), true);
+		assert.match(CARD_BLANK_IGNORE, /button/);
+		assert.equal(zoomToRevealPin(12), 13);
+		assert.equal(zoomToRevealPin(15), 15);
+		assert.ok(pinStackZ(0) > pinStackZ(3));
+		assert.ok(pinStackZ(4, true) > pinStackZ(0));
+		const ranked = orderByHubSort([
+			{ name: 'Low', lat: 0, lon: 0, priority: 1, days: 1, attemptedDays: 1, metDays: 1, city: 'A', ideality: 0.1 },
+			{ name: 'High', lat: 0, lon: 0, priority: 5, days: 40, attemptedDays: 2, metDays: 2, city: 'B', ideality: 0.9 },
+		], { property: 'note.Priority', direction: 'DESC' }, null, { 1: 30, 2: 30, 3: 21, 4: 14, 5: 7 });
+		assert.equal(ranked[0]?.name, 'High');
+		assert.equal(ranked[1]?.name, 'Low');
 	});
 
 	it('reads visit notes and stamp literature off the note', () => {

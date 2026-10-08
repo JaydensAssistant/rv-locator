@@ -88,6 +88,7 @@ export class NewRvIdentityModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass('rv-locator-modal');
 		this.setTitle(this.options.title ?? 'New RV');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
