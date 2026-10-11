@@ -1,5 +1,5 @@
 import { Menu, setIcon } from 'obsidian';
-import { attemptLogCallouts } from './attempt-digest';
+import { attemptLogCallouts, isLogCalloutTitle } from './attempt-digest';
 import { pickDayJump, type DayJumpCandidate } from './day-jump';
 import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
@@ -646,10 +646,15 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	const stored = textOf(readProperty(data, property));
 	const focused = paragraph.ownerDocument.activeElement === input;
 	if (!focused) input.value = stored;
-	const write = () => host.setAddress(path, input.value);
-	input.onchange = write;
+	const commit = () => host.setAddress(path, input.value);
+	input.onchange = null;
+	input.onkeydown = (event) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		input.blur();
+	};
 	input.onblur = () => {
-		write();
+		commit();
 		showAddressLink(paragraph, input, path, host);
 	};
 	input.classList.add('rv-address-input');
@@ -841,7 +846,9 @@ function decorateSlotOverride(root: HTMLElement, path: string, data: Record<stri
 		if (!(callout instanceof HTMLElement)) continue;
 		const title = callout.querySelector(':scope > .callout-title');
 		if (!(title instanceof HTMLElement)) continue;
-		if (!(title.textContent ?? '').includes('Attempt Log')) continue;
+		const inner = title.querySelector('.callout-title-inner');
+		const label = (inner?.textContent ?? title.textContent ?? '');
+		if (!isLogCalloutTitle(label)) continue;
 		const priority = finiteNumber(readProperty(data, 'Priority'));
 		const urgency = noteUrgency(path, data, priority, host);
 		const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);

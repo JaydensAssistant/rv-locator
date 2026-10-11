@@ -32,6 +32,7 @@ import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type Sl
 import { concealCollapsedVisitNotes, layoutVisitNotes } from './visit-display';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
+import { shouldHideStatusBar } from './status-bar';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import type { MapPin } from './map-pins';
 import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './map-pins';
@@ -139,6 +140,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private hubOverride = new Map<string, unknown>();
 	/** Address typed into the custom box before the cache catches up. */
 	private addressOverride = new Map<string, string>();
+	/** Value already handed to an in-flight address write. Blocks blur+change doubles. */
+	private addressCommit = new Map<string, string>();
 	/** One campaign at a time. Null when none is saved. */
 	campaign: CampaignRecord | null = null;
 	/** Coverage answers collected beside the companion prompt, keyed by note path. */
@@ -343,7 +346,7 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-suggestions-outside-left', on && this.settings.leftAlignSuggestionBullets);
 		body.toggleClass('rv-full-width-callout', on && this.settings.fullWidthCallout);
 		body.toggleClass('rv-map-open', on && this.hubMapOpen);
-		body.toggleClass('rv-hide-statusbar', on && (this.noteHidesStatusBar() || (this.settings.hideStatusBar && this.standaloneBaseOpen())));
+		body.toggleClass('rv-hide-statusbar', on && shouldHideStatusBar(this.noteHidesStatusBar(), this.settings.hideStatusBar, this.standaloneBaseOpen()));
 	}
 
 	private noteHidesStatusBar(): boolean {
@@ -1228,23 +1231,29 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeAddress(path: string, address: string): Promise<void> {
-		const file = this.app.vault.getFileByPath(path);
-		if (!file) return;
-		const property = this.settings.addressProperty.trim() || 'Address';
 		const next = address.replace(/\r?\n/g, ' ').trim();
-		const previous = readAddress(await this.freshFrontmatter(file), property) ?? '';
-		if (previous === next) return;
-		this.addressOverride.set(path, next);
-		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			assignProperty(frontmatter as Record<string, unknown>, property, next);
-		});
-		await this.app.vault.process(file, (data) => {
-			const info = getFrontMatterInfo(data);
-			const stamp = formatVisitStamp(new Date());
-			const line = `> - ${stamp} — address ${previous || 'blank'} → ${next || 'blank'}`;
-			return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
-		});
-		if (next) void this.geocodeFile(file);
+		if (this.addressCommit.get(path) === next) return;
+		this.addressCommit.set(path, next);
+		try {
+			const file = this.app.vault.getFileByPath(path);
+			if (!file) return;
+			const property = this.settings.addressProperty.trim() || 'Address';
+			const previous = readAddress(await this.freshFrontmatter(file), property) ?? '';
+			if (previous === next) return;
+			this.addressOverride.set(path, next);
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				assignProperty(frontmatter as Record<string, unknown>, property, next);
+			});
+			await this.app.vault.process(file, (data) => {
+				const info = getFrontMatterInfo(data);
+				const stamp = formatVisitStamp(new Date());
+				const line = `> - ${stamp} — address ${previous || 'blank'} → ${next || 'blank'}`;
+				return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
+			});
+			if (next) void this.geocodeFile(file);
+		} finally {
+			if (this.addressCommit.get(path) === next) this.addressCommit.delete(path);
+		}
 	}
 
 	/** One paced lookup after an address edit. The existing pacer spaces the request. */
@@ -2151,7 +2160,13 @@ export default class RVLocatorPlugin extends Plugin {
 		const text = document.createElement('span');
 		text.className = 'rv-toast-text';
 		const name = cardPersonTitle(file.basename, false);
-		text.textContent = `Not home logged · ${name}`;
+		const lead = document.createElement('span');
+		lead.className = 'rv-toast-lead';
+		lead.textContent = 'Not home';
+		const nameEl = document.createElement('span');
+		nameEl.className = 'rv-toast-name';
+		nameEl.textContent = ` logged · ${name}`;
+		text.append(lead, nameEl);
 		const actions = document.createElement('span');
 		actions.className = 'rv-toast-actions';
 		const campaignOn = campaignIsActive(this.campaign);
@@ -2159,8 +2174,12 @@ export default class RVLocatorPlugin extends Plugin {
 			const covered = document.createElement('button');
 			covered.className = 'mod-covered';
 			covered.type = 'button';
-			covered.textContent = 'Covered';
-			setIcon(covered, 'book-check');
+			const icon = document.createElement('span');
+			icon.className = 'rv-toast-icon';
+			setIcon(icon, 'book-check');
+			const label = document.createElement('span');
+			label.textContent = 'Covered';
+			covered.append(icon, label);
 			covered.addEventListener('click', () => {
 				void this.coverInstantMiss(file, this.campaign?.name ?? '').then(() => covered.remove());
 			});
@@ -2168,6 +2187,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		const undo = document.createElement('button');
 		undo.type = 'button';
+		undo.className = 'mod-undo';
 		undo.textContent = 'Undo';
 		undo.addEventListener('click', () => { void this.undoInstantMiss(); });
 		actions.append(undo);
@@ -2177,7 +2197,7 @@ export default class RVLocatorPlugin extends Plugin {
 		toast.append(text, actions, timer);
 		document.body.appendChild(toast);
 		window.setTimeout(() => {
-			if (text.scrollWidth > text.clientWidth + 1) text.textContent = 'Not home';
+			if (text.scrollWidth > text.clientWidth + 1) nameEl.remove();
 		}, 0);
 		const handle = window.setTimeout(() => {
 			toast.remove();
@@ -2327,7 +2347,13 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Digest, open the new notes box, then the priority nudge. */
 	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
 		await this.enqueueDigestRewrite(file);
-		for (const callback of this.viewRefreshers) callback();
+		for (const callback of this.viewRefreshers) {
+			try {
+				callback();
+			} catch {
+				/* A map refresh must not swallow the Not home toast. */
+			}
+		}
 		if (outcome === 'home') await this.focusVisitNotes(file, notesProperty);
 		await this.maybeNudgePriority(file, outcome);
 	}

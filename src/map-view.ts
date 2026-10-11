@@ -66,6 +66,38 @@ export class RvMapView extends ItemView {
 		super(leaf);
 	}
 
+	/**
+	 * Class-field initializers do not run when the hub map is built from the
+	 * prototype. Every field the constructor would set is assigned here.
+	 */
+	bindHost(host: MapHost, scope: 'hub' | 'split'): void {
+		this.host = host;
+		this.centerLat = 28.54;
+		this.centerLon = -81.38;
+		this.zoom = 13;
+		this.pins = [];
+		this.user = null;
+		this.stage = null;
+		this.pinLayer = null;
+		this.watchId = null;
+		this.drag = null;
+		this.selectedPath = null;
+		this.detachMap = null;
+		this.stageObserver = null;
+		this.hideMapButton = null;
+		this.tileImgs = new Map();
+		this.tileIndex = loadTileIndex();
+		this.tileEpoch = -1;
+		this.popupPath = null;
+		this.flashPath = null;
+		this.flashUntil = 0;
+		this.mapFullscreen = false;
+		this.fullscreenScope = scope;
+		this.renderedPaths = null;
+		this.scaleEl = null;
+		this.scaleBarEl = null;
+	}
+
 	getViewType(): string {
 		return MAP_VIEW_TYPE;
 	}
@@ -819,27 +851,9 @@ export function mountEmbeddedMap(
 	applyRenderedOrder(paths: readonly string[]): void;
 	invalidateSize(): void;
 } {
-	const shell = {
-		contentEl: parent,
-		host,
-		centerLat: 28.54,
-		centerLon: -81.38,
-		zoom: 13,
-		pins: [] as MapPin[],
-		user: null as { lat: number; lon: number } | null,
-		stage: null as HTMLElement | null,
-		pinLayer: null as HTMLElement | null,
-		watchId: null as number | null,
-		drag: null as { x: number; y: number; lat: number; lon: number; moved: boolean } | null,
-		selectedPath: null as string | null,
-		renderedPaths: null as readonly string[] | null,
-		scaleEl: null as HTMLElement | null,
-		scaleBarEl: null as HTMLElement | null,
-		detachMap: null as (() => void) | null,
-		mapFullscreen: false,
-		fullscreenScope: 'hub' as const,
-	};
-	const map = Object.assign(Object.create(RvMapView.prototype), shell) as RvMapView;
+	const map = Object.create(RvMapView.prototype) as RvMapView;
+	map.contentEl = parent;
+	map.bindHost(host, 'hub');
 	void map.onOpen();
 	return {
 		destroy: () => { void map.onClose(); },

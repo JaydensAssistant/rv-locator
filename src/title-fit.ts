@@ -64,13 +64,21 @@ export function fitTitleRow(row: HTMLElement): void {
 	if (items.length === 0) return;
 	const width = row.clientWidth;
 	if (width <= 0) return;
-	const stems = items.map((item) => item.getAttribute('data-stem') ?? '');
-	const suffixWidth = items.reduce((sum, item) => {
+	const view = row.ownerDocument.defaultView;
+	const rowStyle = view?.getComputedStyle(row);
+	const pad = rowStyle ? (parseFloat(rowStyle.paddingLeft) || 0) + (parseFloat(rowStyle.paddingRight) || 0) : 0;
+	const rowGap = rowStyle ? (parseFloat(rowStyle.columnGap) || parseFloat(rowStyle.gap) || 0) : 8;
+	let fixed = pad + Math.max(0, items.length - 1) * (Number.isFinite(rowGap) ? rowGap : 8);
+	const stems = items.map((item) => {
+		const host = item.closest('.rv-item');
+		const icon = host?.querySelector('.rv-item-icon');
 		const suffix = item.querySelector('.rv-type');
-		return sum + (suffix instanceof HTMLElement ? suffix.offsetWidth : 0);
-	}, 0);
-	const gaps = Math.max(0, items.length - 1) * 8;
-	const budgetPx = Math.max(0, width - suffixWidth - gaps - 24);
+		const iconWidth = icon instanceof HTMLElement ? icon.offsetWidth : 0;
+		const suffixWidth = suffix instanceof HTMLElement ? suffix.offsetWidth : 0;
+		fixed += iconWidth + suffixWidth + (iconWidth > 0 ? 4 : 0);
+		return item.getAttribute('data-stem') ?? '';
+	});
+	const budgetPx = Math.max(0, width - fixed);
 	const sample = stems[0] ?? 'M';
 	const probe = row.ownerDocument.createElement('span');
 	probe.className = 'rv-fit-probe';
@@ -85,10 +93,32 @@ export function fitTitleRow(row: HTMLElement): void {
 		const text = item.getAttribute('data-stem') ?? '';
 		if (stem) stem.textContent = ellipsize(text, cuts[index] ?? text.length);
 	});
+	let guard = 0;
+	while (row.scrollWidth > row.clientWidth + 1 && guard < 400) {
+		guard += 1;
+		let longest = 0;
+		let longestLen = 0;
+		items.forEach((item, index) => {
+			const stem = item.querySelector('.rv-fit-stem');
+			const len = (stem?.textContent ?? '').replace(/…$/, '').length;
+			if (len > longestLen) {
+				longestLen = len;
+				longest = index;
+			}
+		});
+		if (longestLen <= 1) break;
+		const item = items[longest];
+		const stem = item?.querySelector('.rv-fit-stem');
+		const text = item?.getAttribute('data-stem') ?? '';
+		if (stem) stem.textContent = ellipsize(text, longestLen - 1);
+	}
 }
 
 export function watchTitleRow(row: HTMLElement): void {
 	fitTitleRow(row);
+	if (row.clientWidth <= 0 && typeof requestAnimationFrame === 'function') {
+		requestAnimationFrame(() => fitTitleRow(row));
+	}
 	if (row.dataset.rvFit === '1' || typeof ResizeObserver === 'undefined') return;
 	row.dataset.rvFit = '1';
 	try {

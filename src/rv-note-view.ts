@@ -1,4 +1,4 @@
-import { stampAgeFromHeadingText } from './dates';
+import { stampAgeCount } from './dates';
 
 const RV_DASHBOARD_CLASS = 'rv-dashboard';
 const STAMP_AGE_SELECTOR = '.rv-stamp-ago';
@@ -31,7 +31,7 @@ export function refreshStampAgeLabels(root: ParentNode, today: Date = new Date()
 	root.querySelectorAll(STAMP_AGE_SELECTOR).forEach((label) => {
 		const host = label.closest(STAMP_HOST_SELECTOR) ?? label.parentElement;
 		if (!host) return;
-		const next = stampAgeFromHeadingText(host.textContent ?? '', today);
+		const next = stampAgeCount(host.textContent ?? '', today);
 		if (next == null || label.textContent === next) return;
 		label.textContent = next;
 		changed += 1;

@@ -33,7 +33,7 @@ function textWithout(el: HTMLElement, selectors: string): string {
 }
 
 function moreButton(host: HTMLElement, label: string, onClick: (evt: MouseEvent) => void): void {
-	if (host.querySelector(`:scope > .${MORE_CLASS}`)) return;
+	if (host.querySelector(`.${MORE_CLASS}`)) return;
 	const button = host.createEl('button', {
 		cls: `${MORE_CLASS} clickable-icon`,
 		attr: { type: 'button', 'aria-label': label },
@@ -49,7 +49,13 @@ function moreButton(host: HTMLElement, label: string, onClick: (evt: MouseEvent)
 function stampHeadings(root: HTMLElement): HTMLElement[] {
 	const found: HTMLElement[] = [];
 	const consider = (node: Element) => {
-		if (domInstanceOf(node, HTMLElement) && node.querySelector('.rv-stamp-ago')) found.push(node);
+		if (!domInstanceOf(node, HTMLElement) || found.includes(node)) return;
+		if (node.querySelector('.rv-stamp-ago, .rv-stamp-row')) {
+			found.push(node);
+			return;
+		}
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (stampDateTime(text)) found.push(node);
 	};
 	if (root.matches('h3, h5')) consider(root);
 	root.querySelectorAll('h3, h5').forEach(consider);
@@ -114,11 +120,11 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator`));
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
-		reshapeVisitHeading(heading, when, coveredName(root, when, true));
-		wireStampJump(heading, when);
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
+		reshapeVisitHeading(heading, when, coveredName(root, when, true));
+		wireStampJump(heading, when);
 	}
 	for (const callout of attemptLogCallouts(root)) {
 		const seen = new Map<string, number>();
@@ -153,15 +159,23 @@ function coveredName(root: HTMLElement, when: Date, home: boolean): string {
 	return '';
 }
 
+function headingSource(heading: HTMLElement): string {
+	const hidden = heading.querySelector(':scope > .rv-stamp-source');
+	const stored = hidden?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+	if (stored) return stored;
+	return textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator, .rv-stamp-row, .collapse-indicator, .rv-stamp-source`);
+}
+
 /** Heading row and item strip. The markdown line is only restructured on screen. */
 function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string): void {
-	const source = textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator, .rv-stamp-row, .collapse-indicator, .rv-stamp-source`);
+	const source = headingSource(heading);
 	const lead = source.split(/[—–]/)[0]?.trim() || '';
 	const month = MONTHS[when.getMonth()] ?? '';
 	const day = String(when.getDate());
 	const iso = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')}`;
 	const count = formatGlanceableCounter(calendarDaysSince(iso) ?? 0);
 	const fullDate = when.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+	const doc = heading.ownerDocument;
 	let row = heading.querySelector(':scope > .rv-stamp-row');
 	if (!(row instanceof HTMLElement)) {
 		row = heading.createSpan('rv-stamp-row');
@@ -171,10 +185,22 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 		row.createSpan({ cls: 'rv-stamp-when', text: lead });
 		const pill = row.createSpan({ cls: 'rv-stamp-ago rv-stamp-count', text: count });
 		pill.dataset.rvJump = '1';
-		const hidden = heading.ownerDocument.createElement('span');
+	}
+	let hidden = heading.querySelector(':scope > .rv-stamp-source');
+	if (!(hidden instanceof HTMLElement)) {
+		hidden = doc.createElement('span');
 		hidden.className = 'rv-stamp-source';
-		hidden.textContent = source;
-		heading.append(row, hidden);
+		heading.appendChild(hidden);
+	}
+	hidden.textContent = source;
+	for (const node of Array.from(heading.childNodes)) {
+		if (node === row || node === hidden) continue;
+		if (domInstanceOf(node, HTMLElement) && (
+			node.classList.contains('collapse-indicator')
+			|| node.classList.contains('heading-collapse-indicator')
+			|| node.classList.contains(MORE_CLASS)
+		)) continue;
+		node.remove();
 	}
 	const tile = row.querySelector('.rv-cal');
 	if (tile instanceof HTMLElement) {
@@ -188,16 +214,16 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 	const whenEl = row.querySelector('.rv-stamp-when');
 	if (whenEl) whenEl.textContent = lead;
 	const pill = row.querySelector('.rv-stamp-count');
-	if (pill) pill.textContent = count;
-	const more = heading.querySelector(`:scope > .${MORE_CLASS}`);
+	if (pill instanceof HTMLElement) pill.textContent = count;
+	const more = heading.querySelector(`.${MORE_CLASS}`);
 	if (more && more.parentElement !== row) row.appendChild(more);
 	paintItemStrip(heading, source, covered);
 }
 
 function paintItemStrip(heading: HTMLElement, source: string, covered: string): void {
 	const doc = heading.ownerDocument;
-	let strip = heading.nextElementSibling;
-	if (!(strip instanceof HTMLElement) || !strip.classList.contains('rv-item-strip')) {
+	let strip = findItemStrip(heading);
+	if (!strip) {
 		strip = doc.createElement('div');
 		strip.className = 'rv-item-strip';
 		heading.insertAdjacentElement('afterend', strip);
@@ -219,11 +245,8 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 		}
 		match = piece.exec(source);
 	}
-	if (items.length === 0) {
-		strip.classList.add('is-ghost');
-		return;
-	}
-	strip.classList.remove('is-ghost');
+	if (items.length === 0) strip.classList.add('is-ghost');
+	else strip.classList.remove('is-ghost');
 	for (const item of items) {
 		const chip = doc.createElement('span');
 		chip.className = 'rv-item';
@@ -234,16 +257,42 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 		strip.appendChild(chip);
 		mountFittedTitle(chip, item.title, item.kind);
 	}
-	if (strip instanceof HTMLElement) watchTitleRow(strip);
+	ensureNoteBox(heading, strip);
+	watchTitleRow(strip);
+}
+
+function findItemStrip(heading: HTMLElement): HTMLElement | null {
+	const next = heading.nextElementSibling;
+	if (!(next instanceof HTMLElement)) return null;
+	if (next.classList.contains('rv-item-strip')) return next;
+	if (!next.classList.contains('rv-visit-note-box')) return null;
+	const strip = next.querySelector(':scope > .rv-item-strip');
+	return strip instanceof HTMLElement ? strip : null;
+}
+
+/** The strip sits at the top of the tinted note box. Empty visits keep the ghost strip. */
+function ensureNoteBox(heading: HTMLElement, strip: HTMLElement): void {
+	let box = strip.parentElement;
+	if (!(box instanceof HTMLElement) || !box.classList.contains('rv-visit-note-box')) {
+		const created = heading.ownerDocument.createElement('div');
+		created.className = 'rv-visit-note-box';
+		strip.replaceWith(created);
+		created.appendChild(strip);
+		box = created;
+	}
+	const next = box.nextElementSibling;
+	if (!(next instanceof HTMLElement) || !isVisitNoteBlock(next)) return;
+	box.appendChild(next);
+}
+
+function isVisitNoteBlock(node: HTMLElement): boolean {
+	if (node.matches('h1, h2, h3, h4, h5, h6, .callout, hr, .rv-item-strip, .rv-visit-note-box')) return false;
+	return node.matches('p, div, .el-p, blockquote');
 }
 
 function renderCoveredMention(item: HTMLElement, covered: string): void {
 	const existing = item.querySelector(':scope > .rv-log-covered');
-	if (!covered) {
-		existing?.remove();
-		return;
-	}
-	if (existing) return;
+	if (!covered || existing) return;
 	const doc = item.ownerDocument;
 	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
 	const walker = doc.createTreeWalker(item, NodeFilter.SHOW_TEXT);
@@ -252,7 +301,7 @@ function renderCoveredMention(item: HTMLElement, covered: string): void {
 		const text = node.textContent ?? '';
 		const at = text.search(/—\s+covered\s+/i);
 		if (at >= 0 && node.parentElement) {
-			node.textContent = text.slice(0, at).trimEnd();
+			node.textContent = `${text.slice(0, at).trimEnd()} — `;
 			const mention = doc.createElement('span');
 			mention.className = 'rv-log-covered';
 			const icon = doc.createElement('span');

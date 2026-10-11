@@ -876,8 +876,8 @@ describe('RV note view', () => {
 		const stale = { textContent: '3 days ago', parentElement: null, closest: () => ({ textContent: 'Tue, 4pm — Sep 29, 2026 3 days ago' }) };
 		const root = { querySelectorAll: () => [label, stale] } as unknown as ParentNode;
 		assert.equal(refreshStampAgeLabels(root, today), 2);
-		assert.equal(label.textContent, '20 days ago');
-		assert.equal(stale.textContent, 'Today');
+		assert.equal(label.textContent, '20d');
+		assert.equal(stale.textContent, '0d');
 		assert.equal(refreshStampAgeLabels(root, today), 0);
 	});
 

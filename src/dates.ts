@@ -153,6 +153,15 @@ export function stampAgeFromHeadingText(text: string, today: Date = new Date()):
 	return formatDaysAgo(days);
 }
 
+/** Rendered age labels are `Nd`. The stored stamp phrase stays "N days ago". */
+export function stampAgeCount(text: string, today: Date = new Date()): string | null {
+	const match = STAMP_DATE_ANYWHERE.exec(text);
+	if (!match) return null;
+	const days = calendarDaysSinceStamp(`— ${match[1] ?? ''}`, today);
+	if (days == null) return null;
+	return formatGlanceableCounter(days);
+}
+
 /** Inline age next to a `###` visit stamp. Empty when `stamp` is not a visit stamp. */
 export function stampAgeMarkup(stamp: string, today: Date = new Date()): string {
 	const days = calendarDaysSinceStamp(stamp, today);

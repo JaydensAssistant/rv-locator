@@ -380,7 +380,12 @@ function isAttemptLogCallout(callout: HTMLElement): boolean {
 	if (!title) return false;
 	const inner = title.querySelector('.callout-title-inner');
 	const text = (inner?.textContent ?? title.textContent ?? '').replace(/\s+/g, ' ').trim();
-	return /^attempt log$/i.test(text);
+	return isLogCalloutTitle(text);
+}
+
+/** The renamed callout is "Log". Older notes still say "Attempt Log". */
+export function isLogCalloutTitle(text: string): boolean {
+	return /^(?:attempt log|log)$/i.test(text.replace(/\s+/g, ' ').trim());
 }
 
 function directChild(parent: HTMLElement, className: string): HTMLElement | null {

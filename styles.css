@@ -4568,5 +4568,316 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-suggest-chevron {
-	margin-right: 4px;
+	margin: 0;
+}
+
+/* Smoke layout lock. Later than the wide-hubs and visit-stamp rules. */
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr) 40px;
+	column-gap: var(--rv-dash-pad, 12px);
+	row-gap: 8px;
+	align-items: center;
+	justify-items: stretch;
+	text-align: start;
+	width: 100%;
+	max-width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+	display: contents;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	grid-column: 1;
+	justify-self: start;
+	text-align: start;
+	width: max-content;
+	max-width: none;
+	margin: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+body.rv-wide-hubs .rv-hub-row {
+	grid-column: 2;
+	justify-self: stretch;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+	box-sizing: border-box;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-map-button,
+.rv-dashboard .rv-hub-add,
+.rv-dashboard a.rv-map-button {
+	grid-column: 3;
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	justify-self: center;
+	width: 40px;
+	height: 40px;
+	min-width: 40px;
+	max-width: 40px;
+	min-height: 40px;
+	max-height: 40px;
+	margin: 0;
+	padding: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-campaign,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-status,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-rename {
+	color: var(--text-normal);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner {
+	font-size: 1.15em;
+	font-weight: var(--font-semibold, 600);
+}
+
+:is(h3, h5).rv-visit-stamp,
+.markdown-rendered :is(h3, h5).rv-visit-stamp,
+.markdown-preview-view :is(h3, h5).rv-visit-stamp {
+	display: block;
+	overflow: visible;
+	white-space: normal;
+	max-width: 100%;
+	font-size: 14px;
+	font-weight: 400;
+	color: var(--text-muted);
+}
+
+.rv-visit-stamp .rv-stamp-row {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	overflow: hidden;
+}
+
+.rv-stamp-source {
+	display: none;
+}
+
+.rv-cal {
+	flex: 0 0 auto;
+	border-top: 0;
+	box-shadow: inset 0 2px 0 var(--rv-urgency-accent, var(--text-faint));
+	line-height: 1;
+	text-box: trim-both cap alphabetic;
+}
+
+.rv-stamp-when,
+.rv-stamp-count,
+.rv-visit-stamp .rv-stamp-ago {
+	line-height: 1;
+	text-box: trim-both cap alphabetic;
+}
+
+.rv-stamp-when {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	text-align: start;
+}
+
+.rv-stamp-count,
+.rv-visit-stamp .rv-visit-more {
+	flex: 0 0 auto;
+}
+
+.rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+.markdown-preview-view .rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+.markdown-rendered .rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+.rv-visit-stamp .rv-stamp-row .rv-stamp-ago {
+	margin-left: 0;
+}
+
+.rv-visit-note-box {
+	margin: 0.35em 0 0.75em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--text-normal) 4%, var(--background-primary));
+	overflow: hidden;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+}
+
+.rv-item-strip {
+	display: flex;
+	flex-wrap: nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 8px;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	overflow: hidden;
+	white-space: nowrap;
+}
+
+body.rv-center-visit-notes .rv-item-strip,
+body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
+	justify-content: center;
+}
+
+.rv-item-strip.is-ghost {
+	height: 5px;
+	min-height: 5px;
+	padding: 0;
+	border-bottom: 0;
+}
+
+.rv-item,
+.rv-fit,
+.rv-fit-stem,
+.rv-type {
+	flex-wrap: nowrap;
+	white-space: nowrap;
+}
+
+.rv-item,
+.rv-fit {
+	display: inline-flex;
+	align-items: center;
+	flex: 0 0 auto;
+	min-width: max-content;
+	max-width: none;
+}
+
+.rv-fit {
+	gap: 0;
+}
+
+.rv-fit-stem {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	min-width: 0;
+}
+
+.rv-type {
+	margin: 0;
+	padding: 0;
+	flex: 0 0 auto;
+}
+
+.rv-visit-note-box > :is(p, div, .el-p, blockquote):not(.rv-item-strip) {
+	margin: 0;
+	padding: 7px 10px;
+	font-size: 13px;
+	line-height: 1.45;
+	background: transparent;
+	text-align: start;
+}
+
+.rv-visit-note-box textarea,
+.rv-visit-note-box .mb-input {
+	font-size: 13px;
+	background: transparent;
+}
+
+.rv-log-covered {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.2em;
+	color: var(--text-muted);
+	white-space: nowrap;
+	vertical-align: -0.1em;
+}
+
+.rv-log-covered-icon {
+	display: inline-flex;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-title {
+	justify-content: flex-start;
+	text-align: start;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log > .callout-content,
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li, p, ul, ol) {
+	text-align: start;
+}
+
+.rv-locator-modal .rv-suggest-host {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 40px;
+	column-gap: 4px;
+	gap: 4px;
+	width: 100%;
+}
+
+.rv-locator-modal .setting-item-control > input[type="text"],
+.rv-locator-modal .setting-item-control > input[type="search"],
+.rv-locator-modal .setting-item-control > input[type="date"],
+.rv-locator-modal .setting-item-control > input:not([type]),
+.rv-locator-modal .rv-suggest-host > input {
+	width: 100%;
+	min-width: 0;
+}
+
+.rv-nh-toast .rv-toast-text {
+	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.rv-nh-toast .rv-toast-lead {
+	flex: 0 0 auto;
+}
+
+.rv-nh-toast .rv-toast-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-nh-toast button.mod-covered {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+}
+
+.rv-nh-toast .rv-toast-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+}
+
+.rv-nh-toast button.mod-undo {
+	flex: 0 0 auto;
+	width: 72px;
+}
+
+.rv-locator-sort-scroll.is-hidden {
+	display: none !important;
+}
+
+.rv-locator-sort-preset {
+	min-height: 40px;
 }

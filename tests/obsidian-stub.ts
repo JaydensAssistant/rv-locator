@@ -272,8 +272,28 @@ class MenuItem {
 	onClick(_cb: () => void): this { return this; }
 }
 
-export function setIcon(_parent: unknown, _iconId: string): void {}
+export function setIcon(parent: unknown, iconId: string): void {
+	const hook = (globalThis as { __rvSetIcon?: (parent: unknown, id: string) => void }).__rvSetIcon;
+	if (hook) hook(parent, iconId);
+	void parent;
+	void iconId;
+}
 
 export function normalizePath(path: string): string {
 	return path.replace(/\\/g, '/');
 }
+
+export class ItemView {}
+export class BasesView {}
+export class HoverPopover {}
+export const Keymap = { isModEvent: () => false };
+export function addIcon(_id?: string, _svg?: string): void {}
+export function getIcon(_id?: string): null { return null; }
+export function displayTooltip(_el?: unknown, _text?: string): void {}
+export class BooleanValue {}
+export class DateValue {}
+export class ListValue {}
+export class NullValue {}
+export class NumberValue {}
+export class StringValue {}
+export function parsePropertyId(id: string): string { return id; }

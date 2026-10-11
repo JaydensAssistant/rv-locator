@@ -446,7 +446,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (search?.parentElement === this.sortEl) search.remove();
 		this.sortEl.empty();
 		const glancable = this.mode === 'glancable';
-		const actions = glancable ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
+		const actions = glancable && !this.sortMenuOpen ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const showPills = !glancable || this.sortMenuOpen;
 		if (glancable && !showPills) this.sortButtonsEl.addClass('is-hidden');
