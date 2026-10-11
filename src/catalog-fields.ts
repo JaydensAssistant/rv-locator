@@ -13,7 +13,7 @@ import {
 	type VisitShare,
 } from './catalog';
 import { mountAlwaysChevron } from './suggest-field';
-import { mountFittedTitle } from './title-fit';
+import { displayTitle, mountFittedTitle } from './title-fit';
 
 export interface ShareFieldOptions {
 	publications: readonly string[];
@@ -174,7 +174,7 @@ function mountLessonBlock(
 			publish({ lesson: value, lessonFrom: bounds.from, lessonTo: bounds.to });
 			repaintRange(holders, parts, from, to, publish);
 		},
-		false,
+		true,
 		true,
 	);
 	const range = block.createDiv('rv-lesson-range');
@@ -208,7 +208,7 @@ function mountExtraLesson(
 		mountField(
 			fields,
 			'Other lesson',
-			'Optional. Only for a visit that covered two lessons.',
+			'Only when this visit covered two.',
 			'Optional',
 			share.extraLesson ?? '',
 			(query) => rankSuggestions(query, lessonNames),
@@ -220,7 +220,7 @@ function mountExtraLesson(
 				publish({ extraLesson: value, extraFrom: bounds.from, extraTo: bounds.to });
 				repaintExtra(holders, parts, from, to, publish);
 			},
-			false,
+			true,
 			true,
 		);
 		const range = fields.createDiv('rv-lesson-range');
@@ -254,8 +254,8 @@ function repaintRange(
 	}, false, true);
 	mountField(
 		host,
-		'Where did you end? You completed this point.',
-		'Inclusive. The part you finished, even if the lesson continues next time.',
+		'Where did you end?',
+		'The part you finished.',
 		'End',
 		to.current,
 		(query) => rankSuggestions(query, parts),
@@ -282,7 +282,7 @@ function repaintExtra(
 		from.current = value;
 		publish({ extraFrom: value });
 	}, false, true);
-	mountField(host, 'Where did that one end? You completed this point.', '', 'End', to.current, (query) => rankSuggestions(query, parts), (value) => {
+	mountField(host, 'Where did that one end?', '', 'End', to.current, (query) => rankSuggestions(query, parts), (value) => {
 		to.current = value;
 		publish({ extraTo: value });
 	}, false, true);
@@ -381,6 +381,9 @@ function mountField(
 			current = picked;
 			text.setValue(picked);
 			onValue(picked);
-		}, titled ? (value) => splitTitleSuffix(value) : undefined);
+		}, titled ? (value) => {
+			const parts = displayTitle(value, 'lesson');
+			return { text: parts.text, suffix: parts.suffix };
+		} : undefined);
 	});
 }

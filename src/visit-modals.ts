@@ -111,7 +111,7 @@ export class VisitEditModal extends Modal {
 			});
 
 		this.companionSetting = new Setting(contentEl)
-			.setName('What publisher came with you?')
+			.setName('Who came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Nobody');
 				text.setValue(this.companion);

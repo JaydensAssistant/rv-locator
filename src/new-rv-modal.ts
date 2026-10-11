@@ -93,7 +93,7 @@ export class NewRvIdentityModal extends Modal {
 		const { contentEl } = this;
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: this.options.intro ?? 'Choose man or woman, a name if you have one, the address, and a priority. Companion is optional.',
+			text: this.options.intro ?? 'Man or woman, a name, the address, and a priority.',
 		});
 		const gender = new Setting(contentEl).setName('Man / Woman');
 		gender.settingEl?.addClass('rv-gender-choice');
@@ -119,7 +119,7 @@ export class NewRvIdentityModal extends Modal {
 		});
 		new Setting(contentEl)
 			.setName('Name')
-			.setDesc('Optional. Leave blank to title the note Man on Street or Woman on Street.')
+			.setDesc('Optional. Blank uses the street.')
 			.addText((text) => {
 				text.setPlaceholder('Name (optional)');
 				text.setValue(this.name);
@@ -127,7 +127,7 @@ export class NewRvIdentityModal extends Modal {
 			});
 		new Setting(contentEl)
 			.setName('Address')
-			.setDesc('Street address. Matches appear in the address list.')
+			.setDesc('Street address.')
 			.addText((text) => {
 				text.setPlaceholder('Street address');
 				text.setValue(this.address);
@@ -167,8 +167,8 @@ export class NewRvIdentityModal extends Modal {
 				}
 			});
 		new Setting(contentEl)
-			.setName('What publisher came with you?')
-			.setDesc('Optional. Leave blank and press Create to skip.')
+			.setName('Who came with you?')
+			.setDesc('Optional.')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');
 				text.setValue(this.companion);
@@ -203,7 +203,7 @@ export class NewRvIdentityModal extends Modal {
 		}, (next) => { this.share = next; });
 		new Setting(contentEl)
 			.setName('Priority')
-			.setDesc('Starts from the default priority setting.')
+			.setDesc('Uses the default priority.')
 			.addSlider((slider) => {
 				slider.setLimits(0, 5, 1);
 				slider.setValue(this.priority);
@@ -211,14 +211,15 @@ export class NewRvIdentityModal extends Modal {
 				slider.onChange((value) => { this.priority = value; });
 			});
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			})
 			.addButton((button) => {
 				button.setButtonText('Create');
 				button.setCta();
 				button.onClick(() => this.finish());
-			})
-			.addButton((button) => {
-				button.setButtonText('Cancel');
-				button.onClick(() => this.close());
 			});
 		iconizeModal(contentEl);
 	}

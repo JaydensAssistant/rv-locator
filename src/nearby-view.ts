@@ -68,6 +68,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.syncPositionSource();
 		this.register(() => this.stopLiveUpdates());
 		this.unsubSettings = this.plugin.subscribeViewRefresh(() => {
+			if (!this.root?.isConnected) return;
 			this.localSort = { ...this.plugin.nearbySort };
 			this.syncPositionSource();
 			if (this.data) this.onDataUpdated();
@@ -474,11 +475,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
+				if (glancable) this.sortMenuOpen = false;
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
-				if (glancable) {
-					this.sortMenuOpen = false;
-					this.paintSortPresets();
-				}
+				if (glancable) this.paintSortPresets();
 			});
 		}
 		if (glancable && this.sortMenuOpen) {

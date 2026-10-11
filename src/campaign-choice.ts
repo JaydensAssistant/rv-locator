@@ -2,7 +2,7 @@ import { setIcon } from 'obsidian';
 
 /**
  * The one campaign control: the question, then Covered and Not this time.
- * Covered starts selected. The book icon is painted by the shared modal icon table.
+ * setIcon replaces an element's children, so the icon is a child and the label stays.
  */
 export function mountCampaignChoice(
 	parent: HTMLElement,
@@ -13,8 +13,8 @@ export function mountCampaignChoice(
 	const block = parent.createDiv('rv-campaign-choice');
 	block.createEl('p', { cls: 'rv-locator-modal-copy rv-campaign-question', text: question });
 	const choice = block.createDiv('rv-locator-suggest-actions rv-campaign-actions');
-	const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
-	const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
+	const yes = labeledChoice(choice, 'Covered', 'book-check');
+	const no = labeledChoice(choice, 'Not this time', 'book-x');
 	const paint = (covered: boolean): void => {
 		yes.classList.toggle('mod-cta', covered);
 		no.classList.toggle('mod-cta', !covered);
@@ -30,7 +30,13 @@ export function mountCampaignChoice(
 		onChange(false);
 		paint(false);
 	});
-	setIcon(yes, 'book-check');
-	setIcon(no, 'book-x');
 	return block;
+}
+
+function labeledChoice(parent: HTMLElement, label: string, icon: string): HTMLButtonElement {
+	const button = parent.createEl('button', { attr: { type: 'button' } });
+	const mark = button.createSpan('rv-campaign-icon');
+	setIcon(mark, icon);
+	button.createSpan({ cls: 'rv-campaign-label', text: label });
+	return button;
 }

@@ -128,6 +128,33 @@ describe('polish pack data', () => {
 		assert.equal(tapOpensTop(13, 4), true);
 	});
 
+	it('keeps every preset and custom urgency colour at 4.5:1 on its 14% fill', () => {
+		const light = parseHex('#ffffff');
+		const dark = parseHex('#1e1e1e');
+		assert.ok(light && dark);
+		const themes = [
+			['light', light],
+			['dark', dark],
+		] as const;
+		const custom = ['#d63c3c', '#ffd54a', '#f4b4c8', '#8fd6ff', '#ffffff', '#111111', '#e06a00', '#1f8a4c'];
+		const bands = [
+			...URGENCY_PALETTES.filter((palette) => palette.id !== 'accent').flatMap((palette) => palette.colors.map((hex) => [palette.id, hex] as const)),
+			...custom.map((hex) => ['custom', hex] as const),
+		];
+		for (const [name, hex] of bands) {
+			const color = parseHex(hex);
+			assert.ok(color, hex);
+			for (const [theme, background] of themes) {
+				const ink = urgencyInkFor(color, background);
+				const inkRgb = parseHex(ink.ink);
+				const fill = parseHex(ink.fill);
+				assert.ok(inkRgb && fill, `${name} ${hex}`);
+				assert.ok(ink.ratio >= 4.5, `${name} ${hex} ${theme} ratio ${ink.ratio}`);
+				assert.ok(contrast(inkRgb, fill) >= 4.5, `${name} ${hex} ${theme} fill ${contrast(inkRgb, fill)}`);
+			}
+		}
+	});
+
 	it('keeps ink at 4.5:1 on the 14% fill and deepens pastel rings', () => {
 		const bg = parseHex('#1e1e1e');
 		const light = parseHex('#ffffff');

@@ -14,6 +14,7 @@ import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
 import { paintUrgencyInk } from './color-math';
+import { fitMiddleEllipsis } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { urgencyColorsFor } from './urgency-palette';
 
@@ -165,6 +166,9 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 		node.style.setProperty('--rv-urgency-accent', accent);
 		node.style.setProperty('--rv-urgency-ink', ink);
 		node.style.setProperty('--callout-color', accent);
+	});
+	start.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
+		if (node instanceof HTMLElement) paintUrgencyInk(node, accent);
 	});
 	markUrgencyReady(hosts);
 }
@@ -730,8 +734,9 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	link.classList.toggle('is-on', host.mapOpen());
 	link.classList.remove('rv-address-hidden');
 	const text = input.value.trim();
-	link.textContent = text || 'Add an address';
 	link.classList.toggle('is-empty', !text);
+	if (text) fitMiddleEllipsis(link, text);
+	else link.textContent = 'Add an address';
 	const editing = paragraph.ownerDocument.activeElement === input;
 	link.hidden = editing || text.length === 0;
 	input.hidden = !editing && text.length > 0;
@@ -752,7 +757,9 @@ function fitHubOverflow(row: HTMLElement): void {
 		if (!(node instanceof HTMLElement)) return;
 		const label = node.querySelector('.rv-hub-chip-label');
 		if (!(label instanceof HTMLElement)) return;
-		node.classList.toggle('is-overflow', label.scrollWidth - label.clientWidth > 1);
+		const full = label.dataset.full || label.textContent || '';
+		fitMiddleEllipsis(label, full);
+		node.classList.remove('is-overflow');
 	});
 }
 

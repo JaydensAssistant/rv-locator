@@ -226,10 +226,13 @@ export function popupClearOfChrome(
 	const limitRight = Math.max(4, stage.width - column);
 	const limitBottom = Math.max(4, stage.height - MAP_CREDIT_STRIP_PX);
 	let left = anchor.x + 28;
-	let top = anchor.y - card.height / 2;
 	if (left + card.width > limitRight) left = anchor.x - 28 - card.width;
 	if (left + card.width > limitRight) left = limitRight - card.width;
 	if (left < 4) left = 4;
+	const below = anchor.y + 18;
+	const above = anchor.y - card.height - 12;
+	let top = above >= 4 ? above : below;
+	if (top + card.height > limitBottom) top = above >= 4 ? above : limitBottom - card.height;
 	if (top + card.height > limitBottom) top = limitBottom - card.height;
 	if (top < 4) top = 4;
 	return { left, top };

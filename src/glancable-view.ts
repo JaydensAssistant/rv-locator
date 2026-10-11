@@ -1,5 +1,5 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
-import { hubUsesStackedMap, revealHubCard, stackedEmbedCap } from './hub-layout';
+import { hubUsesStackedMap, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -122,11 +122,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private ensureStage(): void {
-		if (this.stageEl?.isConnected) return;
-		const stage = this.root.createDiv('rv-locator-stage');
-		this.root.insertBefore(stage, this.scrollEl);
-		stage.appendChild(this.scrollEl);
-		this.stageEl = stage;
+		const root = this.root;
+		const scroll = this.scrollEl;
+		if (!root?.isConnected || !scroll) return;
+		const current = this.stageEl;
+		if (current?.isConnected && current.parentElement === root && scroll.parentElement === current) return;
+		this.stageEl = placeGlanceStage(root, scroll, current);
 	}
 
 	private ensureHubMap(): void {

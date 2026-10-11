@@ -41,7 +41,7 @@ export class SlotOverrideModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Mark a day and daypart as Try or Avoid even when the counts say something else. For example, they said they work then, or they are off.',
+			text: 'Try or Avoid for this day and daypart.',
 		});
 		new Setting(contentEl)
 			.setName('Day')
@@ -59,7 +59,7 @@ export class SlotOverrideModal extends Modal {
 			});
 		new Setting(contentEl)
 			.setName('Label')
-			.setDesc('Why this day and daypart should be Try or Avoid. For example, they work then.')
+			.setDesc('Why this slot is Try or Avoid.')
 			.addText((text) => {
 				text.setPlaceholder('Works then');
 				text.setValue(this.reason);

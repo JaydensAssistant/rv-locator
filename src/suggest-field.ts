@@ -1,4 +1,5 @@
 import { setIcon } from 'obsidian';
+import { mountClosedTitle } from './title-fit';
 
 /** Placeholder row while an address lookup is in flight. Not a choice. */
 export const SUGGEST_PENDING = '\u0000pending';
@@ -168,6 +169,7 @@ export function mountAlwaysChevron(
 	input.addEventListener('rv-suggest-sync', () => {
 		if (!panel.hidden) paint();
 	});
+	if (present) mountClosedTitle(input, present);
 	input.addEventListener('keydown', (event) => {
 		const key = event instanceof KeyboardEvent ? event.key : '';
 		if (key !== 'ArrowDown' && key !== 'ArrowUp' && key !== 'Enter') return;

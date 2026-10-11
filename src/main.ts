@@ -625,7 +625,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
 			new NewRvIdentityModal(this.app, {
 				title: 'Add a housemate',
-				intro: 'Same choices as a new RV. The address starts from this note.',
+				intro: 'Same choices. The address starts filled in.',
 				defaultPriority: this.settings.defaultNewRvPriority,
 				companions: this.recentCompanionNames(),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
@@ -1097,9 +1097,16 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	subscribeViewRefresh(callback: () => void): () => void {
-		this.viewRefreshers.add(callback);
+		const safe = (): void => {
+			try {
+				callback();
+			} catch {
+				// One view must not reject settings or turn a repaint into a Notice.
+			}
+		};
+		this.viewRefreshers.add(safe);
 		return () => {
-			this.viewRefreshers.delete(callback);
+			this.viewRefreshers.delete(safe);
 		};
 	}
 

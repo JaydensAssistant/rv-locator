@@ -135,6 +135,109 @@ export function watchTitleRow(row: HTMLElement): void {
 	}
 }
 
+const LEADING_NUMBER = /^(\d+\s+)/;
+
+/**
+ * Closed catalog fields keep the leading number and the type suffix visible.
+ * Focus shows the full value in the input.
+ */
+export function mountClosedTitle(
+	input: HTMLElement,
+	present: (value: string) => { text: string; suffix: string },
+): void {
+	const parent = input.parentElement;
+	if (!parent) return;
+	const found = parent.querySelector(':scope > .rv-closed-title');
+	const overlay = found instanceof HTMLElement ? found : input.ownerDocument.createElement('span');
+	if (!(found instanceof HTMLElement)) {
+		overlay.className = 'rv-closed-title';
+		overlay.setAttribute('aria-hidden', 'true');
+		input.insertAdjacentElement('afterend', overlay);
+	}
+	const read = (): string => {
+		if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) return input.value;
+		return input.getAttribute('value') ?? '';
+	};
+	const paint = (): void => {
+		const focused = input.ownerDocument.activeElement === input;
+		const value = read().trim();
+		if (focused || !value) {
+			overlay.hidden = true;
+			input.classList.remove('is-title-closed');
+			return;
+		}
+		const parts = present(value);
+		const lead = LEADING_NUMBER.exec(parts.text);
+		const pre = lead?.[1] ?? '';
+		const stem = pre ? parts.text.slice(pre.length) : parts.text;
+		const suffix = parts.suffix.trim();
+		overlay.replaceChildren();
+		if (pre) overlay.append(closedSpan(input, 'rv-title-pre', pre));
+		overlay.append(closedSpan(input, 'rv-title-text', stem));
+		if (suffix) overlay.append(closedSpan(input, 'rv-title-suffix', ` ${suffix}`));
+		overlay.hidden = false;
+		overlay.title = suffix ? `${parts.text} ${suffix}` : parts.text;
+		input.classList.add('is-title-closed');
+	};
+	input.addEventListener('focus', paint);
+	input.addEventListener('blur', paint);
+	input.addEventListener('input', paint);
+	input.addEventListener('change', paint);
+	paint();
+}
+
+function closedSpan(input: HTMLElement, cls: string, text: string): HTMLElement {
+	const node = input.ownerDocument.createElement('span');
+	node.className = cls;
+	node.textContent = text;
+	return node;
+}
+
+/**
+ * Suffix-free cut for addresses and hub names. The start and the end stay;
+ * the ellipsis sits in the middle. A box that already fits is left whole.
+ */
+export function fitMiddleEllipsis(el: HTMLElement, full: string): void {
+	const text = full.replace(/\s+/g, ' ').trim();
+	el.dataset.full = text;
+	el.title = text;
+	const apply = (): void => {
+		const source = (el.dataset.full || text).replace(/\s+/g, ' ').trim();
+		el.textContent = source;
+		const width = el.clientWidth;
+		if (!source || width <= 8) return;
+		if (el.scrollWidth <= width + 1) return;
+		let lo = 1;
+		let hi = source.length - 1;
+		let best = '…';
+		while (lo <= hi) {
+			const mid = (lo + hi) >> 1;
+			const head = Math.ceil(mid / 2);
+			const tail = Math.floor(mid / 2);
+			const candidate = tail > 0 ? `${source.slice(0, head)}…${source.slice(source.length - tail)}` : `${source.slice(0, head)}…`;
+			el.textContent = candidate;
+			if (el.scrollWidth <= width + 1) {
+				best = candidate;
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		el.textContent = best;
+	};
+	apply();
+	if (el.dataset.rvMid === '1') return;
+	el.dataset.rvMid = '1';
+	if (typeof requestAnimationFrame === 'function') requestAnimationFrame(apply);
+	if (typeof ResizeObserver === 'undefined') return;
+	try {
+		const observer = new ResizeObserver(() => apply());
+		observer.observe(el);
+	} catch {
+		/* The node is not in a browser. */
+	}
+}
+
 function showTitlePopover(anchor: HTMLElement, text: string): void {
 	const doc = anchor.ownerDocument;
 	doc.querySelectorAll('.rv-title-popover').forEach((node) => node.remove());

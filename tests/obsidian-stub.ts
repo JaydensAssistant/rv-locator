@@ -73,16 +73,27 @@ class FakeEl {
 
 class FakeButton {
 	text = '';
+	cta = false;
+	warning = false;
+	buttonEl: HTMLElement | null = null;
 	private clickFn: (() => void) | null = null;
+
+	setTooltip(_text: string): this { return this; }
 
 	setButtonText(text: string): this {
 		this.text = text;
 		return this;
 	}
 
-	setCta(): this { return this; }
+	setCta(): this {
+		this.cta = true;
+		return this;
+	}
 
-	setWarning(): this { return this; }
+	setWarning(): this {
+		this.warning = true;
+		return this;
+	}
 
 	setDisabled(_disabled?: boolean): this { return this; }
 
@@ -208,22 +219,78 @@ class FakeText {
 	}
 }
 
+function isRealElement(el: unknown): el is HTMLElement {
+	return !!el && typeof (el as HTMLElement).appendChild === 'function' && typeof (el as HTMLElement).ownerDocument?.createElement === 'function';
+}
+
 export class Setting {
-	controlEl = new FakeEl();
-	constructor(private el?: FakeEl) {}
-	setClass(_cls: string): this { return this; }
-	addColorPicker(cb: (picker: FakeColor) => void): this {
-		cb(new FakeColor());
+	controlEl: HTMLElement | FakeEl = new FakeEl();
+	settingEl: HTMLElement | FakeEl | null = null;
+	nameEl: HTMLElement | null = null;
+	descEl: HTMLElement | null = null;
+	infoEl: HTMLElement | null = null;
+	constructor(private el?: HTMLElement | FakeEl) {
+		if (!isRealElement(el)) return;
+		const doc = el.ownerDocument;
+		const item = doc.createElement('div');
+		item.className = 'setting-item';
+		const info = doc.createElement('div');
+		info.className = 'setting-item-info';
+		const name = doc.createElement('div');
+		name.className = 'setting-item-name';
+		const desc = doc.createElement('div');
+		desc.className = 'setting-item-description';
+		const control = doc.createElement('div');
+		control.className = 'setting-item-control';
+		info.append(name, desc);
+		item.append(info, control);
+		el.appendChild(item);
+		this.settingEl = item;
+		this.infoEl = info;
+		this.nameEl = name;
+		this.descEl = desc;
+		this.controlEl = control;
+	}
+	setClass(cls: string): this {
+		if (isRealElement(this.settingEl)) this.settingEl.classList.add(...cls.split(/\s+/).filter(Boolean));
 		return this;
 	}
-	setName(_name: string): this { return this; }
-	setDesc(_desc: string): this { return this; }
+	addColorPicker(cb: (picker: FakeColor) => void): this {
+		cb(new FakeColor());
+		if (isRealElement(this.controlEl)) {
+			const input = this.controlEl.ownerDocument.createElement('input');
+			input.type = 'color';
+			this.controlEl.appendChild(input);
+		}
+		return this;
+	}
+	setName(name: string): this {
+		if (this.nameEl) this.nameEl.textContent = name;
+		return this;
+	}
+	setDesc(desc: string): this {
+		if (this.descEl) this.descEl.textContent = desc;
+		return this;
+	}
 	setHeading(): this { return this; }
 	addButton(cb: (button: FakeButton) => void): this {
 		const button = new FakeButton();
+		const node = isRealElement(this.controlEl) ? this.controlEl.ownerDocument.createElement('button') : null;
+		if (node) {
+			node.type = 'button';
+			button.buttonEl = node;
+		}
 		cb(button);
-		const node = this.el?.createEl('button', { text: button.text });
-		node?.addEventListener('click', () => { button.click(); });
+		if (node && isRealElement(this.controlEl)) {
+			node.textContent = button.text;
+			if (button.cta) node.classList.add('mod-cta');
+			if (button.warning) node.classList.add('mod-warning');
+			node.addEventListener('click', () => { button.click(); });
+			this.controlEl.appendChild(node);
+			return this;
+		}
+		const fake = (this.el as FakeEl | undefined)?.createEl('button', { text: button.text });
+		fake?.addEventListener('click', () => { button.click(); });
 		return this;
 	}
 	addTextArea(cb: (text: FakeTextArea) => void): this {
@@ -234,9 +301,51 @@ export class Setting {
 		return this;
 	}
 	addDropdown(_cb: (dropdown: unknown) => void): this { return this; }
+	addSlider(cb: (slider: {
+		setLimits: () => unknown;
+		setValue: () => unknown;
+		setDynamicTooltip: () => unknown;
+		onChange: () => unknown;
+	}) => void): this {
+		if (isRealElement(this.controlEl)) {
+			const input = this.controlEl.ownerDocument.createElement('input');
+			input.type = 'range';
+			this.controlEl.appendChild(input);
+		}
+		const slider = {
+			setLimits() { return slider; },
+			setValue() { return slider; },
+			setDynamicTooltip() { return slider; },
+			onChange() { return slider; },
+		};
+		cb(slider);
+		return this;
+	}
 	addToggle(_cb: (toggle: unknown) => void): this { return this; }
 	addText(cb: (text: FakeText) => void): this {
-		cb(new FakeText(this.el));
+		if (isRealElement(this.controlEl)) {
+			const input = this.controlEl.ownerDocument.createElement('input');
+			input.type = 'text';
+			this.controlEl.appendChild(input);
+			const text = {
+				inputEl: input,
+				setPlaceholder(value: string) {
+					input.placeholder = value;
+					return text;
+				},
+				setValue(value: string) {
+					input.value = value;
+					return text;
+				},
+				onChange(fn: (value: string) => void) {
+					input.addEventListener('input', () => { fn(input.value); });
+					return text;
+				},
+			};
+			cb(text as unknown as FakeText);
+			return this;
+		}
+		cb(new FakeText(this.el as FakeEl | undefined));
 		return this;
 	}
 }

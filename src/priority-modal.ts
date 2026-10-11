@@ -17,10 +17,11 @@ export class PrioritySliderModal extends Modal {
 
 	onOpen(): void {
 		this.setTitle(`Priority on “${this.displayName}”`);
+		this.modalEl.addClass('rv-locator-modal');
 		const { contentEl } = this;
 		new Setting(contentEl)
 			.setName('Priority')
-			.setDesc('0 is Inactive. 1 to 5 stays on the active list.')
+			.setDesc('0 is Inactive. 1 to 5 stays active.')
 			.addSlider((slider) => {
 				slider.setLimits(0, 5, 1);
 				slider.setValue(this.value);
@@ -30,6 +31,11 @@ export class PrioritySliderModal extends Modal {
 				});
 			});
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			})
 			.addButton((button) => {
 				button.setButtonText('Save');
 				button.setCta();
@@ -37,10 +43,6 @@ export class PrioritySliderModal extends Modal {
 					this.onSave(this.value);
 					this.close();
 				});
-			})
-			.addButton((button) => {
-				button.setButtonText('Cancel');
-				button.onClick(() => this.close());
 			});
 		iconizeModal(contentEl);
 	}

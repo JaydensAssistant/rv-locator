@@ -123,26 +123,29 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
-		reshapeVisitHeading(heading, when, coveredName(root, when, true));
+		reshapeVisitHeading(heading, when, coveredName(root, when));
 		wireStampJump(heading, when);
 	}
 	for (const callout of attemptLogCallouts(root)) {
 		const seen = new Map<string, number>();
 		callout.querySelectorAll('.callout-content li').forEach((item) => {
 			if (!domInstanceOf(item, HTMLElement)) return;
-			const bullet = parseLogBullet(`- ${textWithout(item, `.${MORE_CLASS}`)}`);
+			const bullet = parseLogBullet(`- ${textWithout(item, `.${MORE_CLASS}, .rv-log-covered`)}`);
 			if (!bullet) return;
 			const key = `${bullet.when.getTime()}|${bullet.home ? 'home' : 'miss'}`;
 			const ordinal = seen.get(key) ?? 0;
 			seen.set(key, ordinal + 1);
 			item.addClass('rv-visit-line');
+			item.dataset.rvWhen = String(bullet.when.getTime());
+			if (bullet.covered) item.dataset.rvCovered = bullet.covered;
 			wrapLogStamp(item);
-			renderCoveredMention(item, bullet.covered);
+			renderCoveredMention(item, bullet.covered || item.dataset.rvCovered || '');
 			moreButton(item, 'Visit options', (evt) => {
 				open({ when: bullet.when, home: bullet.home, ordinal, fileLine: null }, evt);
 			});
 		});
 	}
+	backfillCoveredChips(root);
 }
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -160,16 +163,40 @@ function stampWhenLabel(source: string, when: Date): string {
 	return lead || dow;
 }
 
-function coveredName(root: HTMLElement, when: Date, home: boolean): string {
-	for (const callout of attemptLogCallouts(root)) {
+/** Heading sections and the Log are often separate post-processor roots. */
+function coveredSearchRoot(root: HTMLElement): HTMLElement {
+	const wide = root.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view, .cm-editor, .workspace-leaf-content');
+	return wide instanceof HTMLElement ? wide : root;
+}
+
+function coveredName(root: HTMLElement, when: Date): string {
+	const target = when.getTime();
+	const surface = coveredSearchRoot(root);
+	for (const callout of attemptLogCallouts(surface)) {
 		for (const item of Array.from(callout.querySelectorAll('li'))) {
 			if (!domInstanceOf(item, HTMLElement)) continue;
-			const bullet = parseLogBullet(`- ${item.textContent ?? ''}`);
-			if (!bullet || bullet.home !== home || bullet.when.getTime() !== when.getTime()) continue;
-			return bullet.covered;
+			const stamped = Number(item.dataset.rvWhen);
+			const stored = item.dataset.rvCovered?.trim() ?? '';
+			if (stamped === target && stored) return stored;
+			const bullet = parseLogBullet(`- ${textWithout(item, `.${MORE_CLASS}, .rv-log-covered`)}`);
+			if (!bullet || bullet.when.getTime() !== target) continue;
+			if (bullet.covered) return bullet.covered;
+			if (stored) return stored;
 		}
 	}
 	return '';
+}
+
+/** The Log pass can land after the heading pass. Paint the chip once the token is known. */
+function backfillCoveredChips(root: HTMLElement): void {
+	const surface = coveredSearchRoot(root);
+	for (const heading of stampHeadings(surface)) {
+		const when = stampDateTime(headingSource(heading));
+		if (!when) continue;
+		const covered = coveredName(surface, when);
+		if (!covered) continue;
+		paintItemStrip(heading, headingSource(heading), covered);
+	}
 }
 
 function headingSource(heading: HTMLElement): string {
@@ -242,8 +269,8 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 		heading.insertAdjacentElement('afterend', strip);
 	}
 	strip.replaceChildren();
-	const items: Array<{ icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain' }> = [];
-	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain' });
+	const items: Array<{ icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }> = [];
+	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain', campaign: true });
 	const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»/g;
 	let match = piece.exec(source);
 	while (match) {
@@ -267,6 +294,7 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 		icon.className = 'rv-item-icon';
 		setIcon(icon, item.icon);
 		chip.appendChild(icon);
+		if (item.campaign) chip.classList.add('is-campaign');
 		strip.appendChild(chip);
 		mountFittedTitle(chip, item.title, item.kind);
 	}
@@ -274,16 +302,30 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	watchTitleRow(strip);
 }
 
-function findItemStrip(heading: HTMLElement): HTMLElement | null {
-	const next = heading.nextElementSibling;
-	if (!(next instanceof HTMLElement)) return null;
-	if (next.classList.contains('rv-item-strip')) return next;
-	if (!next.classList.contains('rv-visit-note-box')) return null;
-	const strip = next.querySelector(':scope > .rv-item-strip');
-	return strip instanceof HTMLElement ? strip : null;
+/** Reading view wraps the heading in `.el-h5`. Live Preview keeps it in a `.cm-line`. */
+function blockHost(heading: HTMLElement): HTMLElement {
+	const wrapped = heading.closest('.el-h1, .el-h2, .el-h3, .el-h4, .el-h5, .el-h6');
+	if (wrapped instanceof HTMLElement) return wrapped;
+	const line = heading.closest('.cm-line');
+	if (line instanceof HTMLElement && line !== heading) return line;
+	return heading;
 }
 
-/** The strip sits at the top of the tinted note box. Empty visits keep the ghost strip. */
+function findItemStrip(heading: HTMLElement): HTMLElement | null {
+	const hosts = [heading, blockHost(heading)];
+	for (const host of hosts) {
+		const next = host.nextElementSibling;
+		if (!(next instanceof HTMLElement)) continue;
+		if (next.classList.contains('rv-item-strip')) return next;
+		if (!next.classList.contains('rv-visit-note-box')) continue;
+		const strip = next.querySelector(':scope > .rv-item-strip');
+		if (strip instanceof HTMLElement) return strip;
+	}
+	const nested = heading.parentElement?.querySelector(':scope > .rv-visit-note-box > .rv-item-strip, :scope > .rv-item-strip');
+	return nested instanceof HTMLElement ? nested : null;
+}
+
+/** The strip sits at the top of the tinted note box. The note text is inside that same box. */
 function ensureNoteBox(heading: HTMLElement, strip: HTMLElement): void {
 	let box = strip.parentElement;
 	if (!(box instanceof HTMLElement) || !box.classList.contains('rv-visit-note-box')) {
@@ -293,17 +335,33 @@ function ensureNoteBox(heading: HTMLElement, strip: HTMLElement): void {
 		created.appendChild(strip);
 		box = created;
 	}
-	const next = box.nextElementSibling;
-	if (!(next instanceof HTMLElement) || !isVisitNoteBlock(next)) return;
-	box.appendChild(next);
+	const host = blockHost(heading);
+	if (box.parentElement !== host.parentElement || box.previousElementSibling !== host) {
+		host.insertAdjacentElement('afterend', box);
+	}
+	let next = box.nextElementSibling;
+	while (next instanceof HTMLElement && isVisitNoteBlock(next)) {
+		const following = next.nextElementSibling;
+		box.appendChild(next);
+		next = following;
+	}
 }
 
 function isVisitNoteBlock(node: HTMLElement): boolean {
-	if (node.matches('h1, h2, h3, h4, h5, h6, .callout, hr, .rv-item-strip, .rv-visit-note-box')) return false;
-	return node.matches('p, div, .el-p, blockquote');
+	if (node.matches('h1, h2, h3, h4, h5, h6, .callout, hr, .rv-item-strip, .rv-visit-note-box, .rv-older-visits-wrap, .rv-notes-fold-stop')) return false;
+	if (node.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > .callout, .rv-visit-stamp, .rv-stamp-row')) return false;
+	if (node.classList.contains('cm-line')) {
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (!text) return false;
+		if (stampDateTime(text)) return false;
+		return true;
+	}
+	if (node.querySelector('textarea')) return true;
+	return node.matches('p, div, .el-p, blockquote, textarea');
 }
 
 function renderCoveredMention(item: HTMLElement, covered: string): void {
+	if (covered) item.dataset.rvCovered = covered;
 	const existing = item.querySelector(':scope > .rv-log-covered');
 	if (!covered || existing) return;
 	const doc = item.ownerDocument;

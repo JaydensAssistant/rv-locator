@@ -34,7 +34,7 @@ describe('1.3.5 dogfood helpers', () => {
 		assert.equal(coveragePronoun('Woman'), 'her');
 		assert.equal(coveragePronoun('Man'), 'him');
 		assert.equal(coveragePronoun(''), 'them');
-		assert.equal(coverageQuestion('her', 'Spring'), 'Did you cover her with the Spring campaign?');
+		assert.equal(coverageQuestion('her', 'Spring'), 'Cover her with Spring?');
 		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4)), 'Fri aft');
 		assert.equal(cardReturnLead(new Date(2026, 9, 3, 9, 0), 'short'), 'Sat mor');
 		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4), 'long'), 'Friday afternoon — ');

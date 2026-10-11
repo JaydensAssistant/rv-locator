@@ -48,6 +48,14 @@ export class RvMapView extends ItemView {
 	private stageObserver: ResizeObserver | null = null;
 	private hideMapButton: HTMLElement | null = null;
 	private tileImgs = new Map<string, HTMLImageElement>();
+	private tileSrc = new Map<string, string>();
+	private settleEl: HTMLElement | null = null;
+	private settleZ = -1;
+	private settleCx = 0;
+	private settleCy = 0;
+	private settleTile = 256;
+	private popupPanned = false;
+	private lastPlaced: { pin: MapPin; point: { x: number; y: number } }[] = [];
 	private tileIndex: TileRecord[] = loadTileIndex();
 	private tileEpoch = -1;
 	/** Fullscreen pin tap only. Card taps and split taps never set this. */
@@ -86,6 +94,14 @@ export class RvMapView extends ItemView {
 		this.stageObserver = null;
 		this.hideMapButton = null;
 		this.tileImgs = new Map();
+		this.tileSrc = new Map();
+		this.settleEl = null;
+		this.settleZ = -1;
+		this.settleCx = 0;
+		this.settleCy = 0;
+		this.settleTile = 256;
+		this.popupPanned = false;
+		this.lastPlaced = [];
 		this.tileIndex = loadTileIndex();
 		this.tileEpoch = -1;
 		this.popupPath = null;
@@ -370,6 +386,18 @@ export class RvMapView extends ItemView {
 			this.drag = null;
 			stage.removeClass('is-grabbing');
 			if (!drag || drag.moved) return;
+			const rect = stage.getBoundingClientRect();
+			const near = this.pinsNear(event.clientX - rect.left, event.clientY - rect.top, 30);
+			if (tapZoomsStack(Math.floor(this.zoom), near.length)) {
+				const pin = near[0]?.pin;
+				if (pin) {
+					this.centerLat = pin.lat;
+					this.centerLon = pin.lon;
+					this.popupPath = null;
+					this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
+					return;
+				}
+			}
 			if (this.isFullscreen()) {
 				if (!this.selectedPath && !this.popupPath) return;
 				this.selectedPath = null;
@@ -443,8 +471,9 @@ export class RvMapView extends ItemView {
 		const cyF = cy * frac;
 		if (this.user) this.paintUser(pins, width, height, cxF, cyF);
 		const placed = this.pins.map((pin) => ({ pin, point: this.project(pin.lat, pin.lon, width, height, cxF, cyF) }));
+		this.lastPlaced = placed;
 		this.paintStacks(pins, placed);
-		const popup = this.popupPath && this.zoom > 12 && this.isFullscreen()
+		const popup = this.popupPath && Math.floor(this.zoom) > 12 && this.isFullscreen()
 			? placed.find((item) => item.pin.path === this.popupPath)
 			: null;
 		if (popup) this.openCard(pins, popup.pin, popup.point);
@@ -488,34 +517,41 @@ export class RvMapView extends ItemView {
 			this.tileEpoch = epoch;
 			this.tileIndex = loadTileIndex();
 		}
-		const left = Math.floor(cx - width / 2 / tilePx) - 1;
-		const right = Math.floor(cx + width / 2 / tilePx) + 1;
-		const top = Math.floor(cy - height / 2 / tilePx) - 1;
-		const bottom = Math.floor(cy + height / 2 / tilePx) + 1;
+		const buffer = 2;
+		const left = Math.floor(cx - width / 2 / tilePx) - buffer;
+		const right = Math.floor(cx + width / 2 / tilePx) + buffer;
+		const top = Math.floor(cy - height / 2 / tilePx) - buffer;
+		const bottom = Math.floor(cy + height / 2 / tilePx) + buffer;
 		const needed = new Set<string>();
+		const visible = new Set<string>();
 		const box = homeBoxFromPoints(this.pins);
+		const viewLeft = Math.floor(cx - width / 2 / tilePx);
+		const viewRight = Math.floor(cx + width / 2 / tilePx);
+		const viewTop = Math.floor(cy - height / 2 / tilePx);
+		const viewBottom = Math.floor(cy + height / 2 / tilePx);
 		for (let x = left; x <= right; x += 1) {
 			for (let y = top; y <= bottom; y += 1) {
 				if (y < 0 || y >= scale) continue;
 				const wrapped = ((x % scale) + scale) % scale;
 				const key = tileKey(z, wrapped, y);
 				needed.add(key);
+				if (x >= viewLeft && x <= viewRight && y >= viewTop && y <= viewBottom) visible.add(key);
 				let img = this.tileImgs.get(key);
 				if (!img) {
 					img = stage.ownerDocument.createElement('img');
 					img.className = 'rv-map-tile';
 					img.alt = '';
-					const parentKey = z > 0 ? tileKey(z - 1, Math.floor(wrapped / 2), Math.floor(y / 2)) : '';
-					const parent = parentKey ? this.tileImgs.get(parentKey) : undefined;
-					if (parent?.src) {
-						img.style.backgroundImage = `url("${parent.src}")`;
-						const quadX = wrapped % 2 === 0 ? '0%' : '100%';
-						const quadY = y % 2 === 0 ? '0%' : '100%';
-						img.style.backgroundPosition = `${quadX} ${quadY}`;
-						img.style.backgroundSize = '200% 200%';
+					const parent = ancestorTileBackground(z, wrapped, y, this.tileSrc);
+					if (parent) {
+						img.style.backgroundImage = `url("${parent.url}")`;
+						img.style.backgroundPosition = parent.position;
+						img.style.backgroundSize = parent.size;
+						img.style.backgroundRepeat = 'no-repeat';
 					}
 					img.addEventListener('load', () => {
-						img?.classList.add('is-ready');
+						if (!img || img.naturalWidth <= 0) return;
+						img.classList.add('is-ready');
+						this.tileSrc.set(key, img.currentSrc || img.src);
 						this.tileIndex = noteViewedTile(this.tileIndex, {
 							z,
 							x: wrapped,
@@ -532,15 +568,70 @@ export class RvMapView extends ItemView {
 				img.style.height = `${tilePx}px`;
 				img.style.left = `${(x - cx) * tilePx + width / 2}px`;
 				img.style.top = `${(y - cy) * tilePx + height / 2}px`;
+				img.classList.toggle('is-holding', !tileReady(img));
 			}
 		}
-		const ready = [...needed].every((key) => this.tileImgs.get(key)?.classList.contains('is-ready') || this.tileImgs.get(key)?.complete);
-		if (!ready) return;
+		const visibleReady = [...visible].every((key) => tileReady(this.tileImgs.get(key)));
+		this.syncTileSettle(stage, pins, z, cx, cy, tilePx, visibleReady);
+		if (!visibleReady) return;
 		for (const [key, img] of this.tileImgs) {
 			if (needed.has(key)) continue;
 			img.remove();
 			this.tileImgs.delete(key);
 		}
+	}
+
+	/** Last complete frame stays under new tiles and slides with the pan until they load. */
+	private syncTileSettle(
+		stage: HTMLElement,
+		pins: HTMLElement,
+		z: number,
+		cx: number,
+		cy: number,
+		tilePx: number,
+		visibleReady: boolean,
+	): void {
+		if (!this.settleEl?.isConnected) {
+			const hold = stage.ownerDocument.createElement('div');
+			hold.className = 'rv-map-settle';
+			stage.insertBefore(hold, pins);
+			this.settleEl = hold;
+		}
+		const hold = this.settleEl;
+		if (!hold) return;
+		if (visibleReady) {
+			hold.replaceChildren();
+			this.settleZ = z;
+			this.settleCx = cx;
+			this.settleCy = cy;
+			this.settleTile = tilePx;
+			for (const img of this.tileImgs.values()) {
+				if (!tileReady(img)) continue;
+				const clone = img.cloneNode(true);
+				if (clone instanceof HTMLElement) {
+					clone.classList.add('is-settle');
+					hold.appendChild(clone);
+				}
+			}
+			hold.style.transform = '';
+			return;
+		}
+		if (this.settleZ < 0) return;
+		if (this.settleZ === z) {
+			const dx = (this.settleCx - cx) * tilePx;
+			const dy = (this.settleCy - cy) * tilePx;
+			hold.style.transform = `translate(${dx}px, ${dy}px)`;
+			return;
+		}
+		const scale = tilePx / Math.max(1, this.settleTile);
+		const dx = this.settleCx * this.settleTile - cx * tilePx;
+		const dy = this.settleCy * this.settleTile - cy * tilePx;
+		hold.style.transformOrigin = '0 0';
+		hold.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+	}
+
+	private pinsNear(x: number, y: number, px: number): { pin: MapPin; point: { x: number; y: number } }[] {
+		return this.lastPlaced.filter((item) => Math.hypot(item.point.x - x, item.point.y - y) <= px);
 	}
 
 	private paintStacks(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {
@@ -604,22 +695,36 @@ export class RvMapView extends ItemView {
 		button.style.top = `${point.y}px`;
 		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected));
 		if (this.flashPath === pin.path && Date.now() < this.flashUntil) button.addClass('rv-pin-flash');
-		button.addEventListener('click', (event) => {
+		button.addEventListener('pointerup', (event) => {
+			if (event.button !== 0) return;
 			event.preventDefault();
 			event.stopPropagation();
+			const zed = Math.floor(this.zoom);
 			const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= 30);
-			if (tapZoomsStack(this.zoom, near.length)) {
+			const members = placed.map((item) => ({
+				path: item.pin.path,
+				x: item.point.x,
+				y: item.point.y,
+				urgency: item.pin.urgency,
+				priority: item.pin.priority,
+			}));
+			const group = groupPinStacks(members).find((entry) => entry.some((member) => member.path === pin.path));
+			const overlaps = Math.max(near.length, group?.length ?? 0);
+			if (tapZoomsStack(zed, overlaps)) {
 				this.centerLat = pin.lat;
 				this.centerLon = pin.lon;
-				this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
+				this.popupPath = null;
+				this.popupPanned = false;
+				this.setZoom(zoomToRevealPin(zed), true);
 				return;
 			}
-			const top = tapOpensTop(this.zoom, near.length)
+			const top = tapOpensTop(zed, overlaps)
 				? [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin
 				: pin;
 			this.selectedPath = top.path;
 			if (this.isFullscreen()) {
 				this.popupPath = top.path;
+				this.popupPanned = false;
 				const spot = placed.find((item) => item.pin.path === top.path)?.point ?? point;
 				this.openCard(layer, top, spot);
 				button.addClass('is-selected');
@@ -631,17 +736,36 @@ export class RvMapView extends ItemView {
 		});
 	}
 
+	private visibleStage(): { width: number; height: number } {
+		const stage = this.stage;
+		const view = stage?.ownerDocument.defaultView;
+		if (!stage) return { width: 390, height: 640 };
+		const frame = stage.getBoundingClientRect();
+		const viewH = view?.innerHeight ?? frame.height;
+		const viewW = view?.innerWidth ?? frame.width;
+		const height = Math.max(120, Math.min(frame.height || viewH, viewH - Math.max(0, frame.top)));
+		const width = Math.max(120, Math.min(frame.width || viewW, viewW));
+		return { width, height };
+	}
+
+	private panPixels(dx: number, dy: number): void {
+		const scale = TILE * 2 ** this.zoom;
+		this.centerLon += (dx / scale) * 360;
+		const y = latToTileY(this.centerLat, this.zoom) - dy / TILE;
+		this.centerLat = tileYToLat(y, this.zoom);
+		this.paint();
+	}
+
 	private openCard(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		layer.querySelectorAll('.rv-map-card').forEach((node) => node.remove());
 		const shell = layer.createDiv('rv-map-card rv-locator-glancable');
-		const stage = this.stage;
-		const origin = popupClearOfChrome({ x: point.x, y: point.y - 33 }, {
-			width: 280,
-			height: 180,
-		}, {
-			width: stage?.clientWidth || 640,
-			height: stage?.clientHeight || 480,
-		});
+		const frame = this.visibleStage();
+		const cardHeight = Math.min(320, Math.max(120, frame.height - 16));
+		shell.style.maxHeight = `${cardHeight}px`;
+		const origin = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
+			width: Math.min(280, frame.width - 24),
+			height: cardHeight,
+		}, frame);
 		shell.style.left = `${origin.left}px`;
 		shell.style.top = `${origin.top}px`;
 		shell.style.zIndex = String(pinUrgencyZ(pin.urgency, true) + 1);
@@ -720,6 +844,26 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
+		const nudge = (): void => {
+			const stage = this.stage;
+			const view = stage?.ownerDocument.defaultView;
+			if (!stage || !view || !shell.isConnected) return;
+			const card = shell.getBoundingClientRect();
+			const frame = stage.getBoundingClientRect();
+			const viewBottom = Math.min(frame.bottom, view.innerHeight);
+			const viewTop = Math.max(frame.top, 0);
+			const overflow = card.bottom - viewBottom;
+			const under = viewTop - card.top;
+			if ((overflow > 2 || under > 2) && !this.popupPanned) {
+				this.popupPanned = true;
+				this.panPixels(0, overflow > 2 ? overflow + 12 : -(under + 12));
+				return;
+			}
+			const limit = viewBottom - viewTop - 8;
+			if (card.height > limit && limit > 80) shell.style.maxHeight = `${limit}px`;
+		};
+		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(nudge);
+		else nudge();
 	}
 
 	private dateSlot(parent: HTMLElement, date: { icon: string; dow: string; time: string; rest: string; days: string }): void {
@@ -814,6 +958,33 @@ export function sizePinGlyph(host: HTMLElement, px = MAP_PIN_GLYPH_PX): void {
 		node.style.setProperty('min-width', `${px}px`, 'important');
 		node.style.setProperty('min-height', `${px}px`, 'important');
 	});
+}
+
+export function tileReady(img: HTMLImageElement | undefined): boolean {
+	return img?.classList.contains('is-ready') === true && img.naturalWidth > 0;
+}
+
+/** A loaded coarser tile covers a new tile until its own image arrives. */
+export function ancestorTileBackground(
+	z: number,
+	x: number,
+	y: number,
+	srcs: ReadonlyMap<string, string>,
+): { url: string; position: string; size: string } | null {
+	for (let level = 1; level <= 6 && z - level >= 0; level += 1) {
+		const div = 2 ** level;
+		const url = srcs.get(tileKey(z - level, Math.floor(x / div), Math.floor(y / div)));
+		if (!url) continue;
+		const cellX = x % div;
+		const cellY = y % div;
+		const denom = Math.max(1, div - 1);
+		return {
+			url,
+			position: `${(cellX / denom) * 100}% ${(cellY / denom) * 100}%`,
+			size: `${div * 100}% ${div * 100}%`,
+		};
+	}
+	return null;
 }
 
 function bestRank(pins: readonly MapPin[]): number {

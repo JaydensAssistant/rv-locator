@@ -25,6 +25,19 @@ export function stackedStageSplit(stagePx: number, handlePx = STACKED_HANDLE_PX,
 	return { cards, map };
 }
 
+/**
+ * Put the glance scroller inside a stage that is a child of the view root.
+ * A disconnected previous stage must not be an insertBefore anchor.
+ */
+export function placeGlanceStage(root: HTMLElement, scroll: HTMLElement, current: HTMLElement | null): HTMLElement {
+	const stage = current ?? root.createDiv('rv-locator-stage');
+	if (scroll.parentElement !== root && scroll.parentElement !== stage) root.appendChild(scroll);
+	if (stage.parentElement !== root) root.appendChild(stage);
+	if (scroll.parentElement === root) root.insertBefore(stage, scroll);
+	if (scroll.parentElement !== stage) stage.appendChild(scroll);
+	return stage;
+}
+
 /** Desktop embedded side map. 70vh of the viewport, never a zero-height column. */
 export function sideMapMinPx(viewportPx: number): number {
 	return Math.round(viewportPx * 0.7);

@@ -160,9 +160,16 @@ export function clampChroma(L: number, cMax: number, h: number): { c: number; rg
  * Ink for one resolved band against one resolved background.
  * A colour that already clears 4.5:1 on the 14% fill is kept.
  */
+/** Contrast of the hex ink on the hex fill, which is what gets painted. */
+function paintedContrast(rgb: RGB, fill: RGB): number {
+	const ink = parseHex(toHex(rgb));
+	const ground = parseHex(toHex(fill));
+	return ink && ground ? contrast(ink, ground) : 0;
+}
+
 export function urgencyInkFor(color: RGB, background: RGB): Ink {
 	const fill = mixSrgb(color, background, TINT);
-	const start = contrast(color, fill);
+	const start = paintedContrast(color, fill);
 	if (start >= INK_TARGET) {
 		return { ink: toHex(color), ratio: start, ok: true, fill: toHex(fill), adjusted: false };
 	}
@@ -172,7 +179,7 @@ export function urgencyInkFor(color: RGB, background: RGB): Ink {
 	const limit = lighten ? 1 : 0;
 	for (let L = L0; lighten ? L <= limit : L >= limit; L += lighten ? STEP : -STEP) {
 		const { rgb } = clampChroma(L, C0, h);
-		const ratio = contrast(rgb, fill);
+		const ratio = paintedContrast(rgb, fill);
 		if (ratio > best.ratio) best = { rgb, ratio };
 		if (ratio >= INK_TARGET) {
 			return { ink: toHex(rgb), ratio, ok: true, fill: toHex(fill), adjusted: true };
@@ -358,12 +365,21 @@ export function cachedUrgencyInk(color: string, background: string): string {
 	return ink;
 }
 
-/** Read the leaf background and set `--rv-urgency-ink` on `el`. */
+/** Theme page color. A missing variable follows the theme class, not a dark fallback. */
+export function themePageBackground(el: HTMLElement): string {
+	const doc = el.ownerDocument;
+	const body = doc?.body ?? el;
+	const view = doc?.defaultView;
+	const probe = view?.getComputedStyle(body);
+	const variable = probe?.getPropertyValue('--background-primary').trim() ?? '';
+	if (variable && parseCssColor(variable)) return variable;
+	const painted = probe?.backgroundColor ?? '';
+	if (painted && painted !== 'rgba(0, 0, 0, 0)' && painted !== 'transparent' && parseCssColor(painted)) return painted;
+	const dark = body.classList.contains('theme-dark') || el.closest('.theme-dark') != null;
+	return dark ? '#1e1e1e' : '#ffffff';
+}
+
+/** Read the theme background and set `--rv-urgency-ink` on `el` for this band color. */
 export function paintUrgencyInk(el: HTMLElement, color: string): void {
-	const view = el.ownerDocument?.defaultView;
-	const probe = view?.getComputedStyle(el);
-	const raw = probe?.backgroundColor && probe.backgroundColor !== 'rgba(0, 0, 0, 0)'
-		? probe.backgroundColor
-		: probe?.getPropertyValue('--background-primary') || '#1e1e1e';
-	el.style.setProperty('--rv-urgency-ink', cachedUrgencyInk(color, raw.trim() || '#1e1e1e'));
+	el.style.setProperty('--rv-urgency-ink', cachedUrgencyInk(color, themePageBackground(el)));
 }

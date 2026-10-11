@@ -8,6 +8,10 @@ import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateVisitControls } from '../src/visit-controls';
+import { placeGlanceStage } from '../src/hub-layout';
+import { ancestorTileBackground, tileReady } from '../src/map-view';
+import { tileKey } from '../src/tile-index';
+import { readFileSync } from 'node:fs';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
 const { window } = dom;
@@ -165,6 +169,92 @@ describe('smoke layout', () => {
 		refreshStampAgeLabels(root, today);
 		assert.match(heading?.querySelector('.rv-stamp-count')?.textContent ?? '', /^\d+d$/);
 		assert.equal((heading?.querySelector('.rv-stamp-count')?.textContent ?? '').includes('days'), false);
+	});
+
+	it('hoists the note box out of the heading wrapper and backfills a campaign chip from a separate log', () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const headingHost = window.document.createElement('div');
+		headingHost.className = 'el-h5';
+		headingHost.innerHTML = `<h5>${LONG}</h5>`;
+		const note = window.document.createElement('div');
+		note.className = 'el-p';
+		note.innerHTML = '<p>Showed the video and started lesson 1.</p>';
+		const log = window.document.createElement('div');
+		log.className = 'callout';
+		log.dataset.callout = 'note';
+		log.innerHTML = `<div class="callout-title"><div class="callout-title-inner">Log</div></div><div class="callout-content"><ul><li>Mon, 10:40am — Oct 6, 2025 — success — covered Convention</li></ul></div>`;
+		preview.append(headingHost, note);
+		decorateVisitControls(headingHost, () => 1, () => {});
+		assert.equal(headingHost.nextElementSibling?.querySelector('.rv-item.is-campaign') ?? null, null);
+		preview.append(log);
+		decorateVisitControls(log, () => 1, () => {});
+		const box = headingHost.nextElementSibling;
+		assert.equal(box?.classList.contains('rv-visit-note-box'), true);
+		assert.equal(box?.contains(note), true);
+		assert.equal(box?.querySelector('.el-p p')?.textContent, 'Showed the video and started lesson 1.');
+		const first = box?.querySelector('.rv-item-strip .rv-item');
+		assert.equal(first?.classList.contains('is-campaign'), true);
+		assert.match(first?.textContent ?? '', /Convention/);
+		assert.equal(box?.contains(log), false);
+	});
+
+	it('pulls a live-preview note line into the same box as the strip', () => {
+		const editor = window.document.createElement('div');
+		editor.className = 'cm-editor';
+		const line = window.document.createElement('div');
+		line.className = 'cm-line';
+		line.innerHTML = `<h5>${LONG}</h5>`;
+		const note = window.document.createElement('div');
+		note.className = 'cm-line';
+		note.textContent = 'Showed the video and started lesson 1.';
+		const log = window.document.createElement('div');
+		log.className = 'callout';
+		log.dataset.callout = 'note';
+		log.innerHTML = `<div class="callout-title"><div class="callout-title-inner">Log</div></div><div class="callout-content"><ul><li>Mon, 10:40am — Oct 6, 2025 — success — covered Convention</li></ul></div>`;
+		editor.append(line, note, log);
+		decorateVisitControls(line, () => 1, () => {});
+		decorateVisitControls(log, () => 1, () => {});
+		const box = line.nextElementSibling;
+		assert.equal(box?.classList.contains('rv-visit-note-box'), true);
+		assert.equal(box?.contains(note), true);
+		assert.match(box?.querySelector('.rv-item.is-campaign')?.textContent ?? '', /Convention/);
+	});
+
+	it('reparents a scroller when its previous stage is disconnected', () => {
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const scroll = window.document.createElement('div');
+		const orphan = window.document.createElement('div');
+		orphan.appendChild(scroll);
+		const stage = placeGlanceStage(root, scroll, null);
+		assert.equal(stage.parentElement, root);
+		assert.equal(scroll.parentElement, stage);
+		stage.remove();
+		assert.equal(stage.isConnected, false);
+		const again = placeGlanceStage(root, scroll, stage);
+		assert.equal(again, stage);
+		assert.equal(stage.parentElement, root);
+		assert.equal(scroll.parentElement, stage);
+		assert.equal(root.querySelectorAll('.rv-locator-stage').length, 1);
+	});
+
+	it('keeps a parent tile until the new tile has pixels, and zooms a stack from the floored zoom', () => {
+		const srcs = new Map<string, string>([[tileKey(11, 1, 2), 'https://tiles.example/old.png']]);
+		const parent = ancestorTileBackground(12, 3, 5, srcs);
+		assert.equal(parent?.url, 'https://tiles.example/old.png');
+		assert.equal(parent?.size, '200% 200%');
+		assert.equal(ancestorTileBackground(12, 0, 0, new Map()), null);
+		const img = window.document.createElement('img');
+		img.classList.add('is-ready');
+		assert.equal(tileReady(img), false);
+		const map = readFileSync('src/map-view.ts', 'utf8');
+		assert.match(map, /const buffer = 2/);
+		assert.match(map, /is-holding/);
+		assert.match(map, /if \(!visibleReady\) return;/);
+		assert.match(map, /Math\.floor\(this\.zoom\)/);
+		assert.match(map, /addEventListener\('pointerup'/);
+		assert.match(map, /zoomToRevealPin\(zed\)/);
 	});
 
 	it('keeps a 5px ghost strip inside the note box when a visit has no items', () => {

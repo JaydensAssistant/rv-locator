@@ -2,6 +2,7 @@ import { Modal, Setting, type App } from 'obsidian';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { mountCampaignChoice } from './campaign-choice';
 import { iconizeModal } from './modal-chrome';
+import { coverageQuestion } from './modals';
 
 /** Name a campaign, or cancel the one that is already active. Only one is active. */
 export class CampaignModal extends Modal {
@@ -32,8 +33,8 @@ export class CampaignModal extends Modal {
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
 			text: active
-				? 'This campaign is active. End it before starting another.'
-				: 'One campaign at a time. The start date is today unless you change it.',
+				? 'End this campaign before starting another.'
+				: 'One campaign at a time. The start date is today.',
 		});
 		new Setting(contentEl)
 			.setName('Name')
@@ -124,7 +125,7 @@ export function askCampaignCovered(app: App, campaignName: string): Promise<bool
 			modal.modalEl.addClass('rv-locator-modal');
 			mountCampaignChoice(
 				modal.contentEl,
-				`Did you cover them with the ${campaignName} campaign?`,
+				coverageQuestion('them', campaignName),
 				true,
 				(covered) => finish(covered),
 			);

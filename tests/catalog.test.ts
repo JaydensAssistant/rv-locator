@@ -482,6 +482,10 @@ describe('glancable smart search', () => {
 		}
 		const shifted = popupClearOfChrome({ x: 400, y: 80 }, { width: 280, height: 160 }, { width: 480, height: 320 });
 		assert.equal(shifted.left + 280 <= 480 - 56, true);
+		const low = popupClearOfChrome({ x: 180, y: 800 }, { width: 280, height: 320 }, { width: 390, height: 844 });
+		assert.equal(low.top >= 4, true);
+		assert.equal(low.top + 320 <= 844 - 14, true);
+		assert.equal(low.top + 320 < 800, true);
 		let opened = 0;
 		openDesktopDatePicker({ type: 'date', showPicker() { opened += 1; } } as HTMLInputElement, false);
 		assert.equal(opened, 1);

@@ -113,7 +113,7 @@ export class PriorityNudgeModal extends Modal {
 		});
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Lower it if interest has cooled. Stay if progress is about the same. Raise it if you are closer to studying.',
+			text: 'Lower, stay, or raise it.',
 		});
 		new Setting(contentEl)
 			.addButton((button) => {

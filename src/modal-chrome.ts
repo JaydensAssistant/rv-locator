@@ -91,10 +91,14 @@ export function iconizeModal(root: HTMLElement): void {
 	bindDatePickers(root);
 	watchModalWidth(root);
 	root.querySelectorAll('.setting-item-name').forEach((node) => {
-		paintIcon(node, iconFor(node.textContent ?? '', PROMPT_ICONS) ?? 'circle-dot');
+		if (!(node instanceof HTMLElement) || node.closest('.rv-campaign-choice, .rv-modal-actions')) return;
+		const icon = iconFor(node.textContent ?? '', PROMPT_ICONS);
+		if (icon) paintIcon(node, icon);
 	});
 	root.querySelectorAll('.rv-locator-modal-copy, p').forEach((node) => {
-		paintIcon(node, iconFor(node.textContent ?? '', PROMPT_ICONS) ?? 'info');
+		if (!(node instanceof HTMLElement) || node.classList.contains('rv-campaign-question')) return;
+		const icon = iconFor(node.textContent ?? '', PROMPT_ICONS);
+		if (icon) paintIcon(node, icon);
 	});
 	root.querySelectorAll('button').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;

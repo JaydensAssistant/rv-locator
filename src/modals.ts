@@ -177,15 +177,15 @@ export class BulkGeocodeModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Looks up notes that have an address and no location. A folder includes its subfolders, and Address is never written.',
+			text: 'Notes with an address and no location.',
 		});
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in a home county. Otherwise you pick a row, which saves Location as two quoted strings plus City and a Map Link of Address, and closing the picker skips that note.',
+			text: 'A lone 1.00 home hit saves. Else you pick.',
 		});
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'If Successful Visits is missing, Visits is copied into it. When Address and Location are already set and City is missing, City is filled from Address; Last Attempted is left alone, and distance is not written.',
+			text: 'Fills a missing Successful Visits or City.',
 		});
 
 		new Setting(contentEl)
@@ -218,8 +218,8 @@ export class BulkGeocodeModal extends Modal {
 		}
 
 		new Setting(contentEl)
-			.setName('Include notes that already have a location')
-			.setDesc('Looks them up again. Address is still never written.')
+			.setName('Include located notes')
+			.setDesc('Looks them up again.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.force);
 				toggle.onChange((value) => {
@@ -337,11 +337,11 @@ export class SuccessfulVisitsModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Copies Visits into Successful Visits only when it is missing. Does not change Visits or add Last Attempted.',
+			text: 'Fills Successful Visits only when it is missing.',
 		});
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'When City is missing on a note that already has Address and Location, City is filled from the address. No lookup is made.',
+			text: 'Fills a missing City from the address. No lookup.',
 		});
 
 		new Setting(contentEl)
@@ -499,7 +499,7 @@ export function coveragePronoun(gender: unknown): 'him' | 'her' | 'them' {
 }
 
 export function coverageQuestion(pronoun: 'him' | 'her' | 'them', campaign: string): string {
-	return `Did you cover ${pronoun} with the ${campaign} campaign?`;
+	return `Cover ${pronoun} with ${campaign}?`;
 }
 
 /**
@@ -540,7 +540,7 @@ export class CompanionSuggestModal extends Modal {
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
 		const { contentEl } = this;
 		new Setting(contentEl)
-			.setName('What publisher came with you?')
+			.setName('Who came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');
 				this.companionInput = text;

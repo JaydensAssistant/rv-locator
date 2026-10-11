@@ -4931,3 +4931,184 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	font-weight: var(--font-normal, 400);
 	color: var(--text-muted);
 }
+
+/* Sort pills: two rows so eight labels stay whole at 390px. Each pill is at least 40px. */
+.rv-locator-glancable .rv-locator-sort-pills {
+	flex-wrap: wrap;
+	align-content: flex-start;
+	height: auto;
+	overflow: visible;
+}
+
+.rv-locator-glancable .rv-locator-sort-scroll {
+	height: auto;
+	overflow: visible;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills .rv-locator-sort-preset {
+	flex: 1 1 calc(25% - 2px);
+	width: auto;
+	min-width: 40px;
+	max-width: calc(25% - 2px);
+	height: 40px;
+	min-height: 40px;
+	overflow: hidden;
+}
+
+.rv-locator-glancable .rv-locator-sort-pills .rv-sort-label {
+	width: auto;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: clip;
+	text-align: center;
+}
+
+.rv-locator-modal {
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.rv-campaign-actions {
+	display: flex;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	gap: 8px;
+	padding: 0;
+}
+
+.rv-campaign-actions button {
+	flex: 1 1 0;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	min-width: 0;
+	min-height: 40px;
+	width: auto;
+	max-width: none;
+}
+
+.rv-campaign-actions .rv-campaign-icon,
+.rv-campaign-actions .rv-campaign-label {
+	flex: 0 0 auto;
+}
+
+.rv-item.is-campaign .rv-item-icon {
+	color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+.rv-locator-modal .setting-item.rv-modal-actions {
+	display: flex;
+	flex-direction: column;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	padding-left: 0;
+	padding-right: 0;
+}
+
+.rv-locator-modal .setting-item.rv-modal-actions .setting-item-info {
+	display: none;
+}
+
+.rv-locator-modal .setting-item.rv-modal-actions .setting-item-control,
+.rv-locator-modal .rv-modal-actions,
+.rv-locator-modal .modal-button-container {
+	display: flex;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	gap: 8px;
+}
+
+.rv-locator-modal .setting-item.rv-modal-actions .setting-item-control button,
+.rv-locator-modal .rv-modal-actions button,
+.rv-locator-modal .modal-button-container button {
+	flex: 1 1 0;
+	width: auto;
+	max-width: none;
+	min-height: 40px;
+}
+
+.rv-suggest-host {
+	position: relative;
+}
+
+.rv-closed-title {
+	position: absolute;
+	z-index: 1;
+	left: 0;
+	right: 44px;
+	top: 0;
+	bottom: 0;
+	display: flex;
+	align-items: center;
+	min-width: 0;
+	overflow: hidden;
+	padding-inline: 8px;
+	pointer-events: none;
+	color: var(--text-normal);
+}
+
+.rv-closed-title .rv-title-pre,
+.rv-closed-title .rv-title-suffix {
+	flex: 0 0 auto;
+	white-space: pre;
+}
+
+.rv-closed-title .rv-title-text {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	-webkit-line-clamp: unset;
+	-webkit-box-orient: unset;
+}
+
+.rv-suggest-host > input.is-title-closed,
+.rv-suggest-host > select.is-title-closed {
+	color: transparent;
+	-webkit-text-fill-color: transparent;
+}
+
+.rv-map-settle {
+	position: absolute;
+	inset: 0;
+	z-index: 0;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.rv-map-tile.is-holding {
+	opacity: 0;
+}
+
+.rv-map-card {
+	max-height: calc(100% - 16px);
+	overflow: auto;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	--rv-dash-pad: 8px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	width: max-content;
+	max-width: max-content;
+	font-size: 13px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	text-overflow: clip;
+}
