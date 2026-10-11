@@ -51,7 +51,7 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { watchBottomToast } from './chrome-inset';
+import { fillToastText, watchBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
@@ -2437,7 +2437,7 @@ export default class RVLocatorPlugin extends Plugin {
 		toast.className = 'rv-nh-toast';
 		const text = document.createElement('span');
 		text.className = 'rv-toast-text';
-		text.textContent = message;
+		fillToastText(text, message);
 		toast.append(text);
 		this.mountToast(toast);
 		window.setTimeout(() => toast.remove(), 4500);
@@ -2457,13 +2457,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const text = document.createElement('span');
 		text.className = 'rv-toast-text';
 		const name = cardPersonTitle(file.basename, false);
-		const lead = document.createElement('span');
-		lead.className = 'rv-toast-lead';
-		lead.textContent = 'Not home';
-		const nameEl = document.createElement('span');
-		nameEl.className = 'rv-toast-name';
-		nameEl.textContent = ` logged · ${name}`;
-		text.append(lead, nameEl);
+		const nameEl = fillToastText(text, `Not home logged · ${name}`);
 		const actions = document.createElement('span');
 		actions.className = 'rv-toast-actions';
 		const campaignOn = campaignIsActive(this.campaign);
@@ -2494,7 +2488,7 @@ export default class RVLocatorPlugin extends Plugin {
 		toast.append(text, actions, timer);
 		this.mountToast(toast);
 		window.setTimeout(() => {
-			if (text.scrollWidth > text.clientWidth + 1) nameEl.remove();
+			if (nameEl && text.scrollWidth > text.clientWidth + 1) nameEl.remove();
 		}, 0);
 		const handle = window.setTimeout(() => {
 			toast.remove();
@@ -2533,7 +2527,10 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const callback of this.viewRefreshers) callback();
 		const undone = document.createElement('div');
 		undone.className = 'rv-nh-toast';
-		undone.textContent = 'Undone';
+		const undoneText = document.createElement('span');
+		undoneText.className = 'rv-toast-text';
+		fillToastText(undoneText, 'Undone');
+		undone.append(undoneText);
 		this.mountToast(undone);
 		window.setTimeout(() => undone.remove(), 1600);
 	}

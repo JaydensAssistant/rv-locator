@@ -4883,6 +4883,7 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li,
 	display: flex;
 	flex: 1 1 auto;
 	min-width: 0;
+	gap: 0.3em;
 }
 
 .rv-nh-toast .rv-toast-lead {

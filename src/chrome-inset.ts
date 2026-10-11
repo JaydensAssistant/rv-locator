@@ -157,3 +157,42 @@ export function watchBottomToast(toast: HTMLElement): () => void {
 	}
 	return stop;
 }
+
+/**
+ * Space between a toast lead and its name.
+ * A flex item drops a leading space, so the gap is the space.
+ */
+export const TOAST_TEXT_GAP = '0.3em';
+
+const TOAST_LEADS = ['Not home', 'Home', 'Undone'] as const;
+
+/** Split a toast into a lead and a name. The name never starts with whitespace. */
+export function toastLineParts(message: string): { lead: string; name: string } {
+	const text = message.trim();
+	for (const lead of TOAST_LEADS) {
+		if (text === lead) return { lead, name: '' };
+		if (text.startsWith(`${lead} `)) return { lead, name: text.slice(lead.length).trim() };
+	}
+	const space = text.indexOf(' ');
+	if (space <= 0) return { lead: text, name: '' };
+	return { lead: text.slice(0, space), name: text.slice(space + 1).trim() };
+}
+
+/**
+ * Home, Not home, and Undone share this line.
+ * Returns the name element when the toast has one.
+ */
+export function fillToastText(text: HTMLElement, message: string): HTMLElement | null {
+	const parts = toastLineParts(message);
+	text.replaceChildren();
+	const leadEl = text.ownerDocument.createElement('span');
+	leadEl.className = 'rv-toast-lead';
+	leadEl.textContent = parts.lead;
+	text.append(leadEl);
+	if (!parts.name) return null;
+	const nameEl = text.ownerDocument.createElement('span');
+	nameEl.className = 'rv-toast-name';
+	nameEl.textContent = parts.name;
+	text.append(nameEl);
+	return nameEl;
+}

@@ -12,7 +12,7 @@ import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
 import type { MapPin } from '../src/map-pins';
 import { popupClearOfChrome } from '../src/map-pins';
-import { contentBottom, placeBottomToast, toastBottomOffset, watchBottomToast } from '../src/chrome-inset';
+import { contentBottom, fillToastText, placeBottomToast, toastBottomOffset, toastLineParts, watchBottomToast } from '../src/chrome-inset';
 import { coveredCampaignFor } from '../src/schedule';
 import { maskStampText, maskTitleElement, rvDisplayTitle } from '../src/stamp-mask';
 import { tileKey } from '../src/tile-index';
@@ -743,6 +743,43 @@ describe('smoke layout', () => {
 		toast.remove();
 		stop();
 		nav.remove();
+	});
+
+	it('keeps a visible space between the toast lead and name', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		const flexText = css.match(/\.rv-nh-toast \.rv-toast-text \{[^}]*display:\s*flex;[^}]*\}/);
+		assert.ok(flexText);
+		assert.match(flexText[0], /gap:\s*0\.3em/);
+		assert.match(flexText[0], /flex:\s*1 1 auto/);
+		assert.match(flexText[0], /min-width:\s*0/);
+		const main = readFileSync('src/main.ts', 'utf8');
+		assert.equal(main.includes('` logged ·'), false);
+		assert.match(main, /fillToastText\(text, `Not home logged · \$\{name\}`\)/);
+		const home = 'Home logged on “Avoid”. Address was not changed.';
+		const variants = [
+			{ message: 'Not home logged · Avoid', lead: 'Not home', name: 'logged · Avoid' },
+			{ message: home, lead: 'Home', name: 'logged on “Avoid”. Address was not changed.' },
+			{ message: 'Undone', lead: 'Undone', name: '' },
+			{ message: 'Logged success', lead: 'Logged', name: 'success' },
+		];
+		for (const sample of variants) {
+			assert.deepEqual(toastLineParts(`  ${sample.message}  `), { lead: sample.lead, name: sample.name });
+			const text = window.document.createElement('span');
+			text.className = 'rv-toast-text';
+			text.style.display = 'flex';
+			text.style.gap = '0.3em';
+			const nameEl = fillToastText(text, sample.message);
+			assert.equal(text.querySelector('.rv-toast-lead')?.textContent, sample.lead);
+			if (sample.name) {
+				assert.equal(nameEl?.textContent, sample.name);
+				assert.equal(/^\s/.test(nameEl?.textContent ?? ' '), false);
+				assert.equal(nameEl?.className, 'rv-toast-name');
+			} else {
+				assert.equal(nameEl, null);
+				assert.equal(text.querySelector('.rv-toast-name'), null);
+			}
+		}
+		assert.deepEqual(toastLineParts('Not home  logged · Avoid'), { lead: 'Not home', name: 'logged · Avoid' });
 	});
 
 	it('clamps a fullscreen card inside a 4px margin above the nav on every edge', () => {
