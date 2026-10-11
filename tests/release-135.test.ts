@@ -6,6 +6,7 @@ import { hubRefs, moveHubLeft, resolveReturnHub } from '../src/hub-row';
 import { pagePreviewDecision } from '../src/page-preview';
 import { cardPersonTitle } from '../src/note-name';
 import { coveragePronoun, coverageQuestion } from '../src/modals';
+import { VisitEditModal } from '../src/visit-modals';
 import { cardReturnLead, currentReturnBucket, defaultAvailabilityGrid, stampDateTime, suggestReturnDigest } from '../src/schedule';
 import { nextCampaignListFilter } from '../src/status';
 import { urgencyBangShapes, urgencyMark } from '../src/scoring';
@@ -32,9 +33,52 @@ describe('1.3.5 dogfood helpers', () => {
 		assert.equal(cardPersonTitle('Maple Street', true), 'Maple Street');
 		assert.equal(cardPersonTitle('Ada on Maple Street', false), 'Ada on Maple Street');
 		assert.equal(coveragePronoun('Woman'), 'her');
+		assert.equal(coveragePronoun('Women'), 'her');
 		assert.equal(coveragePronoun('Man'), 'him');
+		assert.equal(coveragePronoun('Men'), 'him');
 		assert.equal(coveragePronoun(''), 'them');
-		assert.equal(coverageQuestion('her', 'Spring'), 'Cover her with Spring?');
+		assert.equal(coveragePronoun(null), 'them');
+		assert.equal(coveragePronoun('mixed'), 'them');
+		assert.equal(coveragePronoun('Mixed'), 'them');
+		assert.equal(coveragePronoun('unknown'), 'them');
+		assert.equal(coverageQuestion('her', 'Convention'), 'Cover her with Convention?');
+		assert.equal(coverageQuestion(coveragePronoun('Woman'), 'Convention'), 'Cover her with Convention?');
+		assert.equal(coverageQuestion(coveragePronoun('Man'), 'Convention'), 'Cover him with Convention?');
+		assert.equal(coverageQuestion(coveragePronoun('mixed'), 'Convention'), 'Cover them with Convention?');
+		const campaign = { name: 'Convention', start: '2020-01-01', end: '2099-12-31' };
+		const question = (modal: VisitEditModal): string => {
+			const walk = (node: { text?: string; children?: unknown[] }): string => {
+				const own = node.text ?? '';
+				const nested = (node.children ?? []).map((child) => walk(child as { text?: string; children?: unknown[] })).join('');
+				return own + nested;
+			};
+			return walk(modal.contentEl as unknown as { text?: string; children?: unknown[] });
+		};
+		const woman = new VisitEditModal({} as never, {
+			title: 'Log past visit',
+			recentCompanions: [],
+			campaign: { ...campaign, pronoun: coveragePronoun('Woman') },
+			onSave: () => {},
+		});
+		woman.onOpen();
+		assert.equal(question(woman).includes('Cover her with Convention?'), true);
+		const mixed = new VisitEditModal({} as never, {
+			title: 'Edit visit',
+			recentCompanions: [],
+			campaign: { ...campaign, pronoun: coveragePronoun('mixed') },
+			onSave: () => {},
+		});
+		mixed.onOpen();
+		const mixedCopy = question(mixed);
+		assert.equal(mixedCopy.includes('Cover them with Convention?'), true);
+		assert.equal(mixedCopy.includes('Cover her'), false);
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /--rv-dash-pad:\s*12px/);
+		assert.doesNotMatch(css, /--rv-dash-pad:\s*8px/);
+		assert.doesNotMatch(css, /p\.rv-hub-owned > strong[\s\S]{0,500}font-size:\s*13px/);
+		for (const file of ['src/visit-modals.ts', 'src/campaign-modal.ts', 'src/main.ts', 'src/modals.ts']) {
+			assert.equal(readFileSync(file, 'utf8').includes("coverageQuestion('her'"), false, file);
+		}
 		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4)), 'Fri aft');
 		assert.equal(cardReturnLead(new Date(2026, 9, 3, 9, 0), 'short'), 'Sat mor');
 		assert.equal(cardReturnLead(new Date(2026, 9, 2, 15, 4), 'long'), 'Friday afternoon — ');

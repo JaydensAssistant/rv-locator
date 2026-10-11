@@ -110,7 +110,11 @@ export class CampaignModal extends Modal {
 }
 
 /** Yes or no, used when a home visit is logged outside the companion suggester. */
-export function askCampaignCovered(app: App, campaignName: string): Promise<boolean> {
+export function askCampaignCovered(
+	app: App,
+	campaignName: string,
+	pronoun: 'him' | 'her' | 'them' = 'them',
+): Promise<boolean> {
 	return new Promise((resolve) => {
 		const modal = new Modal(app);
 		let answered = false;
@@ -125,7 +129,7 @@ export function askCampaignCovered(app: App, campaignName: string): Promise<bool
 			modal.modalEl.addClass('rv-locator-modal');
 			mountCampaignChoice(
 				modal.contentEl,
-				coverageQuestion('them', campaignName),
+				coverageQuestion(pronoun, campaignName),
 				true,
 				(covered) => finish(covered),
 			);

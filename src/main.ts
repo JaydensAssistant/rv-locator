@@ -1812,6 +1812,12 @@ export default class RVLocatorPlugin extends Plugin {
 		return campaignIsActive(this.campaign) && !isCovered(this.campaign, path);
 	}
 
+	private coveragePronounFor(path: string): 'him' | 'her' | 'them' {
+		const file = this.app.vault.getFileByPath(path);
+		const gender = file ? readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender') : null;
+		return coveragePronoun(gender);
+	}
+
 	private async consumeCoverage(path: string, outcome: VisitOutcome): Promise<void> {
 		if (outcome !== 'home') {
 			this.coverageDecisions.delete(path);
@@ -1825,7 +1831,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		if (decision === 'no' || decision === 'skip') return;
 		if (!this.shouldAskCoverage(path) || !this.campaign) return;
-		const yes = await askCampaignCovered(this.app, this.campaign.name);
+		const yes = await askCampaignCovered(this.app, this.campaign.name, this.coveragePronounFor(path));
 		if (yes) await this.markCovered(path);
 	}
 
@@ -2306,7 +2312,12 @@ export default class RVLocatorPlugin extends Plugin {
 		new VisitEditModal(this.app, {
 			title: `Log past visit on “${cardPersonTitle(file.basename, false)}”`,
 			recentCompanions: this.recentCompanionNames(),
-			campaign: campaign ? { name: campaign.name, start: campaign.start, end: campaign.end } : null,
+			campaign: campaign ? {
+				name: campaign.name,
+				start: campaign.start,
+				end: campaign.end,
+				pronoun: coveragePronoun(readProperty(frontmatter, 'Gender')),
+			} : null,
 			covered: true,
 			share: this.shareFieldOptions(study, defaults),
 			onCovered: (covered) => {
@@ -2440,7 +2451,12 @@ export default class RVLocatorPlugin extends Plugin {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
-			campaign: campaign ? { name: campaign.name, start: campaign.start, end: campaign.end } : null,
+			campaign: campaign ? {
+				name: campaign.name,
+				start: campaign.start,
+				end: campaign.end,
+				pronoun: coveragePronoun(readProperty(frontmatter, 'Gender')),
+			} : null,
 			covered: Boolean(campaign && entry.covered === campaign.name),
 			share: this.shareFieldOptions(study, defaults),
 			onSave: (facts) => {

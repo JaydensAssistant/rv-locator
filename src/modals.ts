@@ -493,8 +493,9 @@ export interface CompanionCampaignPrompt {
 
 export function coveragePronoun(gender: unknown): 'him' | 'her' | 'them' {
 	const value = typeof gender === 'string' ? gender.trim().toLowerCase() : '';
-	if (value === 'man' || value === 'male') return 'him';
-	if (value === 'woman' || value === 'female') return 'her';
+	if (!value || value === 'mixed' || value.includes('mixed')) return 'them';
+	if (value === 'man' || value === 'men' || value === 'male') return 'him';
+	if (value === 'woman' || value === 'women' || value === 'female') return 'her';
 	return 'them';
 }
 

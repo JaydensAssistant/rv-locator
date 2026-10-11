@@ -14,7 +14,7 @@ export interface VisitEditOptions {
 	initial?: VisitFacts | null;
 	recentCompanions: readonly string[];
 	/** Shown when this campaign spans the visit date. Preselects the stored token. */
-	campaign?: Pick<CampaignRecord, 'name' | 'start' | 'end'> | null;
+	campaign?: (Pick<CampaignRecord, 'name' | 'start' | 'end'> & { pronoun?: 'him' | 'her' | 'them' }) | null;
 	covered?: boolean;
 	onCovered?: (covered: boolean) => void;
 	onSave: (facts: VisitFacts) => void;
@@ -134,7 +134,7 @@ export class VisitEditModal extends Modal {
 		if (this.options.campaign) {
 			mountCampaignChoice(
 				this.campaignHost,
-				coverageQuestion('them', this.options.campaign.name),
+				coverageQuestion(this.options.campaign.pronoun ?? 'them', this.options.campaign.name),
 				this.covered,
 				(covered) => { this.covered = covered; },
 			);

@@ -5094,17 +5094,6 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	overflow: auto;
 }
 
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
-	--rv-dash-pad: 8px;
-}
-
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
-	width: max-content;
-	max-width: max-content;
-	font-size: 13px;
-}
-
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-hub-chip,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
 	width: 100%;
