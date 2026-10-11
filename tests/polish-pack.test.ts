@@ -7,7 +7,7 @@ import { appendMetDateToFilename, filenameCollision, stripFilenameStamp } from '
 import { parseLogBullet } from '../src/schedule';
 import { applyVisitBody, ensureAttemptLog } from '../src/visit-log';
 import { editVisit, listVisits } from '../src/visit-editor';
-import { displayTitle } from '../src/title-fit';
+import { displayTitle, paintedSuffix } from '../src/title-fit';
 import { collapseAttemptLog, upsertAttemptDigest } from '../src/attempt-digest';
 import { DEFAULT_SETTINGS, mergeSettings } from '../src/types';
 import { resetSettingsTab as resetTab } from '../src/settings-reset';
@@ -94,6 +94,9 @@ describe('polish pack data', () => {
 		assert.deepEqual(displayTitle('"Remember Jesus\' Death"', 'media'), { text: "Remember Jesus' Death", suffix: 'Video' });
 		assert.deepEqual(displayTitle('Remember Jesus\' Death Video', 'media'), { text: "Remember Jesus' Death", suffix: 'Video' });
 		assert.equal(displayTitle('01 How Can the Bible Help', 'lesson').suffix, 'Study');
+		assert.equal(paintedSuffix('Video'), ' Video');
+		assert.equal(paintedSuffix(' Study'), ' Study');
+		assert.equal(paintedSuffix(''), '');
 	});
 
 	it('draws a teardrop and stacks by urgency', () => {

@@ -11,6 +11,12 @@ export function displayTitle(title: string, kind: TitleKind = 'plain'): { text: 
 	return split.suffix ? split : { text: clean, suffix: '' };
 }
 
+/** The rendered suffix keeps one leading space and no other gap before it. */
+export function paintedSuffix(suffix: string): string {
+	const clean = suffix.trim();
+	return clean ? ` ${clean}` : '';
+}
+
 /**
  * Each title keeps at least `minKeep` characters. The longest stem gives way
  * first until the row fits the character budget.
@@ -49,7 +55,7 @@ export function mountFittedTitle(parent: HTMLElement, title: string, kind: Title
 	host.setAttribute('title', full);
 	const stem = host.createSpan('rv-fit-stem');
 	stem.textContent = parts.text;
-	if (parts.suffix) host.createSpan({ cls: 'rv-type', text: parts.suffix });
+	if (parts.suffix) host.createSpan({ cls: 'rv-type', text: paintedSuffix(parts.suffix) });
 	host.addEventListener('click', (event) => {
 		if (stem.textContent === parts.text) return;
 		event.preventDefault();

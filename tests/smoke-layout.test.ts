@@ -153,6 +153,9 @@ describe('smoke layout', () => {
 		const chips = strip?.querySelectorAll('.rv-item') ?? [];
 		assert.equal(chips.length, 4);
 		assert.match(chips[0]?.textContent ?? '', /Convention/);
+		const types = strip?.querySelectorAll('.rv-type') ?? [];
+		assert.ok(types.length >= 1);
+		for (const type of Array.from(types)) assert.match(type.textContent ?? '', /^ (Video|Study)$/);
 		assert.equal(box?.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
 		assert.equal(root.querySelectorAll('.rv-item-strip').length, 1);
 		assert.equal(root.querySelector('.callout[data-callout="note"]')?.classList.contains('rv-locator-attempt-log'), true);
@@ -167,6 +170,7 @@ describe('smoke layout', () => {
 	it('keeps a 5px ghost strip inside the note box when a visit has no items', () => {
 		const root = visitRoot('Tue, 6:15pm — Aug 12, 2026', null, 'Attempt Log');
 		decorateVisitControls(root, () => null, () => {});
+		assert.equal(root.querySelector('.rv-stamp-when')?.textContent, 'Tue, 6:15pm');
 		const strip = root.querySelector('.rv-item-strip');
 		assert.equal(strip?.classList.contains('is-ghost'), true);
 		assert.equal(strip?.parentElement?.classList.contains('rv-visit-note-box'), true);

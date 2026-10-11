@@ -146,6 +146,19 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 }
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/** `Mon, 10:40am`. The weekday and clock come from the stored stamp, with a comma. */
+function stampWhenLabel(source: string, when: Date): string {
+	const lead = source.split(/[—–]/)[0]?.trim() ?? '';
+	const clock = /((?:\d{1,2}:\d{2}|\d{1,2})\s*[ap]m)/i.exec(lead)?.[1]?.replace(/\s+/g, '') ?? '';
+	const written = /^(Sun|Mon|Tue|Wed|Thu|Fri|Sat)/i.exec(lead)?.[1] ?? '';
+	const dow = written
+		? written.charAt(0).toUpperCase() + written.slice(1, 3).toLowerCase()
+		: (WEEKDAYS[when.getDay()] ?? '');
+	if (dow && clock) return `${dow}, ${clock}`;
+	return lead || dow;
+}
 
 function coveredName(root: HTMLElement, when: Date, home: boolean): string {
 	for (const callout of attemptLogCallouts(root)) {
@@ -169,7 +182,7 @@ function headingSource(heading: HTMLElement): string {
 /** Heading row and item strip. The markdown line is only restructured on screen. */
 function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string): void {
 	const source = headingSource(heading);
-	const lead = source.split(/[—–]/)[0]?.trim() || '';
+	const lead = stampWhenLabel(source, when);
 	const month = MONTHS[when.getMonth()] ?? '';
 	const day = String(when.getDate());
 	const iso = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')}`;

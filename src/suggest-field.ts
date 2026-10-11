@@ -117,7 +117,7 @@ export function mountAlwaysChevron(
 				main.textContent = shown.text;
 				const suffix = row.ownerDocument.createElement('span');
 				suffix.className = 'rv-title-suffix';
-				suffix.textContent = shown.suffix;
+				suffix.textContent = shown.suffix.startsWith(' ') ? shown.suffix : ` ${shown.suffix}`;
 				row.append(main, suffix);
 				row.title = item;
 			} else {

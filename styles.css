@@ -4374,7 +4374,6 @@ body.rv-full-width-callout .rv-dashboard .callout[data-callout="quote"]:not(.rv-
 	display: inline-flex;
 	align-items: center;
 	gap: 6px;
-	font-size: 1.15em;
 }
 
 .rv-dash-rename {
@@ -4670,7 +4669,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
-	overflow: hidden;
+	min-height: 24px;
+	overflow: visible;
 }
 
 .rv-stamp-source {
@@ -4685,20 +4685,17 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	text-box: trim-both cap alphabetic;
 }
 
-.rv-stamp-when,
-.rv-stamp-count,
-.rv-visit-stamp .rv-stamp-ago {
-	line-height: 1;
-	text-box: trim-both cap alphabetic;
-}
-
 .rv-stamp-when {
 	flex: 0 1 auto;
 	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	overflow: visible;
+	text-overflow: clip;
 	white-space: nowrap;
 	text-align: start;
+	font-size: 14px;
+	font-weight: 600;
+	line-height: 18px;
+	text-box-trim: none;
 }
 
 .rv-stamp-count,
@@ -4778,10 +4775,12 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 	min-width: 0;
 }
 
-.rv-type {
+.rv-type,
+.rv-title-suffix {
 	margin: 0;
 	padding: 0;
 	flex: 0 0 auto;
+	white-space: pre;
 }
 
 .rv-visit-note-box > :is(p, div, .el-p, blockquote):not(.rv-item-strip) {
@@ -4880,4 +4879,55 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li,
 
 .rv-locator-sort-preset {
 	min-height: 40px;
+}
+
+/* Subheading counter: 14% tint, ink, 11px/600, no ring, 18px so the digits are not clipped. */
+.markdown-preview-view.rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+.markdown-rendered.rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-ago,
+.rv-dashboard :is(h3, h5).rv-visit-stamp .rv-stamp-row > .rv-stamp-ago,
+.rv-visit-stamp .rv-stamp-row > .rv-stamp-count {
+	margin-left: 0;
+	flex: 0 0 auto;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	height: 18px;
+	min-height: 18px;
+	max-height: 18px;
+	padding: 0 6px;
+	border: 0;
+	border-radius: 999px;
+	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 14%, var(--background-primary));
+	box-shadow: none;
+	color: var(--rv-urgency-ink, var(--text-normal));
+	font-size: 11px;
+	font-weight: 600;
+	line-height: 18px;
+	letter-spacing: 0;
+	text-box-trim: none;
+	overflow: visible;
+}
+
+body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
+body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input {
+	box-sizing: border-box;
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
+	display: inline-flex;
+	align-items: center;
+}
+
+.callout.rv-locator-attempt-log > .callout-title,
+.callout.rv-locator-attempt-log > .callout-title .callout-title-inner {
+	font-size: inherit;
+	font-weight: var(--font-normal, 400);
+	color: var(--text-muted);
 }
