@@ -4238,7 +4238,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	left: 12px;
 	right: 12px;
 	top: auto;
-	bottom: calc(56px + 12px + env(safe-area-inset-bottom));
+	bottom: calc(8px + env(safe-area-inset-bottom));
 	z-index: 40;
 	background: var(--background-modifier-message);
 	color: #fafafa;

@@ -51,6 +51,7 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
+import { placeBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
@@ -629,9 +630,10 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * The stamp stays on disk. Only this note's view header and tab title are
-	 * rewritten, and only as text. The inline title is the rename control, so
-	 * it is left alone. Explorer, search, and the quick switcher are core UI.
+	 * The stamp stays on disk. Only the leaf tab title is rewritten, and only
+	 * as text. The view header is contenteditable core UI, same as the
+	 * breadcrumb, the inline title, the file explorer, search, and the quick
+	 * switcher. None of those are rewritten.
 	 */
 	private installStampMask(): void {
 		this.maskFilenameStamps();
@@ -678,11 +680,6 @@ export default class RVLocatorPlugin extends Plugin {
 				if (tab) {
 					maskTitleElement(tab, [pair]);
 					this.watchStampHeader(tab);
-				}
-				const header = view.containerEl.querySelector('.view-header-title');
-				if (header instanceof HTMLElement && !header.closest('.inline-title')) {
-					maskTitleElement(header, [pair]);
-					this.watchStampHeader(header);
 				}
 			});
 		} finally {
@@ -2428,7 +2425,12 @@ export default class RVLocatorPlugin extends Plugin {
 		this.showNotHomeToast(file, before, campaign);
 	}
 
-	/** Home confirmation. Sits above the phone nav so it does not cover the note title. */
+	/** Home and the rvLog.js fallback. Same clearance as Not home. */
+	showRvToast(message: string): void {
+		this.showLoggedToast(message);
+	}
+
+	/** Confirmation. Sits above the phone nav and the desktop status bar. */
 	private showLoggedToast(message: string): void {
 		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
 		const toast = document.createElement('div');
@@ -2437,8 +2439,22 @@ export default class RVLocatorPlugin extends Plugin {
 		text.className = 'rv-toast-text';
 		text.textContent = message;
 		toast.append(text);
-		document.body.appendChild(toast);
+		this.mountToast(toast);
 		window.setTimeout(() => toast.remove(), 4500);
+	}
+
+	/** Measure the nav, toolbar, and status bar, and keep the toast above them. */
+	private mountToast(toast: HTMLElement): void {
+		placeBottomToast(toast);
+		document.body.appendChild(toast);
+		const onResize = (): void => {
+			if (!toast.isConnected) {
+				window.removeEventListener('resize', onResize);
+				return;
+			}
+			placeBottomToast(toast);
+		};
+		window.addEventListener('resize', onResize);
 	}
 
 	private showNotHomeToast(file: TFile, before: string, campaign: CampaignRecord | null): void {
@@ -2484,7 +2500,7 @@ export default class RVLocatorPlugin extends Plugin {
 		timer.className = 'rv-toast-timer';
 		timer.appendChild(document.createElement('i'));
 		toast.append(text, actions, timer);
-		document.body.appendChild(toast);
+		this.mountToast(toast);
 		window.setTimeout(() => {
 			if (text.scrollWidth > text.clientWidth + 1) nameEl.remove();
 		}, 0);
@@ -2526,7 +2542,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const undone = document.createElement('div');
 		undone.className = 'rv-nh-toast';
 		undone.textContent = 'Undone';
-		document.body.appendChild(undone);
+		this.mountToast(undone);
 		window.setTimeout(() => undone.remove(), 1600);
 	}
 

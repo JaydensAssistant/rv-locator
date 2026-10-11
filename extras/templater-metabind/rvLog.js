@@ -791,7 +791,9 @@ async function rvLog(tp, kind) {
       /* The visit is already on the note. */
     }
   }
-  new Notice(`Logged ${outcome}`);
+  const ready = rvPlugin();
+  if (ready && typeof ready.showRvToast === "function") ready.showRvToast(`Logged ${outcome}`);
+  else new Notice(`Logged ${outcome}`);
 }
 
 module.exports = rvLog;

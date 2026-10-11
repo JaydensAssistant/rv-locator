@@ -7,6 +7,8 @@ import { stripFilenameStamp } from './note-name';
  */
 const CORE_FILE_UI = [
 	'.inline-title',
+	'.view-header-title',
+	'.view-header-breadcrumb',
 	'.nav-file',
 	'.nav-file-title',
 	'.nav-file-title-content',

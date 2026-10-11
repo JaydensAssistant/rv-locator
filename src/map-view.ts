@@ -1,6 +1,7 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
+import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, STACK_TAP_PX, tapOpensTop, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import { homeBoxFromPoints, loadTileIndex, noteViewedTile, saveTileIndex, tileIsHome, tileKey, type TileRecord } from './tile-index';
@@ -67,6 +68,7 @@ export class RvMapView extends ItemView {
 	private flashUntil = 0;
 	/** pointerup and click both arrive for one tap. The second one must not zoom again. */
 	private pinTapStamp = 0;
+	private pinTapPath = '';
 	/** This map only. The hub stack and the split leaf do not share it. */
 	private mapFullscreen = false;
 	private fullscreenScope: 'hub' | 'split' = 'split';
@@ -117,6 +119,7 @@ export class RvMapView extends ItemView {
 		this.flashPath = null;
 		this.flashUntil = 0;
 		this.pinTapStamp = 0;
+		this.pinTapPath = '';
 		this.mapFullscreen = false;
 		this.fullscreenScope = scope;
 		this.renderedPaths = null;
@@ -399,12 +402,15 @@ export class RvMapView extends ItemView {
 			const drag = this.drag;
 			this.drag = null;
 			stage.removeClass('is-grabbing');
-			const pinEl = event.target instanceof Element ? event.target.closest('.rv-map-pin') : null;
-			if (pinEl instanceof HTMLElement && event.button <= 0 && (!drag || !drag.moved)) {
-				const path = pinEl.dataset.rvPath ?? '';
-				const item = this.lastPlaced.find((entry) => entry.pin.path === path);
-				if (item && this.pinLayer) this.activatePin(item.pin, item.point, this.lastPlaced, this.pinLayer, pinEl);
-				return;
+			const target = event.target instanceof Element ? event.target : null;
+			const cardControl = target?.closest('.rv-map-card a, .rv-map-card button') != null;
+			if (!cardControl && event.button <= 0 && (!drag || !drag.moved)) {
+				const hit = this.pinButtonAt(event.clientX, event.clientY)
+					?? this.pinFromTarget(target);
+				if (hit && this.pinLayer) {
+					this.activatePin(hit.pin, hit.point, this.lastPlaced, this.pinLayer, hit.button);
+					return;
+				}
 			}
 			if (!drag || drag.moved) return;
 			const rect = stage.getBoundingClientRect();
@@ -454,6 +460,7 @@ export class RvMapView extends ItemView {
 			this.popupPath = null;
 			this.popupPanned = false;
 			this.pinTapStamp = Date.now();
+			this.pinTapPath = pin.path;
 			this.drag = null;
 			this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
 		};
@@ -733,6 +740,34 @@ export class RvMapView extends ItemView {
 		return this.lastPlaced.filter((item) => Math.hypot(item.point.x - x, item.point.y - y) <= px);
 	}
 
+	/** The pin button under a viewport point, including one covered by the open card. */
+	private pinButtonAt(clientX: number, clientY: number): { pin: MapPin; point: { x: number; y: number }; button: HTMLElement } | null {
+		const buttons = this.pinLayer?.querySelectorAll<HTMLElement>('button.rv-map-pin');
+		if (!buttons) return null;
+		let best: { pin: MapPin; point: { x: number; y: number }; button: HTMLElement } | null = null;
+		let bestZ = -1;
+		buttons.forEach((button) => {
+			const rect = button.getBoundingClientRect();
+			if (rect.width < 1 || rect.height < 1) return;
+			if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return;
+			const z = Number(button.style.zIndex) || 0;
+			if (best && z < bestZ) return;
+			const item = this.lastPlaced.find((entry) => entry.pin.path === (button.dataset.rvPath ?? ''));
+			if (!item) return;
+			best = { pin: item.pin, point: item.point, button };
+			bestZ = z;
+		});
+		return best;
+	}
+
+	private pinFromTarget(target: Element | null): { pin: MapPin; point: { x: number; y: number }; button: HTMLElement } | null {
+		const button = target?.closest('.rv-map-pin');
+		if (!(button instanceof HTMLElement)) return null;
+		const item = this.lastPlaced.find((entry) => entry.pin.path === (button.dataset.rvPath ?? ''));
+		if (!item) return null;
+		return { pin: item.pin, point: item.point, button };
+	}
+
 	private paintStacks(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {
 		const members = placed.map((item) => ({
 			path: item.pin.path,
@@ -825,8 +860,9 @@ export class RvMapView extends ItemView {
 		button: HTMLElement,
 	): void {
 		const now = Date.now();
-		if (now - this.pinTapStamp < 400) return;
+		if (now - this.pinTapStamp < 400 && this.pinTapPath === pin.path) return;
 		this.pinTapStamp = now;
+		this.pinTapPath = pin.path;
 		const zed = Math.floor(this.zoom);
 		const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= STACK_TAP_PX);
 		const members = placed.map((item) => ({
@@ -846,9 +882,8 @@ export class RvMapView extends ItemView {
 			this.setZoom(zoomToRevealPin(zed), true);
 			return;
 		}
-		const top = tapOpensTop(zed, overlaps)
-			? [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin
-			: pin;
+		const hottest = [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin;
+		const top = this.popupPath && this.isFullscreen() ? pin : (tapOpensTop(zed, overlaps) ? hottest : pin);
 		this.selectedPath = top.path;
 		if (this.isFullscreen()) {
 			this.popupPath = top.path;
@@ -871,10 +906,13 @@ export class RvMapView extends ItemView {
 		const frame = stage.getBoundingClientRect();
 		const viewW = view?.innerWidth ?? frame.width;
 		const viewH = view?.innerHeight ?? frame.height;
+		const doc = stage.ownerDocument;
+		const chrome = doc ? contentBottom(viewH, measureBottomChrome(doc), readSafeAreaBottom(doc)) : viewH;
+		const viewBottom = Math.min(viewH, chrome) - POPUP_MARGIN_PX;
 		const left = Math.max(0, -frame.left);
 		const top = Math.max(0, -frame.top);
 		const right = Math.min(frame.width, Math.max(left, viewW - frame.left));
-		const bottom = Math.min(frame.height, Math.max(top, viewH - frame.top));
+		const bottom = Math.min(frame.height, Math.max(top, viewBottom - frame.top));
 		return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 	}
 
@@ -894,10 +932,13 @@ export class RvMapView extends ItemView {
 			width: this.stage?.clientWidth || frame.width,
 			height: this.stage?.clientHeight || frame.height,
 		};
+		const cardWidth = Math.min(280, Math.max(120, frame.width - 24));
 		const cardHeight = Math.min(320, Math.max(120, frame.height - 16));
+		shell.style.width = `${cardWidth}px`;
 		shell.style.maxHeight = `${cardHeight}px`;
+		shell.style.overflow = 'auto';
 		const origin = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
-			width: Math.min(280, Math.max(120, frame.width - 24)),
+			width: cardWidth,
 			height: cardHeight,
 		}, stageBox, frame);
 		shell.style.left = `${origin.left}px`;
@@ -980,21 +1021,22 @@ export class RvMapView extends ItemView {
 		});
 		const nudge = (): void => {
 			const stage = this.stage;
-			const view = stage?.ownerDocument.defaultView;
-			if (!stage || !view || !shell.isConnected) return;
-			const card = shell.getBoundingClientRect();
-			const frame = stage.getBoundingClientRect();
-			const viewBottom = Math.min(frame.bottom, view.innerHeight);
-			const viewTop = Math.max(frame.top, 0);
-			const overflow = card.bottom - viewBottom;
-			const under = viewTop - card.top;
-			if ((overflow > 2 || under > 2) && !this.popupPanned) {
-				this.popupPanned = true;
-				this.panPixels(0, overflow > 2 ? overflow + 12 : -(under + 12));
-				return;
-			}
-			const limit = viewBottom - viewTop - 8;
-			if (card.height > limit && limit > 80) shell.style.maxHeight = `${limit}px`;
+			if (!stage || !shell.isConnected) return;
+			const rect = shell.getBoundingClientRect();
+			if (rect.width < 1 || rect.height < 1) return;
+			const nextFrame = this.visibleFrame();
+			const nextStage = {
+				width: stage.clientWidth || nextFrame.width,
+				height: stage.clientHeight || nextFrame.height,
+			};
+			const limit = Math.max(80, nextFrame.height - 8);
+			if (rect.height > limit) shell.style.maxHeight = `${limit}px`;
+			const fitted = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
+				width: rect.width,
+				height: Math.min(rect.height, limit),
+			}, nextStage, nextFrame);
+			shell.style.left = `${fitted.left}px`;
+			shell.style.top = `${fitted.top}px`;
 		};
 		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(nudge);
 		else nudge();

@@ -12,6 +12,7 @@ import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
 import type { MapPin } from '../src/map-pins';
 import { popupClearOfChrome } from '../src/map-pins';
+import { contentBottom, placeBottomToast, toastBottomOffset } from '../src/chrome-inset';
 import { coveredCampaignFor } from '../src/schedule';
 import { maskStampText, maskTitleElement, rvDisplayTitle } from '../src/stamp-mask';
 import { tileKey } from '../src/tile-index';
@@ -35,6 +36,9 @@ hostGlobals.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 const proto = window.HTMLElement.prototype as HTMLElement & Record<string, (...args: never[]) => unknown>;
 proto.addClass = function addClass(this: HTMLElement, cls: string) {
 	this.classList.add(...cls.split(/\s+/).filter(Boolean));
+};
+proto.removeClass = function removeClass(this: HTMLElement, cls: string) {
+	this.classList.remove(...cls.split(/\s+/).filter(Boolean));
 };
 proto.hasClass = function hasClass(this: HTMLElement, cls: string) {
 	return this.classList.contains(cls);
@@ -555,6 +559,7 @@ describe('smoke layout', () => {
 		assert.equal(maskStampText('Maria on Lake Dr 2026-10-11 0905 - Vault', 'Maria on Lake Dr 2026-10-11 0905', 'Maria on Lake Dr'), 'Maria on Lake Dr - Vault');
 		const header = window.document.createElement('div');
 		header.className = 'view-header-title';
+		header.setAttribute('contenteditable', 'true');
 		header.textContent = 'Maria on Lake Dr 2026-10-11 0905';
 		const inline = window.document.createElement('div');
 		inline.className = 'inline-title';
@@ -578,7 +583,7 @@ describe('smoke layout', () => {
 		maskTitleElement(explorer, pair);
 		maskTitleElement(search, pair);
 		maskTitleElement(suggestion, pair);
-		assert.equal(header.textContent, 'Maria on Lake Dr');
+		assert.equal(header.textContent, 'Maria on Lake Dr 2026-10-11 0905');
 		assert.equal(inline.textContent, 'Maria on Lake Dr 2026-10-11 0905Active');
 		assert.equal(explorer.textContent, 'Maria on Lake Dr 2026-10-11 0905');
 		assert.equal(search.textContent, 'Maria on Lake Dr 2026-10-11 0905');
@@ -586,6 +591,8 @@ describe('smoke layout', () => {
 		const main = readFileSync('src/main.ts', 'utf8');
 		assert.doesNotMatch(main, /nav-file-title-content|search-result-file-title|suggestion-title|file-explorer/);
 		assert.doesNotMatch(main, /querySelector(?:All)?\([^)]*inline-title/);
+		assert.equal(main.includes('view-header-title'), false);
+		assert.equal(main.includes('view-header-breadcrumb'), false);
 		assert.match(main, /collisionSuffixOnly/);
 		const script = readFileSync('extras/templater-metabind/newRv.js', 'utf8');
 		assert.match(script, /alreadyStamped/);
@@ -675,6 +682,146 @@ describe('smoke layout', () => {
 		assert.equal(map.zoom, 13);
 		void map.onClose();
 		root.remove();
+	});
+
+	it('keeps a toast above the phone nav and the desktop status bar', () => {
+		const phoneNav = { top: 760, bottom: 844, left: 0, right: 390, width: 390, height: 84 };
+		assert.equal(contentBottom(844, [phoneNav], 0), 760);
+		assert.equal(toastBottomOffset(844, 760), 92);
+		assert.equal(844 - 92 < 760, true);
+		const status = { top: 778, bottom: 800, left: 400, right: 800, width: 400, height: 22 };
+		assert.equal(contentBottom(800, [status], 0), 778);
+		assert.equal(800 - toastBottomOffset(800, 778) < 778, true);
+		assert.equal(contentBottom(844, [], 34), 810);
+		assert.equal(contentBottom(844, [phoneNav, { top: 700, bottom: 748, left: 0, right: 390, width: 390, height: 48 }], 0), 700);
+		Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+		const nav = window.document.createElement('div');
+		nav.className = 'mobile-navbar';
+		nav.getBoundingClientRect = () => ({ ...phoneNav, x: 0, y: 760, toJSON() { return phoneNav; } }) as DOMRect;
+		window.document.body.appendChild(nav);
+		const toast = window.document.createElement('div');
+		toast.className = 'rv-nh-toast';
+		placeBottomToast(toast);
+		assert.equal(toast.style.bottom, '92px');
+		nav.remove();
+	});
+
+	it('clamps a fullscreen card inside a 4px margin above the nav on every edge', () => {
+		const card = { width: 280, height: 200 };
+		const stage = { width: 390, height: 844 };
+		const visible = { left: 0, top: 0, width: 390, height: 756 };
+		const edges = [
+			{ x: 5, y: 400 },
+			{ x: 372, y: 400 },
+			{ x: 180, y: 8 },
+			{ x: 180, y: 740 },
+		];
+		for (const anchor of edges) {
+			const placed = popupClearOfChrome(anchor, card, stage, visible);
+			assert.equal(placed.left >= 4, true, `left ${anchor.x}`);
+			assert.equal(placed.top >= 4, true, `top ${anchor.y}`);
+			assert.equal(placed.left + card.width <= 390 - 56, true, `right ${anchor.x}`);
+			assert.equal(placed.top + card.height <= 756, true, `bottom ${anchor.y}`);
+		}
+		const desktop = popupClearOfChrome(
+			{ x: 20, y: 760 },
+			{ width: 280, height: 180 },
+			{ width: 1280, height: 800 },
+			{ left: 0, top: 0, width: 1280, height: 774 },
+		);
+		assert.equal(desktop.left >= 4, true);
+		assert.equal(desktop.top >= 4, true);
+		assert.equal(desktop.left + 280 <= 1280 - 56, true);
+		assert.equal(desktop.top + 180 <= 774, true);
+	});
+
+	it('switches the open fullscreen card when another pin is tapped', () => {
+		const facts = {
+			address: '10 Oak Hammock Ln',
+			city: 'Orlando',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '1',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		};
+		const make = (path: string, name: string, lon: number): MapPin => ({
+			path,
+			name,
+			lat: 28.54,
+			lon,
+			priority: 4,
+			urgency: 1,
+			days: 3,
+			color: '#d63c3c',
+			glyph: '1',
+			fresh: false,
+			stateIcon: null,
+			shadeIcon: null,
+			markText: null,
+			rank: 0,
+			card: facts,
+		});
+		const pins = [make('RVs/left.md', 'Left Edge', -81.381), make('RVs/right.md', 'Right Edge', -81.379)];
+		for (const scope of ['hub', 'split'] as const) {
+			let full = false;
+			const root = window.document.createElement('div');
+			window.document.body.appendChild(root);
+			const map = Object.create(RvMapView.prototype) as RvMapView & { zoom: number; paint: () => void };
+			map.contentEl = root;
+			map.bindHost({
+				settings: { ...DEFAULT_SETTINGS, distanceTest: true },
+				mapFocusPath: null,
+				listMapPins: () => pins,
+				openMapNote: () => {},
+				openRoute: async () => {},
+				currentMapFix: () => null,
+				notifyPin: () => {},
+				hubMapIsFullscreen: () => full,
+				setHubMapFullscreen: (on: boolean) => { full = on; },
+			}, scope);
+			void map.onOpen();
+			root.querySelector<HTMLElement>('.rv-map-fullscreen')?.click();
+			map.zoom = 15;
+			map.paint();
+			const buttons = [...root.querySelectorAll<HTMLElement>('button.rv-map-pin')];
+			assert.equal(buttons.length, 2);
+			const boxes = [
+				{ left: 0, top: 200, width: 42, height: 54 },
+				{ left: 350, top: 200, width: 42, height: 54 },
+			];
+			buttons.forEach((button, index) => {
+				const box = boxes[index] ?? boxes[0];
+				button.getBoundingClientRect = () => ({
+					left: box.left,
+					top: box.top,
+					right: box.left + box.width,
+					bottom: box.top + box.height,
+					width: box.width,
+					height: box.height,
+					x: box.left,
+					y: box.top,
+					toJSON() { return box; },
+				}) as DOMRect;
+			});
+			const tap = (target: HTMLElement, x: number, y: number): void => {
+				target.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, button: 0, clientX: x, clientY: y }));
+			};
+			tap(buttons[0]!, 10, 220);
+			assert.equal(root.querySelector('.rv-map-card .rv-locator-file-link')?.textContent, 'Left Edge');
+			const card = root.querySelector<HTMLElement>('.rv-map-card');
+			assert.ok(card);
+			tap(card, 370, 220);
+			assert.equal(root.querySelector('.rv-map-card .rv-locator-file-link')?.textContent, 'Right Edge');
+			void map.onClose();
+			root.remove();
+		}
 	});
 
 });
