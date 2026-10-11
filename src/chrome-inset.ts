@@ -4,7 +4,9 @@
  */
 export const BOTTOM_CHROME = '.mobile-navbar, .mobile-toolbar, .status-bar';
 
-export const TOAST_GAP_PX = 8;
+export const TOAST_GAP_PX = 12;
+/** How long a toast keeps remeasuring while the mobile nav finishes layout. */
+export const TOAST_SETTLE_MS = 500;
 export const POPUP_MARGIN_PX = 4;
 
 export interface ChromeBox {
@@ -78,4 +80,80 @@ export function placeBottomToast(toast: HTMLElement): void {
 	if (height <= 0) return;
 	const limit = contentBottom(height, measureBottomChrome(doc), readSafeAreaBottom(doc));
 	toast.style.bottom = `${toastBottomOffset(height, limit)}px`;
+}
+
+/**
+ * Keep a toast 12px above the nav, toolbar, and status bar.
+ * The first layout often happens after the toast is shown, so this remeasures
+ * every frame for {@link TOAST_SETTLE_MS}, then follows resize, visualViewport,
+ * scroll, and nav/toolbar size or class changes.
+ */
+export function watchBottomToast(toast: HTMLElement): () => void {
+	const doc = toast.ownerDocument;
+	const view = doc.defaultView;
+	let frame = 0;
+	let stopped = false;
+	const started = view?.performance?.now?.() ?? Date.now();
+	const resizeObservers: ResizeObserver[] = [];
+	const mutationObservers: MutationObserver[] = [];
+	const watched = new WeakSet<Element>();
+
+	const place = (): void => {
+		if (stopped) return;
+		if (!toast.isConnected) {
+			stop();
+			return;
+		}
+		placeBottomToast(toast);
+	};
+
+	const watchEl = (el: Element): void => {
+		if (watched.has(el) || el === toast) return;
+		watched.add(el);
+		if (typeof ResizeObserver === 'function') {
+			const resize = new ResizeObserver(() => place());
+			resize.observe(el);
+			resizeObservers.push(resize);
+		}
+		if (typeof MutationObserver === 'function') {
+			const mutation = new MutationObserver(() => place());
+			mutation.observe(el, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+			mutationObservers.push(mutation);
+		}
+	};
+
+	const onChange = (): void => {
+		doc.querySelectorAll(BOTTOM_CHROME).forEach(watchEl);
+		place();
+	};
+
+	const tick = (now: number): void => {
+		if (stopped) return;
+		onChange();
+		if (now - started < TOAST_SETTLE_MS) frame = view?.requestAnimationFrame(tick) ?? 0;
+	};
+
+	// Do not observe body childList. Measuring the safe area inserts a probe,
+	// and a child observer would measure again forever.
+	view?.addEventListener('resize', onChange);
+	view?.visualViewport?.addEventListener('resize', onChange);
+	view?.visualViewport?.addEventListener('scroll', onChange);
+	doc.addEventListener('scroll', onChange, true);
+	if (doc.documentElement) watchEl(doc.documentElement);
+	if (doc.body) watchEl(doc.body);
+	onChange();
+	frame = view?.requestAnimationFrame(tick) ?? 0;
+
+	function stop(): void {
+		if (stopped) return;
+		stopped = true;
+		view?.cancelAnimationFrame(frame);
+		view?.removeEventListener('resize', onChange);
+		view?.visualViewport?.removeEventListener('resize', onChange);
+		view?.visualViewport?.removeEventListener('scroll', onChange);
+		doc.removeEventListener('scroll', onChange, true);
+		for (const resize of resizeObservers) resize.disconnect();
+		for (const mutation of mutationObservers) mutation.disconnect();
+	}
+	return stop;
 }

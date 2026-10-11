@@ -29,7 +29,7 @@ id: rv-log-home
 hidden: true
 actions:
   - type: runTemplaterFile
-    templateFile: Templates/99 RV Log Home.md
+    templateFile: Templates/RV Log Home.md
 ```
 
 ```meta-bind-button
@@ -42,7 +42,7 @@ id: rv-log-miss
 hidden: true
 actions:
   - type: runTemplaterFile
-    templateFile: Templates/99 RV Log Miss.md
+    templateFile: Templates/RV Log Miss.md
 ```
 
 ```meta-bind-button

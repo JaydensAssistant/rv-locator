@@ -542,8 +542,9 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('    command: rv-locator:archive-rv\n'), true);
 		assert.equal(createdText.includes('Priority: 4\n'), true);
 		assert.equal(createdText.includes('\nMet With:\nTaken:\n'), true);
-		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Home.md'), true);
-		assert.equal(createdText.includes('templateFile: Templates/99 RV Log Miss.md'), true);
+		assert.equal(createdText.includes('templateFile: Templates/RV Log Home.md'), true);
+		assert.equal(createdText.includes('templateFile: Templates/RV Log Miss.md'), true);
+		assert.equal(createdText.includes('99 RV Log'), false);
 		assert.equal(createdText.includes('INPUT[number:["Successful Visits"]]'), true);
 		assert.equal(createdText.includes('INPUT[dateTime:["Last Attempted"]]'), true);
 		assert.equal(createdText.includes('City'), false);

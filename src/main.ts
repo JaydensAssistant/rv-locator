@@ -51,7 +51,7 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { placeBottomToast } from './chrome-inset';
+import { watchBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
@@ -2445,16 +2445,8 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Measure the nav, toolbar, and status bar, and keep the toast above them. */
 	private mountToast(toast: HTMLElement): void {
-		placeBottomToast(toast);
 		document.body.appendChild(toast);
-		const onResize = (): void => {
-			if (!toast.isConnected) {
-				window.removeEventListener('resize', onResize);
-				return;
-			}
-			placeBottomToast(toast);
-		};
-		window.addEventListener('resize', onResize);
+		watchBottomToast(toast);
 	}
 
 	private showNotHomeToast(file: TFile, before: string, campaign: CampaignRecord | null): void {

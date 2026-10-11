@@ -2,7 +2,7 @@ import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
-import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, STACK_TAP_PX, tapOpensTop, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
+import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import { homeBoxFromPoints, loadTileIndex, noteViewedTile, saveTileIndex, tileIsHome, tileKey, type TileRecord } from './tile-index';
 import { autoInk, paintUrgencyInk, parseCssColor, resolvePaintedColor } from './color-math';
@@ -66,9 +66,10 @@ export class RvMapView extends ItemView {
 	private popupPath: string | null = null;
 	private flashPath: string | null = null;
 	private flashUntil = 0;
-	/** pointerup and click both arrive for one tap. The second one must not zoom again. */
+	/** pointerup and click both arrive for one tap. A zoom ignores every follow-up for a moment so the click cannot open a card. */
 	private pinTapStamp = 0;
 	private pinTapPath = '';
+	private pinTapKind: '' | 'zoom' | 'open' = '';
 	/** This map only. The hub stack and the split leaf do not share it. */
 	private mapFullscreen = false;
 	private fullscreenScope: 'hub' | 'split' = 'split';
@@ -120,6 +121,7 @@ export class RvMapView extends ItemView {
 		this.flashUntil = 0;
 		this.pinTapStamp = 0;
 		this.pinTapPath = '';
+		this.pinTapKind = '';
 		this.mapFullscreen = false;
 		this.fullscreenScope = scope;
 		this.renderedPaths = null;
@@ -405,26 +407,13 @@ export class RvMapView extends ItemView {
 			const target = event.target instanceof Element ? event.target : null;
 			const cardControl = target?.closest('.rv-map-card a, .rv-map-card button') != null;
 			if (!cardControl && event.button <= 0 && (!drag || !drag.moved)) {
-				const hit = this.pinButtonAt(event.clientX, event.clientY)
-					?? this.pinFromTarget(target);
+				const hit = this.pinHitAt(event.clientX, event.clientY, target);
 				if (hit && this.pinLayer) {
 					this.activatePin(hit.pin, hit.point, this.lastPlaced, this.pinLayer, hit.button);
 					return;
 				}
 			}
 			if (!drag || drag.moved) return;
-			const rect = stage.getBoundingClientRect();
-			const near = this.pinsNear(event.clientX - rect.left, event.clientY - rect.top, STACK_TAP_PX);
-			if (tapZoomsStack(Math.floor(this.zoom), near.length)) {
-				const pin = near[0]?.pin;
-				if (pin) {
-					this.centerLat = pin.lat;
-					this.centerLon = pin.lon;
-					this.popupPath = null;
-					this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
-					return;
-				}
-			}
 			if (this.isFullscreen()) {
 				if (!this.selectedPath && !this.popupPath) return;
 				this.selectedPath = null;
@@ -450,19 +439,18 @@ export class RvMapView extends ItemView {
 			this.press = null;
 			if (!press || event.button > 0) return;
 			if (!mapPressIsClick(event.clientX - press.x, event.clientY - press.y, 8)) return;
-			const rect = stage.getBoundingClientRect();
-			const near = this.pinsNear(press.x - rect.left, press.y - rect.top, STACK_TAP_PX);
-			if (!tapZoomsStack(Math.floor(this.zoom), near.length)) return;
-			const pin = near[0]?.pin;
-			if (!pin) return;
-			this.centerLat = pin.lat;
-			this.centerLon = pin.lon;
+			const hit = this.pinHitAt(event.clientX, event.clientY, event.target);
+			if (!hit || !this.pinLayer || !this.pinTapZooms(hit.pin)) return;
+			this.centerLat = hit.pin.lat;
+			this.centerLon = hit.pin.lon;
 			this.popupPath = null;
 			this.popupPanned = false;
 			this.pinTapStamp = Date.now();
-			this.pinTapPath = pin.path;
+			this.pinTapPath = hit.pin.path;
+			this.pinTapKind = 'zoom';
 			this.drag = null;
-			this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
+			const zed = Math.floor(this.zoom);
+			this.setZoom(zoomToRevealPin(zed), true);
 		};
 		view?.addEventListener('pointerup', onWindowUp, true);
 		this.detachPress = () => view?.removeEventListener('pointerup', onWindowUp, true);
@@ -736,11 +724,7 @@ export class RvMapView extends ItemView {
 		hold.style.transform = '';
 	}
 
-	private pinsNear(x: number, y: number, px: number): { pin: MapPin; point: { x: number; y: number } }[] {
-		return this.lastPlaced.filter((item) => Math.hypot(item.point.x - x, item.point.y - y) <= px);
-	}
-
-	/** The pin button under a viewport point, including one covered by the open card. */
+	/** The pin button whose border box contains a viewport point. Used only when the element stack is unavailable. */
 	private pinButtonAt(clientX: number, clientY: number): { pin: MapPin; point: { x: number; y: number }; button: HTMLElement } | null {
 		const buttons = this.pinLayer?.querySelectorAll<HTMLElement>('button.rv-map-pin');
 		if (!buttons) return null;
@@ -763,9 +747,44 @@ export class RvMapView extends ItemView {
 	private pinFromTarget(target: Element | null): { pin: MapPin; point: { x: number; y: number }; button: HTMLElement } | null {
 		const button = target?.closest('.rv-map-pin');
 		if (!(button instanceof HTMLElement)) return null;
-		const item = this.lastPlaced.find((entry) => entry.pin.path === (button.dataset.rvPath ?? ''));
+		const path = button.dataset.rvPath ?? '';
+		const item = this.lastPlaced.find((entry) => entry.pin.path === path);
 		if (!item) return null;
 		return { pin: item.pin, point: item.point, button };
+	}
+
+	/**
+	 * The pin element under the pointer. The event target wins, then the
+	 * topmost pin in the element stack (a card may cover it). A nearby pin
+	 * is never substituted.
+	 */
+	private pinHitAt(clientX: number, clientY: number, target: EventTarget | null): { pin: MapPin; point: { x: number; y: number }; button: HTMLElement } | null {
+		const direct = target instanceof Element ? this.pinFromTarget(target) : null;
+		if (direct) return direct;
+		const view = this.stage?.ownerDocument.defaultView;
+		const stack = view?.document?.elementsFromPoint?.(clientX, clientY) ?? [];
+		for (const node of stack) {
+			if (!(node instanceof Element)) continue;
+			const hit = this.pinFromTarget(node);
+			if (hit) return hit;
+		}
+		return this.pinButtonAt(clientX, clientY);
+	}
+
+	/** A count stack, or any pins drawn on top of each other, zooms instead of opening. */
+	private pinTapZooms(pin: MapPin): boolean {
+		const placed = this.lastPlaced;
+		const spot = placed.find((entry) => entry.pin.path === pin.path)?.point;
+		if (!spot) return false;
+		const members = placed.map((item) => ({
+			path: item.pin.path,
+			x: item.point.x,
+			y: item.point.y,
+			urgency: item.pin.urgency,
+			priority: item.pin.priority,
+		}));
+		const group = groupPinStacks(members).find((entry) => entry.some((member) => member.path === pin.path));
+		return tapZoomsStack(Math.floor(this.zoom), group?.length ?? 0);
 	}
 
 	private paintStacks(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {
@@ -845,7 +864,9 @@ export class RvMapView extends ItemView {
 			}
 			event.preventDefault();
 			event.stopPropagation();
-			this.activatePin(pin, point, placed, layer, button);
+			const path = button.dataset.rvPath ?? pin.path;
+			const live = this.lastPlaced.find((entry) => entry.pin.path === path);
+			this.activatePin(live?.pin ?? pin, live?.point ?? point, this.lastPlaced, layer, button);
 		};
 		button.addEventListener('pointerup', onTap);
 		button.addEventListener('click', onTap);
@@ -859,42 +880,35 @@ export class RvMapView extends ItemView {
 		layer: HTMLElement,
 		button: HTMLElement,
 	): void {
+		const path = button.dataset.rvPath || pin.path;
+		const live = this.lastPlaced.find((entry) => entry.pin.path === path);
+		const chosen = live?.pin ?? pin;
+		const spot = live?.point ?? point;
 		const now = Date.now();
-		if (now - this.pinTapStamp < 400 && this.pinTapPath === pin.path) return;
+		if (now - this.pinTapStamp < 400 && (this.pinTapKind === 'zoom' || this.pinTapPath === chosen.path)) return;
 		this.pinTapStamp = now;
-		this.pinTapPath = pin.path;
+		this.pinTapPath = chosen.path;
 		const zed = Math.floor(this.zoom);
-		const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= STACK_TAP_PX);
-		const members = placed.map((item) => ({
-			path: item.pin.path,
-			x: item.point.x,
-			y: item.point.y,
-			urgency: item.pin.urgency,
-			priority: item.pin.priority,
-		}));
-		const group = groupPinStacks(members).find((entry) => entry.some((member) => member.path === pin.path));
-		const overlaps = Math.max(near.length, group?.length ?? 0);
-		if (tapZoomsStack(zed, overlaps)) {
-			this.centerLat = pin.lat;
-			this.centerLon = pin.lon;
+		if (this.pinTapZooms(chosen)) {
+			this.pinTapKind = 'zoom';
+			this.centerLat = chosen.lat;
+			this.centerLon = chosen.lon;
 			this.popupPath = null;
 			this.popupPanned = false;
 			this.setZoom(zoomToRevealPin(zed), true);
 			return;
 		}
-		const hottest = [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin;
-		const top = this.popupPath && this.isFullscreen() ? pin : (tapOpensTop(zed, overlaps) ? hottest : pin);
-		this.selectedPath = top.path;
+		this.pinTapKind = 'open';
+		this.selectedPath = chosen.path;
 		if (this.isFullscreen()) {
-			this.popupPath = top.path;
+			this.popupPath = chosen.path;
 			this.popupPanned = false;
-			const spot = placed.find((item) => item.pin.path === top.path)?.point ?? point;
-			this.openCard(layer, top, spot);
+			this.openCard(layer, chosen, spot);
 			button.addClass('is-selected');
 			return;
 		}
 		this.popupPath = null;
-		this.host.notifyPin?.(top.path);
+		this.host.notifyPin?.(chosen.path);
 		button.addClass('is-selected');
 	}
 

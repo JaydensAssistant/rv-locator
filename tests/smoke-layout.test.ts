@@ -12,7 +12,7 @@ import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
 import type { MapPin } from '../src/map-pins';
 import { popupClearOfChrome } from '../src/map-pins';
-import { contentBottom, placeBottomToast, toastBottomOffset } from '../src/chrome-inset';
+import { contentBottom, placeBottomToast, toastBottomOffset, watchBottomToast } from '../src/chrome-inset';
 import { coveredCampaignFor } from '../src/schedule';
 import { maskStampText, maskTitleElement, rvDisplayTitle } from '../src/stamp-mask';
 import { tileKey } from '../src/tile-index';
@@ -598,6 +598,11 @@ describe('smoke layout', () => {
 		assert.match(script, /alreadyStamped/);
 		assert.match(script, /if \(alreadyStamped\)/);
 		assert.match(script, /!alreadyStamped/);
+		assert.equal(script.includes('templateFile'), false);
+		const newRv = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
+		assert.match(newRv, /templateFile: Templates\/RV Log Home\.md/);
+		assert.match(newRv, /templateFile: Templates\/RV Log Miss\.md/);
+		assert.equal(newRv.includes('99 RV Log'), false);
 		const chrome = readFileSync('src/note-chrome.ts', 'utf8');
 		assert.match(chrome, /fitEndEllipsis\(link, text\)/);
 		assert.match(chrome, /fitEndEllipsis\(label, full\)/);
@@ -687,8 +692,9 @@ describe('smoke layout', () => {
 	it('keeps a toast above the phone nav and the desktop status bar', () => {
 		const phoneNav = { top: 760, bottom: 844, left: 0, right: 390, width: 390, height: 84 };
 		assert.equal(contentBottom(844, [phoneNav], 0), 760);
-		assert.equal(toastBottomOffset(844, 760), 92);
-		assert.equal(844 - 92 < 760, true);
+		assert.equal(toastBottomOffset(844, 760), 96);
+		assert.equal(844 - 96, 748);
+		assert.equal(760 - 748, 12);
 		const status = { top: 778, bottom: 800, left: 400, right: 800, width: 400, height: 22 };
 		assert.equal(contentBottom(800, [status], 0), 778);
 		assert.equal(800 - toastBottomOffset(800, 778) < 778, true);
@@ -702,7 +708,40 @@ describe('smoke layout', () => {
 		const toast = window.document.createElement('div');
 		toast.className = 'rv-nh-toast';
 		placeBottomToast(toast);
-		assert.equal(toast.style.bottom, '92px');
+		assert.equal(toast.style.bottom, '96px');
+		nav.remove();
+	});
+
+	it('remeasures a toast for half a second and follows the nav as it settles, hides, and shows', async () => {
+		Object.defineProperty(window, 'innerHeight', { configurable: true, value: 844 });
+		const nav = window.document.createElement('div');
+		nav.className = 'mobile-navbar';
+		let top = 844;
+		let height = 0;
+		const box = () => ({ top, bottom: top + height, left: 0, right: 390, width: 390, height, x: 0, y: top, toJSON() { return { top, height }; } });
+		nav.getBoundingClientRect = () => box() as DOMRect;
+		window.document.body.appendChild(nav);
+		const toast = window.document.createElement('div');
+		toast.className = 'rv-nh-toast';
+		window.document.body.appendChild(toast);
+		const stop = watchBottomToast(toast);
+		assert.equal(toast.style.bottom, '12px');
+		top = 760;
+		height = 52;
+		await new Promise<void>((resolve) => { window.requestAnimationFrame(() => resolve()); });
+		assert.equal(toast.style.bottom, '96px');
+		assert.equal(844 - 96 <= 760 - 12, true);
+		top = 820;
+		height = 0;
+		window.document.dispatchEvent(new window.Event('scroll'));
+		assert.equal(toast.style.bottom, '12px');
+		top = 760;
+		height = 52;
+		nav.className = 'mobile-navbar is-visible';
+		await new Promise<void>((resolve) => { window.requestAnimationFrame(() => resolve()); });
+		assert.equal(toast.style.bottom, '96px');
+		toast.remove();
+		stop();
 		nav.remove();
 	});
 
@@ -821,6 +860,165 @@ describe('smoke layout', () => {
 			assert.equal(root.querySelector('.rv-map-card .rv-locator-file-link')?.textContent, 'Right Edge');
 			void map.onClose();
 			root.remove();
+		}
+	});
+
+	it('opens the file on the pin element under the pointer, including a hotter neighbor', () => {
+		const facts = {
+			address: '10 Oak Hammock Ln',
+			city: 'Orlando',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '1',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		};
+		const named = [
+			['RVs/Avoid.md', 'Avoid', 1],
+			['RVs/Token Edit.md', 'Token Edit', 5],
+			['RVs/Crowd 080.md', 'Crowd 080', 2],
+			['RVs/Three Items.md', 'Three Items', 4],
+			['RVs/Cooldown.md', 'Cooldown', 1],
+			['RVs/Toast Two.md', 'Toast Two', 5],
+		] as const;
+		const pins: MapPin[] = named.map(([path, name, urgency], index) => ({
+			path,
+			name,
+			lat: 28.54,
+			lon: -81.38 + index * 0.0015,
+			priority: 4,
+			urgency,
+			days: 3,
+			color: '#d63c3c',
+			glyph: '1',
+			fresh: false,
+			stateIcon: null,
+			shadeIcon: null,
+			markText: null,
+			rank: index,
+			card: facts,
+		}));
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const map = Object.create(RvMapView.prototype) as RvMapView & { zoom: number; paint: () => void };
+		map.contentEl = root;
+		map.bindHost({
+			settings: { ...DEFAULT_SETTINGS, distanceTest: true },
+			mapFocusPath: null,
+			listMapPins: () => pins,
+			openMapNote: () => {},
+			openRoute: async () => {},
+			currentMapFix: () => null,
+			notifyPin: () => {},
+			hubMapIsFullscreen: () => true,
+		}, 'hub');
+		void map.onOpen();
+		root.querySelector<HTMLElement>('.rv-map-fullscreen')?.click();
+		map.zoom = 15;
+		map.paint();
+		const buttons = [...root.querySelectorAll<HTMLElement>('button.rv-map-pin')];
+		assert.equal(buttons.length, named.length);
+		const overlap = { left: 40, top: 200, right: 82, bottom: 254, width: 42, height: 54, x: 40, y: 200, toJSON() { return overlap; } };
+		buttons.forEach((button) => {
+			button.getBoundingClientRect = () => overlap as DOMRect;
+		});
+		const cardFile = (): string => root.querySelector('.rv-map-card .rv-locator-file-link')?.getAttribute('href') ?? '';
+		buttons.forEach((button) => {
+			const path = button.dataset.rvPath ?? '';
+			assert.equal(named.some(([file]) => file === path), true);
+			button.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 50, clientY: 220 }));
+			assert.equal(cardFile(), path, button.getAttribute('aria-label') ?? path);
+		});
+		const avoid = buttons.find((button) => button.dataset.rvPath === 'RVs/Avoid.md');
+		assert.ok(avoid);
+		avoid.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, button: 0, clientX: 50, clientY: 220 }));
+		assert.equal(cardFile(), 'RVs/Avoid.md');
+		assert.equal(root.querySelector('.rv-map-card .rv-locator-file-link')?.textContent, 'Avoid');
+		void map.onClose();
+		root.remove();
+	});
+
+	it('zooms a stack to 13 on mouse and touch even when a card is already open', () => {
+		const facts = {
+			address: '10 Oak Hammock Ln',
+			city: 'Orlando',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '8',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		};
+		const pins: MapPin[] = Array.from({ length: 8 }, (_, index) => ({
+			path: `RVs/stack-${index}.md`,
+			name: index === 0 ? 'Token Edit' : `Stack ${index}`,
+			lat: 28.54,
+			lon: -81.38,
+			priority: 5 - (index % 5),
+			urgency: index === 0 ? 5 : 1,
+			days: 4,
+			color: '#d63c3c',
+			glyph: '1',
+			fresh: false,
+			stateIcon: null,
+			shadeIcon: null,
+			markText: null,
+			rank: index,
+			card: facts,
+		}));
+		for (const scope of ['hub', 'split'] as const) {
+			for (const button of [0, -1]) {
+				let full = scope === 'hub';
+				const root = window.document.createElement('div');
+				window.document.body.appendChild(root);
+				const map = Object.create(RvMapView.prototype) as RvMapView & { zoom: number; paint: () => void };
+				map.contentEl = root;
+				map.bindHost({
+					settings: { ...DEFAULT_SETTINGS, distanceTest: true },
+					mapFocusPath: null,
+					listMapPins: () => pins,
+					openMapNote: () => {},
+					openRoute: async () => {},
+					currentMapFix: () => null,
+					notifyPin: () => {},
+					hubMapIsFullscreen: () => full,
+					setHubMapFullscreen: (on: boolean) => { full = on; },
+				}, scope);
+				void map.onOpen();
+				if (scope === 'split') root.querySelector<HTMLElement>('.rv-map-fullscreen')?.click();
+				map.zoom = 15;
+				map.paint();
+				const first = root.querySelector<HTMLElement>('button.rv-map-pin');
+				assert.ok(first);
+				first.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true, button, clientX: 20, clientY: 20 }));
+				assert.ok(root.querySelector('.rv-map-card'));
+				map.zoom = 12;
+				map.paint();
+				const stack = root.querySelector<HTMLElement>('button.rv-map-pin');
+				assert.ok(stack);
+				assert.equal(stack.querySelector('.rv-pin-stack-count')?.textContent, '8');
+				const badge = stack.querySelector('.rv-pin-stack-count');
+				assert.ok(badge);
+				const point = { bubbles: true, button, clientX: 48, clientY: 8 };
+				badge.dispatchEvent(new window.MouseEvent('pointerdown', point));
+				badge.dispatchEvent(new window.MouseEvent('pointerup', point));
+				badge.dispatchEvent(new window.MouseEvent('click', point));
+				assert.equal(map.zoom, 13);
+				assert.equal(root.querySelector('.rv-map-card'), null);
+				void map.onClose();
+				root.remove();
+			}
 		}
 	});
 
