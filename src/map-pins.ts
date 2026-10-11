@@ -217,24 +217,38 @@ export const MAP_CONTROL_PX = 40;
 export const MAP_CONTROL_GAP_PX = 8;
 export const MAP_CREDIT_STRIP_PX = 14;
 
+/** Visible map, in stage coordinates. A fullscreen stage can start above the window. */
+export interface PopupViewport {
+	left: number;
+	top: number;
+	width: number;
+	height: number;
+}
+
 export function popupClearOfChrome(
 	anchor: { x: number; y: number },
 	card: { width: number; height: number },
 	stage: { width: number; height: number },
+	visible?: PopupViewport,
 ): { left: number; top: number } {
+	const view = visible ?? { left: 0, top: 0, width: stage.width, height: stage.height };
 	const column = MAP_CONTROL_INSET_PX + MAP_CONTROL_PX + MAP_CONTROL_INSET_PX;
-	const limitRight = Math.max(4, stage.width - column);
-	const limitBottom = Math.max(4, stage.height - MAP_CREDIT_STRIP_PX);
+	const minLeft = view.left + 4;
+	const minTop = view.top + 4;
+	const limitRight = Math.max(minLeft + 1, Math.min(stage.width - column, view.left + view.width));
+	const limitBottom = Math.max(minTop + 1, Math.min(stage.height - MAP_CREDIT_STRIP_PX, view.top + view.height));
 	let left = anchor.x + 28;
 	if (left + card.width > limitRight) left = anchor.x - 28 - card.width;
 	if (left + card.width > limitRight) left = limitRight - card.width;
-	if (left < 4) left = 4;
+	if (left < minLeft) left = minLeft;
+	if (left + card.width > limitRight) left = Math.max(minLeft, limitRight - card.width);
 	const below = anchor.y + 18;
 	const above = anchor.y - card.height - 12;
-	let top = above >= 4 ? above : below;
-	if (top + card.height > limitBottom) top = above >= 4 ? above : limitBottom - card.height;
+	let top = above >= minTop ? above : below;
+	if (top + card.height > limitBottom) top = above >= minTop ? above : limitBottom - card.height;
 	if (top + card.height > limitBottom) top = limitBottom - card.height;
-	if (top < 4) top = 4;
+	if (top < minTop) top = minTop;
+	if (top + card.height > limitBottom) top = Math.max(minTop, limitBottom - card.height);
 	return { left, top };
 }
 

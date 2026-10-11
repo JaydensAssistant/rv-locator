@@ -27,6 +27,28 @@ host.getSelection = window.getSelection.bind(window);
 host.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 host.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 host.MutationObserver = window.MutationObserver;
+host.NodeFilter = window.NodeFilter;
+
+const proto = window.HTMLElement.prototype as HTMLElement & Record<string, (...args: never[]) => unknown>;
+proto.addClass = function addClass(this: HTMLElement, cls: string) {
+	this.classList.add(...cls.split(/\s+/).filter(Boolean));
+};
+proto.createEl = function createEl(this: HTMLElement, tag: string, spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) {
+	const el = this.ownerDocument.createElement(tag);
+	if (typeof spec === 'string') el.className = spec;
+	else if (spec) {
+		if (spec.cls) el.className = spec.cls;
+		if (spec.text) el.textContent = spec.text;
+		if (spec.attr) {
+			for (const [key, value] of Object.entries(spec.attr)) el.setAttribute(key, value);
+		}
+	}
+	this.appendChild(el);
+	return el;
+};
+proto.createSpan = function createSpan(this: HTMLElement, spec?: string | { cls?: string; text?: string }) {
+	return this.createEl('span', typeof spec === 'string' ? { cls: spec } : spec);
+};
 
 const stamps = [
 	'Mon, 9am — Sep 1, 2026',
@@ -98,5 +120,34 @@ describe('live preview older visits', () => {
 		assert.equal(content.textContent, text);
 		assert.equal(content.childNodes.length, children);
 		assert.equal(preview.querySelector('.rv-older-visits'), null);
+	});
+
+	it('puts the note in the card and reads the campaign from the note text', async () => {
+		const doc = [
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'> [!note]- Log',
+			'> - Sun, 9:05am — Oct 11, 2026 — success — covered Convention',
+		].join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+		const box = view.dom.querySelector('.rv-visit-note-box');
+		assert.ok(box);
+		assert.match(box?.textContent ?? '', /sVisit1Notes/);
+		assert.match(view.dom.querySelector('.is-campaign')?.textContent ?? '', /Convention/);
+		assert.ok(view.dom.querySelector('.cm-line.rv-lp-card-source'));
+		assert.equal(view.state.doc.toString(), doc);
+		view.destroy();
 	});
 });

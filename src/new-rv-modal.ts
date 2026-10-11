@@ -167,7 +167,7 @@ export class NewRvIdentityModal extends Modal {
 				}
 			});
 		new Setting(contentEl)
-			.setName('Who came with you?')
+			.setName('What publisher came with you?')
 			.setDesc('Optional.')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');

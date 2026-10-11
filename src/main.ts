@@ -21,7 +21,7 @@ import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickMod
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
-import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, rehoistVisitNotes, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -43,7 +43,7 @@ import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitiz
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
-import { cardPersonTitle, sanitizeNoteName, stripFilenameStamp } from './note-name';
+import { cardPersonTitle, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
@@ -51,7 +51,8 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { currentReturnBucket, daypartAt, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
+import { basenameHasStamp, maskStampText, maskTitleElement, rvDisplayTitle, STAMP_TITLE_SELECTOR } from './stamp-mask';
+import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
@@ -130,6 +131,12 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last file each leaf was switched for, so a later switch to editing is kept. */
 	private readingViewFor = new WeakMap<WorkspaceLeaf, string>();
 	private newRvDraft: NewRvIdentity | null = null;
+	/** Note text for the campaign chip. The Log block does not have to be on screen. */
+	private noteBodies = new Map<string, string>();
+	private maskingStamps = false;
+	private readonly visitSurfaces = new WeakSet<HTMLElement>();
+	private visitSurfaceLock = 0;
+	private visitSurfaceDirty = false;
 	/** Picked Geoapify hit whose formatted address was submitted unchanged. */
 	private verifiedNewRvHit: GeocodeHit | null = null;
 	/** Set while Add a housemate is creating a note. The template skips geocode. */
@@ -255,10 +262,20 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerEditorExtension(visitPreviewExtension(() => ({
 			collapseOlder: this.settings.collapseOlderVisits,
 			limit: this.settings.visibleVisitCount,
-		})));
+		}), (dom) => {
+			const path = this.pathForSurface(dom) || this.app.workspace.getActiveFile()?.path || '';
+			if (!path) return;
+			applyLiveUrgency(dom, path, this.noteChromeHost(), true);
+		}));
 
 		this.registerMarkdownPostProcessor((element, context) => {
 			const path = context.sourcePath;
+			const coveredFor = (when: Date, line = -1, domIndex = 0): string | null => {
+				if (!this.noteBodies.has(path)) return null;
+				const body = this.noteBodies.get(path) ?? '';
+				const newestIndex = line >= 0 ? headingNewestIndex(body, when, line) : domIndex;
+				return coveredCampaignFor(body, when, newestIndex);
+			};
 			applyLiveUrgency(element, path, this.noteChromeHost());
 			const hasCallout = element.classList.contains('callout') || element.querySelector('.callout') != null;
 			decorateAttemptLog(element, hasCallout ? this.suggestionCalloutType() : undefined);
@@ -268,15 +285,21 @@ export default class RVLocatorPlugin extends Plugin {
 				element,
 				() => context.getSectionInfo(element)?.lineStart ?? null,
 				(target, evt) => this.openVisitMenu(path, target, evt),
+				coveredFor,
 			);
+			applyLiveUrgency(element, path, this.noteChromeHost());
 			concealCollapsedVisitNotes(element);
+			const file = this.app.vault.getFileByPath(path);
+			if (file && !this.noteBodies.has(path)) this.rememberNoteText(file);
+			this.bindVisitSurface(element, path);
 			const lastDelay = NOTES_FIT_DELAYS_MS[NOTES_FIT_DELAYS_MS.length - 1] ?? 2_500;
 			for (const delay of NOTES_FIT_DELAYS_MS) {
 				window.setTimeout(() => {
 					if (this.unloaded) return;
-					fitNotesBoxes(element);
-					applyLiveUrgency(element, path, this.noteChromeHost(), delay === lastDelay);
-					this.decorateOpenNote(element, path);
+					const live = this.markdownSurface(path);
+					if (live) fitNotesBoxes(live);
+					else if (element.isConnected) fitNotesBoxes(element);
+					this.refreshVisitCards(path, element, delay === lastDelay);
 				}, delay);
 			}
 		});
@@ -315,10 +338,31 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
 			this.scheduleAgeRefresh();
 			this.applyLayoutClasses();
+			this.maskFilenameStamps();
 		}));
+		this.registerEvent(this.app.metadataCache.on('changed', (file) => {
+			const active = this.app.workspace.getActiveFile();
+			if (!active || file.path === active.path) this.applyLayoutClasses();
+			if (file instanceof TFile) this.rememberNoteText(file);
+			this.maskFilenameStamps();
+		}));
+		this.registerEvent(this.app.vault.on('modify', (file) => {
+			if (file instanceof TFile && file.extension === 'md') this.rememberNoteText(file);
+		}));
+		const onOpenVisit = (evt: Event): void => {
+			const detail = (evt as CustomEvent<{ target?: VisitTarget; event?: MouseEvent }>).detail;
+			const path = this.app.workspace.getActiveFile()?.path;
+			if (!path || !detail?.target || !detail.event) return;
+			this.openVisitMenu(path, detail.target, detail.event);
+		};
+		document.addEventListener('rv-open-visit', onOpenVisit);
+		this.register(() => document.removeEventListener('rv-open-visit', onOpenVisit));
+		this.installStampMask();
 		this.registerEvent(this.app.workspace.on('css-change', () => {
 			clearInkCache();
 			for (const callback of this.viewRefreshers) callback();
+			this.repaintOpenUrgency();
+			window.requestAnimationFrame(() => this.repaintOpenUrgency());
 		}));
 		this.registerEvent(this.app.workspace.on('layout-change', () => this.scheduleAgeRefresh()));
 		this.registerEvent(this.app.workspace.on('css-change', () => {
@@ -455,12 +499,211 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private onNoteOpened(file: TFile | null): void {
+		this.applyLayoutClasses();
 		this.scheduleAgeRefresh();
 		this.scheduleNotesFit();
 		this.maybeSessionLocationNotice();
+		this.maskFilenameStamps();
 		if (!file) return;
+		this.rememberNoteText(file);
 		this.primeOpenUrgency(file);
 		window.setTimeout(() => this.openInReadingView(file, false), 0);
+	}
+
+	/** Counter ink follows the palette and the theme on notes that are already open. */
+	private repaintOpenUrgency(): void {
+		if (this.unloaded) return;
+		const host = this.noteChromeHost();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || !view.file) continue;
+			applyLiveUrgency(view.containerEl, view.file.path, host, true);
+		}
+	}
+
+	private rememberNoteText(file: TFile): void {
+		void this.app.vault.cachedRead(file).then((text) => {
+			if (this.unloaded) return;
+			const previous = this.noteBodies.get(file.path);
+			this.noteBodies.set(file.path, text);
+			if (previous === text) return;
+			this.redecorateVisits(file.path);
+		});
+	}
+
+	private redecorateVisits(path: string): void {
+		if (this.unloaded) return;
+		this.refreshVisitCards(path);
+	}
+
+	/**
+	 * Reading view renders one markdown block at a time, and virtualization
+	 * swaps those blocks back in without another post-processor pass. Refresh
+	 * the live preview surface so the note box, campaign chip, and counter ink
+	 * catch a paragraph that arrives later or a heading that was recycled.
+	 */
+	private refreshVisitCards(path: string, fallback?: HTMLElement, chrome = false): void {
+		if (this.unloaded || !path) return;
+		const surface = this.markdownSurface(path) ?? (fallback?.isConnected ? fallback : null);
+		if (!surface) return;
+		const coveredFor = (when: Date, line = -1, domIndex = 0): string | null => {
+			if (!this.noteBodies.has(path)) return null;
+			const body = this.noteBodies.get(path) ?? '';
+			const newestIndex = line >= 0 ? headingNewestIndex(body, when, line) : domIndex;
+			return coveredCampaignFor(body, when, newestIndex);
+		};
+		decorateVisitControls(
+			surface,
+			() => null,
+			(target, evt) => this.openVisitMenu(path, target, evt),
+			coveredFor,
+		);
+		rehoistVisitNotes(surface);
+		applyLiveUrgency(surface, path, this.noteChromeHost(), true);
+		if (chrome) this.decorateOpenNote(surface, path);
+		this.bindVisitSurface(surface, path);
+	}
+
+	private markdownSurface(path: string): HTMLElement | null {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
+			const preview = view.containerEl.querySelector('.markdown-preview-view, .markdown-reading-view');
+			if (preview instanceof HTMLElement) return preview;
+		}
+		return null;
+	}
+
+	private pathForSurface(surface: HTMLElement): string {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.containerEl.contains(surface)) return view.file?.path ?? '';
+		}
+		return '';
+	}
+
+	/** Scroll and block mount. Our own card edits are ignored so this cannot loop. */
+	private bindVisitSurface(start: HTMLElement, path: string): void {
+		const surface = start.classList.contains('markdown-preview-view') || start.classList.contains('markdown-reading-view')
+			? start
+			: start.closest('.markdown-preview-view, .markdown-reading-view');
+		if (!(surface instanceof HTMLElement) || this.visitSurfaces.has(surface)) return;
+		this.visitSurfaces.add(surface);
+		let frame = 0;
+		const schedule = (): void => {
+			if (this.unloaded) return;
+			if (this.visitSurfaceLock > 0) {
+				this.visitSurfaceDirty = true;
+				return;
+			}
+			if (frame) return;
+			frame = window.requestAnimationFrame(() => {
+				frame = 0;
+				const livePath = this.pathForSurface(surface) || path;
+				this.visitSurfaceLock += 1;
+				try {
+					this.refreshVisitCards(livePath, surface);
+				} finally {
+					this.visitSurfaceLock -= 1;
+					if (this.visitSurfaceDirty) {
+						this.visitSurfaceDirty = false;
+						schedule();
+					}
+				}
+			});
+		};
+		this.registerDomEvent(surface, 'scroll', () => schedule(), { passive: true });
+		if (typeof MutationObserver === 'undefined') return;
+		const observer = new MutationObserver((records) => {
+			const relevant = records.some((record) => {
+				const target = record.target;
+				const el = target instanceof HTMLElement ? target : target.parentElement;
+				if (!(el instanceof HTMLElement)) return false;
+				return el.closest('.rv-visit-note-box, .rv-item-strip, .rv-stamp-row, .rv-visit-more') == null;
+			});
+			if (relevant) schedule();
+		});
+		observer.observe(surface, { childList: true, subtree: true });
+		this.register(() => observer.disconnect());
+	}
+
+	/**
+	 * The stamp stays on disk. These surfaces show the stripped name.
+	 * Not controlled: the OS window title when it is not `document.title`, and
+	 * core prompts that read the real basename (rename, delete, Note title).
+	 */
+	private installStampMask(): void {
+		this.maskFilenameStamps();
+		if (typeof MutationObserver === 'undefined' || !document.body) return;
+		const observer = new MutationObserver(() => this.maskFilenameStamps());
+		observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+		this.register(() => observer.disconnect());
+	}
+
+	private stampPairs(): { stamped: string; display: string }[] {
+		const pairs: { stamped: string; display: string }[] = [];
+		const seen = new Set<string>();
+		const add = (basename: string, rv: boolean): void => {
+			if (!rv || !basenameHasStamp(basename) || seen.has(basename)) return;
+			const display = rvDisplayTitle(basename);
+			if (!display || display === basename) return;
+			seen.add(basename);
+			pairs.push({ stamped: basename, display });
+		};
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			const data = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+			add(file.basename, isRvDashboardNote(data));
+		}
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || !view.file) continue;
+			const rendered = view.containerEl.querySelector('.rv-dashboard') != null;
+			add(view.file.basename, rendered || isRvDashboardNote(this.app.metadataCache.getFileCache(view.file)?.frontmatter as Record<string, unknown> | undefined));
+		}
+		return pairs;
+	}
+
+	private maskFilenameStamps(): void {
+		if (this.maskingStamps || this.unloaded) return;
+		const pairs = this.stampPairs();
+		if (pairs.length === 0) return;
+		this.maskingStamps = true;
+		try {
+			document.querySelectorAll(STAMP_TITLE_SELECTOR).forEach((node) => {
+				if (node instanceof HTMLElement) maskTitleElement(node, pairs);
+			});
+			const titled = document.title;
+			for (const pair of pairs) {
+				const next = maskStampText(titled, pair.stamped, pair.display);
+				if (next !== titled) document.title = next;
+			}
+			this.app.workspace.iterateAllLeaves((leaf) => {
+				const view = leaf.view;
+				const file = view instanceof MarkdownView ? view.file : null;
+				if (!file) return;
+				const pair = pairs.find((item) => item.stamped === file.basename);
+				if (!pair) return;
+				const tab = (leaf as WorkspaceLeaf & { tabHeaderInnerTitleEl?: HTMLElement }).tabHeaderInnerTitleEl;
+				if (tab) maskTitleElement(tab, [pair]);
+				const header = view.containerEl.querySelector('.view-header-title');
+				if (header instanceof HTMLElement) maskTitleElement(header, [pair]);
+				const inline = view.containerEl.querySelector('.inline-title');
+				if (inline instanceof HTMLElement) maskTitleElement(inline, [pair]);
+			});
+			for (const leaf of this.app.workspace.getLeavesOfType('file-explorer')) {
+				const items = (leaf.view as { fileItems?: Record<string, { titleEl?: HTMLElement; titleInnerEl?: HTMLElement }> }).fileItems;
+				if (!items) continue;
+				for (const [path, item] of Object.entries(items)) {
+					const base = path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
+					const pair = pairs.find((entry) => entry.stamped === base);
+					if (!pair) continue;
+					const el = item.titleInnerEl ?? item.titleEl;
+					if (el) maskTitleElement(el, [pair]);
+				}
+			}
+		} finally {
+			this.maskingStamps = false;
+		}
 	}
 
 	/** Accent vars on the leaf before the preview's first paint. */
@@ -697,6 +940,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
 			else if (created instanceof TFile) {
+				await this.suffixCollidingName(created);
 				if (draft) await this.writeNewRvShare(created, draft);
 				await this.refreshAttemptDigest(created);
 				if (sourcePath) await this.linkHousehold(sourcePath, created);
@@ -1118,7 +1362,10 @@ export default class RVLocatorPlugin extends Plugin {
 		this.digestKeyApplied = this.digestKey();
 		this.applyLayoutClasses();
 		this.refreshOpenNoteChrome();
+		clearInkCache();
 		this.refreshVisitPreviewEditors();
+		this.repaintOpenUrgency();
+		window.requestAnimationFrame(() => this.repaintOpenUrgency());
 		for (const callback of this.viewRefreshers) callback();
 		if (digestChanged) {
 			this.recolorOpenSuggestions();
@@ -2151,9 +2398,29 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** In-note Not home. Same instant write as the card and the hub. */
-	async logNoteMiss(file: TFile): Promise<boolean> {
-		await this.commitInstantMiss(file);
+	async logNoteMiss(file: TFile | { path: string }): Promise<boolean> {
+		const note = this.asNoteFile(file);
+		if (!note) throw new Error('RV log: that note is not in the vault.');
+		await this.commitInstantMiss(note);
 		return true;
+	}
+
+	/** A Templater target can be a path-shaped object. The writers need a vault file. */
+	private asNoteFile(file: TFile | { path?: string } | null | undefined): TFile | null {
+		if (file instanceof TFile) return this.isLogTemplate(file) ? null : file;
+		const path = file && typeof file.path === 'string' ? file.path : '';
+		if (!path || this.isLogTemplatePath(path)) return null;
+		const found = this.app.vault.getAbstractFileByPath(path);
+		return found instanceof TFile ? found : null;
+	}
+
+	private isLogTemplate(file: TFile): boolean {
+		return this.isLogTemplatePath(file.path);
+	}
+
+	private isLogTemplatePath(path: string): boolean {
+		const base = path.split('/').pop() ?? '';
+		return /RV Log (?:Home|Miss)\.md$/i.test(base) || /99 RV Log/i.test(base);
 	}
 
 	private missToast: { path: string; before: string; campaign: CampaignRecord | null; timer: number } | null = null;
@@ -2262,12 +2529,35 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** In-note Home. Same write as the card, including literature, media, and lessons. */
-	async logNoteHome(file: TFile): Promise<boolean> {
+	async logNoteHome(file: TFile | { path: string }): Promise<boolean> {
+		const note = this.asNoteFile(file);
+		if (!note) throw new Error('RV log: that note is not in the vault.');
 		const shareBox = { share: emptyShare() };
-		const companion = await this.promptCompanion(file.path, shareBox);
+		const companion = await this.promptCompanion(note.path, shareBox);
 		if (companion === false) return false;
-		await this.commitVisit(file, 'home', companion, shareBox.share);
+		await this.commitVisit(note, 'home', companion, shareBox.share);
 		return true;
+	}
+
+	/**
+	 * `Name 2` when `Name` is already a note. `ignorePath` is the file being renamed.
+	 * Templater's user script calls this before `tp.file.rename`.
+	 */
+	uniqueNewRvTitle(title: string, ignorePath?: string): string {
+		const taken: string[] = [];
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			if (ignorePath && file.path === ignorePath) continue;
+			taken.push(file.basename);
+		}
+		return filenameCollision(title, taken);
+	}
+
+	private async suffixCollidingName(file: TFile): Promise<void> {
+		const next = this.uniqueNewRvTitle(file.basename, file.path);
+		if (!next || next === file.basename) return;
+		const folder = file.parent?.path ?? '';
+		const dest = !folder || folder === '/' ? `${next}.md` : `${folder}/${next}.md`;
+		await this.app.fileManager.renameFile(file, dest);
 	}
 
 	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare, silent = false): Promise<void> {

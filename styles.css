@@ -1464,6 +1464,28 @@ table.rv-locator-digest-table,
 	container-name: rvmodal;
 }
 
+/* Labels sit above the field at every width so a long name never wraps beside it. */
+.rv-locator-modal .setting-item:not(.rv-modal-actions) {
+	flex-direction: column !important;
+	align-items: stretch !important;
+	gap: 6px;
+}
+
+.rv-locator-modal .setting-item:not(.rv-modal-actions) .setting-item-info,
+.rv-locator-modal .setting-item:not(.rv-modal-actions) .setting-item-control {
+	width: 100%;
+	max-width: 100%;
+}
+
+.rv-locator-modal .setting-item-name,
+.rv-locator-modal .setting-item-description {
+	white-space: nowrap;
+}
+
+.rv-locator-modal .is-miss-hidden {
+	display: none !important;
+}
+
 /* Phone width, and a modal that is itself narrow. Every field row, not only text inputs. */
 @media (max-width: 520px) {
 	.rv-locator-modal .setting-item {
@@ -2261,7 +2283,7 @@ body.rv-wide-hubs .markdown-rendered .rv-dashboard a.internal-link.rv-hub-chip,
 body.rv-wide-hubs .rv-hub-chip {
 	box-sizing: border-box;
 	flex: 1 1 auto;
-	width: auto;
+	width: 100%;
 	min-width: 0;
 	max-width: 100%;
 	padding-inline: var(--rv-hub-chip-inset, 0.35em);
@@ -2327,9 +2349,9 @@ body.rv-wide-hubs .rv-hub-chip {
 .rv-hub-chip {
 	position: relative;
 	display: inline-flex;
-	flex: 0 1 auto;
+	flex: 1 1 auto;
 	align-items: center;
-	width: auto;
+	width: 100%;
 	min-width: 0;
 	max-width: 100%;
 	box-sizing: border-box;
@@ -2828,6 +2850,11 @@ h3.rv-visit-notes-heading.is-collapsed > .collapse-indicator {
 .rv-visit-folded :is(textarea, .mb-input),
 body.rv-center-visit-notes .rv-dashboard .rv-older-hidden:is(p, .el-p):has(textarea),
 body.rv-center-visit-notes .rv-dashboard .rv-visit-folded:is(p, .el-p):has(textarea) {
+	display: none !important;
+}
+
+/* Live Preview visit card replaces the raw heading. The source lines stay for the cursor. */
+.cm-line.rv-lp-card-source {
 	display: none !important;
 }
 
@@ -3407,7 +3434,7 @@ a.rv-address-link {
 	justify-self: stretch;
 	align-self: center;
 	box-sizing: border-box;
-	width: auto;
+	width: 100%;
 	max-width: 100%;
 	min-width: 0;
 	margin: 0;
@@ -4636,6 +4663,36 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	padding: 0;
 }
 
+/* Phone width: the label sits above the value so the value can end-ellipsis. */
+@media (max-width: 520px) {
+	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
+	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong),
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+		grid-template-columns: minmax(0, 1fr) 40px;
+	}
+
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+		grid-column: 1 / -1;
+	}
+
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+	body.rv-wide-hubs .rv-hub-row {
+		grid-column: 1;
+	}
+
+	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-map-button,
+	.rv-dashboard .rv-hub-add,
+	.rv-dashboard a.rv-map-button {
+		grid-column: 2;
+	}
+}
+
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-campaign,
@@ -5083,6 +5140,13 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	z-index: 0;
 	overflow: hidden;
 	pointer-events: none;
+}
+
+.rv-map-tile-back {
+	position: absolute;
+	z-index: 0;
+	pointer-events: none;
+	background-repeat: no-repeat;
 }
 
 .rv-map-tile.is-holding {

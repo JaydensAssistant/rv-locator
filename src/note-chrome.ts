@@ -14,7 +14,7 @@ import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
 import { paintUrgencyInk } from './color-math';
-import { fitMiddleEllipsis } from './title-fit';
+import { fitEndEllipsis } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { urgencyColorsFor } from './urgency-palette';
 
@@ -168,7 +168,11 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 		node.style.setProperty('--callout-color', accent);
 	});
 	start.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
-		if (node instanceof HTMLElement) paintUrgencyInk(node, accent);
+		if (!(node instanceof HTMLElement)) return;
+		node.style.setProperty('--rv-urgency-accent', accent);
+		paintUrgencyInk(node, accent);
+		const ink = node.style.getPropertyValue('--rv-urgency-ink').trim() || accent;
+		node.style.setProperty('color', ink, 'important');
 	});
 	markUrgencyReady(hosts);
 }
@@ -735,7 +739,7 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	link.classList.remove('rv-address-hidden');
 	const text = input.value.trim();
 	link.classList.toggle('is-empty', !text);
-	if (text) fitMiddleEllipsis(link, text);
+	if (text) fitEndEllipsis(link, text);
 	else link.textContent = 'Add an address';
 	const editing = paragraph.ownerDocument.activeElement === input;
 	link.hidden = editing || text.length === 0;
@@ -758,7 +762,7 @@ function fitHubOverflow(row: HTMLElement): void {
 		const label = node.querySelector('.rv-hub-chip-label');
 		if (!(label instanceof HTMLElement)) return;
 		const full = label.dataset.full || label.textContent || '';
-		fitMiddleEllipsis(label, full);
+		fitEndEllipsis(label, full);
 		node.classList.remove('is-overflow');
 	});
 }

@@ -3,13 +3,17 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { decorateAttemptLog, isLogCalloutTitle } from '../src/attempt-digest';
 import { stampAgeCount } from '../src/dates';
-import { decorateNoteChrome, type NoteChromeHost } from '../src/note-chrome';
+import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../src/note-chrome';
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateVisitControls } from '../src/visit-controls';
+import { decorateVisitControls, rehoistVisitNotes } from '../src/visit-controls';
 import { placeGlanceStage } from '../src/hub-layout';
-import { ancestorTileBackground, tileReady } from '../src/map-view';
+import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
+import type { MapPin } from '../src/map-pins';
+import { popupClearOfChrome } from '../src/map-pins';
+import { coveredCampaignFor } from '../src/schedule';
+import { maskStampText, maskTitleElement, rvDisplayTitle } from '../src/stamp-mask';
 import { tileKey } from '../src/tile-index';
 import { readFileSync } from 'node:fs';
 
@@ -289,6 +293,293 @@ describe('smoke layout', () => {
 		assert.ok(paragraph?.querySelector('.rv-hub-add'));
 		assert.ok(paragraph?.querySelector('a.rv-map-button'));
 		assert.equal(paragraph?.querySelectorAll('.rv-map-button').length, 1);
+	});
+
+	it('hoists note sections that render before the heading, including a list, and again after a scroll re-render', () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		const headingSection = window.document.createElement('div');
+		headingSection.className = 'markdown-preview-section';
+		headingSection.innerHTML = `<div class="el-h5"><h5>${LONG}</h5></div>`;
+		const first = window.document.createElement('div');
+		first.className = 'markdown-preview-section';
+		first.innerHTML = '<div class="el-p"><p>Showed the video and started lesson 1.</p></div>';
+		const second = window.document.createElement('div');
+		second.className = 'markdown-preview-section';
+		second.innerHTML = '<div class="el-p"><p>Tuesday evenings work best for her.</p></div>';
+		const list = window.document.createElement('div');
+		list.className = 'markdown-preview-section';
+		list.innerHTML = '<ul class="el-ul"><li>Keep going</li></ul>';
+		sizer.append(headingSection, first, second, list);
+		preview.append(sizer);
+		decorateVisitControls(second, () => 4, () => {});
+		decorateVisitControls(first, () => 3, () => {});
+		decorateVisitControls(headingSection, () => 2, () => {});
+		decorateVisitControls(list, () => 5, () => {});
+		const box = headingSection.querySelector('.rv-visit-note-box');
+		assert.ok(box);
+		assert.equal(box?.contains(first), true);
+		assert.equal(box?.contains(second), true);
+		assert.equal(box?.contains(list), true);
+		const paragraphs = box?.querySelectorAll('p') ?? [];
+		assert.equal(paragraphs[0]?.textContent, 'Showed the video and started lesson 1.');
+		assert.equal(paragraphs[1]?.textContent, 'Tuesday evenings work best for her.');
+		assert.equal(box?.querySelector('li')?.textContent, 'Keep going');
+		const fresh = window.document.createElement('div');
+		fresh.className = 'markdown-preview-section';
+		fresh.innerHTML = '<div class="el-p"><p>Showed the video and started lesson 1.</p></div>';
+		sizer.append(fresh);
+		decorateVisitControls(fresh, () => 6, () => {});
+		assert.equal(box?.contains(fresh), true);
+		assert.equal(box?.querySelector('.callout'), null);
+	});
+
+	it('hoists sibling paragraphs in the real preview sizer, including a paragraph that renders later', () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer markdown-preview-section';
+		const heading = window.document.createElement('div');
+		heading.className = 'el-h5';
+		heading.innerHTML = '<h5>Sun, 9:05am — Oct 11, 2026</h5>';
+		sizer.append(heading);
+		preview.append(sizer);
+		decorateVisitControls(heading, () => 2, () => {}, () => 'Convention');
+		const late = window.document.createElement('div');
+		late.className = 'el-p';
+		late.innerHTML = '<p>Showed the video and started lesson 1.</p>';
+		const more = window.document.createElement('div');
+		more.className = 'el-p';
+		more.innerHTML = '<p>Tuesday evenings work best for her.</p>';
+		const list = window.document.createElement('div');
+		list.className = 'el-ul';
+		list.innerHTML = '<ul><li>Keep going</li></ul>';
+		sizer.append(late, more, list);
+		rehoistVisitNotes(preview);
+		const box = preview.querySelector('.rv-visit-note-box');
+		assert.ok(box);
+		assert.equal(box?.contains(late), true);
+		assert.equal(box?.contains(more), true);
+		assert.equal(box?.contains(list), true);
+		assert.equal(box?.querySelector('.is-campaign')?.textContent?.includes('Convention'), true);
+		assert.ok((box?.getBoundingClientRect().height ?? 0) >= 0);
+		box?.remove();
+		const fresh = window.document.createElement('div');
+		fresh.className = 'el-p';
+		fresh.innerHTML = '<p>Showed the video and started lesson 1.</p>';
+		sizer.append(fresh);
+		decorateVisitControls(preview, () => null, () => {}, () => 'Convention');
+		const again = preview.querySelector('.rv-visit-note-box');
+		assert.equal(again?.contains(fresh), true);
+		assert.ok(again?.querySelector('.is-campaign'));
+		const recycled = window.document.createElement('div');
+		recycled.className = 'el-h5';
+		recycled.innerHTML = '<h5 class="rv-visit-stamp"><span class="rv-stamp-row"><span class="rv-cal">OCT</span><span class="rv-stamp-when">Sun, 9:58am</span><span class="rv-stamp-count">0d</span></span><span class="rv-stamp-source">Sun, 9:58am — Oct 11, 2026</span></h5>';
+		const recycledNote = window.document.createElement('div');
+		recycledNote.className = 'el-p';
+		recycledNote.innerHTML = '<p>Nobody answered.</p>';
+		sizer.append(recycled, recycledNote);
+		decorateVisitControls(preview, () => null, () => {}, () => '');
+		const recycledBox = recycled.nextElementSibling;
+		assert.equal(recycledBox?.classList.contains('rv-visit-note-box'), true);
+		assert.equal(recycledBox?.contains(recycledNote), true);
+	});
+
+	it('paints the campaign chip from the note text when the Log is not in the DOM', () => {
+		const markdown = [
+			`##### ${LONG}`,
+			'Showed the video.',
+			'',
+			'> [!note]- Log',
+			'> - Mon, 10:40am — Oct 6, 2025 — success — covered Convention',
+			'',
+		].join('\n');
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const section = window.document.createElement('div');
+		section.className = 'markdown-preview-section';
+		section.innerHTML = `<div class="el-h5"><h5>${LONG}</h5></div>`;
+		preview.append(section);
+		const when = coveredCampaignFor(markdown, new Date(2025, 9, 6, 10, 40, 0, 0));
+		assert.equal(when, 'Convention');
+		const shared = [
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit3Notes]`',
+			'',
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'> - Sun, 9:05am — Oct 11, 2026 — success — Alex',
+			'> - Sun, 9:05am — Oct 11, 2026 — success — covered Convention',
+		].join('\n');
+		const stamp = new Date(2026, 9, 11, 9, 5, 0, 0);
+		assert.equal(coveredCampaignFor(shared, stamp, 0), 'Convention');
+		assert.equal(coveredCampaignFor(shared, stamp, 1), '');
+		decorateVisitControls(section, () => 1, () => {}, () => 'Convention');
+		const chip = section.querySelector('.rv-item.is-campaign');
+		assert.ok(chip);
+		assert.match(chip?.textContent ?? '', /Convention/);
+		assert.equal(preview.querySelector('.callout'), null);
+	});
+
+	it('sets counter ink on the pill for each palette', () => {
+		const root = window.document.createElement('div');
+		root.className = 'markdown-preview-view';
+		window.document.body.appendChild(root);
+		window.document.body.classList.add('theme-light');
+		const pill = window.document.createElement('span');
+		pill.className = 'rv-stamp-count';
+		pill.textContent = '370d';
+		root.appendChild(pill);
+		const host = chromeHost({
+			Priority: 1,
+			Status: 'Return visit',
+			'Last Spoke': '2020-01-01T10:00:00',
+		}, { count: 0 });
+		applyLiveUrgency(root, 'RVs/Long Titles.md', { ...host, settings: { ...host.settings, urgencyPalette: 'default' } }, true);
+		const traffic = pill.style.getPropertyValue('color');
+		assert.equal(pill.style.getPropertyPriority('color'), 'important');
+		assert.notEqual(traffic, '');
+		applyLiveUrgency(root, 'RVs/Long Titles.md', { ...host, settings: { ...host.settings, urgencyPalette: 'sunset' } }, true);
+		const sunset = pill.style.getPropertyValue('color');
+		assert.equal(pill.style.getPropertyPriority('color'), 'important');
+		assert.notEqual(sunset, traffic);
+		root.remove();
+	});
+
+	it('finds a loaded ancestor ten zooms up and still returns null for an empty map', () => {
+		const srcs = new Map<string, string>([[tileKey(2, 0, 0), 'https://tiles.example/far.png']]);
+		const parent = ancestorTileBackground(12, 5, 7, srcs);
+		assert.equal(parent?.url, 'https://tiles.example/far.png');
+		assert.equal(ancestorTileBackground(12, 0, 0, new Map()), null);
+		assert.match(unloadedAncestorTile(12, 5, 7)?.url ?? '', /tile\.openstreetmap\.org\/11\//);
+		assert.equal(unloadedAncestorTile(0, 0, 0), null);
+	});
+
+	it('clamps a fullscreen card inside the visible window, not only the stage', () => {
+		const low = popupClearOfChrome(
+			{ x: 180, y: 40 },
+			{ width: 280, height: 320 },
+			{ width: 390, height: 900 },
+			{ left: 0, top: 120, width: 390, height: 640 },
+		);
+		assert.equal(low.top >= 124, true);
+		assert.equal(low.top + 320 <= 120 + 640, true);
+		assert.equal(low.left >= 4, true);
+		assert.equal(low.left + 280 <= 390 - 56, true);
+	});
+
+	it('zooms a count-4 stack at zoom 12 for mouse and touch on the hub map and the map leaf', () => {
+		const card = {
+			address: '10 Oak Hammock Ln',
+			city: 'Orlando',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '4',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		};
+		const pins: MapPin[] = [0, 1, 2, 3].map((index) => ({
+			path: `RVs/pin-${index}.md`,
+			name: index === 0 ? 'Avoid' : `Pin ${index}`,
+			lat: 28.54,
+			lon: -81.38,
+			priority: 4 - index,
+			urgency: 1,
+			days: 10,
+			color: '#d63c3c',
+			glyph: '1',
+			fresh: false,
+			stateIcon: index === 0 ? 'ban' : null,
+			shadeIcon: null,
+			markText: null,
+			rank: index,
+			card,
+		}));
+		const host = {
+			settings: { ...DEFAULT_SETTINGS, distanceTest: true },
+			mapFocusPath: null,
+			listMapPins: () => pins,
+			openMapNote: () => {},
+			openRoute: async () => {},
+			currentMapFix: () => null,
+			notifyPin: () => {},
+		};
+		const hasZoom = (root: HTMLElement, zoom: number): boolean => (
+			[...root.querySelectorAll('img.rv-map-tile')].some((img) => img.getAttribute('src')?.includes(`/${zoom}/`) === true)
+		);
+		const tap = (root: HTMLElement, button: number): void => {
+			const pin = root.querySelector('button.rv-map-pin');
+			assert.ok(pin instanceof window.HTMLElement);
+			assert.equal(pin.querySelector('.rv-pin-stack-count')?.textContent, '4');
+			const point = { button, clientX: 20, clientY: 20, bubbles: true };
+			pin.dispatchEvent(new window.MouseEvent('pointerdown', point));
+			pin.dispatchEvent(new window.MouseEvent('pointerup', point));
+			pin.dispatchEvent(new window.MouseEvent('click', point));
+		};
+		const open = (scope: 'hub' | 'split'): { root: HTMLElement; zoom: () => number; close: () => void } => {
+			const root = window.document.createElement('div');
+			window.document.body.appendChild(root);
+			const map = Object.create(RvMapView.prototype) as RvMapView & { zoom: number; paint: () => void };
+			map.contentEl = root;
+			map.bindHost(host, scope);
+			void map.onOpen();
+			map.zoom = 12;
+			map.paint();
+			return { root, zoom: () => map.zoom, close: () => { void map.onClose(); root.remove(); } };
+		};
+		const hub = open('hub');
+		assert.equal(hub.zoom(), 12);
+		assert.equal(hasZoom(hub.root, 12), true);
+		tap(hub.root, 0);
+		assert.equal(hub.zoom(), 13);
+		hub.close();
+		const leaf = open('split');
+		assert.equal(leaf.zoom(), 12);
+		tap(leaf.root, -1);
+		assert.equal(leaf.zoom(), 13);
+		leaf.close();
+	});
+
+	it('hides the filename stamp in titles and keeps an end ellipsis for hub and address', () => {
+		assert.equal(rvDisplayTitle('Maria on Lake Dr 2026-10-11 0905'), 'Maria on Lake Dr');
+		assert.equal(maskStampText('Maria on Lake Dr 2026-10-11 0905 - Vault', 'Maria on Lake Dr 2026-10-11 0905', 'Maria on Lake Dr'), 'Maria on Lake Dr - Vault');
+		const header = window.document.createElement('div');
+		header.className = 'view-header-title';
+		header.textContent = 'Maria on Lake Dr 2026-10-11 0905';
+		const inline = window.document.createElement('div');
+		inline.className = 'inline-title';
+		inline.append(window.document.createTextNode('Maria on Lake Dr 2026-10-11 0905'));
+		const status = window.document.createElement('span');
+		status.className = 'rv-note-status';
+		status.textContent = 'Active';
+		inline.append(status);
+		maskTitleElement(header, [{ stamped: 'Maria on Lake Dr 2026-10-11 0905', display: 'Maria on Lake Dr' }]);
+		maskTitleElement(inline, [{ stamped: 'Maria on Lake Dr 2026-10-11 0905', display: 'Maria on Lake Dr' }]);
+		assert.equal(header.textContent, 'Maria on Lake Dr');
+		assert.match(inline.textContent ?? '', /Maria on Lake Dr/);
+		assert.match(inline.textContent ?? '', /Active/);
+		const chrome = readFileSync('src/note-chrome.ts', 'utf8');
+		assert.match(chrome, /fitEndEllipsis\(link, text\)/);
+		assert.match(chrome, /fitEndEllipsis\(label, full\)/);
+		assert.doesNotMatch(chrome, /fitMiddleEllipsis/);
+		const modals = readFileSync('src/visit-modals.ts', 'utf8') + readFileSync('src/modals.ts', 'utf8') + readFileSync('src/new-rv-modal.ts', 'utf8');
+		assert.match(modals, /What publisher came with you\?/);
+		assert.equal(modals.includes('Who came with you?'), false);
+		const editor = readFileSync('src/visit-modals.ts', 'utf8');
+		assert.match(editor, /is-miss-hidden/);
+		const map = readFileSync('src/map-view.ts', 'utf8');
+		assert.match(map, /event\.button > 0/);
+		assert.match(map, /zoomToRevealPin\(zed\)/);
+		assert.match(map, /rv-map-tile-back/);
 	});
 
 });

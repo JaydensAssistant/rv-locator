@@ -111,7 +111,7 @@ export class VisitEditModal extends Modal {
 			});
 
 		this.companionSetting = new Setting(contentEl)
-			.setName('Who came with you?')
+			.setName('What publisher came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Nobody');
 				text.setValue(this.companion);
@@ -179,8 +179,8 @@ export class VisitEditModal extends Modal {
 
 	private syncCompanion(): void {
 		const companion = this.companionSetting?.settingEl;
-		if (companion) companion.hidden = !this.home;
-		if (this.shareHost) this.shareHost.hidden = !this.home;
+		if (companion) companion.classList.toggle('is-miss-hidden', !this.home);
+		if (this.shareHost) this.shareHost.classList.toggle('is-miss-hidden', !this.home);
 		if (this.campaignHost) this.campaignHost.hidden = !this.campaignSpansVisit();
 	}
 

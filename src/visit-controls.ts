@@ -17,6 +17,9 @@ export interface VisitTarget {
 }
 
 export type VisitMenuOpener = (target: VisitTarget, evt: MouseEvent) => void;
+/** Campaign name for a stamp, from the note text. Empty when that visit is not covered. */
+/** `null` when the note text is not loaded yet. `''` when this visit did not cover a campaign. */
+export type CoveredLookup = (when: Date, lineNumber?: number, domIndex?: number) => string | null;
 
 const MORE_CLASS = 'rv-visit-more';
 const MAP_CLASS = 'rv-map-button';
@@ -114,16 +117,26 @@ function tagVisitNotesHeading(root: HTMLElement): void {
  * An ellipsis on every rendered visit stamp and every Attempt Log line.
  * `fileLine` is read when tapped, so a section re-render is not stale.
  */
-export function decorateVisitControls(root: HTMLElement, sectionLine: () => number | null, open: VisitMenuOpener): void {
+export function decorateVisitControls(
+	root: HTMLElement,
+	sectionLine: () => number | null,
+	open: VisitMenuOpener,
+	coveredFor?: CoveredLookup,
+): void {
 	tagVisitNotesHeading(root);
-	for (const heading of stampHeadings(root)) {
-		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator`));
+	const ownLine = sectionLine();
+	const localStamps = stampHeadings(root);
+	if (ownLine != null && localStamps.length === 1 && localStamps[0]) {
+		localStamps[0].dataset.rvLine = String(ownLine);
+	}
+	for (const heading of localStamps) {
+		const when = stampDateTime(headingSource(heading)) ?? stampDateTime(headingStampText(heading));
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
-		reshapeVisitHeading(heading, when, coveredName(root, when));
+		reshapeVisitHeading(heading, when, coveredName(root, heading, when, coveredFor));
 		wireStampJump(heading, when);
 	}
 	for (const callout of attemptLogCallouts(root)) {
@@ -145,7 +158,14 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 			});
 		});
 	}
-	backfillCoveredChips(root);
+	backfillCoveredChips(root, coveredFor);
+	rehoistVisitNotes(root);
+	attachLooseNote(root);
+}
+
+function headingStampText(heading: HTMLElement): string {
+	return textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator`)
+		.replace(/^#{1,6}\s+/, '');
 }
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -169,31 +189,59 @@ function coveredSearchRoot(root: HTMLElement): HTMLElement {
 	return wide instanceof HTMLElement ? wide : root;
 }
 
-function coveredName(root: HTMLElement, when: Date): string {
+function headingLine(heading: HTMLElement): number {
+	const stored = Number(heading.dataset.rvLine);
+	return Number.isFinite(stored) ? stored : -1;
+}
+
+function coveredName(root: HTMLElement, heading: HTMLElement, when: Date, coveredFor?: CoveredLookup): string {
+	const fromFile = coveredFor?.(when, headingLine(heading), domNewestIndex(heading, when));
+	if (fromFile != null) return fromFile.trim();
+	return coveredFromDom(root, when, domNewestIndex(heading, when));
+}
+
+/** Home bullets in log order, oldest first. Index 0 from the end is the newest heading. */
+function coveredFromDom(root: HTMLElement, when: Date, newestIndex: number): string {
 	const target = when.getTime();
+	const covered: string[] = [];
 	const surface = coveredSearchRoot(root);
 	for (const callout of attemptLogCallouts(surface)) {
 		for (const item of Array.from(callout.querySelectorAll('li'))) {
 			if (!domInstanceOf(item, HTMLElement)) continue;
-			const stamped = Number(item.dataset.rvWhen);
-			const stored = item.dataset.rvCovered?.trim() ?? '';
-			if (stamped === target && stored) return stored;
 			const bullet = parseLogBullet(`- ${textWithout(item, `.${MORE_CLASS}, .rv-log-covered`)}`);
-			if (!bullet || bullet.when.getTime() !== target) continue;
-			if (bullet.covered) return bullet.covered;
-			if (stored) return stored;
+			if (bullet?.home && bullet.when.getTime() === target) {
+				covered.push(bullet.covered || item.dataset.rvCovered?.trim() || '');
+				continue;
+			}
+			const stamped = Number(item.dataset.rvWhen);
+			if (stamped === target && item.dataset.rvHome !== 'miss') {
+				covered.push(item.dataset.rvCovered?.trim() ?? '');
+			}
 		}
 	}
-	return '';
+	const index = covered.length - 1 - Math.max(0, newestIndex);
+	if (index < 0 || index >= covered.length) return '';
+	return covered[index] ?? '';
+}
+
+function domNewestIndex(heading: HTMLElement, when: Date): number {
+	const target = when.getTime();
+	let count = 0;
+	for (const other of stampHeadings(coveredSearchRoot(heading))) {
+		if (other === heading) return count;
+		const stamp = stampDateTime(headingSource(other));
+		if (stamp && stamp.getTime() === target) count += 1;
+	}
+	return count;
 }
 
 /** The Log pass can land after the heading pass. Paint the chip once the token is known. */
-function backfillCoveredChips(root: HTMLElement): void {
+function backfillCoveredChips(root: HTMLElement, coveredFor?: CoveredLookup): void {
 	const surface = coveredSearchRoot(root);
 	for (const heading of stampHeadings(surface)) {
 		const when = stampDateTime(headingSource(heading));
 		if (!when) continue;
-		const covered = coveredName(surface, when);
+		const covered = coveredName(surface, heading, when, coveredFor);
 		if (!covered) continue;
 		paintItemStrip(heading, headingSource(heading), covered);
 	}
@@ -302,7 +350,7 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	watchTitleRow(strip);
 }
 
-/** Reading view wraps the heading in `.el-h5`. Live Preview keeps it in a `.cm-line`. */
+/** Reading view wraps the heading in `.el-h5`. A rendered preview line keeps it in a `.cm-line`. */
 function blockHost(heading: HTMLElement): HTMLElement {
 	const wrapped = heading.closest('.el-h1, .el-h2, .el-h3, .el-h4, .el-h5, .el-h6');
 	if (wrapped instanceof HTMLElement) return wrapped;
@@ -339,25 +387,169 @@ function ensureNoteBox(heading: HTMLElement, strip: HTMLElement): void {
 	if (box.parentElement !== host.parentElement || box.previousElementSibling !== host) {
 		host.insertAdjacentElement('afterend', box);
 	}
-	let next = box.nextElementSibling;
-	while (next instanceof HTMLElement && isVisitNoteBlock(next)) {
-		const following = next.nextElementSibling;
-		box.appendChild(next);
-		next = following;
+	absorbFollowingNotes(host, box, strip);
+}
+
+/**
+ * Pull every following note block into the box. A post-processor root is one
+ * section, so the walk climbs out to the next `.markdown-preview-section`,
+ * `.el-p`, or list. Order is the order they had before the move.
+ */
+function absorbFollowingNotes(host: HTMLElement, box: HTMLElement, strip: HTMLElement): void {
+	let cursor = nextBlock(host);
+	while (cursor) {
+		if (cursor === box) {
+			cursor = nextBlock(cursor);
+			continue;
+		}
+		if (!isVisitNoteBlock(cursor)) break;
+		const following = nextBlock(cursor);
+		placeNote(box, strip, cursor);
+		cursor = following;
 	}
+}
+
+function nextBlock(node: HTMLElement): HTMLElement | null {
+	const direct = node.nextElementSibling;
+	if (direct instanceof HTMLElement) return direct;
+	let parent = node.parentElement;
+	while (parent) {
+		const next = parent.nextElementSibling;
+		const climb = parent.classList.contains('markdown-preview-section')
+			|| parent.classList.contains('el-h1')
+			|| parent.classList.contains('el-h2')
+			|| parent.classList.contains('el-h3')
+			|| parent.classList.contains('el-h4')
+			|| parent.classList.contains('el-h5')
+			|| parent.classList.contains('el-h6')
+			|| parent.classList.contains('cm-line');
+		if (next instanceof HTMLElement && climb) return next;
+		if (
+			parent.classList.contains('markdown-preview-sizer')
+			|| parent.classList.contains('markdown-preview-view')
+			|| parent.classList.contains('markdown-reading-view')
+			|| parent.classList.contains('markdown-rendered')
+			|| parent.classList.contains('cm-editor')
+			|| parent.classList.contains('cm-content')
+			|| parent.classList.contains('workspace-leaf-content')
+		) return null;
+		if (!climb) return null;
+		parent = parent.parentElement;
+	}
+	return null;
+}
+
+function noteSeq(note: HTMLElement): string {
+	if (note.dataset.rvSeq) return note.dataset.rvSeq;
+	const parts: string[] = [];
+	let node: HTMLElement | null = note;
+	while (node) {
+		const parent: HTMLElement | null = node.parentElement;
+		if (!parent) break;
+		parts.push(String(Math.max(0, Array.from(parent.children).indexOf(node))).padStart(4, '0'));
+		if (
+			parent.classList.contains('markdown-preview-sizer')
+			|| parent.classList.contains('markdown-preview-view')
+			|| parent.classList.contains('cm-content')
+			|| parent.classList.contains('cm-editor')
+		) break;
+		node = parent;
+	}
+	const seq = parts.reverse().join('.');
+	note.dataset.rvSeq = seq;
+	return seq;
+}
+
+function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): void {
+	const seq = noteSeq(note);
+	let before: Element | null = null;
+	for (const child of Array.from(box.children)) {
+		if (child === strip || child === note) continue;
+		if (!(child instanceof HTMLElement)) continue;
+		if ((child.dataset.rvSeq ?? '') > seq) {
+			before = child;
+			break;
+		}
+	}
+	box.insertBefore(note, before);
+}
+
+/**
+ * A later or earlier post-processor pass still owns the notes that follow each stamp.
+ * A scroll re-render drops a fresh paragraph back beside the heading; pull it in again.
+ */
+export function rehoistVisitNotes(root: HTMLElement): void {
+	const surface = coveredSearchRoot(root);
+	for (const heading of stampHeadings(surface)) {
+		const strip = findItemStrip(heading);
+		if (strip) ensureNoteBox(heading, strip);
+	}
+	surface.querySelectorAll('.markdown-preview-section, .el-p, .el-ul, .el-ol').forEach((node) => {
+		if (node instanceof HTMLElement) attachLooseNote(node);
+	});
+}
+
+/** The note block rendered before its heading. Attach it once the stamp row exists. */
+function attachLooseNote(root: HTMLElement): void {
+	const block = looseNoteBlock(root);
+	if (!block || block.closest('.rv-visit-note-box') || !isVisitNoteBlock(block)) return;
+	const heading = previousVisitHeading(block);
+	if (!heading) return;
+	const strip = findItemStrip(heading);
+	if (strip) ensureNoteBox(heading, strip);
+}
+
+function looseNoteBlock(root: HTMLElement): HTMLElement | null {
+	if (root.classList.contains('markdown-preview-section') || root.classList.contains('el-p') || root.classList.contains('el-ul') || root.classList.contains('el-ol') || root.classList.contains('cm-line')) return root;
+	const section = root.closest('.markdown-preview-section');
+	return section instanceof HTMLElement ? section : root;
+}
+
+function previousVisitHeading(block: HTMLElement): HTMLElement | null {
+	let cursor: HTMLElement | null = block;
+	while (cursor) {
+		let prev = cursor.previousElementSibling;
+		while (prev instanceof HTMLElement) {
+			const heading = stampInside(prev);
+			if (heading) return heading;
+			if (!isVisitNoteBlock(prev) && !prev.classList.contains('rv-visit-note-box') && !prev.querySelector('.rv-visit-note-box')) return null;
+			prev = prev.previousElementSibling;
+		}
+		const parent: HTMLElement | null = cursor.parentElement instanceof HTMLElement ? cursor.parentElement : null;
+		if (!parent) return null;
+		if (
+			parent.classList.contains('markdown-preview-sizer')
+			|| parent.classList.contains('markdown-preview-view')
+			|| parent.classList.contains('cm-content')
+			|| parent.classList.contains('cm-editor')
+		) return null;
+		cursor = parent;
+	}
+	return null;
+}
+
+function stampInside(node: HTMLElement): HTMLElement | null {
+	if (node.matches('h3, h5') && node.classList.contains('rv-visit-stamp')) return node;
+	const found = node.querySelector('h3.rv-visit-stamp, h5.rv-visit-stamp');
+	return found instanceof HTMLElement ? found : null;
 }
 
 function isVisitNoteBlock(node: HTMLElement): boolean {
 	if (node.matches('h1, h2, h3, h4, h5, h6, .callout, hr, .rv-item-strip, .rv-visit-note-box, .rv-older-visits-wrap, .rv-notes-fold-stop')) return false;
-	if (node.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > .callout, .rv-visit-stamp, .rv-stamp-row')) return false;
+	if (node.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > .callout, :scope > hr')) return false;
+	if (node.classList.contains('markdown-preview-section')) {
+		if (node.querySelector('.callout, hr, h1, h2, h3, h4, h5, h6, .rv-visit-stamp, .rv-stamp-row')) return false;
+		return node.querySelector('p, ul, ol, blockquote, textarea, .el-p, .el-ul, .el-ol, .el-blockquote') != null
+			|| (node.textContent ?? '').trim().length > 0;
+	}
 	if (node.classList.contains('cm-line')) {
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/^#{1,6}\s+/, '');
 		if (!text) return false;
 		if (stampDateTime(text)) return false;
 		return true;
 	}
-	if (node.querySelector('textarea')) return true;
-	return node.matches('p, div, .el-p, blockquote, textarea');
+	if (node.querySelector('textarea, ul, ol')) return true;
+	return node.matches('p, div, .el-p, .el-ul, .el-ol, .el-blockquote, blockquote, ul, ol, li, textarea');
 }
 
 function renderCoveredMention(item: HTMLElement, covered: string): void {

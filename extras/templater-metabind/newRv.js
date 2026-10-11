@@ -76,6 +76,46 @@ function sanitizeNoteName(value) {
     .trim();
 }
 
+/** Same rule as src/note-name.ts filenameCollision. `Name 2` when `Name` is taken. */
+function filenameCollision(title, taken) {
+  const base = sanitizeNoteName(title);
+  if (!base) return base;
+  const used = new Set((taken || []).map((name) => String(name || "").toLowerCase()));
+  if (!used.has(base.toLowerCase())) return base;
+  let n = 2;
+  while (used.has(`${base} ${n}`.toLowerCase())) n += 1;
+  return `${base} ${n}`;
+}
+
+function takenBasenames(ignorePath) {
+  let files = [];
+  try {
+    files = app.vault.getMarkdownFiles?.() || [];
+  } catch {
+    files = [];
+  }
+  const names = [];
+  for (const file of files) {
+    if (ignorePath && file && file.path === ignorePath) continue;
+    const base = file && (file.basename || String(file.path || "").split("/").pop().replace(/\.md$/i, ""));
+    if (base) names.push(base);
+  }
+  return names;
+}
+
+async function uniqueTitle(title, ignorePath) {
+  const plugin = rvPlugin();
+  if (plugin && typeof plugin.uniqueNewRvTitle === "function") {
+    try {
+      const next = await plugin.uniqueNewRvTitle(title, ignorePath);
+      if (typeof next === "string" && next.trim()) return next;
+    } catch {
+      /* The local suffix still avoids Obsidian's Note title prompt. */
+    }
+  }
+  return filenameCollision(title, takenBasenames(ignorePath));
+}
+
 function yamlQuoted(value) {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ").trim();
 }
@@ -493,10 +533,18 @@ async function newRv(tp) {
   }
 
   if (title && tp?.file?.rename) {
+    const currentPath = tp?.file?.path || tp?.config?.target_file?.path || "";
+    title = await uniqueTitle(title, currentPath);
     try {
       await tp.file.rename(title);
     } catch {
-      new Notice(`RV Locator: could not rename the note to “${title}”.`);
+      const retry = filenameCollision(title, takenBasenames(currentPath).concat([title]));
+      title = retry && retry !== title ? retry : `${title} 2`;
+      try {
+        await tp.file.rename(title);
+      } catch {
+        new Notice(`RV Locator: could not rename the note to “${title}”.`);
+      }
     }
   }
 

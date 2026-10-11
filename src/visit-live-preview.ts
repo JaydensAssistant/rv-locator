@@ -1,6 +1,8 @@
 import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension } from '@codemirror/state';
-import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet } from '@codemirror/view';
+import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import { coveredCampaignFor, stampDateTime } from './schedule';
 import { visitStampLine } from './visit-display';
+import { decorateVisitControls, type VisitTarget } from './visit-controls';
 
 export interface VisitPreviewSettings {
 	collapseOlder: boolean;
@@ -76,6 +78,96 @@ function stopsVisitSection(line: string): boolean {
 	const trimmed = line.trim();
 	if (/^(?:-{3,}|\*{3,}|_{3,})\s*$/.test(trimmed)) return true;
 	return /^#{1,6}\s+/.test(trimmed) && visitStampLine(trimmed) == null;
+}
+
+function stopsVisitCard(line: string): boolean {
+	if (visitStampLine(line)) return true;
+	if (stopsVisitSection(line)) return true;
+	return /^>\s*\S/.test(line.trim());
+}
+
+/** Stamp plus the note lines under it. The next heading or callout is not included. */
+export function planVisitCardRanges(markdown: string): { from: number; to: number }[] {
+	const lines = docLines(markdown);
+	const ranges: { from: number; to: number }[] = [];
+	let index = 0;
+	while (index < lines.length) {
+		const line = lines[index];
+		if (!line || !visitStampLine(line.text)) {
+			index += 1;
+			continue;
+		}
+		let endIndex = index;
+		let cursor = index + 1;
+		while (cursor < lines.length) {
+			const next = lines[cursor];
+			if (!next || stopsVisitCard(next.text)) break;
+			endIndex = cursor;
+			cursor += 1;
+		}
+		const to = endIndex + 1 < lines.length ? (lines[endIndex + 1]?.from ?? markdown.length) : markdown.length;
+		if (to > line.from) ranges.push({ from: line.from, to });
+		index = Math.max(cursor, index + 1);
+	}
+	return ranges;
+}
+
+/**
+ * Live Preview has no inner `h5`. The widget replaces the raw `#####` line and
+ * the note under it while the cursor is outside that range.
+ */
+class VisitCardWidget extends WidgetType {
+	constructor(
+		private readonly source: string,
+		private readonly covered: string,
+	) {
+		super();
+	}
+
+	eq(other: WidgetType): boolean {
+		return other instanceof VisitCardWidget && other.source === this.source && other.covered === this.covered;
+	}
+
+	toDOM(view: EditorView): HTMLElement {
+		const doc = view.dom.ownerDocument;
+		const wrap = doc.createElement('div');
+		wrap.className = 'rv-lp-visit markdown-rendered';
+		const lines = this.source.replace(/\n$/, '').split('\n');
+		const heading = doc.createElement('h5');
+		heading.textContent = (lines[0] ?? '').replace(/^#{1,6}\s+/, '');
+		wrap.appendChild(heading);
+		let list: HTMLElement | null = null;
+		for (const line of lines.slice(1)) {
+			const item = /^\s*[-*]\s+(.*)$/.exec(line);
+			if (item) {
+				if (!list) {
+					list = doc.createElement('ul');
+					wrap.appendChild(list);
+				}
+				const li = doc.createElement('li');
+				li.textContent = item[1] ?? '';
+				list.appendChild(li);
+				continue;
+			}
+			list = null;
+			if (!line.trim()) continue;
+			const paragraph = doc.createElement('p');
+			paragraph.textContent = line;
+			wrap.appendChild(paragraph);
+		}
+		try {
+			decorateVisitControls(wrap, () => null, (target: VisitTarget, evt: MouseEvent) => {
+				wrap.dispatchEvent(new CustomEvent('rv-open-visit', { bubbles: true, detail: { target, event: evt } }));
+			}, () => this.covered);
+		} catch {
+			// createEl is Obsidian's. The heading and note are already in the widget.
+		}
+		return wrap;
+	}
+
+	ignoreEvent(): boolean {
+		return false;
+	}
 }
 
 /** Opens or closes the Older Visits group. No document changes. */
@@ -171,22 +263,63 @@ function editorIsLivePreview(view: EditorView): boolean {
 	return dom.closest('.is-live-preview') != null || dom.classList.contains('is-live-preview');
 }
 
-export function buildVisitDecorations(doc: string, options: VisitPreviewSettings, open: boolean): DecorationSet {
+export function buildVisitDecorations(
+	doc: string,
+	options: VisitPreviewSettings,
+	open: boolean,
+	selection?: { from: number; to: number } | null,
+): DecorationSet {
 	const plan = planLivePreviewVisits(doc, options);
-	if (plan.widgetAt == null) return Decoration.none;
-	const builder = new RangeSetBuilder<Decoration>();
-	const pieces: { from: number; deco: Decoration; kind: number }[] = [{
-		from: plan.widgetAt,
-		kind: 0,
-		deco: Decoration.widget({ widget: new OlderVisitsWidget(open), block: true, side: -1 }),
-	}];
-	if (!open) {
+	const pieces: { from: number; to: number; deco: Decoration; kind: number }[] = [];
+	const blocked: number[] = [];
+	if (plan.widgetAt != null) {
+		blocked.push(plan.widgetAt);
+		pieces.push({
+			from: plan.widgetAt,
+			to: plan.widgetAt,
+			kind: 0,
+			deco: Decoration.widget({ widget: new OlderVisitsWidget(open), block: true, side: -1 }),
+		});
+	}
+	if (!open && plan.widgetAt != null) {
 		for (const from of plan.hiddenLines) {
-			pieces.push({ from, kind: 1, deco: Decoration.line({ class: 'rv-older-hidden' }) });
+			blocked.push(from);
+			pieces.push({ from, to: from, kind: 1, deco: Decoration.line({ class: 'rv-older-hidden' }) });
 		}
 	}
-	pieces.sort((a, b) => a.from - b.from || a.kind - b.kind);
-	for (const piece of pieces) builder.add(piece.from, piece.from, piece.deco);
+	const cursor = selection ?? null;
+	const lines = docLines(doc);
+	const seenStamps = new Map<number, number>();
+	for (const range of planVisitCardRanges(doc)) {
+		if (cursor && cursor.from < range.to && cursor.to > range.from) continue;
+		if (blocked.some((at) => at >= range.from && at < range.to)) continue;
+		const source = doc.slice(range.from, range.to);
+		const stamp = visitStampLine(source.split('\n')[0] ?? '') ?? '';
+		const when = stampDateTime(stamp);
+		const newestIndex = when ? (seenStamps.get(when.getTime()) ?? 0) : 0;
+		if (when) seenStamps.set(when.getTime(), newestIndex + 1);
+		const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
+		pieces.push({
+			from: range.from,
+			to: range.from,
+			kind: 2,
+			deco: Decoration.widget({ widget: new VisitCardWidget(source, covered), block: true, side: -1 }),
+		});
+		for (const line of lines) {
+			if (line.from < range.from || line.from >= range.to) continue;
+			if (blocked.includes(line.from)) continue;
+			pieces.push({
+				from: line.from,
+				to: line.from,
+				kind: 3,
+				deco: Decoration.line({ class: 'rv-lp-card-source' }),
+			});
+		}
+	}
+	if (pieces.length === 0) return Decoration.none;
+	pieces.sort((a, b) => a.from - b.from || a.to - b.to || a.kind - b.kind);
+	const builder = new RangeSetBuilder<Decoration>();
+	for (const piece of pieces) builder.add(piece.from, piece.to, piece.deco);
 	return builder.finish();
 }
 
@@ -195,10 +328,11 @@ export function buildVisitDecorations(doc: string, options: VisitPreviewSettings
  * Block widgets have to come from a state field; a view plugin cannot provide them.
  * The document text is never part of the transaction.
  */
-export function visitPreviewExtension(read: () => VisitPreviewSettings): Extension {
+export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: (dom: HTMLElement) => void): Extension {
 	const decorate = (state: EditorState): DecorationSet => {
 		if (!state.field(livePreviewField)) return Decoration.none;
-		return buildVisitDecorations(state.doc.toString(), read(), state.field(olderOpenField));
+		const selection = state.selection.main;
+		return buildVisitDecorations(state.doc.toString(), read(), state.field(olderOpenField), selection);
 	};
 	const decorations = StateField.define<DecorationSet>({
 		create: decorate,
@@ -215,7 +349,10 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings): Extensi
 		observer: MutationObserver | null = null;
 
 		constructor(view: EditorView) {
-			queueMicrotask(() => syncLivePreview(view));
+			queueMicrotask(() => {
+				syncLivePreview(view);
+				paint?.(view.dom);
+			});
 			const parent = view.dom.parentElement;
 			if (!parent || typeof MutationObserver === 'undefined') return;
 			try {
@@ -224,6 +361,12 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings): Extensi
 			} catch {
 				this.observer = null;
 			}
+		}
+
+		update(update: ViewUpdate): void {
+			if (!paint) return;
+			if (!update.docChanged && !update.viewportChanged && !update.geometryChanged) return;
+			queueMicrotask(() => paint(update.view.dom));
 		}
 
 		destroy(): void {

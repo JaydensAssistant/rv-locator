@@ -345,14 +345,56 @@ function appendLogBullet(body, bullet) {
   return [...lines.slice(0, found.index), ...block, ...gap, ...rest].join("\n").replace(/\s*$/, "") + "\n";
 }
 
+function filePathOf(file) {
+  if (!file) return "";
+  if (typeof file === "string") return file;
+  return typeof file.path === "string" ? file.path : "";
+}
+
+function isLogTemplatePath(path) {
+  const base = String(path || "").split("/").pop() || "";
+  return /RV Log (?:Home|Miss)\.md$/i.test(base) || /99 RV Log/i.test(base);
+}
+
+function asVaultFile(candidate) {
+  const path = filePathOf(candidate);
+  if (!path || isLogTemplatePath(path)) return null;
+  let found = null;
+  try {
+    found = app.vault.getAbstractFileByPath(path);
+  } catch {
+    found = null;
+  }
+  if (found && !isLogTemplatePath(filePathOf(found))) return found;
+  // Disk tests and a missing lookup still write through the path object.
+  if (!found && candidate && typeof candidate === "object" && candidate.path) return candidate;
+  return null;
+}
+
+function recentMarkdownFile() {
+  const found = [];
+  const walk = app.workspace.iterateAllLeaves;
+  if (typeof walk === "function") {
+    walk.call(app.workspace, (leaf) => {
+      const file = leaf && leaf.view && leaf.view.file;
+      if (!file || isLogTemplatePath(filePathOf(file))) return;
+      if (file.extension && file.extension !== "md") return;
+      found.push(file);
+    });
+  }
+  return found.length > 0 ? found[found.length - 1] : null;
+}
+
 function resolveFile(tp) {
   // Meta Bind runTemplaterFile (1.4+) targets the note containing the button.
-  if (tp?.config?.target_file) return tp.config.target_file;
-  if (tp?.file?.path) {
-    const f = app.vault.getAbstractFileByPath(tp.file.path);
-    if (f) return f;
-  }
-  return app.workspace.getActiveFile();
+  // A Templater run can instead point at the log template. Skip that.
+  const fromTarget = asVaultFile(tp?.config?.target_file);
+  if (fromTarget) return fromTarget;
+  const fromTp = asVaultFile(tp?.file?.path);
+  if (fromTp) return fromTp;
+  const active = app.workspace.getActiveFile?.();
+  if (active && !isLogTemplatePath(filePathOf(active))) return active;
+  return recentMarkdownFile();
 }
 
 // Companion gather/store stays in step with src/companions.ts.
@@ -674,11 +716,10 @@ async function rvLog(tp, kind) {
     if (typeof logMiss === "function") {
       try {
         await logMiss.call(plugin, file);
-      } catch (error) {
-        const message = error && error.message ? error.message : "Could not log the visit.";
-        new Notice(message);
+        return;
+      } catch {
+        /* The plugin did not write. The local writer still logs Not home. */
       }
-      return;
     }
   }
 
@@ -692,12 +733,10 @@ async function rvLog(tp, kind) {
     try {
       const logged = await logHome.call(plugin, file, tp);
       if (logged === false) return;
-    } catch (error) {
-      const message = error && error.message ? error.message : "Could not log the visit.";
-      new Notice(message);
       return;
+    } catch {
+      /* The plugin did not write. The local writer still logs Home. */
     }
-    return;
   }
 
   const now = new Date();

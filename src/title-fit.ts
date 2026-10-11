@@ -194,8 +194,60 @@ function closedSpan(input: HTMLElement, cls: string, text: string): HTMLElement 
 }
 
 /**
- * Suffix-free cut for addresses and hub names. The start and the end stay;
- * the ellipsis sits in the middle. A box that already fits is left whole.
+ * Hub names and addresses keep the start and cut the end: `Return Visits…`.
+ * A box that already fits is left whole. Catalog titles use {@link fitMiddleEllipsis}.
+ */
+function slotWidth(el: HTMLElement): number {
+	let width = el.clientWidth;
+	const row = el.closest('.rv-hub-row');
+	if (row instanceof HTMLElement && row.clientWidth > width) width = row.clientWidth;
+	return width;
+}
+
+export function fitEndEllipsis(el: HTMLElement, full: string): void {
+	const text = full.replace(/\s+/g, ' ').trim();
+	el.dataset.full = text;
+	el.title = text;
+	const apply = (): void => {
+		const source = (el.dataset.full || text).replace(/\s+/g, ' ').trim();
+		el.textContent = source;
+		const width = slotWidth(el);
+		if (!source || width <= 8) return;
+		if (el.scrollWidth <= width + 1) return;
+		let lo = 1;
+		let hi = source.length - 1;
+		let best = '…';
+		while (lo <= hi) {
+			const mid = (lo + hi) >> 1;
+			const candidate = `${source.slice(0, mid)}…`;
+			el.textContent = candidate;
+			if (el.scrollWidth <= width + 1) {
+				best = candidate;
+				lo = mid + 1;
+			} else {
+				hi = mid - 1;
+			}
+		}
+		el.textContent = best;
+	};
+	apply();
+	if (el.dataset.rvEnd === '1') return;
+	el.dataset.rvEnd = '1';
+	if (typeof requestAnimationFrame === 'function') requestAnimationFrame(apply);
+	if (typeof ResizeObserver === 'undefined') return;
+	try {
+		const observer = new ResizeObserver(() => apply());
+		observer.observe(el);
+		const row = el.closest('.rv-hub-row, .rv-hub-owned');
+		if (row instanceof HTMLElement && row !== el) observer.observe(row);
+	} catch {
+		/* The node is not in a browser. */
+	}
+}
+
+/**
+ * Catalog titles keep the start and the end. The ellipsis sits in the middle.
+ * A box that already fits is left whole.
  */
 export function fitMiddleEllipsis(el: HTMLElement, full: string): void {
 	const text = full.replace(/\s+/g, ' ').trim();

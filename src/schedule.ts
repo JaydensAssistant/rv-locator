@@ -729,6 +729,42 @@ export function parseLogBullet(line: string): LogBullet | null {
 	};
 }
 
+/**
+ * Campaign token for one home visit, from the note text. The Log block does not
+ * have to be on screen. Headings are newest-first and bullets are oldest-first,
+ * so `newestIndex` 0 is the last home bullet with this stamp. A shared minute
+ * does not paint the token on the earlier visit.
+ */
+export function coveredCampaignFor(markdown: string, when: Date, newestIndex = 0): string {
+	const target = when.getTime();
+	if (!Number.isFinite(target)) return '';
+	const covered: string[] = [];
+	for (const line of markdown.split(/\r?\n/)) {
+		const bullet = parseLogBullet(line);
+		if (!bullet || !bullet.home || bullet.when.getTime() !== target) continue;
+		covered.push(bullet.covered);
+	}
+	const index = covered.length - 1 - Math.max(0, Math.floor(newestIndex));
+	if (index < 0 || index >= covered.length) return '';
+	return covered[index] ?? '';
+}
+
+/** Same-stamp visit headings above this line. 0 is the newest heading in the file. */
+export function headingNewestIndex(markdown: string, when: Date, lineNumber: number): number {
+	const target = when.getTime();
+	if (!Number.isFinite(target) || !Number.isFinite(lineNumber)) return 0;
+	const lines = markdown.split(/\r?\n/);
+	const stop = Math.min(lines.length, Math.max(0, Math.floor(lineNumber)));
+	let count = 0;
+	for (let index = 0; index < stop; index += 1) {
+		const match = HEADING_LINE.exec((lines[index] ?? '').trim());
+		if (!match) continue;
+		const stamp = stampDateTime(match[1] ?? '');
+		if (stamp && stamp.getTime() === target) count += 1;
+	}
+	return count;
+}
+
 /** `Tue, 5pm — Sep 29, 2026` as a local Date on that hour. Null for anything else. */
 export function stampDateTime(stamp: string): Date | null {
 	const match = STAMP_BODY.exec(visibleStampText(stripStampAge(stamp)));

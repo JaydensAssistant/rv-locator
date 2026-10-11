@@ -541,7 +541,7 @@ export class CompanionSuggestModal extends Modal {
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
 		const { contentEl } = this;
 		new Setting(contentEl)
-			.setName('Who came with you?')
+			.setName('What publisher came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');
 				this.companionInput = text;

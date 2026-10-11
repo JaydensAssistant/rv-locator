@@ -48,6 +48,7 @@ export class RvMapView extends ItemView {
 	private stageObserver: ResizeObserver | null = null;
 	private hideMapButton: HTMLElement | null = null;
 	private tileImgs = new Map<string, HTMLImageElement>();
+	private tileBacks = new Map<string, HTMLElement>();
 	private tileSrc = new Map<string, string>();
 	private settleEl: HTMLElement | null = null;
 	private settleZ = -1;
@@ -62,6 +63,8 @@ export class RvMapView extends ItemView {
 	private popupPath: string | null = null;
 	private flashPath: string | null = null;
 	private flashUntil = 0;
+	/** pointerup and click both arrive for one tap. The second one must not zoom again. */
+	private pinTapStamp = 0;
 	/** This map only. The hub stack and the split leaf do not share it. */
 	private mapFullscreen = false;
 	private fullscreenScope: 'hub' | 'split' = 'split';
@@ -94,6 +97,7 @@ export class RvMapView extends ItemView {
 		this.stageObserver = null;
 		this.hideMapButton = null;
 		this.tileImgs = new Map();
+		this.tileBacks = new Map();
 		this.tileSrc = new Map();
 		this.settleEl = null;
 		this.settleZ = -1;
@@ -107,6 +111,7 @@ export class RvMapView extends ItemView {
 		this.popupPath = null;
 		this.flashPath = null;
 		this.flashUntil = 0;
+		this.pinTapStamp = 0;
 		this.mapFullscreen = false;
 		this.fullscreenScope = scope;
 		this.renderedPaths = null;
@@ -385,6 +390,13 @@ export class RvMapView extends ItemView {
 			const drag = this.drag;
 			this.drag = null;
 			stage.removeClass('is-grabbing');
+			const pinEl = event.target instanceof Element ? event.target.closest('.rv-map-pin') : null;
+			if (pinEl instanceof HTMLElement && event.button <= 0 && (!drag || !drag.moved)) {
+				const path = pinEl.dataset.rvPath ?? '';
+				const item = this.lastPlaced.find((entry) => entry.pin.path === path);
+				if (item && this.pinLayer) this.activatePin(item.pin, item.point, this.lastPlaced, this.pinLayer, pinEl);
+				return;
+			}
 			if (!drag || drag.moved) return;
 			const rect = stage.getBoundingClientRect();
 			const near = this.pinsNear(event.clientX - rect.left, event.clientY - rect.top, 30);
@@ -537,17 +549,11 @@ export class RvMapView extends ItemView {
 				needed.add(key);
 				if (x >= viewLeft && x <= viewRight && y >= viewTop && y <= viewBottom) visible.add(key);
 				let img = this.tileImgs.get(key);
+				const back = this.paintTileBack(stage, pins, key, z, wrapped, y);
 				if (!img) {
 					img = stage.ownerDocument.createElement('img');
 					img.className = 'rv-map-tile';
 					img.alt = '';
-					const parent = ancestorTileBackground(z, wrapped, y, this.tileSrc);
-					if (parent) {
-						img.style.backgroundImage = `url("${parent.url}")`;
-						img.style.backgroundPosition = parent.position;
-						img.style.backgroundSize = parent.size;
-						img.style.backgroundRepeat = 'no-repeat';
-					}
 					img.addEventListener('load', () => {
 						if (!img || img.naturalWidth <= 0) return;
 						img.classList.add('is-ready');
@@ -564,10 +570,17 @@ export class RvMapView extends ItemView {
 					this.tileImgs.set(key, img);
 					stage.insertBefore(img, pins);
 				}
-				img.style.width = `${tilePx}px`;
-				img.style.height = `${tilePx}px`;
-				img.style.left = `${(x - cx) * tilePx + width / 2}px`;
-				img.style.top = `${(y - cy) * tilePx + height / 2}px`;
+				const leftPx = `${(x - cx) * tilePx + width / 2}px`;
+				const topPx = `${(y - cy) * tilePx + height / 2}px`;
+				const sizePx = `${tilePx}px`;
+				back.style.width = sizePx;
+				back.style.height = sizePx;
+				back.style.left = leftPx;
+				back.style.top = topPx;
+				img.style.width = sizePx;
+				img.style.height = sizePx;
+				img.style.left = leftPx;
+				img.style.top = topPx;
 				img.classList.toggle('is-holding', !tileReady(img));
 			}
 		}
@@ -578,7 +591,32 @@ export class RvMapView extends ItemView {
 			if (needed.has(key)) continue;
 			img.remove();
 			this.tileImgs.delete(key);
+			const back = this.tileBacks.get(key);
+			back?.remove();
+			this.tileBacks.delete(key);
 		}
+	}
+
+	/**
+	 * Parent art sits under the tile. `is-holding` hides the image, not this
+	 * layer, so a tile that has never loaded still covers the stage.
+	 */
+	private paintTileBack(stage: HTMLElement, pins: HTMLElement, key: string, z: number, x: number, y: number): HTMLElement {
+		let back = this.tileBacks.get(key);
+		if (!back?.isConnected) {
+			back = stage.ownerDocument.createElement('div');
+			back.className = 'rv-map-tile-back';
+			stage.insertBefore(back, pins);
+			this.tileBacks.set(key, back);
+		}
+		const parent = ancestorTileBackground(z, x, y, this.tileSrc) ?? unloadedAncestorTile(z, x, y);
+		if (parent) {
+			back.style.backgroundImage = `url("${parent.url}")`;
+			back.style.backgroundPosition = parent.position;
+			back.style.backgroundSize = parent.size;
+			back.style.backgroundRepeat = 'no-repeat';
+		}
+		return back;
 	}
 
 	/** Last complete frame stays under new tiles and slides with the pan until they load. */
@@ -691,61 +729,89 @@ export class RvMapView extends ItemView {
 			const band = parseHex(pin.color);
 			if (band) dot.style.color = autoInk(band);
 		}
+		button.dataset.rvPath = pin.path;
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
 		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected));
 		if (this.flashPath === pin.path && Date.now() < this.flashUntil) button.addClass('rv-pin-flash');
-		button.addEventListener('pointerup', (event) => {
-			if (event.button !== 0) return;
+		button.addEventListener('pointerdown', (event) => {
+			if (event.button > 0) return;
+			button.dataset.rvX = String(event.clientX);
+			button.dataset.rvY = String(event.clientY);
+		});
+		const onTap = (event: PointerEvent | MouseEvent): void => {
+			if (event.button > 0) return;
+			const downX = Number(button.dataset.rvX ?? event.clientX);
+			const downY = Number(button.dataset.rvY ?? event.clientY);
+			if (Math.hypot(event.clientX - downX, event.clientY - downY) > 12) return;
 			event.preventDefault();
 			event.stopPropagation();
-			const zed = Math.floor(this.zoom);
-			const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= 30);
-			const members = placed.map((item) => ({
-				path: item.pin.path,
-				x: item.point.x,
-				y: item.point.y,
-				urgency: item.pin.urgency,
-				priority: item.pin.priority,
-			}));
-			const group = groupPinStacks(members).find((entry) => entry.some((member) => member.path === pin.path));
-			const overlaps = Math.max(near.length, group?.length ?? 0);
-			if (tapZoomsStack(zed, overlaps)) {
-				this.centerLat = pin.lat;
-				this.centerLon = pin.lon;
-				this.popupPath = null;
-				this.popupPanned = false;
-				this.setZoom(zoomToRevealPin(zed), true);
-				return;
-			}
-			const top = tapOpensTop(zed, overlaps)
-				? [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin
-				: pin;
-			this.selectedPath = top.path;
-			if (this.isFullscreen()) {
-				this.popupPath = top.path;
-				this.popupPanned = false;
-				const spot = placed.find((item) => item.pin.path === top.path)?.point ?? point;
-				this.openCard(layer, top, spot);
-				button.addClass('is-selected');
-				return;
-			}
-			this.popupPath = null;
-			this.host.notifyPin?.(top.path);
-			button.addClass('is-selected');
-		});
+			this.activatePin(pin, point, placed, layer, button);
+		};
+		button.addEventListener('pointerup', onTap);
+		button.addEventListener('click', onTap);
 	}
 
-	private visibleStage(): { width: number; height: number } {
+	/** Mouse button 0 and touch (`button === -1`) both count. A second event for the same tap does not zoom twice. */
+	private activatePin(
+		pin: MapPin,
+		point: { x: number; y: number },
+		placed: { pin: MapPin; point: { x: number; y: number } }[],
+		layer: HTMLElement,
+		button: HTMLElement,
+	): void {
+		const now = Date.now();
+		if (now - this.pinTapStamp < 400) return;
+		this.pinTapStamp = now;
+		const zed = Math.floor(this.zoom);
+		const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= 30);
+		const members = placed.map((item) => ({
+			path: item.pin.path,
+			x: item.point.x,
+			y: item.point.y,
+			urgency: item.pin.urgency,
+			priority: item.pin.priority,
+		}));
+		const group = groupPinStacks(members).find((entry) => entry.some((member) => member.path === pin.path));
+		const overlaps = Math.max(near.length, group?.length ?? 0);
+		if (tapZoomsStack(zed, overlaps)) {
+			this.centerLat = pin.lat;
+			this.centerLon = pin.lon;
+			this.popupPath = null;
+			this.popupPanned = false;
+			this.setZoom(zoomToRevealPin(zed), true);
+			return;
+		}
+		const top = tapOpensTop(zed, overlaps)
+			? [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin
+			: pin;
+		this.selectedPath = top.path;
+		if (this.isFullscreen()) {
+			this.popupPath = top.path;
+			this.popupPanned = false;
+			const spot = placed.find((item) => item.pin.path === top.path)?.point ?? point;
+			this.openCard(layer, top, spot);
+			button.addClass('is-selected');
+			return;
+		}
+		this.popupPath = null;
+		this.host.notifyPin?.(top.path);
+		button.addClass('is-selected');
+	}
+
+	/** Intersection of the stage and the window, in stage-local coordinates. */
+	private visibleFrame(): { left: number; top: number; width: number; height: number } {
 		const stage = this.stage;
 		const view = stage?.ownerDocument.defaultView;
-		if (!stage) return { width: 390, height: 640 };
+		if (!stage) return { left: 0, top: 0, width: 390, height: 640 };
 		const frame = stage.getBoundingClientRect();
-		const viewH = view?.innerHeight ?? frame.height;
 		const viewW = view?.innerWidth ?? frame.width;
-		const height = Math.max(120, Math.min(frame.height || viewH, viewH - Math.max(0, frame.top)));
-		const width = Math.max(120, Math.min(frame.width || viewW, viewW));
-		return { width, height };
+		const viewH = view?.innerHeight ?? frame.height;
+		const left = Math.max(0, -frame.left);
+		const top = Math.max(0, -frame.top);
+		const right = Math.min(frame.width, Math.max(left, viewW - frame.left));
+		const bottom = Math.min(frame.height, Math.max(top, viewH - frame.top));
+		return { left, top, width: Math.max(0, right - left), height: Math.max(0, bottom - top) };
 	}
 
 	private panPixels(dx: number, dy: number): void {
@@ -759,13 +825,17 @@ export class RvMapView extends ItemView {
 	private openCard(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		layer.querySelectorAll('.rv-map-card').forEach((node) => node.remove());
 		const shell = layer.createDiv('rv-map-card rv-locator-glancable');
-		const frame = this.visibleStage();
+		const frame = this.visibleFrame();
+		const stageBox = {
+			width: this.stage?.clientWidth || frame.width,
+			height: this.stage?.clientHeight || frame.height,
+		};
 		const cardHeight = Math.min(320, Math.max(120, frame.height - 16));
 		shell.style.maxHeight = `${cardHeight}px`;
 		const origin = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
-			width: Math.min(280, frame.width - 24),
+			width: Math.min(280, Math.max(120, frame.width - 24)),
 			height: cardHeight,
-		}, frame);
+		}, stageBox, frame);
 		shell.style.left = `${origin.left}px`;
 		shell.style.top = `${origin.top}px`;
 		shell.style.zIndex = String(pinUrgencyZ(pin.urgency, true) + 1);
@@ -971,7 +1041,7 @@ export function ancestorTileBackground(
 	y: number,
 	srcs: ReadonlyMap<string, string>,
 ): { url: string; position: string; size: string } | null {
-	for (let level = 1; level <= 6 && z - level >= 0; level += 1) {
+	for (let level = 1; level <= z; level += 1) {
 		const div = 2 ** level;
 		const url = srcs.get(tileKey(z - level, Math.floor(x / div), Math.floor(y / div)));
 		if (!url) continue;
@@ -985,6 +1055,23 @@ export function ancestorTileBackground(
 		};
 	}
 	return null;
+}
+
+/** Coarser OSM tile for a cell whose parents were never cached. Empty maps stay null in {@link ancestorTileBackground}. */
+export function unloadedAncestorTile(
+	z: number,
+	x: number,
+	y: number,
+): { url: string; position: string; size: string } | null {
+	if (z <= 0) return null;
+	const div = 2;
+	const parentX = Math.floor(x / div);
+	const parentY = Math.floor(y / div);
+	return {
+		url: `https://tile.openstreetmap.org/${z - 1}/${parentX}/${parentY}.png`,
+		position: `${(x % div) * 100}% ${(y % div) * 100}%`,
+		size: `${div * 100}% ${div * 100}%`,
+	};
 }
 
 function bestRank(pins: readonly MapPin[]): number {
