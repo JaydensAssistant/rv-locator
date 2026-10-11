@@ -17,11 +17,33 @@ export function paintedSuffix(suffix: string): string {
 	return clean ? ` ${clean}` : '';
 }
 
+/** A stem is never drawn shorter than this, unless the stem itself is shorter. */
+export const MIN_TITLE_CHARS = 5;
+
+/** First row length when a strip splits. Four items become 2 and 2. Two become 1 and 1. */
+export function evenSplitIndex(count: number): number {
+	if (count <= 1) return count;
+	return Math.ceil(count / 2);
+}
+
+/**
+ * One line while every item can keep `minKeep` characters plus its suffix.
+ * Otherwise the strip uses two centred rows.
+ */
+export function stripRowPlan(minWidths: readonly number[], width: number, gap: number, minKeep = MIN_TITLE_CHARS): 1 | 2 {
+	if (minWidths.length < 2 || width <= 0) return 1;
+	const floors = minWidths.map((item) => Math.max(0, item));
+	const need = floors.reduce((sum, item) => sum + item, 0) + Math.max(0, floors.length - 1) * gap;
+	if (need <= width) return 1;
+	void minKeep;
+	return 2;
+}
+
 /**
  * Each title keeps at least `minKeep` characters. The longest stem gives way
  * first until the row fits the character budget.
  */
-export function fairCuts(lengths: readonly number[], budget: number, minKeep = 5): number[] {
+export function fairCuts(lengths: readonly number[], budget: number, minKeep = MIN_TITLE_CHARS): number[] {
 	const cuts = lengths.map((length) => Math.max(0, length));
 	let total = cuts.reduce((sum, length) => sum + length, 0);
 	while (total > budget) {
@@ -74,50 +96,80 @@ export function fitTitleRow(row: HTMLElement): void {
 	const rowStyle = view?.getComputedStyle(row);
 	const pad = rowStyle ? (parseFloat(rowStyle.paddingLeft) || 0) + (parseFloat(rowStyle.paddingRight) || 0) : 0;
 	const rowGap = rowStyle ? (parseFloat(rowStyle.columnGap) || parseFloat(rowStyle.gap) || 0) : 8;
-	let fixed = pad + Math.max(0, items.length - 1) * (Number.isFinite(rowGap) ? rowGap : 8);
-	const stems = items.map((item) => {
+	const gap = Number.isFinite(rowGap) ? rowGap : 8;
+	const usable = Math.max(0, width - pad);
+	const stems = items.map((item) => item.getAttribute('data-stem') ?? '');
+	const floors = stems.map((stem, index) => stemFloorWidth(items[index] ?? row, stem));
+	const lines = stripRowPlan(floors, usable, gap);
+	applyStripSplit(row, lines === 2 ? evenSplitIndex(items.length) : 0);
+	if (lines === 2) {
+		const split = evenSplitIndex(items.length);
+		paintTitleGroup(items.slice(0, split), stems.slice(0, split), usable, gap);
+		paintTitleGroup(items.slice(split), stems.slice(split), usable, gap);
+		return;
+	}
+	paintTitleGroup(items, stems, usable, gap);
+}
+
+function stemFloorWidth(item: HTMLElement, stem: string): number {
+	const host = item.closest('.rv-item');
+	const box = host instanceof HTMLElement ? host : item;
+	const stemEl = item.querySelector('.rv-fit-stem');
+	const previous = stemEl?.textContent ?? '';
+	const keep = Math.min(MIN_TITLE_CHARS, stem.length);
+	if (stemEl) stemEl.textContent = stem.length > keep ? `${stem.slice(0, keep)}…` : stem;
+	const snapshot = box.style.cssText;
+	box.style.flex = '0 0 auto';
+	box.style.width = 'max-content';
+	box.style.maxWidth = 'none';
+	box.style.minWidth = 'max-content';
+	const measured = Math.max(box.scrollWidth, box.offsetWidth);
+	box.style.cssText = snapshot;
+	if (stemEl) stemEl.textContent = previous;
+	return measured;
+}
+
+function paintTitleGroup(items: readonly HTMLElement[], stems: readonly string[], width: number, gap: number): void {
+	if (items.length === 0) return;
+	let fixed = Math.max(0, items.length - 1) * gap;
+	items.forEach((item) => {
 		const host = item.closest('.rv-item');
 		const icon = host?.querySelector('.rv-item-icon');
 		const suffix = item.querySelector('.rv-type');
 		const iconWidth = icon instanceof HTMLElement ? icon.offsetWidth : 0;
 		const suffixWidth = suffix instanceof HTMLElement ? suffix.offsetWidth : 0;
 		fixed += iconWidth + suffixWidth + (iconWidth > 0 ? 4 : 0);
-		return item.getAttribute('data-stem') ?? '';
 	});
-	const budgetPx = Math.max(0, width - fixed);
 	const sample = stems[0] ?? 'M';
-	const probe = row.ownerDocument.createElement('span');
+	const probe = items[0]?.ownerDocument.createElement('span');
+	if (!probe || !items[0]) return;
 	probe.className = 'rv-fit-probe';
 	probe.textContent = sample.slice(0, 1) || 'M';
-	row.appendChild(probe);
+	items[0].appendChild(probe);
 	const charPx = Math.max(1, probe.offsetWidth);
 	probe.remove();
-	const budget = Math.floor(budgetPx / charPx);
-	const cuts = fairCuts(stems.map((stem) => stem.length), budget, 5);
+	const budget = Math.floor(Math.max(0, width - fixed) / charPx);
+	const cuts = fairCuts(stems.map((stem) => stem.length), budget, MIN_TITLE_CHARS);
 	items.forEach((item, index) => {
 		const stem = item.querySelector('.rv-fit-stem');
-		const text = item.getAttribute('data-stem') ?? '';
-		if (stem) stem.textContent = ellipsize(text, cuts[index] ?? text.length);
+		const text = stems[index] ?? '';
+		const floor = Math.min(MIN_TITLE_CHARS, text.length);
+		const keep = Math.max(floor, cuts[index] ?? text.length);
+		if (stem) stem.textContent = ellipsize(text, keep);
 	});
-	let guard = 0;
-	while (row.scrollWidth > row.clientWidth + 1 && guard < 400) {
-		guard += 1;
-		let longest = 0;
-		let longestLen = 0;
-		items.forEach((item, index) => {
-			const stem = item.querySelector('.rv-fit-stem');
-			const len = (stem?.textContent ?? '').replace(/…$/, '').length;
-			if (len > longestLen) {
-				longestLen = len;
-				longest = index;
-			}
-		});
-		if (longestLen <= 1) break;
-		const item = items[longest];
-		const stem = item?.querySelector('.rv-fit-stem');
-		const text = item?.getAttribute('data-stem') ?? '';
-		if (stem) stem.textContent = ellipsize(text, longestLen - 1);
-	}
+}
+
+function applyStripSplit(row: HTMLElement, splitAt: number): void {
+	row.querySelectorAll(':scope > .rv-strip-break').forEach((node) => node.remove());
+	const wrapped = splitAt > 0;
+	row.classList.toggle('is-two-line', wrapped);
+	if (!wrapped) return;
+	const chips = Array.from(row.querySelectorAll<HTMLElement>(':scope > .rv-item'));
+	const after = chips[splitAt];
+	const breaker = row.ownerDocument.createElement('span');
+	breaker.className = 'rv-strip-break';
+	if (after) row.insertBefore(breaker, after);
+	else row.appendChild(breaker);
 }
 
 export function watchTitleRow(row: HTMLElement): void {

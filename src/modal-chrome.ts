@@ -14,6 +14,9 @@ const PROMPT_ICONS: Array<[RegExp, string]> = [
 	[/county|home region|region/i, 'map'],
 	[/were they home|\bhome\b/i, 'door-open'],
 	[/weekday|daypart|\bday\b/i, 'calendar'],
+	[/^hour$/i, 'clock'],
+	[/minutes/i, 'timer'],
+	[/^label$/i, 'tag'],
 	[/time/i, 'clock'],
 	[/try or avoid/i, 'list-checks'],
 	[/covered|campaign/i, 'book-alert'],
@@ -89,6 +92,7 @@ export function openDesktopDatePicker(input: HTMLInputElement, isMobile = Platfo
 export function iconizeModal(root: HTMLElement): void {
 	if (typeof root.querySelectorAll !== 'function') return;
 	bindDatePickers(root);
+	armMobileSelects(root);
 	watchModalWidth(root);
 	root.querySelectorAll('.setting-item-name').forEach((node) => {
 		if (!(node instanceof HTMLElement) || node.closest('.rv-campaign-choice, .rv-modal-actions')) return;
@@ -124,6 +128,69 @@ function watchModalWidth(root: HTMLElement): void {
 	} catch {
 		apply();
 	}
+}
+
+/**
+ * Phone selects do not open a native menu inside the modal under mobile
+ * emulation. A tap shows the options in the page, and choosing one fires change.
+ */
+function armMobileSelects(root: HTMLElement): void {
+	root.querySelectorAll('select').forEach((node) => {
+		if (!(node instanceof HTMLSelectElement) || node.dataset.rvMenu === '1') return;
+		node.dataset.rvMenu = '1';
+		let stamp = 0;
+		const open = (event: Event): void => {
+			if (!Platform.isMobile) return;
+			event.preventDefault();
+			event.stopPropagation();
+			const now = Date.now();
+			if (now - stamp < 350) return;
+			stamp = now;
+			openSelectMenu(node);
+		};
+		node.addEventListener('pointerdown', (event) => {
+			if (!Platform.isMobile) return;
+			event.preventDefault();
+			event.stopPropagation();
+		});
+		node.addEventListener('pointerup', open);
+		node.addEventListener('click', open);
+	});
+}
+
+function openSelectMenu(select: HTMLSelectElement): void {
+	const doc = select.ownerDocument;
+	doc.querySelectorAll('.rv-select-menu').forEach((node) => node.remove());
+	const menu = doc.createElement('div');
+	menu.className = 'rv-select-menu';
+	menu.setAttribute('role', 'listbox');
+	for (const option of Array.from(select.options)) {
+		const button = doc.createElement('button');
+		button.type = 'button';
+		button.className = 'rv-select-option';
+		button.textContent = option.textContent ?? option.label;
+		if (option.value === select.value) button.classList.add('is-selected');
+		button.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			select.value = option.value;
+			select.dispatchEvent(new Event('change', { bubbles: true }));
+			menu.remove();
+		});
+		menu.appendChild(button);
+	}
+	const box = select.getBoundingClientRect();
+	menu.style.left = `${Math.max(8, box.left)}px`;
+	menu.style.top = `${box.bottom + 4}px`;
+	menu.style.minWidth = `${Math.max(120, box.width)}px`;
+	doc.body.appendChild(menu);
+	const close = (event: Event): void => {
+		const target = event.target;
+		if (target instanceof Node && (menu.contains(target) || target === select)) return;
+		menu.remove();
+		doc.removeEventListener('pointerdown', close, true);
+	};
+	window.setTimeout(() => doc.addEventListener('pointerdown', close, true), 0);
 }
 
 function bindDatePickers(root: HTMLElement): void {

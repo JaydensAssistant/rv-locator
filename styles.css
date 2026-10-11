@@ -3079,6 +3079,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	overflow: hidden;
 	background: var(--background-secondary);
 	cursor: grab;
+	touch-action: none;
 }
 
 .rv-map-stage.is-grabbing {
@@ -4208,7 +4209,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	line-height: 1;
 	font-variant-numeric: tabular-nums;
 	white-space: nowrap;
-	pointer-events: none;
+	pointer-events: auto;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency,
@@ -4236,7 +4237,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	position: fixed;
 	left: 12px;
 	right: 12px;
-	bottom: calc(var(--rv-hub-bar-h, 64px) + 12px + env(safe-area-inset-bottom));
+	top: auto;
+	bottom: calc(56px + 12px + env(safe-area-inset-bottom));
 	z-index: 40;
 	background: var(--background-modifier-message);
 	color: #fafafa;
@@ -4616,7 +4618,18 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
-	display: contents;
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: max-content minmax(0, 1fr) 40px;
+	column-gap: var(--rv-dash-pad, 12px);
+	align-items: center;
+	width: 100%;
+}
+
+@supports (grid-template-columns: subgrid) {
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+		grid-template-columns: subgrid;
+	}
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
@@ -4663,35 +4676,6 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	padding: 0;
 }
 
-/* Phone width: the label sits above the value so the value can end-ellipsis. */
-@media (max-width: 520px) {
-	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
-	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong),
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
-		grid-template-columns: minmax(0, 1fr) 40px;
-	}
-
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
-		grid-column: 1 / -1;
-	}
-
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
-	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
-	body.rv-wide-hubs .rv-hub-row {
-		grid-column: 1;
-	}
-
-	body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
-	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-map-button,
-	.rv-dashboard .rv-hub-add,
-	.rv-dashboard a.rv-map-button {
-		grid-column: 2;
-	}
-}
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
@@ -5164,4 +5148,102 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	max-width: 100%;
 	min-width: 0;
 	text-overflow: clip;
+}
+
+/* Two centred rows when one line cannot keep 5 characters plus the suffix. */
+.rv-item-strip.is-two-line {
+	flex-wrap: wrap;
+	justify-content: center;
+	row-gap: 4px;
+	white-space: normal;
+	overflow: visible;
+}
+
+.rv-item-strip.is-two-line > .rv-strip-break {
+	flex: 0 0 100%;
+	width: 100%;
+	height: 0;
+	overflow: hidden;
+}
+
+/* Disclosure, not a bordered button. Same surface as the modal. */
+.rv-locator-modal .rv-study-toggle {
+	display: inline-flex;
+	align-items: center;
+	justify-content: flex-start;
+	width: auto;
+	max-width: 100%;
+	min-height: 0;
+	height: auto;
+	margin: 8px 0;
+	padding: 4px 0;
+	border: 0 !important;
+	border-radius: 0;
+	background: transparent !important;
+	background-color: transparent !important;
+	box-shadow: none !important;
+	color: var(--text-normal);
+	font: inherit;
+	font-weight: inherit;
+	text-align: start;
+}
+
+.modal.rv-locator-modal {
+	max-height: calc(100dvh - 16px);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.modal.rv-locator-modal .modal-content {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+	overflow-x: hidden;
+	overflow-y: auto;
+}
+
+.modal.rv-locator-modal .setting-item.rv-modal-actions {
+	position: sticky;
+	bottom: 0;
+	z-index: 3;
+	background: var(--modal-background, var(--background-primary));
+	padding-top: 8px;
+	padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+.rv-locator-modal select {
+	width: 100%;
+	min-height: 40px;
+	pointer-events: auto;
+}
+
+.rv-select-menu {
+	position: fixed;
+	z-index: 1000;
+	display: flex;
+	flex-direction: column;
+	max-height: 240px;
+	overflow: auto;
+	padding: 4px;
+	border-radius: var(--radius-s, 6px);
+	background: var(--modal-background, var(--background-primary));
+	border: 1px solid var(--background-modifier-border);
+	box-shadow: var(--shadow-s);
+}
+
+.rv-select-menu .rv-select-option {
+	min-height: 40px;
+	text-align: start;
+	background: transparent;
+	border: 0;
+	color: var(--text-normal);
+}
+
+.rv-select-menu .rv-select-option.is-selected {
+	color: var(--text-accent);
+}
+
+.rv-nh-toast {
+	z-index: 100;
 }

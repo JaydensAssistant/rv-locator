@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { autoInk, contrast, deltaE00, parseHex, ringContrast, urgencyInkFor } from '../src/color-math';
+import { autoInk, contrast, deltaE00, parseCssColor, parseHex, ringContrast, urgencyInkFor } from '../src/color-math';
 import { formatGlanceableCounter } from '../src/dates';
 import { dropPath, groupPinStacks, pinsToDraw, stackCountLabel, tapOpensTop, tapZoomsStack } from '../src/map-pins';
-import { appendMetDateToFilename, filenameCollision, stripFilenameStamp } from '../src/note-name';
+import { appendMetDateToFilename, collisionSuffixOnly, filenameCollision, stripFilenameStamp } from '../src/note-name';
 import { parseLogBullet } from '../src/schedule';
 import { applyVisitBody, ensureAttemptLog } from '../src/visit-log';
 import { editVisit, listVisits } from '../src/visit-editor';
-import { displayTitle, paintedSuffix } from '../src/title-fit';
+import { displayTitle, evenSplitIndex, paintedSuffix, stripRowPlan } from '../src/title-fit';
 import { collapseAttemptLog, upsertAttemptDigest } from '../src/attempt-digest';
 import { DEFAULT_SETTINGS, mergeSettings } from '../src/types';
 import { resetSettingsTab as resetTab } from '../src/settings-reset';
@@ -26,8 +26,42 @@ describe('polish pack data', () => {
 		assert.equal(appendMetDateToFilename('Pat on Pine', '2026-08-12'), 'Pat on Pine');
 		assert.equal(stripFilenameStamp('Pat on Pine 2026-08-12 1705'), 'Pat on Pine');
 		assert.equal(stripFilenameStamp('Pat on Pine 2026-08-12'), 'Pat on Pine');
+		assert.equal(stripFilenameStamp('Smoke Pair on Smoke Street 2026-10-11 1149 2'), 'Smoke Pair on Smoke Street 2');
+		assert.equal(stripFilenameStamp('Smoke Pair on Smoke Street 2'), 'Smoke Pair on Smoke Street 2');
 		assert.equal(filenameCollision('Pat on Pine 2026-08-12 1705', ['Pat on Pine 2026-08-12 1705']), 'Pat on Pine 2026-08-12 1705 2');
+		assert.equal(collisionSuffixOnly('Smoke Pair on Smoke Street 2026-10-11 1149', 'Smoke Pair on Smoke Street 2026-10-11 1149 2'), true);
+		assert.equal(collisionSuffixOnly('Smoke Pair on Smoke Street 2026-10-11 1149', 'Smoke Pair on Smoke Street'), false);
 		assert.doesNotMatch(appendMetDateToFilename('A on B', '2026-01-02T09:03:00'), /:/);
+	});
+
+	it('wraps a strip that cannot keep five characters, and keeps an even split', () => {
+		assert.equal(evenSplitIndex(4), 2);
+		assert.equal(evenSplitIndex(2), 1);
+		assert.equal(stripRowPlan([110, 110, 110, 110], 390, 8), 2);
+		assert.equal(stripRowPlan([40, 40], 390, 8), 1);
+		assert.equal(stripRowPlan([200, 200], 390, 8), 2);
+	});
+
+	it('keeps accent ink at 4.5:1 on light and dark pages', () => {
+		const accent = parseHex('#7b68ee');
+		assert.ok(accent);
+		const light = urgencyInkFor(accent, { r: 1, g: 1, b: 1 });
+		const dark = urgencyInkFor(accent, { r: 30 / 255, g: 30 / 255, b: 30 / 255 });
+		assert.equal(light.ratio >= 4.5, true);
+		assert.equal(dark.ratio >= 4.5, true);
+		const solid = parseHex('#8b7cf6');
+		assert.ok(solid);
+		const white = contrast(solid, { r: 1, g: 1, b: 1 });
+		const ink = parseHex(autoInk(solid));
+		assert.ok(ink);
+		const ratio = contrast(solid, ink);
+		assert.equal(ratio >= 4.5, true);
+		assert.equal(ratio >= white, true);
+		const painted = parseCssColor('color(srgb 0.859165 0.807956 0.988694)');
+		assert.ok(painted);
+		const counter = parseHex(autoInk(painted));
+		assert.ok(counter);
+		assert.equal(contrast(painted, counter) >= 4.5, true);
 	});
 
 	it('migrates the filename stamp on once, then keeps a later off', () => {

@@ -551,6 +551,7 @@ describe('smoke layout', () => {
 
 	it('hides the filename stamp in titles and keeps an end ellipsis for hub and address', () => {
 		assert.equal(rvDisplayTitle('Maria on Lake Dr 2026-10-11 0905'), 'Maria on Lake Dr');
+		assert.equal(rvDisplayTitle('Smoke Pair on Smoke Street 2026-10-11 1149 2'), 'Smoke Pair on Smoke Street 2');
 		assert.equal(maskStampText('Maria on Lake Dr 2026-10-11 0905 - Vault', 'Maria on Lake Dr 2026-10-11 0905', 'Maria on Lake Dr'), 'Maria on Lake Dr - Vault');
 		const header = window.document.createElement('div');
 		header.className = 'view-header-title';
@@ -562,11 +563,34 @@ describe('smoke layout', () => {
 		status.className = 'rv-note-status';
 		status.textContent = 'Active';
 		inline.append(status);
-		maskTitleElement(header, [{ stamped: 'Maria on Lake Dr 2026-10-11 0905', display: 'Maria on Lake Dr' }]);
-		maskTitleElement(inline, [{ stamped: 'Maria on Lake Dr 2026-10-11 0905', display: 'Maria on Lake Dr' }]);
+		const explorer = window.document.createElement('div');
+		explorer.className = 'nav-file-title-content';
+		explorer.textContent = 'Maria on Lake Dr 2026-10-11 0905';
+		const search = window.document.createElement('div');
+		search.className = 'search-result-file-title';
+		search.textContent = 'Maria on Lake Dr 2026-10-11 0905';
+		const suggestion = window.document.createElement('div');
+		suggestion.className = 'suggestion-title';
+		suggestion.textContent = 'Maria on Lake Dr 2026-10-11 0905';
+		const pair = [{ stamped: 'Maria on Lake Dr 2026-10-11 0905', display: 'Maria on Lake Dr' }];
+		maskTitleElement(header, pair);
+		maskTitleElement(inline, pair);
+		maskTitleElement(explorer, pair);
+		maskTitleElement(search, pair);
+		maskTitleElement(suggestion, pair);
 		assert.equal(header.textContent, 'Maria on Lake Dr');
-		assert.match(inline.textContent ?? '', /Maria on Lake Dr/);
-		assert.match(inline.textContent ?? '', /Active/);
+		assert.equal(inline.textContent, 'Maria on Lake Dr 2026-10-11 0905Active');
+		assert.equal(explorer.textContent, 'Maria on Lake Dr 2026-10-11 0905');
+		assert.equal(search.textContent, 'Maria on Lake Dr 2026-10-11 0905');
+		assert.equal(suggestion.textContent, 'Maria on Lake Dr 2026-10-11 0905');
+		const main = readFileSync('src/main.ts', 'utf8');
+		assert.doesNotMatch(main, /nav-file-title-content|search-result-file-title|suggestion-title|file-explorer/);
+		assert.doesNotMatch(main, /querySelector(?:All)?\([^)]*inline-title/);
+		assert.match(main, /collisionSuffixOnly/);
+		const script = readFileSync('extras/templater-metabind/newRv.js', 'utf8');
+		assert.match(script, /alreadyStamped/);
+		assert.match(script, /if \(alreadyStamped\)/);
+		assert.match(script, /!alreadyStamped/);
 		const chrome = readFileSync('src/note-chrome.ts', 'utf8');
 		assert.match(chrome, /fitEndEllipsis\(link, text\)/);
 		assert.match(chrome, /fitEndEllipsis\(label, full\)/);
@@ -577,9 +601,80 @@ describe('smoke layout', () => {
 		const editor = readFileSync('src/visit-modals.ts', 'utf8');
 		assert.match(editor, /is-miss-hidden/);
 		const map = readFileSync('src/map-view.ts', 'utf8');
+		assert.match(map, /resolvePaintedColor\(button, pin\.color/);
 		assert.match(map, /event\.button > 0/);
 		assert.match(map, /zoomToRevealPin\(zed\)/);
 		assert.match(map, /rv-map-tile-back/);
+		assert.match(map, /captureParentSettle/);
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /\.rv-hub-line \{[^}]*grid-template-columns: max-content minmax\(0, 1fr\) 40px/s);
+		assert.doesNotMatch(css, /Phone width: the label sits above/);
+		assert.match(css, /grid-template-columns: subgrid/);
+		assert.doesNotMatch(css, /display:\s*contents/);
+		assert.match(css, /\.rv-item-strip\.is-two-line/);
+		assert.match(css, /\.rv-locator-modal \.rv-study-toggle \{[^}]*border: 0 !important/s);
+		assert.match(css, /position: sticky;\s*\n\tbottom: 0/);
+	});
+
+	it('zooms a stack from a touch pointer with a few pixels of jitter', () => {
+		const card = {
+			address: '10 Oak Hammock Ln',
+			city: 'Orlando',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '4',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		};
+		const pins: MapPin[] = [0, 1, 2, 3].map((index) => ({
+			path: `RVs/jitter-${index}.md`,
+			name: `Pin ${index}`,
+			lat: 28.54,
+			lon: -81.38,
+			priority: 4,
+			urgency: 1,
+			days: 10,
+			color: '#d63c3c',
+			glyph: '1',
+			fresh: false,
+			stateIcon: null,
+			shadeIcon: null,
+			markText: null,
+			rank: index,
+			card,
+		}));
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const map = Object.create(RvMapView.prototype) as RvMapView & { zoom: number; paint: () => void };
+		map.contentEl = root;
+		map.bindHost({
+			settings: { ...DEFAULT_SETTINGS, distanceTest: true },
+			mapFocusPath: null,
+			listMapPins: () => pins,
+			openMapNote: () => {},
+			openRoute: async () => {},
+			currentMapFix: () => null,
+			notifyPin: () => {},
+		}, 'hub');
+		void map.onOpen();
+		map.zoom = 12;
+		map.paint();
+		assert.ok(root.querySelectorAll('.rv-map-tile-back[data-rv-parent="1"]').length > 0);
+		assert.ok((root.querySelector('.rv-map-settle')?.childElementCount ?? 0) > 0);
+		const pin = root.querySelector('button.rv-map-pin');
+		assert.ok(pin instanceof window.HTMLElement);
+		const PointerEventCtor = window.PointerEvent ?? window.MouseEvent;
+		pin.dispatchEvent(new PointerEventCtor('pointerdown', { button: 0, clientX: 30, clientY: 40, bubbles: true }));
+		pin.dispatchEvent(new PointerEventCtor('pointerup', { button: -1, clientX: 32, clientY: 42, bubbles: true }));
+		assert.equal(map.zoom, 13);
+		void map.onClose();
+		root.remove();
 	});
 
 });

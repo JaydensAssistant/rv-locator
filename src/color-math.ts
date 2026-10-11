@@ -40,12 +40,16 @@ export function parseCssColor(color: string): RGB | null {
 		return parseHex(`#${r}${r}${g}${g}${b}${b}`);
 	}
 	const rgb = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i.exec(text);
-	if (!rgb) return null;
-	return {
-		r: Number(rgb[1]) / 255,
-		g: Number(rgb[2]) / 255,
-		b: Number(rgb[3]) / 255,
-	};
+	if (rgb) {
+		return {
+			r: Number(rgb[1]) / 255,
+			g: Number(rgb[2]) / 255,
+			b: Number(rgb[3]) / 255,
+		};
+	}
+	const modern = /^color\(\s*srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i.exec(text);
+	if (!modern) return null;
+	return { r: Number(modern[1]), g: Number(modern[2]), b: Number(modern[3]) };
 }
 
 export function toHex(color: RGB): string {
@@ -184,6 +188,14 @@ export function urgencyInkFor(color: RGB, background: RGB): Ink {
 		if (ratio >= INK_TARGET) {
 			return { ink: toHex(rgb), ratio, ok: true, fill: toHex(fill), adjusted: true };
 		}
+	}
+	if (best.ratio < INK_TARGET) {
+		const black = { r: 0x11 / 255, g: 0x11 / 255, b: 0x11 / 255 };
+		const white = { r: 1, g: 1, b: 1 };
+		const dark = paintedContrast(black, fill);
+		const light = paintedContrast(white, fill);
+		const pick = light >= dark ? { rgb: white, ratio: light } : { rgb: black, ratio: dark };
+		if (pick.ratio > best.ratio) best = pick;
 	}
 	return { ink: toHex(best.rgb), ratio: best.ratio, ok: best.ratio >= INK_TARGET, fill: toHex(fill), adjusted: true };
 }
@@ -379,7 +391,29 @@ export function themePageBackground(el: HTMLElement): string {
 	return dark ? '#1e1e1e' : '#ffffff';
 }
 
+/**
+ * `var(--interactive-accent)` and `color-mix(...)` become the rgb the page
+ * actually paints, so the ink algorithm sees the accent instead of the token.
+ */
+export function resolvePaintedColor(el: HTMLElement, color: string): string {
+	const direct = parseCssColor(color);
+	if (direct) return toHex(direct);
+	const doc = el.ownerDocument;
+	const view = doc?.defaultView;
+	if (!view || typeof doc.createElement !== 'function') return color;
+	const probe = doc.createElement('span');
+	probe.setAttribute('aria-hidden', 'true');
+	probe.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;opacity:0;pointer-events:none;';
+	probe.style.backgroundColor = color;
+	const host = doc.body ?? el;
+	host.appendChild(probe);
+	const painted = view.getComputedStyle(probe).backgroundColor;
+	probe.remove();
+	const rgb = parseCssColor(painted);
+	return rgb ? toHex(rgb) : color;
+}
+
 /** Read the theme background and set `--rv-urgency-ink` on `el` for this band color. */
 export function paintUrgencyInk(el: HTMLElement, color: string): void {
-	el.style.setProperty('--rv-urgency-ink', cachedUrgencyInk(color, themePageBackground(el)));
+	el.style.setProperty('--rv-urgency-ink', cachedUrgencyInk(resolvePaintedColor(el, color), themePageBackground(el)));
 }

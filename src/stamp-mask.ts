@@ -1,22 +1,31 @@
 import { stripFilenameStamp } from './note-name';
 
-const STAMPED = /\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{4})?$/;
-
-/** View header, inline title, tab, file explorer, search, and the quick switcher. */
-export const STAMP_TITLE_SELECTOR = [
-	'.view-header-title',
+/**
+ * Core file UI is out of scope. Touching these nodes broke inline rename,
+ * search, and the quick switcher, and saving an edited inline title renamed
+ * the note on disk. The mask refuses them even if a caller passes one in.
+ */
+const CORE_FILE_UI = [
 	'.inline-title',
-	'.workspace-tab-header-inner-title',
+	'.nav-file',
+	'.nav-file-title',
 	'.nav-file-title-content',
+	'.nav-folder-title',
+	'.search-result',
 	'.search-result-file-title',
+	'.suggestion',
+	'.suggestion-item',
 	'.suggestion-title',
+	'.prompt',
 ].join(', ');
 
 export function basenameHasStamp(basename: string): boolean {
-	return STAMPED.test(basename.trim());
+	const name = basename.trim();
+	const display = stripFilenameStamp(name);
+	return display.length > 0 && display !== name;
 }
 
-/** The name Obsidian should show. The file on disk keeps the stamp. */
+/** The name plugin surfaces show. The file on disk keeps the stamp. */
 export function rvDisplayTitle(basename: string): string {
 	const next = stripFilenameStamp(basename);
 	return next || basename.trim();
@@ -35,25 +44,20 @@ export function maskStampText(text: string, stamped: string, display: string): s
 	return text;
 }
 
-/** Rewrite title text nodes. A focused inline title and status chips stay as they are. */
+/** Rewrite title text nodes on a plugin header or tab. Core file UI is left untouched. */
 export function maskTitleElement(el: HTMLElement, pairs: readonly { stamped: string; display: string }[]): void {
 	if (pairs.length === 0) return;
+	if (isCoreFileUi(el)) return;
 	if (el.classList.contains('rv-note-status') || el.closest('.rv-note-status')) return;
+	if (el.isContentEditable || el.closest('[contenteditable="true"]')) return;
 	const doc = el.ownerDocument;
 	if (doc.activeElement === el) return;
-	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') {
-		const raw = el.textContent ?? '';
-		for (const pair of pairs) {
-			const next = maskStampText(raw, pair.stamped, pair.display);
-			if (next !== raw) el.textContent = next;
-		}
-		return;
-	}
+	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
 	const walker = doc.createTreeWalker(el, NodeFilter.SHOW_TEXT);
 	let node = walker.nextNode();
 	while (node) {
 		const parent = node.parentElement;
-		if (parent?.classList.contains('rv-note-status') || parent?.closest('.rv-note-status')) {
+		if (!parent || isCoreFileUi(parent) || parent.classList.contains('rv-note-status') || parent.closest('.rv-note-status')) {
 			node = walker.nextNode();
 			continue;
 		}
@@ -64,4 +68,8 @@ export function maskTitleElement(el: HTMLElement, pairs: readonly { stamped: str
 		}
 		node = walker.nextNode();
 	}
+}
+
+function isCoreFileUi(el: HTMLElement): boolean {
+	return el.matches(CORE_FILE_UI) || el.closest(CORE_FILE_UI) != null;
 }

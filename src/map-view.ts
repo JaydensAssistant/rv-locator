@@ -1,10 +1,10 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
-import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapOpensTop, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
+import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, STACK_TAP_PX, tapOpensTop, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import { homeBoxFromPoints, loadTileIndex, noteViewedTile, saveTileIndex, tileIsHome, tileKey, type TileRecord } from './tile-index';
-import { autoInk, paintUrgencyInk, parseHex } from './color-math';
+import { autoInk, paintUrgencyInk, parseCssColor, resolvePaintedColor } from './color-math';
 import type { RVLocatorSettings } from './types';
 
 export const MAP_VIEW_TYPE = 'rv-locator-map';
@@ -43,6 +43,8 @@ export class RvMapView extends ItemView {
 	private pinLayer: HTMLElement | null = null;
 	private watchId: number | null = null;
 	private drag: { x: number; y: number; lat: number; lon: number; moved: boolean } | null = null;
+	private press: { x: number; y: number } | null = null;
+	private detachPress: (() => void) | null = null;
 	private selectedPath: string | null = null;
 	private detachMap: (() => void) | null = null;
 	private stageObserver: ResizeObserver | null = null;
@@ -92,6 +94,9 @@ export class RvMapView extends ItemView {
 		this.pinLayer = null;
 		this.watchId = null;
 		this.drag = null;
+		this.press = null;
+		this.detachPress?.();
+		this.detachPress = null;
 		this.selectedPath = null;
 		this.detachMap = null;
 		this.stageObserver = null;
@@ -194,6 +199,8 @@ export class RvMapView extends ItemView {
 			navigator.geolocation.clearWatch(this.watchId);
 		}
 		this.watchId = null;
+		this.detachPress?.();
+		this.detachPress = null;
 		this.detachMap?.();
 		this.detachMap = null;
 		this.stageObserver?.disconnect();
@@ -349,6 +356,8 @@ export class RvMapView extends ItemView {
 		const onControl = (event: Event): boolean => event.target instanceof Element
 			&& event.target.closest('.rv-map-pin, .rv-map-card, .rv-map-cluster, .rv-map-bar, .rv-map-credit, .rv-map-scale') != null;
 		stage.addEventListener('pointerdown', (event) => {
+			if (event.button > 0) return;
+			this.press = { x: event.clientX, y: event.clientY };
 			if (onControl(event)) return;
 			pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 			if (pointers.size >= 2) {
@@ -370,7 +379,7 @@ export class RvMapView extends ItemView {
 			const dx = event.clientX - this.drag.x;
 			const dy = event.clientY - this.drag.y;
 			if (!this.drag.moved) {
-				if (mapPressIsClick(dx, dy)) return;
+				if (mapPressIsClick(dx, dy, 8)) return;
 				this.drag.moved = true;
 				stage.addClass('is-grabbing');
 			}
@@ -399,7 +408,7 @@ export class RvMapView extends ItemView {
 			}
 			if (!drag || drag.moved) return;
 			const rect = stage.getBoundingClientRect();
-			const near = this.pinsNear(event.clientX - rect.left, event.clientY - rect.top, 30);
+			const near = this.pinsNear(event.clientX - rect.left, event.clientY - rect.top, STACK_TAP_PX);
 			if (tapZoomsStack(Math.floor(this.zoom), near.length)) {
 				const pin = near[0]?.pin;
 				if (pin) {
@@ -422,12 +431,34 @@ export class RvMapView extends ItemView {
 			this.host.notifyMapCleared?.();
 			this.paint();
 		});
-		stage.addEventListener('pointerleave', () => {
+		stage.addEventListener('pointercancel', () => {
 			this.drag = null;
+			this.press = null;
 			pointers.clear();
 			pinchZoom = null;
 			stage.removeClass('is-grabbing');
 		});
+		const view = stage.ownerDocument.defaultView;
+		const onWindowUp = (event: PointerEvent): void => {
+			const press = this.press;
+			this.press = null;
+			if (!press || event.button > 0) return;
+			if (!mapPressIsClick(event.clientX - press.x, event.clientY - press.y, 8)) return;
+			const rect = stage.getBoundingClientRect();
+			const near = this.pinsNear(press.x - rect.left, press.y - rect.top, STACK_TAP_PX);
+			if (!tapZoomsStack(Math.floor(this.zoom), near.length)) return;
+			const pin = near[0]?.pin;
+			if (!pin) return;
+			this.centerLat = pin.lat;
+			this.centerLon = pin.lon;
+			this.popupPath = null;
+			this.popupPanned = false;
+			this.pinTapStamp = Date.now();
+			this.drag = null;
+			this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
+		};
+		view?.addEventListener('pointerup', onWindowUp, true);
+		this.detachPress = () => view?.removeEventListener('pointerup', onWindowUp, true);
 		stage.addEventListener('dblclick', (event) => {
 			if (onControl(event)) return;
 			event.preventDefault();
@@ -552,7 +583,7 @@ export class RvMapView extends ItemView {
 				const back = this.paintTileBack(stage, pins, key, z, wrapped, y);
 				if (!img) {
 					img = stage.ownerDocument.createElement('img');
-					img.className = 'rv-map-tile';
+					img.className = 'rv-map-tile is-holding';
 					img.alt = '';
 					img.addEventListener('load', () => {
 						if (!img || img.naturalWidth <= 0) return;
@@ -581,7 +612,14 @@ export class RvMapView extends ItemView {
 				img.style.height = sizePx;
 				img.style.left = leftPx;
 				img.style.top = topPx;
-				img.classList.toggle('is-holding', !tileReady(img));
+				const holding = !tileReady(img);
+				img.classList.toggle('is-holding', holding);
+				if (holding && back.dataset.rvParent === '1') {
+					img.style.backgroundImage = back.style.backgroundImage;
+					img.style.backgroundPosition = back.style.backgroundPosition;
+					img.style.backgroundSize = back.style.backgroundSize;
+					img.style.backgroundRepeat = 'no-repeat';
+				}
 			}
 		}
 		const visibleReady = [...visible].every((key) => tileReady(this.tileImgs.get(key)));
@@ -611,7 +649,9 @@ export class RvMapView extends ItemView {
 		}
 		const parent = ancestorTileBackground(z, x, y, this.tileSrc) ?? unloadedAncestorTile(z, x, y);
 		if (parent) {
-			back.style.backgroundImage = `url("${parent.url}")`;
+			const image = `url("${parent.url}")`;
+			back.dataset.rvParent = '1';
+			back.style.backgroundImage = image;
 			back.style.backgroundPosition = parent.position;
 			back.style.backgroundSize = parent.size;
 			back.style.backgroundRepeat = 'no-repeat';
@@ -654,7 +694,10 @@ export class RvMapView extends ItemView {
 			hold.style.transform = '';
 			return;
 		}
-		if (this.settleZ < 0) return;
+		if (this.settleZ < 0) {
+			this.captureParentSettle(hold, z, cx, cy, tilePx);
+			return;
+		}
 		if (this.settleZ === z) {
 			const dx = (this.settleCx - cx) * tilePx;
 			const dy = (this.settleCy - cy) * tilePx;
@@ -666,6 +709,24 @@ export class RvMapView extends ItemView {
 		const dy = this.settleCy * this.settleTile - cy * tilePx;
 		hold.style.transformOrigin = '0 0';
 		hold.style.transform = `translate(${dx}px, ${dy}px) scale(${scale})`;
+	}
+
+	/** Parent tiles fill the settle layer before any image has loaded, including the first pan. */
+	private captureParentSettle(hold: HTMLElement, z: number, cx: number, cy: number, tilePx: number): void {
+		hold.replaceChildren();
+		for (const back of this.tileBacks.values()) {
+			if (back.dataset.rvParent !== '1') continue;
+			const clone = back.cloneNode(true);
+			if (!(clone instanceof HTMLElement)) continue;
+			clone.classList.add('is-settle');
+			hold.appendChild(clone);
+		}
+		if (hold.childElementCount === 0) return;
+		this.settleZ = z;
+		this.settleCx = cx;
+		this.settleCy = cy;
+		this.settleTile = tilePx;
+		hold.style.transform = '';
 	}
 
 	private pinsNear(x: number, y: number, px: number): { pin: MapPin; point: { x: number; y: number } }[] {
@@ -726,7 +787,8 @@ export class RvMapView extends ItemView {
 		}
 		if (count) {
 			const dot = button.createSpan({ cls: 'rv-pin-stack-count', text: count });
-			const band = parseHex(pin.color);
+			const painted = resolvePaintedColor(button, pin.color || 'var(--interactive-accent)');
+			const band = parseCssColor(painted);
 			if (band) dot.style.color = autoInk(band);
 		}
 		button.dataset.rvPath = pin.path;
@@ -741,9 +803,11 @@ export class RvMapView extends ItemView {
 		});
 		const onTap = (event: PointerEvent | MouseEvent): void => {
 			if (event.button > 0) return;
-			const downX = Number(button.dataset.rvX ?? event.clientX);
-			const downY = Number(button.dataset.rvY ?? event.clientY);
-			if (Math.hypot(event.clientX - downX, event.clientY - downY) > 12) return;
+			if (event.type !== 'click') {
+				const downX = Number(button.dataset.rvX ?? event.clientX);
+				const downY = Number(button.dataset.rvY ?? event.clientY);
+				if (Math.hypot(event.clientX - downX, event.clientY - downY) > 8) return;
+			}
 			event.preventDefault();
 			event.stopPropagation();
 			this.activatePin(pin, point, placed, layer, button);
@@ -764,7 +828,7 @@ export class RvMapView extends ItemView {
 		if (now - this.pinTapStamp < 400) return;
 		this.pinTapStamp = now;
 		const zed = Math.floor(this.zoom);
-		const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= 30);
+		const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= STACK_TAP_PX);
 		const members = placed.map((item) => ({
 			path: item.pin.path,
 			x: item.point.x,

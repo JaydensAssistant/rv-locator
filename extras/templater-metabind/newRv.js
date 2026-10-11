@@ -532,18 +532,24 @@ async function newRv(tp) {
     title = `${title} ${metStamp[1]} ${metStamp[2]}${metStamp[3]}`;
   }
 
+  const currentPath = tp?.file?.path || tp?.config?.target_file?.path || "";
+  const currentBase = String(currentPath || "").split("/").pop().replace(/\.md$/i, "");
+  const alreadyStamped = /\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{4})?(?: \d+)?$/.test(currentBase);
   if (title && tp?.file?.rename) {
-    const currentPath = tp?.file?.path || tp?.config?.target_file?.path || "";
-    title = await uniqueTitle(title, currentPath);
-    try {
-      await tp.file.rename(title);
-    } catch {
-      const retry = filenameCollision(title, takenBasenames(currentPath).concat([title]));
-      title = retry && retry !== title ? retry : `${title} 2`;
+    if (alreadyStamped) {
+      title = currentBase;
+    } else {
+      title = await uniqueTitle(title, currentPath);
       try {
         await tp.file.rename(title);
       } catch {
-        new Notice(`RV Locator: could not rename the note to “${title}”.`);
+        const retry = filenameCollision(title, takenBasenames(currentPath).concat([title]));
+        title = retry && retry !== title ? retry : `${title} 2`;
+        try {
+          await tp.file.rename(title);
+        } catch {
+          new Notice(`RV Locator: could not rename the note to “${title}”.`);
+        }
       }
     }
   }
@@ -551,7 +557,7 @@ async function newRv(tp) {
   const folder = typeof plugin?.settings?.newRvFolder === "string"
     ? plugin.settings.newRvFolder.replace(/^\/+|\/+$/g, "")
     : "";
-  if (folder && title && tp?.file?.move) {
+  if (folder && title && tp?.file?.move && !alreadyStamped) {
     try {
       await tp.file.move(`${folder}/${title}`);
     } catch {

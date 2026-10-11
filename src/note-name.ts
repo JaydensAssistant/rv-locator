@@ -44,11 +44,24 @@ export function rvNoteTitleFromIdentity(name: string, gender: string, address: s
  * trailing met date. A title with no ` on ` stays whole so a street form
  * can ellipsize at the end.
  */
-const FILENAME_STAMP = /\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{4})?$/;
+/**
+ * Met date, or date+time, sitting before an optional collision suffix.
+ * `Name 2026-10-11 1149 2` keeps the ` 2` and loses the stamp.
+ */
+const FILENAME_STAMP = /\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{4})?(?= \d+$|$)/;
 
 /** Drop the met date, and the date+time stamp, so the suffix never shows. */
 export function stripFilenameStamp(title: string): string {
 	return title.replace(FILENAME_STAMP, '').trim();
+}
+
+/**
+ * True only when `next` is `current` plus ` 2`, ` 3`, and so on.
+ * A stamp strip, or any other rename, is not a collision suffix.
+ */
+export function collisionSuffixOnly(current: string, next: string): boolean {
+	if (!current || !next || next === current || !next.startsWith(current)) return false;
+	return /^ \d+$/.test(next.slice(current.length));
 }
 
 export function cardPersonTitle(title: string, nameOnly: boolean): string {

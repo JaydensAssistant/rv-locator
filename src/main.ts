@@ -43,7 +43,7 @@ import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitiz
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
-import { cardPersonTitle, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
+import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
@@ -51,7 +51,7 @@ import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
-import { basenameHasStamp, maskStampText, maskTitleElement, rvDisplayTitle, STAMP_TITLE_SELECTOR } from './stamp-mask';
+import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
 import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
@@ -134,6 +134,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Note text for the campaign chip. The Log block does not have to be on screen. */
 	private noteBodies = new Map<string, string>();
 	private maskingStamps = false;
+	private readonly stampHeaders = new WeakSet<HTMLElement>();
 	private readonly visitSurfaces = new WeakSet<HTMLElement>();
 	private visitSurfaceLock = 0;
 	private visitSurfaceDirty = false;
@@ -628,16 +629,14 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * The stamp stays on disk. These surfaces show the stripped name.
-	 * Not controlled: the OS window title when it is not `document.title`, and
-	 * core prompts that read the real basename (rename, delete, Note title).
+	 * The stamp stays on disk. Only this note's view header and tab title are
+	 * rewritten, and only as text. The inline title is the rename control, so
+	 * it is left alone. Explorer, search, and the quick switcher are core UI.
 	 */
 	private installStampMask(): void {
 		this.maskFilenameStamps();
-		if (typeof MutationObserver === 'undefined' || !document.body) return;
-		const observer = new MutationObserver(() => this.maskFilenameStamps());
-		observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-		this.register(() => observer.disconnect());
+		this.registerEvent(this.app.workspace.on('layout-change', () => this.maskFilenameStamps()));
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.maskFilenameStamps()));
 	}
 
 	private stampPairs(): { stamped: string; display: string }[] {
@@ -669,14 +668,6 @@ export default class RVLocatorPlugin extends Plugin {
 		if (pairs.length === 0) return;
 		this.maskingStamps = true;
 		try {
-			document.querySelectorAll(STAMP_TITLE_SELECTOR).forEach((node) => {
-				if (node instanceof HTMLElement) maskTitleElement(node, pairs);
-			});
-			const titled = document.title;
-			for (const pair of pairs) {
-				const next = maskStampText(titled, pair.stamped, pair.display);
-				if (next !== titled) document.title = next;
-			}
 			this.app.workspace.iterateAllLeaves((leaf) => {
 				const view = leaf.view;
 				const file = view instanceof MarkdownView ? view.file : null;
@@ -684,26 +675,31 @@ export default class RVLocatorPlugin extends Plugin {
 				const pair = pairs.find((item) => item.stamped === file.basename);
 				if (!pair) return;
 				const tab = (leaf as WorkspaceLeaf & { tabHeaderInnerTitleEl?: HTMLElement }).tabHeaderInnerTitleEl;
-				if (tab) maskTitleElement(tab, [pair]);
-				const header = view.containerEl.querySelector('.view-header-title');
-				if (header instanceof HTMLElement) maskTitleElement(header, [pair]);
-				const inline = view.containerEl.querySelector('.inline-title');
-				if (inline instanceof HTMLElement) maskTitleElement(inline, [pair]);
-			});
-			for (const leaf of this.app.workspace.getLeavesOfType('file-explorer')) {
-				const items = (leaf.view as { fileItems?: Record<string, { titleEl?: HTMLElement; titleInnerEl?: HTMLElement }> }).fileItems;
-				if (!items) continue;
-				for (const [path, item] of Object.entries(items)) {
-					const base = path.split('/').pop()?.replace(/\.md$/i, '') ?? '';
-					const pair = pairs.find((entry) => entry.stamped === base);
-					if (!pair) continue;
-					const el = item.titleInnerEl ?? item.titleEl;
-					if (el) maskTitleElement(el, [pair]);
+				if (tab) {
+					maskTitleElement(tab, [pair]);
+					this.watchStampHeader(tab);
 				}
-			}
+				const header = view.containerEl.querySelector('.view-header-title');
+				if (header instanceof HTMLElement && !header.closest('.inline-title')) {
+					maskTitleElement(header, [pair]);
+					this.watchStampHeader(header);
+				}
+			});
 		} finally {
 			this.maskingStamps = false;
 		}
+	}
+
+	/** Re-apply after Obsidian writes the filename back. Never watches the editor or the file explorer. */
+	private watchStampHeader(header: HTMLElement): void {
+		if (this.stampHeaders.has(header) || typeof MutationObserver === 'undefined') return;
+		this.stampHeaders.add(header);
+		const observer = new MutationObserver(() => {
+			if (this.maskingStamps || this.unloaded) return;
+			this.maskFilenameStamps();
+		});
+		observer.observe(header, { subtree: true, childList: true, characterData: true });
+		this.register(() => observer.disconnect());
 	}
 
 	/** Accent vars on the leaf before the preview's first paint. */
@@ -1906,7 +1902,7 @@ export default class RVLocatorPlugin extends Plugin {
 			});
 			return {
 				path: file.path,
-				name: file.basename,
+				name: cardPersonTitle(file.basename, false),
 				lat: point?.lat ?? Number.NaN,
 				lon: point?.lon ?? Number.NaN,
 				priority,
@@ -2432,6 +2428,19 @@ export default class RVLocatorPlugin extends Plugin {
 		this.showNotHomeToast(file, before, campaign);
 	}
 
+	/** Home confirmation. Sits above the phone nav so it does not cover the note title. */
+	private showLoggedToast(message: string): void {
+		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
+		const toast = document.createElement('div');
+		toast.className = 'rv-nh-toast';
+		const text = document.createElement('span');
+		text.className = 'rv-toast-text';
+		text.textContent = message;
+		toast.append(text);
+		document.body.appendChild(toast);
+		window.setTimeout(() => toast.remove(), 4500);
+	}
+
 	private showNotHomeToast(file: TFile, before: string, campaign: CampaignRecord | null): void {
 		this.missToast?.timer && window.clearTimeout(this.missToast.timer);
 		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
@@ -2552,11 +2561,16 @@ export default class RVLocatorPlugin extends Plugin {
 		return filenameCollision(title, taken);
 	}
 
+	/**
+	 * Suffix only the file Templater just created. A stamp strip, or any name
+	 * that is not `current 2`, is refused so an open note cannot be renamed.
+	 */
 	private async suffixCollidingName(file: TFile): Promise<void> {
 		const next = this.uniqueNewRvTitle(file.basename, file.path);
-		if (!next || next === file.basename) return;
+		if (!collisionSuffixOnly(file.basename, next)) return;
 		const folder = file.parent?.path ?? '';
 		const dest = !folder || folder === '/' ? `${next}.md` : `${folder}/${next}.md`;
+		if (dest === file.path || this.app.vault.getAbstractFileByPath(dest)) return;
 		await this.app.fileManager.renameFile(file, dest);
 	}
 
@@ -2584,7 +2598,7 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.consumeCoverage(file.path, outcome);
 		if (!silent) {
 			const label = outcome === 'home' ? 'Home' : 'Not home';
-			new Notice(`${label} logged on “${cardPersonTitle(file.basename, false)}”. Address was not changed.`);
+			this.showLoggedToast(`${label} logged on “${cardPersonTitle(file.basename, false)}”. Address was not changed.`);
 		}
 		await this.afterVisitWrite(file, outcome, notesProperty);
 	}

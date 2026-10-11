@@ -1,5 +1,6 @@
 import { FuzzySuggestModal, TFile, type App } from 'obsidian';
 import { iconizeModal } from './modal-chrome';
+import { rvDisplayTitle } from './stamp-mask';
 
 /** Every markdown note in the vault. No Dataview query, so no Dataview toast. */
 export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
@@ -13,7 +14,9 @@ export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
 	}
 
 	getItemText(file: TFile): string {
-		return file.path;
+		const folder = file.parent?.path;
+		const name = rvDisplayTitle(file.basename);
+		return folder && folder !== '/' ? `${folder}/${name}` : name;
 	}
 
 	onChooseItem(file: TFile): void {

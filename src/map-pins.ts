@@ -269,7 +269,8 @@ export function pinStackZ(rank: number, selected = false): number {
 }
 
 export const STACK_GROUP_PX = 12;
-export const STACK_TAP_PX = 30;
+/** A tap on the teardrop or its count badge. The badge sits above the tip. */
+export const STACK_TAP_PX = 64;
 export const STACK_DRAW_CAP = 5;
 
 export interface StackMember {
