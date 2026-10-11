@@ -3,6 +3,8 @@ import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
+import { mountCampaignChoice } from './campaign-choice';
+import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { coverageQuestion } from './modals';
 import { dateInputValue, defaultPastVisitTime, describeVisit, hourLabel, isFutureVisit, snapFiveMinutes, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
@@ -11,8 +13,9 @@ export interface VisitEditOptions {
 	/** Prefilled visit when editing. A new past visit starts on Home, now. */
 	initial?: VisitFacts | null;
 	recentCompanions: readonly string[];
-	/** When set, a home visit can mark the RV covered for this campaign. */
-	campaignName?: string;
+	/** Shown when this campaign spans the visit date. Preselects the stored token. */
+	campaign?: Pick<CampaignRecord, 'name' | 'start' | 'end'> | null;
+	covered?: boolean;
 	onCovered?: (covered: boolean) => void;
 	onSave: (facts: VisitFacts) => void;
 	/** Shown as Delete visit when set. */
@@ -32,7 +35,8 @@ export class VisitEditModal extends Modal {
 	private companion = '';
 	private covered = false;
 	private companionSetting: Setting | null = null;
-	private campaignSetting: Setting | null = null;
+	private shareHost: HTMLElement | null = null;
+	private campaignHost: HTMLElement | null = null;
 	private share: VisitShare = emptyShare();
 
 	constructor(app: App, private options: VisitEditOptions) {
@@ -46,6 +50,7 @@ export class VisitEditModal extends Modal {
 		this.minute = snapped;
 		if (options.initial && start.when.getMinutes() >= 58) this.hour = (this.hour + 1) % 24;
 		this.companion = start.companion;
+		this.covered = options.covered === true || (options.initial?.covered != null && options.initial.covered.length > 0);
 		this.share = {
 			publications: start.publications ?? options.share?.initial.publications ?? '',
 			media: start.media ?? options.share?.initial.media ?? '',
@@ -83,7 +88,10 @@ export class VisitEditModal extends Modal {
 				text.inputEl.type = 'date';
 				text.inputEl.max = dateInputValue(new Date());
 				text.setValue(this.dateText);
-				text.onChange((value) => { this.dateText = value; });
+				text.onChange((value) => {
+					this.dateText = value;
+					this.syncCompanion();
+				});
 			});
 
 		new Setting(contentEl)
@@ -103,8 +111,7 @@ export class VisitEditModal extends Modal {
 			});
 
 		this.companionSetting = new Setting(contentEl)
-			.setName('Who was taken?')
-			.setDesc('One person, or leave blank.')
+			.setName('What publisher came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Nobody');
 				text.setValue(this.companion);
@@ -118,22 +125,23 @@ export class VisitEditModal extends Modal {
 				});
 			});
 		if (this.options.share) {
-			mountShareFields(contentEl, { ...this.options.share, initial: this.share }, (next) => {
+			this.shareHost = contentEl.createDiv('rv-visit-share');
+			mountShareFields(this.shareHost, { ...this.options.share, initial: this.share }, (next) => {
 				this.share = next;
 			});
 		}
-		this.syncCompanion();
-		if (this.options.campaignName) {
-			this.campaignSetting = new Setting(contentEl)
-				.setName(`Covered with ${this.options.campaignName}?`)
-				.addToggle((toggle) => {
-					toggle.setValue(false);
-					toggle.onChange((value) => { this.covered = value; });
-				});
+		this.campaignHost = contentEl.createDiv('rv-visit-campaign');
+		if (this.options.campaign) {
+			mountCampaignChoice(
+				this.campaignHost,
+				coverageQuestion('them', this.options.campaign.name),
+				this.covered,
+				(covered) => { this.covered = covered; },
+			);
 		}
 		this.syncCompanion();
 
-		const actions = new Setting(contentEl);
+		const actions = new Setting(contentEl).setClass('rv-modal-actions');
 		if (this.options.onDelete) {
 			actions.addButton((button) => {
 				button.setButtonText('Delete visit');
@@ -150,7 +158,7 @@ export class VisitEditModal extends Modal {
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
-				button.setButtonText('Save');
+				button.setButtonText(this.options.onDelete || /^edit/i.test(this.options.title) ? 'Save' : 'Log visit');
 				button.setCta();
 				button.onClick(() => this.save());
 			});
@@ -161,11 +169,19 @@ export class VisitEditModal extends Modal {
 		this.contentEl.empty();
 	}
 
+	private campaignSpansVisit(): boolean {
+		const campaign = this.options.campaign;
+		if (!campaign) return false;
+		const when = visitWhenFrom(this.dateText, this.hour, this.minute);
+		if (!when) return false;
+		return campaignIsActive({ ...campaign, covered: [] }, localDay(when));
+	}
+
 	private syncCompanion(): void {
 		const companion = this.companionSetting?.settingEl;
 		if (companion) companion.hidden = !this.home;
-		const campaign = this.campaignSetting?.settingEl;
-		if (campaign) campaign.hidden = !this.home;
+		if (this.shareHost) this.shareHost.hidden = !this.home;
+		if (this.campaignHost) this.campaignHost.hidden = !this.campaignSpansVisit();
 	}
 
 	private save(): void {
@@ -179,11 +195,13 @@ export class VisitEditModal extends Modal {
 			return;
 		}
 		this.close();
-		if (this.home && this.options.campaignName) this.options.onCovered?.(this.covered);
+		const spans = this.campaignSpansVisit();
+		if (spans) this.options.onCovered?.(this.covered);
 		this.options.onSave({
 			when,
 			home: this.home,
 			companion: this.home ? this.companion.trim() : '',
+			covered: spans && this.covered ? (this.options.campaign?.name ?? '') : '',
 			publications: this.share.publications.trim(),
 			media: this.share.media.trim(),
 			publicationList: this.share.publicationList,
@@ -217,32 +235,21 @@ export class LiteraturePromptModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Log visit');
 		this.modalEl.addClass('rv-locator-modal');
-		this.contentEl.createEl('p', {
-			cls: 'rv-locator-modal-copy',
-			text: 'Optional. Leave both blank to log the visit without literature or media.',
-		});
 		mountShareFields(this.contentEl, this.options, (next) => { this.share = next; });
 		if (this.campaign) {
-			this.contentEl.createEl('p', {
-				cls: 'rv-locator-modal-copy',
-				text: coverageQuestion(this.campaign.pronoun, this.campaign.name),
-			});
-			const choice = this.contentEl.createDiv('rv-locator-suggest-actions');
-			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
-			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
-			yes.classList.add('mod-cta');
-			yes.addEventListener('click', () => {
-				this.covered = true;
-				yes.classList.add('mod-cta');
-				no.classList.remove('mod-cta');
-			});
-			no.addEventListener('click', () => {
-				this.covered = false;
-				no.classList.add('mod-cta');
-				yes.classList.remove('mod-cta');
-			});
+			mountCampaignChoice(
+				this.contentEl,
+				coverageQuestion(this.campaign.pronoun, this.campaign.name),
+				this.covered,
+				(covered) => { this.covered = covered; },
+			);
 		}
 		new Setting(this.contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			})
 			.addButton((button) => {
 				button.setButtonText('Log visit');
 				button.setCta();
@@ -252,10 +259,6 @@ export class LiteraturePromptModal extends Modal {
 					this.onDone(this.share);
 					this.close();
 				});
-			})
-			.addButton((button) => {
-				button.setButtonText('Cancel');
-				button.onClick(() => this.close());
 			});
 		iconizeModal(this.contentEl);
 	}

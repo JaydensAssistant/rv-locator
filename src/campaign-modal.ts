@@ -1,5 +1,6 @@
 import { Modal, Setting, type App } from 'obsidian';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
+import { mountCampaignChoice } from './campaign-choice';
 import { iconizeModal } from './modal-chrome';
 
 /** Name a campaign, or cancel the one that is already active. Only one is active. */
@@ -121,20 +122,12 @@ export function askCampaignCovered(app: App, campaignName: string): Promise<bool
 		modal.onOpen = () => {
 			modal.setTitle(campaignName);
 			modal.modalEl.addClass('rv-locator-modal');
-			modal.contentEl.createEl('p', {
-				cls: 'rv-locator-modal-copy',
-				text: `Did this at-home visit cover this RV with ${campaignName}?`,
-			});
-			new Setting(modal.contentEl)
-				.addButton((button) => {
-					button.setButtonText('Covered');
-					button.setCta();
-					button.onClick(() => finish(true));
-				})
-				.addButton((button) => {
-					button.setButtonText('Not this time');
-					button.onClick(() => finish(false));
-				});
+			mountCampaignChoice(
+				modal.contentEl,
+				`Did you cover them with the ${campaignName} campaign?`,
+				true,
+				(covered) => finish(covered),
+			);
 			iconizeModal(modal.contentEl);
 		};
 		modal.onClose = () => {

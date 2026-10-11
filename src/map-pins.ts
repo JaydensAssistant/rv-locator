@@ -149,12 +149,12 @@ export function buildMapPins(
 			priority: row.priority,
 			urgency,
 			days: row.days,
-			color: pinColor(look, row, urgency, colors, status),
+			color: urgencyAccentColor(urgency, row.priority, colors),
 			glyph: mark.glyphs,
 			fresh,
 			stateIcon: pinStateIcon(fresh, row.avoid === true),
-			shadeIcon: look === 'status' ? statusIcon(status) : null,
-			markText: look === 'gender' ? genderMark : null,
+			shadeIcon: null,
+			markText: null,
 			rank: pins.length,
 			card: row.card,
 		});
@@ -235,11 +235,87 @@ export function popupClearOfChrome(
 	return { left, top };
 }
 
-/** Higher in the list (smaller rank) gets a higher z-index. A selected pin stays on top. */
+/**
+ * Pins stack by urgency only. A hotter band paints above a cooler one.
+ * The number stays under the map controls (z-index 30).
+ */
+export function pinUrgencyZ(urgency: number | null, selected = false): number {
+	const heat = urgency == null || !Number.isFinite(urgency) ? 0 : Math.max(0, Math.round(urgency * 10));
+	const layer = Math.min(20, 1 + heat);
+	return selected ? Math.min(24, layer + 4) : layer;
+}
+
+/** @deprecated Sort order no longer paints pins. Urgency does. */
 export function pinStackZ(rank: number, selected = false): number {
 	const place = Number.isFinite(rank) ? Math.max(0, Math.trunc(rank)) : 0;
-	const layer = 1000 - place;
-	return selected ? layer + 10000 : layer;
+	return selected ? 24 : Math.max(1, 8 - Math.min(place, 7));
+}
+
+export const STACK_GROUP_PX = 12;
+export const STACK_TAP_PX = 30;
+export const STACK_DRAW_CAP = 5;
+
+export interface StackMember {
+	path: string;
+	x: number;
+	y: number;
+	urgency: number | null;
+	priority: number;
+}
+
+function hotter(a: StackMember, b: StackMember): number {
+	const left = a.urgency ?? -1;
+	const right = b.urgency ?? -1;
+	if (left !== right) return right - left;
+	return b.priority - a.priority;
+}
+
+/** Anchors within `px` of each other are one stack. The first member is the hottest. */
+export function groupPinStacks<T extends StackMember>(placed: readonly T[], px = STACK_GROUP_PX): T[][] {
+	const pending = [...placed];
+	const groups: T[][] = [];
+	while (pending.length > 0) {
+		const seed = pending.shift();
+		if (!seed) break;
+		const group = [seed];
+		let grew = true;
+		while (grew) {
+			grew = false;
+			for (let index = pending.length - 1; index >= 0; index -= 1) {
+				const item = pending[index];
+				if (!item) continue;
+				const near = group.some((member) => Math.hypot(member.x - item.x, member.y - item.y) <= px);
+				if (!near) continue;
+				group.push(item);
+				pending.splice(index, 1);
+				grew = true;
+			}
+		}
+		group.sort(hotter);
+		groups.push(group);
+	}
+	return groups;
+}
+
+export function stackCountLabel(total: number): string | null {
+	if (total < 4) return null;
+	return total > 99 ? '99+' : String(total);
+}
+
+/** Draw at most the five hottest pins. The count, when shown, sits on the top one. */
+export function pinsToDraw<T extends StackMember>(group: readonly T[]): { drawn: T[]; label: string | null } {
+	const ordered = [...group].sort(hotter);
+	return { drawn: ordered.slice(0, STACK_DRAW_CAP), label: stackCountLabel(group.length) };
+}
+
+/** A tap at zoom 12 or below on a pin that overlaps another zooms in instead of opening. */
+export function tapZoomsStack(zoom: number, overlaps: number): boolean {
+	return zoom <= CLUSTER_ZOOM_MAX && overlaps > 1;
+}
+
+/** At a closer zoom the tap opens the hottest pin in the overlap, which is the top one. */
+export function tapOpensTop(zoom: number, overlaps: number): boolean {
+	return zoom > CLUSTER_ZOOM_MAX && overlaps > 1;
 }
 
 export interface PinSortFacts {
@@ -325,6 +401,20 @@ export const MAP_CLICK_SLOP_PX = 5;
 /** True when the pointer did not move far enough to count as a drag. */
 export function mapPressIsClick(dx: number, dy: number, slop = MAP_CLICK_SLOP_PX): boolean {
 	return dx * dx + dy * dy <= slop * slop;
+}
+
+/** Teardrop outline. The 1.5px inset keeps a 3px stroke inside the 42×54 box. */
+export function dropPath(W = 42, H = 54, s = 1.5): string {
+	const cx = W / 2;
+	const cy = W / 2;
+	const r = W / 2 - s;
+	const d = (H - s) - cy;
+	const phi = Math.acos(r / d);
+	const lx = cx - r * Math.sin(phi);
+	const rx = cx + r * Math.sin(phi);
+	const y = cy + r * Math.cos(phi);
+	const n = (value: number): string => String(Math.round(value * 100) / 100);
+	return `M${n(cx)} ${n(H - s)} L${n(lx)} ${n(y)} A${n(r)} ${n(r)} 0 1 1 ${n(rx)} ${n(y)} Z`;
 }
 
 export function lonToTileX(lon: number, zoom: number): number {

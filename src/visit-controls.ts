@@ -1,7 +1,8 @@
 import { addIcon, displayTooltip, getIcon, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
-import { attemptLogDateParts } from './dates';
+import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter } from './dates';
+import { mountFittedTitle, watchTitleRow } from './title-fit';
 import { parseLogBullet, stampDateTime } from './schedule';
 import { mountHeadingChevron } from './visit-display';
 
@@ -113,9 +114,8 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 		const when = stampDateTime(textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator`));
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
-		markStampDate(heading);
+		reshapeVisitHeading(heading, when, coveredName(root, when, true));
 		wireStampJump(heading, when);
-		wrapShareTail(heading);
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
@@ -131,10 +131,138 @@ export function decorateVisitControls(root: HTMLElement, sectionLine: () => numb
 			seen.set(key, ordinal + 1);
 			item.addClass('rv-visit-line');
 			wrapLogStamp(item);
+			renderCoveredMention(item, bullet.covered);
 			moreButton(item, 'Visit options', (evt) => {
 				open({ when: bullet.when, home: bullet.home, ordinal, fileLine: null }, evt);
 			});
 		});
+	}
+}
+
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+function coveredName(root: HTMLElement, when: Date, home: boolean): string {
+	for (const callout of attemptLogCallouts(root)) {
+		for (const item of Array.from(callout.querySelectorAll('li'))) {
+			if (!domInstanceOf(item, HTMLElement)) continue;
+			const bullet = parseLogBullet(`- ${item.textContent ?? ''}`);
+			if (!bullet || bullet.home !== home || bullet.when.getTime() !== when.getTime()) continue;
+			return bullet.covered;
+		}
+	}
+	return '';
+}
+
+/** Heading row and item strip. The markdown line is only restructured on screen. */
+function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string): void {
+	const source = textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator, .rv-stamp-row, .collapse-indicator, .rv-stamp-source`);
+	const lead = source.split(/[—–]/)[0]?.trim() || '';
+	const month = MONTHS[when.getMonth()] ?? '';
+	const day = String(when.getDate());
+	const iso = `${when.getFullYear()}-${String(when.getMonth() + 1).padStart(2, '0')}-${String(when.getDate()).padStart(2, '0')}`;
+	const count = formatGlanceableCounter(calendarDaysSince(iso) ?? 0);
+	const fullDate = when.toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+	let row = heading.querySelector(':scope > .rv-stamp-row');
+	if (!(row instanceof HTMLElement)) {
+		row = heading.createSpan('rv-stamp-row');
+		const tile = row.createSpan('rv-cal');
+		tile.createSpan({ cls: 'rv-cal-month', text: month });
+		tile.createSpan({ cls: 'rv-cal-day', text: day });
+		row.createSpan({ cls: 'rv-stamp-when', text: lead });
+		const pill = row.createSpan({ cls: 'rv-stamp-ago rv-stamp-count', text: count });
+		pill.dataset.rvJump = '1';
+		const hidden = heading.ownerDocument.createElement('span');
+		hidden.className = 'rv-stamp-source';
+		hidden.textContent = source;
+		heading.append(row, hidden);
+	}
+	const tile = row.querySelector('.rv-cal');
+	if (tile instanceof HTMLElement) {
+		tile.setAttribute('title', fullDate);
+		tile.setAttribute('aria-label', fullDate);
+		const monthEl = tile.querySelector('.rv-cal-month');
+		const dayEl = tile.querySelector('.rv-cal-day');
+		if (monthEl) monthEl.textContent = month;
+		if (dayEl) dayEl.textContent = day;
+	}
+	const whenEl = row.querySelector('.rv-stamp-when');
+	if (whenEl) whenEl.textContent = lead;
+	const pill = row.querySelector('.rv-stamp-count');
+	if (pill) pill.textContent = count;
+	const more = heading.querySelector(`:scope > .${MORE_CLASS}`);
+	if (more && more.parentElement !== row) row.appendChild(more);
+	paintItemStrip(heading, source, covered);
+}
+
+function paintItemStrip(heading: HTMLElement, source: string, covered: string): void {
+	const doc = heading.ownerDocument;
+	let strip = heading.nextElementSibling;
+	if (!(strip instanceof HTMLElement) || !strip.classList.contains('rv-item-strip')) {
+		strip = doc.createElement('div');
+		strip.className = 'rv-item-strip';
+		heading.insertAdjacentElement('afterend', strip);
+	}
+	strip.replaceChildren();
+	const items: Array<{ icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain' }> = [];
+	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain' });
+	const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»/g;
+	let match = piece.exec(source);
+	while (match) {
+		const kind = match[1] || match[2] || '';
+		const title = match[3] ?? '';
+		if (title && kind !== 'Covered') {
+			items.push({
+				icon: kind === 'film' || kind === 'Shared' ? 'clapperboard' : kind === 'lesson' || kind === 'Also' ? 'book-marked' : 'book-open',
+				title,
+				kind: kind === 'film' || kind === 'Shared' ? 'media' : kind === 'lesson' || kind === 'Also' ? 'lesson' : 'literature',
+			});
+		}
+		match = piece.exec(source);
+	}
+	if (items.length === 0) {
+		strip.classList.add('is-ghost');
+		return;
+	}
+	strip.classList.remove('is-ghost');
+	for (const item of items) {
+		const chip = doc.createElement('span');
+		chip.className = 'rv-item';
+		const icon = doc.createElement('span');
+		icon.className = 'rv-item-icon';
+		setIcon(icon, item.icon);
+		chip.appendChild(icon);
+		strip.appendChild(chip);
+		mountFittedTitle(chip, item.title, item.kind);
+	}
+	if (strip instanceof HTMLElement) watchTitleRow(strip);
+}
+
+function renderCoveredMention(item: HTMLElement, covered: string): void {
+	const existing = item.querySelector(':scope > .rv-log-covered');
+	if (!covered) {
+		existing?.remove();
+		return;
+	}
+	if (existing) return;
+	const doc = item.ownerDocument;
+	if (typeof doc.createTreeWalker !== 'function' || typeof NodeFilter === 'undefined') return;
+	const walker = doc.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const text = node.textContent ?? '';
+		const at = text.search(/—\s+covered\s+/i);
+		if (at >= 0 && node.parentElement) {
+			node.textContent = text.slice(0, at).trimEnd();
+			const mention = doc.createElement('span');
+			mention.className = 'rv-log-covered';
+			const icon = doc.createElement('span');
+			icon.className = 'rv-log-covered-icon';
+			setIcon(icon, 'book-check');
+			mention.append(icon, doc.createTextNode(` ${covered}`));
+			node.parentElement.insertBefore(mention, node.nextSibling);
+			return;
+		}
+		node = walker.nextNode();
 	}
 }
 

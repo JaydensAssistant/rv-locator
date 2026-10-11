@@ -46,3 +46,8 @@ export function withCovered(campaign: CampaignRecord, path: string): CampaignRec
 	if (!path || campaign.covered.includes(path)) return campaign;
 	return { ...campaign, covered: [...campaign.covered, path] };
 }
+
+export function withoutCovered(campaign: CampaignRecord, path: string): CampaignRecord {
+	if (!path || !campaign.covered.includes(path)) return campaign;
+	return { ...campaign, covered: campaign.covered.filter((item) => item !== path) };
+}

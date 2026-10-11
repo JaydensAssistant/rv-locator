@@ -44,20 +44,41 @@ export function rvNoteTitleFromIdentity(name: string, gender: string, address: s
  * trailing met date. A title with no ` on ` stays whole so a street form
  * can ellipsize at the end.
  */
+const FILENAME_STAMP = /\s+\d{4}-\d{2}-\d{2}(?:[ T]\d{4})?$/;
+
+/** Drop the met date, and the date+time stamp, so the suffix never shows. */
+export function stripFilenameStamp(title: string): string {
+	return title.replace(FILENAME_STAMP, '').trim();
+}
+
 export function cardPersonTitle(title: string, nameOnly: boolean): string {
-	const base = title.replace(/\s+\d{4}-\d{2}-\d{2}$/, '').trim();
-	if (!nameOnly) return title.trim();
+	const base = stripFilenameStamp(title);
+	if (!nameOnly) return base || title.trim();
 	const on = base.toLowerCase().indexOf(' on ');
 	if (on > 0) return base.slice(0, on).trim();
 	return base || title.trim();
 }
 
-/** `Man on Maple` + `2026-10-01T16:32:00` → `Man on Maple 2026-10-01`. */
+/**
+ * `{Name} on {Street} YYYY-MM-DD HHmm`. No colons, so Windows accepts it.
+ * `Man on Maple` + `2026-10-01T16:32:00` → `Man on Maple 2026-10-01 1632`.
+ */
 export function appendMetDateToFilename(title: string, metIso: string): string {
+	const base = sanitizeNoteName(stripFilenameStamp(title));
+	const match = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}):(\d{2})/.exec(metIso.trim());
+	if (!base || !match) return base;
+	return `${base} ${match[1]} ${match[2]}${match[3]}`;
+}
+
+/** `Name 2` when `Name` is taken. The stamp stays on the file. */
+export function filenameCollision(title: string, taken: readonly string[]): string {
 	const base = sanitizeNoteName(title);
-	const day = /^(\d{4}-\d{2}-\d{2})/.exec(metIso.trim())?.[1] ?? '';
-	if (!base || !day) return base;
-	return `${base} ${day}`;
+	if (!base) return base;
+	const used = new Set(taken.map((name) => name.toLowerCase()));
+	if (!used.has(base.toLowerCase())) return base;
+	let n = 2;
+	while (used.has(`${base} ${n}`.toLowerCase())) n += 1;
+	return `${base} ${n}`;
 }
 
 export function sanitizeNoteName(value: string): string {

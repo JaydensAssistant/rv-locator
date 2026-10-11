@@ -40,16 +40,24 @@ const TITLE_SUFFIXES = [
 	'Awake!',
 	'Tract',
 	'Book',
+	'Video',
+	'Study',
 ] as const;
+
+/** Straight, curly, and guillemet quotes around a displayed title. The file is not rewritten. */
+export function stripTitleQuotes(title: string): string {
+	return title.replace(/^[\s"'“”«»]+|[\s"'“”«»]+$/g, '').trim();
+}
 
 /** Title text and the type suffix that stays visible when the row truncates. */
 export function splitTitleSuffix(title: string): { text: string; suffix: string } {
-	const known = [...PUBLICATION_ENTRIES, ...MEDIA_ENTRIES].find((entry) => entry.title === title);
+	const clean = stripTitleQuotes(title);
+	const known = [...PUBLICATION_ENTRIES, ...MEDIA_ENTRIES].find((entry) => stripTitleQuotes(entry.title) === clean || entry.title === title);
 	const suffix = known?.suffix
-		|| TITLE_SUFFIXES.find((item) => title.endsWith(` ${item}`))
+		|| TITLE_SUFFIXES.find((item) => clean.endsWith(` ${item}`))
 		|| '';
-	if (!suffix || !title.endsWith(suffix)) return { text: title, suffix: '' };
-	return { text: title.slice(0, -suffix.length).trimEnd(), suffix };
+	if (!suffix || !clean.endsWith(suffix)) return { text: clean, suffix: '' };
+	return { text: clean.slice(0, -suffix.length).trimEnd(), suffix };
 }
 
 export type StudyRatioOrder = 'lessons-studies' | 'studies-lessons';

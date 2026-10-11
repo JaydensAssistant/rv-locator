@@ -159,8 +159,14 @@ export interface RVLocatorSettings {
 	dashboardPagePreview: boolean;
 	/** Folder for notes created with New RV. Empty keeps Templater's folder. */
 	newRvFolder: string;
-	/** Append the Met date `YYYY-MM-DD` to a created RV's file name. Off by default. */
+	/** Append Met date and time `YYYY-MM-DD HHmm` to a created RV's file name. On by default. */
 	appendMetDateToFilename: boolean;
+	/** Set once when the filename stamp was migrated on. A later off stays off. */
+	filenameStampMigrated: boolean;
+	/** Dashboard callout runs edge to edge. Off by default. */
+	fullWidthCallout: boolean;
+	/** Standalone base hides Obsidian's status bar. Off by default. */
+	hideStatusBar: boolean;
 	returnScope: ReturnScope;
 	genderFilter: GenderFilter;
 	/** Custom publication titles, added when someone types one that is not in the static list. */
@@ -364,7 +370,10 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	campaignListFilter: 'all',
 	dashboardPagePreview: false,
 	newRvFolder: '',
-	appendMetDateToFilename: false,
+	appendMetDateToFilename: true,
+	filenameStampMigrated: false,
+	fullWidthCallout: false,
+	hideStatusBar: false,
 	returnScope: 'active',
 	genderFilter: 'all',
 	customPublications: [],
@@ -542,7 +551,12 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		campaignListFilter: sanitizeCampaignListFilter(input.campaignListFilter),
 		dashboardPagePreview: input.dashboardPagePreview === true,
 		newRvFolder: folderSetting(input.newRvFolder),
-		appendMetDateToFilename: input.appendMetDateToFilename === true,
+		appendMetDateToFilename: input.filenameStampMigrated === true
+			? input.appendMetDateToFilename === true
+			: true,
+		filenameStampMigrated: true,
+		fullWidthCallout: input.fullWidthCallout === true,
+		hideStatusBar: input.hideStatusBar === true,
 		returnScope: sanitizeReturnScope(input.returnScope),
 		genderFilter: sanitizeGenderFilter(input.genderFilter),
 		customPublications: stringList(input.customPublications),

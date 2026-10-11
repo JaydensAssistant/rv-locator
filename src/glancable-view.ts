@@ -12,7 +12,8 @@ import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
-import { urgencyColorsFor, urgencyInk } from './urgency-palette';
+import { paintUrgencyInk } from './color-math';
+import { urgencyColorsFor } from './urgency-palette';
 import { cardPersonTitle } from './note-name';
 import { cardReturnLead } from './schedule';
 import { calendarDaysSince, formatGlanceableCounter } from './dates';
@@ -333,7 +334,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (priority === 0) card.addClass('is-priority-zero');
 		const urgencyColor = urgencyAccentColor(urgency, priority, urgencyColorsFor(this.plugin.settings.urgencyPalette, this.plugin.settings.urgencyCustomColors));
 		card.style.setProperty('--rv-urgency-accent', urgencyColor);
-		card.style.setProperty('--rv-urgency-ink', urgencyInk(urgencyColor));
+		paintUrgencyInk(card, urgencyColor);
 		if (rank) card.setAttr('data-priority', rank);
 		if (this.lineOn('name')) {
 			const name = card.createDiv('rv-locator-card-name');
@@ -527,6 +528,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 			},
 		});
 		mountUrgencyGlyph(urgencyButton, marks.glyphs);
+		const ghost = this.plugin.ghostIconForCard(row.path);
+		if (ghost) {
+			urgencyButton.addClass('is-ghost');
+			urgencyButton.empty();
+			setIcon(urgencyButton, ghost);
+		}
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -688,12 +695,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const move = (ev: PointerEvent): void => {
 				const delta = stacked ? (startY - ev.clientY) / height : (startX - ev.clientX) / width;
 				const next = start + delta;
-				this.hubMapRatio = Math.min(0.72, Math.max(0.18, next));
+				this.hubMapRatio = Math.min(0.72, Math.max(0, next));
 				this.syncHubMap();
 			};
 			const stop = (): void => {
 				handle.ownerDocument.removeEventListener('pointermove', move);
 				handle.ownerDocument.removeEventListener('pointerup', stop);
+				if (this.hubMapRatio < 0.08) {
+					this.hubMapRatio = 0.42;
+					this.plugin.hideSplitMap();
+				}
 			};
 			handle.ownerDocument.addEventListener('pointermove', move);
 			handle.ownerDocument.addEventListener('pointerup', stop);

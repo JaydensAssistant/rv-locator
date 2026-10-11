@@ -269,7 +269,7 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 	display: grid;
 	grid-template-columns: max-content minmax(0, 1fr);
 	align-items: center;
-	column-gap: var(--rv-hub-gap);
+	column-gap: var(--rv-dash-pad, 12px);
 	justify-items: start;
 	text-align: start;
 }
@@ -689,4 +689,18 @@ body.rv-wide-hubs .rv-hub-row {
 
 .rv-map-soon {
 	padding: 1.5rem 1.25rem;
+}
+
+.rv-dashboard {
+	--rv-dash-pad: 12px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+	padding-left: var(--rv-dash-pad);
+	padding-right: var(--rv-dash-pad);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+	column-gap: var(--rv-dash-pad);
 }

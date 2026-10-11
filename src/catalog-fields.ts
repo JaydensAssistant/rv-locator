@@ -1,4 +1,4 @@
-import { Setting } from 'obsidian';
+import { Setting, setIcon } from 'obsidian';
 import {
 	catalogSuggestions,
 	lessonBounds,
@@ -13,6 +13,7 @@ import {
 	type VisitShare,
 } from './catalog';
 import { mountAlwaysChevron } from './suggest-field';
+import { mountFittedTitle } from './title-fit';
 
 export interface ShareFieldOptions {
 	publications: readonly string[];
@@ -50,7 +51,7 @@ export function mountShareFields(
 			mountTitleList(
 				parent,
 				'What literature did you leave?',
-				'Optional. Pick or type a title. It becomes a chip so you can add another.',
+				'',
 				shareTitles(share.publications, share.publicationList),
 				(query) => catalogSuggestions(options.publications, [], query, publicationAliasIndex()),
 				(values) => publish({ publications: values[0] ?? '', publicationList: values }),
@@ -59,7 +60,7 @@ export function mountShareFields(
 			mountTitleList(
 				parent,
 				'What media did you show?',
-				'Optional. Pick or type a title. It becomes a chip so you can add another.',
+				'',
 				shareTitles(share.media, share.mediaList),
 				(query) => catalogSuggestions(options.media, [], query, mediaAliasIndex()),
 				(values) => publish({ media: values[0] ?? '', mediaList: values }),
@@ -109,7 +110,7 @@ function mountOptionalLesson(
 	const host = contentEl.createDiv('rv-study-optional');
 	const toggle = host.createEl('button', {
 		cls: 'rv-study-toggle',
-		text: 'Studied a lesson?',
+		text: 'Studied from Enjoy Life Forever?',
 		attr: { type: 'button', 'aria-expanded': startOpen ? 'true' : 'false' },
 	});
 	const body = host.createDiv('rv-study-optional-body');
@@ -161,7 +162,7 @@ function mountLessonBlock(
 	mountField(
 		block,
 		'What lesson did you work on?',
-		'Optional. You do not have to finish the lesson.',
+		'',
 		'Optional',
 		share.lesson,
 		(query) => rankSuggestions(query, lessonNames),
@@ -298,17 +299,26 @@ function mountTitleList(
 ): void {
 	const items = values.map((item) => item.trim()).filter(Boolean);
 	const host = parent.createDiv('rv-share-list');
-	const chips = host.createDiv('rv-share-chips');
+	const kind = /media/i.test(name) ? 'media' as const : 'literature' as const;
+	const icon = kind === 'media' ? 'clapperboard' : 'book-open';
+	let draft = '';
+	const setting = new Setting(host).setName(name);
+	if (desc) setting.setDesc(desc);
+	const chips = host.createDiv('rv-chip-rows');
 	const sync = (): void => {
 		onChange(items.map((item) => item.trim()).filter(Boolean));
 	};
 	const paintChips = (): void => {
 		chips.empty();
+		chips.hidden = items.length === 0;
 		items.forEach((title, index) => {
-			const chip = chips.createSpan('rv-share-chip');
-			chip.createSpan({ text: title });
-			const remove = chip.createEl('button', {
-				cls: 'rv-share-chip-x',
+			const row = chips.createDiv('rv-chip-row');
+			const mark = row.createSpan('rv-chip-icon');
+			mark.setAttribute('aria-hidden', 'true');
+			setIcon(mark, icon);
+			mountFittedTitle(row, title, kind);
+			const remove = row.createEl('button', {
+				cls: 'rx',
 				text: '×',
 				attr: { type: 'button', 'aria-label': `Remove ${title}` },
 			});
@@ -320,10 +330,6 @@ function mountTitleList(
 			});
 		});
 	};
-	paintChips();
-	let draft = '';
-	const setting = new Setting(host).setName(name);
-	if (desc) setting.setDesc(desc);
 	setting.addText((text) => {
 		text.setPlaceholder(placeholder);
 		const commit = (value: string): void => {
@@ -346,6 +352,7 @@ function mountTitleList(
 			commit(picked);
 		}, (value) => splitTitleSuffix(value));
 	});
+	paintChips();
 }
 
 function mountField(

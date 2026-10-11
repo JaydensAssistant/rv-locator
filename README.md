@@ -43,6 +43,7 @@ Copy `extras/templater-metabind/newRv.js` into Templater’s user scripts folder
   - **Attempt Log width** is Automatic, Full width, or Dashboard column. Automatic is full width when the digest table has days as columns.
   - **Center RV Dashboard**, **Center visit notes**, and **Center Return Suggestions** each center their titles and content.
 - On an Attempt Log line, only the calendar date is small. The weekday, the exact time, and the dash stay normal size. On the hour the time stays `4pm`. Log past visit starts at 10am, or at 10am yesterday before 10am.
+- **cssclass `rv-hide-note-title`** hides Obsidian’s note title on any note and pulls the content up. RV notes hide that title on their own. **cssclass `rv-hide-statusbar`** on a hub note hides the status bar (backlinks and properties); removing the class brings it back. The standalone base has the same switch under Advanced.
 
 ## Verify
 

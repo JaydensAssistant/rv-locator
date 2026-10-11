@@ -478,11 +478,11 @@ describe('studied a lesson on every visit modal', () => {
 		const share = mountShareFields(root, options(), (next) => { seen.push(next); });
 		assert.equal(share.lesson, '');
 		assert.equal(seen.length, 0);
-		clickLabeled(root as never, 'Studied a lesson?');
+		clickLabeled(root as never, 'Studied from Enjoy Life Forever?');
 		assert.equal(seen.at(-1)?.lesson, LESSON_1);
 		assert.equal(seen.at(-1)?.lessonFrom, 'Intro');
 		assert.equal(seen.at(-1)?.lessonTo, 'Review');
-		clickLabeled(root as never, 'Studied a lesson?');
+		clickLabeled(root as never, 'Studied from Enjoy Life Forever?');
 		assert.equal(seen.at(-1)?.lesson, '');
 		assert.equal(seen.at(-1)?.lessonFrom, '');
 		assert.equal(seen.at(-1)?.lessonTo, '');
@@ -493,7 +493,7 @@ describe('studied a lesson on every visit modal', () => {
 		const seen: VisitShare[] = [];
 		const root = new Modal(null).contentEl;
 		mountShareFields(root, options(studyPrefill(null), stored), (next) => { seen.push(next); });
-		clickLabeled(root as never, 'Studied a lesson?');
+		clickLabeled(root as never, 'Studied from Enjoy Life Forever?');
 		assert.equal(seen.length, 0);
 	});
 
@@ -526,7 +526,7 @@ describe('studied a lesson on every visit modal', () => {
 		const studied: VisitShare[] = [];
 		const again = new LiteraturePromptModal({} as never, options(), (share) => { studied.push(share as VisitShare); });
 		again.open();
-		clickLabeled(again.contentEl as never, 'Studied a lesson?');
+		clickLabeled(again.contentEl as never, 'Studied from Enjoy Life Forever?');
 		clickLabeled(again.contentEl as never, 'Log visit');
 		assert.equal(studied[0]?.lesson, LESSON_1);
 		assert.equal(studied[0]?.lessonFrom, 'Intro');
@@ -538,7 +538,7 @@ describe('studied a lesson on every visit modal', () => {
 			onShare: (share) => { shared.push(share); },
 		});
 		companion.open();
-		clickLabeled(companion.contentEl as never, 'Studied a lesson?');
+		clickLabeled(companion.contentEl as never, 'Studied from Enjoy Life Forever?');
 		assert.equal(shared.at(-1)?.lesson, LESSON_1);
 
 		const past: Array<{ lesson?: string; lessonFrom?: string; lessonTo?: string }> = [];
@@ -549,8 +549,8 @@ describe('studied a lesson on every visit modal', () => {
 			onSave: (facts) => { past.push(facts); },
 		});
 		pastModal.open();
-		clickLabeled(pastModal.contentEl as never, 'Studied a lesson?');
-		clickLabeled(pastModal.contentEl as never, 'Save');
+		clickLabeled(pastModal.contentEl as never, 'Studied from Enjoy Life Forever?');
+		clickLabeled(pastModal.contentEl as never, 'Log visit');
 		assert.equal(past[0]?.lesson, LESSON_1);
 		const body = insertVisit('', {
 			when: new Date(2026, 8, 9, 14),
@@ -585,7 +585,7 @@ describe('studied a lesson on every visit modal', () => {
 			onSave: (facts) => { edited.push(facts); },
 		});
 		editModal.open();
-		clickLabeled(editModal.contentEl as never, 'Studied a lesson?');
+		clickLabeled(editModal.contentEl as never, 'Studied from Enjoy Life Forever?');
 		clickLabeled(editModal.contentEl as never, 'Save');
 		assert.equal(edited[0]?.lesson, LESSON_1);
 		const replaced = editVisit(note, entry, {
@@ -833,7 +833,7 @@ describe('phone-first visit surfaces', () => {
 			if (share) logged.push(share);
 		}, { name: 'Memorial', pronoun: 'them', onDecision: () => {} });
 		modal.open();
-		clickLabeled(modal.contentEl as never, 'Studied a lesson?');
+		clickLabeled(modal.contentEl as never, 'Studied from Enjoy Life Forever?');
 		const inputs = collectInputs(modal.contentEl as never);
 		assert.ok(inputs.length >= 2);
 		inputs[0]?.emit?.('input', 'Enjoy Life Forever');
@@ -894,7 +894,7 @@ describe('phone-first visit surfaces', () => {
 		inputs[1]?.emit?.('blur');
 		inputs[2]?.emit?.('input', 'Video');
 		inputs[2]?.emit?.('blur');
-		clickLabeled(companion.contentEl as never, 'Studied a lesson?');
+		clickLabeled(companion.contentEl as never, 'Studied from Enjoy Life Forever?');
 		const priorWindow = (globalThis as { window?: unknown }).window;
 		(globalThis as { window?: { setTimeout: (fn: () => void, ms?: number) => number } }).window = {
 			setTimeout: (fn) => {
@@ -925,8 +925,8 @@ describe('phone-first visit surfaces', () => {
 		fields[2]?.emit?.('blur');
 		fields[3]?.emit?.('input', 'Video');
 		fields[3]?.emit?.('blur');
-		clickLabeled(past.contentEl as never, 'Studied a lesson?');
-		clickLabeled(past.contentEl as never, 'Save');
+		clickLabeled(past.contentEl as never, 'Studied from Enjoy Life Forever?');
+		clickLabeled(past.contentEl as never, 'Log visit');
 		assert.equal(saved[0]?.publications, 'Tract');
 		assert.equal(saved[0]?.media, 'Video');
 		assert.equal(saved[0]?.lesson, LESSON_1);

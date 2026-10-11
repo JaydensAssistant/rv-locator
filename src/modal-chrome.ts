@@ -6,7 +6,7 @@ const PROMPT_ICONS: Array<[RegExp, string]> = [
 	[/lesson/i, 'book-marked'],
 	[/where you started|start date|started/i, 'flag'],
 	[/where you ended|end date|ended/i, 'flag-off'],
-	[/companion|who came|who was taken/i, 'users'],
+	[/companion|who came|who was taken|publisher came/i, 'users'],
 	[/address/i, 'map-pin'],
 	[/name/i, 'user'],
 	[/man \/ woman|gender/i, 'person-standing'],
@@ -16,7 +16,7 @@ const PROMPT_ICONS: Array<[RegExp, string]> = [
 	[/weekday|daypart|\bday\b/i, 'calendar'],
 	[/time/i, 'clock'],
 	[/try or avoid/i, 'list-checks'],
-	[/covered|campaign/i, 'flag'],
+	[/covered|campaign/i, 'book-alert'],
 	[/scope|folder/i, 'folder'],
 	[/include notes|already have a location|latitude|longitude|coordinate/i, 'locate'],
 	[/note|template/i, 'file-text'],
@@ -37,8 +37,8 @@ const BUTTON_ICONS: Array<[RegExp, string]> = [
 	[/^save$/i, 'check'],
 	[/^rename$/i, 'pencil'],
 	[/^delete/i, 'trash-2'],
-	[/^start campaign$/i, 'flag'],
-	[/^end campaign/i, 'flag-off'],
+	[/^start campaign$/i, 'book-alert'],
+	[/^end campaign/i, 'book-x'],
 	[/^covered$/i, 'book-check'],
 	[/^not this time$/i, 'book-x'],
 	[/^not home$/i, 'door-closed'],
@@ -89,6 +89,7 @@ export function openDesktopDatePicker(input: HTMLInputElement, isMobile = Platfo
 export function iconizeModal(root: HTMLElement): void {
 	if (typeof root.querySelectorAll !== 'function') return;
 	bindDatePickers(root);
+	watchModalWidth(root);
 	root.querySelectorAll('.setting-item-name').forEach((node) => {
 		paintIcon(node, iconFor(node.textContent ?? '', PROMPT_ICONS) ?? 'circle-dot');
 	});
@@ -103,6 +104,22 @@ export function iconizeModal(root: HTMLElement): void {
 		if (!icon) return;
 		paintIcon(node, icon);
 	});
+}
+
+function watchModalWidth(root: HTMLElement): void {
+	const modal = root.closest('.modal');
+	if (!(modal instanceof HTMLElement) || modal.dataset.rvWidth === '1' || typeof ResizeObserver === 'undefined') return;
+	modal.dataset.rvWidth = '1';
+	const apply = (): void => {
+		modal.classList.toggle('is-stacked', modal.clientWidth > 0 && modal.clientWidth < 420);
+	};
+	try {
+		const observer = new ResizeObserver(apply);
+		observer.observe(modal);
+		apply();
+	} catch {
+		apply();
+	}
 }
 
 function bindDatePickers(root: HTMLElement): void {

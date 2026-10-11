@@ -172,14 +172,12 @@ describe('visit share markup', () => {
 
 describe('glanceable counters and floors', () => {
 	it('counts days, then weeks, then months, then years', () => {
-		assert.equal(formatGlanceableCounter(0), 'Today');
-		assert.equal(formatGlanceableCounter(1), '1 day');
-		assert.equal(formatGlanceableCounter(20), '20 days');
-		assert.equal(formatGlanceableCounter(21), '3 weeks');
-		assert.equal(formatGlanceableCounter(63), '9 weeks');
-		assert.equal(formatGlanceableCounter(64), '2 months');
-		assert.equal(formatGlanceableCounter(365), '12 months');
-		assert.equal(formatGlanceableCounter(366), '1 year');
+		assert.equal(formatGlanceableCounter(0), '0d');
+		assert.equal(formatGlanceableCounter(1), '1d');
+		assert.equal(formatGlanceableCounter(14), '14d');
+		assert.equal(formatGlanceableCounter(21), '21d');
+		assert.equal(formatGlanceableCounter(64), '64d');
+		assert.equal(formatGlanceableCounter(365), '365d');
 	});
 
 	it('uses the recency floors as the ideality cliff', () => {
@@ -354,15 +352,16 @@ describe('in-note urgency chrome', () => {
 		assert.match(map, /openMapNote\(pin\.path\)/);
 		assert.match(map, /export const MAP_POPUP_BADGE_PX = 38/);
 		assert.match(map, /export const MAP_PIN_PX = 48/);
-		assert.match(map, /export const MAP_PIN_GLYPH_PX = 21/);
+		assert.match(map, /export const MAP_PIN_GLYPH_PX = 29\.4/);
 		assert.match(map, /export const MAP_CLUSTER_PX = 53/);
-		assert.match(map, /sizePinGlyph\(button\)/);
+		assert.match(map, /sizePinGlyph\(head,/);
 		assert.match(map, /setProperty\('--rv-control-size', `\$\{MAP_POPUP_BADGE_PX\}px`\)/);
 		assert.doesNotMatch(map, /getPropertyValue\('--rv-control-size'\)/);
 		assert.equal(48, Math.round(42 * 1.15));
 		assert.equal(21, Math.round(18 * 1.15));
 		assert.equal(53, Math.round(46 * 1.15));
-		assert.match(map, /clusterAppearance\(/);
+		assert.match(map, /groupPinStacks\(/);
+		assert.doesNotMatch(map, /paintClusters\(/);
 		assert.match(map, /mapPressIsClick\(/);
 		assert.match(map, /rv-map-fullscreen/);
 		assert.match(map, /arrow-left/);

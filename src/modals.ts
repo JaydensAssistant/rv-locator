@@ -1,6 +1,7 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
 import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
+import { mountCampaignChoice } from './campaign-choice';
 import { iconizeModal } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
@@ -538,12 +539,8 @@ export class CompanionSuggestModal extends Modal {
 		this.setTitle('Log visit');
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
 		const { contentEl } = this;
-		contentEl.createEl('p', {
-			cls: 'rv-locator-modal-copy',
-			text: 'Optional. Choose a companion if someone came along, then log the visit. Cancel does not log it.',
-		});
 		new Setting(contentEl)
-			.setName('Companion')
+			.setName('What publisher came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');
 				this.companionInput = text;
@@ -571,34 +568,19 @@ export class CompanionSuggestModal extends Modal {
 		}
 		if (this.campaign) {
 			const pronoun = this.campaign.pronoun ?? 'them';
-			contentEl.createEl('p', {
-				cls: 'rv-locator-modal-copy',
-				text: coverageQuestion(pronoun, this.campaign.name),
-			});
-			const choice = contentEl.createDiv('rv-locator-suggest-actions');
-			const yes = choice.createEl('button', { text: 'Covered', attr: { type: 'button' } });
-			const no = choice.createEl('button', { text: 'Not this time', attr: { type: 'button' } });
-			yes.classList.add('mod-cta');
-			yes.addEventListener('click', () => {
-				this.covered = true;
-				yes.classList.add('mod-cta');
-				no.classList.remove('mod-cta');
-			});
-			no.addEventListener('click', () => {
-				this.covered = false;
-				no.classList.add('mod-cta');
-				yes.classList.remove('mod-cta');
+			mountCampaignChoice(contentEl, coverageQuestion(pronoun, this.campaign.name), this.covered, (covered) => {
+				this.covered = covered;
 			});
 		}
-		const bar = contentEl.createDiv('rv-locator-suggest-actions is-end');
-		const log = bar.createEl('button', { text: 'Log visit', attr: { type: 'button' } });
-		log.classList.add('mod-cta');
-		log.addEventListener('click', () => this.commitLog());
+		const bar = contentEl.createDiv('rv-locator-suggest-actions is-end rv-modal-actions');
 		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 		cancel.addEventListener('click', () => {
 			this.gate.cancel();
 			this.close();
 		});
+		const log = bar.createEl('button', { text: 'Log visit', attr: { type: 'button' } });
+		log.classList.add('mod-cta');
+		log.addEventListener('click', () => this.commitLog());
 		this.containerEl.addEventListener('pointerdown', (event: PointerEvent) => {
 			this.onDimPointerDown(event.target);
 		});

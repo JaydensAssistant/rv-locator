@@ -26,6 +26,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected sortEl!: HTMLElement;
 	/** Glancable search sits in the sort bar and replaces the pills while it is open. */
 	protected searchSlot: HTMLElement | null = null;
+	private sortMenuOpen = false;
 	/** Sort chips live here so they can scroll without moving the New button. */
 	protected sortButtonsEl!: HTMLElement;
 	protected groups: GroupModel[] = [];
@@ -447,6 +448,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const glancable = this.mode === 'glancable';
 		const actions = glancable ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
+		const showPills = !glancable || this.sortMenuOpen;
+		if (glancable && !showPills) this.sortButtonsEl.addClass('is-hidden');
 		const pillHost = glancable ? this.sortButtonsEl.createDiv('rv-locator-sort-pills') : this.sortButtonsEl;
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
@@ -472,11 +475,35 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
+				if (glancable) {
+					this.sortMenuOpen = false;
+					this.paintSortPresets();
+				}
+			});
+		}
+		if (glancable && this.sortMenuOpen) {
+			const close = pillHost.createEl('button', {
+				cls: 'rv-locator-sort-preset rv-sort-close',
+				attr: { type: 'button', 'aria-label': 'Close sort' },
+			});
+			setIcon(close, 'x');
+			close.addEventListener('click', () => {
+				this.sortMenuOpen = false;
+				this.paintSortPresets();
 			});
 		}
 		this.paintSortExtras();
 		const actionHost = actions ?? this.sortEl;
-		if (glancable) {
+		if (glancable && !this.sortMenuOpen) {
+			const sortButton = actionHost.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet',
+				attr: { type: 'button', 'aria-label': 'Sort', title: 'Sort' },
+			});
+			setIcon(sortButton, 'arrow-up-down');
+			sortButton.addEventListener('click', () => {
+				this.sortMenuOpen = true;
+				this.paintSortPresets();
+			});
 			const searchButton = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Search', title: 'Search' },
@@ -497,19 +524,19 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			setIcon(campaign, 'book-alert');
 			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
 			this.paintFilterButton(actionHost);
+			const create = actionHost.createEl('button', {
+				cls: 'rv-locator-new-rv',
+				attr: {
+					type: 'button',
+					'aria-label': 'New RV',
+					title: 'New RV',
+				},
+			});
+			setIcon(create, 'plus');
+			create.addEventListener('click', () => {
+				void this.plugin.createNewRv();
+			});
 		}
-		const create = actionHost.createEl('button', {
-			cls: 'rv-locator-new-rv',
-			attr: {
-				type: 'button',
-				'aria-label': 'New RV',
-				title: 'New RV',
-			},
-		});
-		setIcon(create, 'plus');
-		create.addEventListener('click', () => {
-			void this.plugin.createNewRv();
-		});
 		equalizeSortPills(pillHost);
 		if (search) this.sortEl.appendChild(search);
 		this.sortButtonsEl.scrollLeft = savedScroll;

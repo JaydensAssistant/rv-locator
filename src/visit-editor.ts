@@ -36,6 +36,8 @@ export interface VisitFacts {
 	extraLesson?: string;
 	extraFrom?: string;
 	extraTo?: string;
+	/** Campaign name this visit covered. Empty when the bullet has no token. */
+	covered?: string;
 }
 
 /**
@@ -86,6 +88,7 @@ export function listVisits(body: string): VisitEntry[] {
 				when: bullet.when,
 				home: bullet.home,
 				companion: bullet.companion,
+				covered: bullet.covered,
 				stamp: formatVisitStamp(bullet.when),
 				bulletLine: index,
 				headingLine: null,
@@ -220,7 +223,8 @@ export function insertVisit(body: string, facts: VisitFacts, options: InsertVisi
 			next = [...lines.slice(0, atLine), ...block, '', ...lines.slice(atLine)].join('\n');
 		}
 	}
-	const text = `${stamp} — ${visitPhrase(facts.home, facts.companion)}`;
+	const covered = facts.covered?.trim() ? ` — covered ${facts.covered.trim()}` : '';
+	const text = `${stamp} — ${visitPhrase(facts.home, facts.companion)}${covered}`;
 	const lines = next.split('\n');
 	const region = logRegion(lines);
 	let laterBullet = -1;
@@ -457,6 +461,7 @@ export function visitFacts(entry: VisitFacts): VisitFacts {
 		extraLesson: entry.extraLesson,
 		extraFrom: entry.extraFrom,
 		extraTo: entry.extraTo,
+		covered: entry.covered,
 	};
 }
 

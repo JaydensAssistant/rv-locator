@@ -487,9 +487,9 @@ async function newRv(tp) {
   }
   if (!created) created = isoLocal(new Date());
   const stamp = glancableStamp(parseLocalIso(created));
-  const metDay = /^(\d{4}-\d{2}-\d{2})/.exec(created)?.[1] ?? "";
-  if (plugin?.settings?.appendMetDateToFilename === true && title && metDay) {
-    title = `${title} ${metDay}`;
+  const metStamp = /^(\d{4}-\d{2}-\d{2})[T\s](\d{2}):(\d{2})/.exec(created);
+  if (plugin?.settings?.appendMetDateToFilename === true && title && metStamp) {
+    title = `${title} ${metStamp[1]} ${metStamp[2]}${metStamp[3]}`;
   }
 
   if (title && tp?.file?.rename) {
@@ -523,6 +523,7 @@ async function newRv(tp) {
     priority,
     companionYaml: companionFrontmatterBlock(companion),
     companionSuffix: companion ? ` with ${companion}` : "",
+    identitySuffix: ` — ${name || title} — ${address}`,
     gender,
   };
 }

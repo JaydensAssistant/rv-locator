@@ -999,13 +999,13 @@ describe('visit log', () => {
 			stampLine,
 			notesField,
 			'',
-			'> [!note]- Attempt Log',
+			'> [!note]- Log',
 			'> - Sat, 11:12pm — Sep 26, 2026 — success',
 			'',
 		].join('\n'));
 		assert.equal(body.includes('## Attempt Log'), false);
 		const stampAt = body.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
-		const logAt = body.indexOf('> [!note]- Attempt Log');
+		const logAt = body.indexOf('> [!note]- Log');
 		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
 
@@ -1027,13 +1027,13 @@ describe('visit log', () => {
 		const body = applyVisitBody('', 'miss', now);
 		assert.equal(body.includes('## Sat, 11:12pm — Sep 26, 2026'), false);
 		assert.equal(body, [
-			'> [!note]- Attempt Log',
+			'> [!note]- Log',
 			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',
 		].join('\n'));
 		const again = applyVisitBody(body, 'miss', now);
 		assert.equal(again, [
-			'> [!note]- Attempt Log',
+			'> [!note]- Log',
 			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
 			'',

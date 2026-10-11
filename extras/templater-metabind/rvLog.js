@@ -59,10 +59,10 @@ function asNumber(v) {
 }
 
 /** Flat and nested `> [!note]` / `> > [!note]` Attempt Log titles all count. */
-const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*Attempt Log[\t ]*$/i;
+const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*(?:Attempt Log|Log)[\t ]*$/i;
 const RETURN_SUGGESTIONS = /^(?:>[\t ]*)+\[![A-Za-z0-9-]+\][\t ]*([+-])?[\t ]*Return Suggestions[\t ]*$/i;
 const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
-const CALLOUT_HEADER = "> [!note]- Attempt Log";
+const CALLOUT_HEADER = "> [!note]- Log";
 const DIGEST_STARTS = ["%% rv-locator-digest %%", "<!-- rv-locator-digest -->"];
 const DIGEST_ENDS = ["%% /rv-locator-digest %%", "<!-- /rv-locator-digest -->"];
 const ADDRESS_KEY = "Address";
@@ -149,7 +149,8 @@ function migrateHeadingToCallout(lines, start) {
   const end = sectionEnd(lines, start, "heading");
   const section = lines.slice(start + 1, end);
   while (section.length > 0 && (section[section.length - 1] ?? "").trim() === "") section.pop();
-  const callout = [CALLOUT_HEADER, ...section.map(toCalloutBodyLine)];
+  const title = /Attempt Log/i.test(lines[start] ?? "") ? "> [!note]- Attempt Log" : CALLOUT_HEADER;
+  const callout = [title, ...section.map(toCalloutBodyLine)];
   return [...lines.slice(0, start), ...callout, ...lines.slice(end)];
 }
 
@@ -665,6 +666,20 @@ async function rvLog(tp, kind) {
   if (!file) {
     new Notice("RV log: no active note");
     return;
+  }
+
+  if (mode === "miss") {
+    const plugin = rvPlugin();
+    const logMiss = plugin && plugin.logNoteMiss;
+    if (typeof logMiss === "function") {
+      try {
+        await logMiss.call(plugin, file);
+      } catch (error) {
+        const message = error && error.message ? error.message : "Could not log the visit.";
+        new Notice(message);
+      }
+      return;
+    }
   }
 
   if (mode === "home") {

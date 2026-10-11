@@ -24,13 +24,13 @@ export function shouldNudgePriority(
 }
 
 /** `> [!note]-`, `> [!note]+`, an unmarked title, and the nested `> > [!note]` form all count. */
-const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*Attempt Log[\t ]*$/i;
-const ATTEMPT_LOG_HEADING = /^## Attempt Log\s*$/;
+const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*(?:Attempt Log|Log)[\t ]*$/i;
+const ATTEMPT_LOG_HEADING = /^## (?:Attempt Log|Log)\s*$/;
 const VISIT_NOTES_HEADING = '### Recent Notes:';
 const LEGACY_VISIT_NOTES_HEADING = '### Visit Notes:';
 const ADDRESS_KEY = 'Address';
 /** Collapsed by default. An existing `+` or `-` on the note is left alone. */
-const CALLOUT_HEADER = '> [!note]- Attempt Log';
+const CALLOUT_HEADER = '> [!note]- Log';
 const STAMP_LEVEL = '#####';
 const VISIT_NOTES_FIELD = /\bsVisit(\d+)Notes\b/g;
 const DASHBOARD_CALLOUT = /^>[\t ]*\[!quote\][+-]?[\t ]*RV Dashboard\b/i;
@@ -107,11 +107,19 @@ export function applyVisitFrontmatter(
  * to `#####`. Home and Not home refresh ages already on the note. Address is
  * not part of the body edit.
  */
-export function applyVisitBody(body: string, outcome: VisitOutcome, now: Date, companion = '', share: VisitShare = emptyShare()): string {
+export function applyVisitBody(
+	body: string,
+	outcome: VisitOutcome,
+	now: Date,
+	companion = '',
+	share: VisitShare = emptyShare(),
+	coveredName = '',
+): string {
 	const stamp = formatVisitStamp(now);
 	let next = ensureAttemptLog(body);
 	if (outcome === 'home') next = insertHomeHeading(next, stamp, undefined, share);
-	next = appendLogLine(next, `> - ${stamp} — ${visitPhrase(outcome === 'home', companion)}`);
+	const covered = coveredName.trim() ? ` — covered ${coveredName.trim()}` : '';
+	next = appendLogLine(next, `> - ${stamp} — ${visitPhrase(outcome === 'home', companion)}${covered}`);
 	next = refreshHomeStampAges(next, now);
 	next = ensureVisitNotesHeading(next);
 	return ensureDashboardLeadBlank(unfoldDashboard(next));
@@ -513,7 +521,8 @@ function migrateHeadingToCallout(lines: string[], start: number): string[] {
 	const end = sectionEnd(lines, start, 'heading');
 	const section = lines.slice(start + 1, end);
 	while (section.length > 0 && section[section.length - 1]?.trim() === '') section.pop();
-	const callout = [CALLOUT_HEADER, ...section.map(toCalloutBodyLine)];
+	const title = /Attempt Log/i.test(lines[start] ?? '') ? 'Attempt Log' : 'Log';
+	const callout = [`> [!note]- ${title}`, ...section.map(toCalloutBodyLine)];
 	return [...lines.slice(0, start), ...callout, ...lines.slice(end)];
 }
 

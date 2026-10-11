@@ -1,7 +1,7 @@
 import { Menu, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
 import { pickDayJump, type DayJumpCandidate } from './day-jump';
-import { calendarDaysSince, formatDaysAgo, formatDriveDate, parseDriveInstant, visibleStampText } from './dates';
+import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
 import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
@@ -13,7 +13,9 @@ import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
-import { urgencyColorsFor, urgencyInk } from './urgency-palette';
+import { paintUrgencyInk } from './color-math';
+import { cardPersonTitle } from './note-name';
+import { urgencyColorsFor } from './urgency-palette';
 
 export interface NoteChromeHost {
 	frontmatter(path: string): Record<string, unknown> | null;
@@ -32,6 +34,11 @@ export interface NoteChromeHost {
 	setAddress(path: string, address: string): void;
 	openMap(path: string): void;
 	openCompanion(path: string): void;
+	campaignMark(path: string): 'covered' | 'open' | null;
+	noteTitle(path: string): string;
+	renameNote(path: string): void;
+	mapOpen(): boolean;
+	ghostIcon(path: string): 'hourglass' | 'ban' | null;
 }
 
 const LONG_PRESS_MS = 500;
@@ -45,12 +52,46 @@ export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteCh
 	if (!data) return;
 	applyLiveUrgency(root, path, host);
 	decorateNoteTitle(root, data);
+	decorateDashboardHeading(root, path, data, host);
 	decorateQuickFacts(root, path, data, host);
 	decorateHubRow(root, path, data, host);
 	decorateSlotOverride(root, path, data, host);
 }
 
 /** Status icon to the left of the note title. Render only; the file is not written. */
+function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	if (!isRvDashboardNote(data) || typeof root.querySelectorAll !== 'function') return;
+	root.querySelectorAll('.callout[data-callout="quote"] .callout-title-inner').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const callout = node.closest('.callout');
+		if (!(callout instanceof HTMLElement) || callout.classList.contains('rv-locator-return-suggestions')) return;
+		const raw = (node.dataset.rvNamed === '1' ? 'RV Dashboard' : (node.textContent ?? '')).replace(/\s+/g, ' ').trim();
+		if (raw !== 'RV Dashboard' && node.dataset.rvNamed !== '1') return;
+		node.dataset.rvNamed = '1';
+		node.replaceChildren(node.ownerDocument.createTextNode(host.noteTitle(path)));
+		const mark = host.campaignMark(path);
+		if (mark) {
+			const icon = node.createSpan('rv-dash-campaign');
+			setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
+			icon.setAttribute('aria-label', mark === 'covered' ? 'Covered this campaign' : 'Campaign');
+		}
+		const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
+		const statusEl = node.createSpan('rv-dash-status');
+		setIcon(statusEl, statusIcon(status));
+		statusEl.setAttribute('aria-label', status);
+		const more = node.createEl('button', {
+			cls: 'rv-dash-rename clickable-icon',
+			attr: { type: 'button', 'aria-label': 'Rename' },
+		});
+		setIcon(more, 'more-horizontal');
+		more.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.renameNote(path);
+		});
+	});
+}
+
 function decorateNoteTitle(root: HTMLElement, data: Record<string, unknown>): void {
 	if (typeof root.closest !== 'function') return;
 	const leaf = root.closest('.workspace-leaf-content');
@@ -111,7 +152,9 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	const urgency = noteUrgency(path, data, priority, host);
 	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
 	const accent = urgencyAccentColor(urgency, priority, colors);
-	const ink = urgencyInk(accent);
+	const inkHost = hosts[0];
+	if (inkHost) paintUrgencyInk(inkHost, accent);
+	const ink = inkHost?.style.getPropertyValue('--rv-urgency-ink') || accent;
 	for (const el of hosts) {
 		el.style.setProperty('--rv-urgency-accent', accent);
 		el.style.setProperty('--rv-urgency-ink', ink);
@@ -153,11 +196,11 @@ function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string
 	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
 	const accent = urgencyAccentColor(urgency, priority, colors);
 	callout.style.setProperty('--rv-urgency-accent', accent);
-	callout.style.setProperty('--rv-urgency-ink', urgencyInk(accent));
+	paintUrgencyInk(callout, accent);
 	const dashboard = callout.closest('.rv-dashboard');
 	if (dashboard instanceof HTMLElement) {
 		dashboard.style.setProperty('--rv-urgency-accent', accent);
-		dashboard.style.setProperty('--rv-urgency-ink', urgencyInk(accent));
+		paintUrgencyInk(dashboard, accent);
 	}
 	paintFactsTitle(title, path, data, status, priority, urgency, host);
 	paintFactsBody(content, path, data, status, priority, host);
@@ -199,6 +242,12 @@ function paintFactsTitle(
 			attr: { type: 'button', 'data-band': String(marks.band), 'aria-label': 'Urgency' },
 		});
 		mountUrgencyGlyph(button, marks.glyphs);
+		const ghost = host.ghostIcon(path);
+		if (ghost) {
+			button.addClass('is-ghost');
+			button.empty();
+			setIcon(button, ghost);
+		}
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -373,7 +422,7 @@ function factDateRow(parent: HTMLElement, icon: string, label: string, value: un
 	const lead = display.time ? `${display.dow}, ${display.time}` : (display.dow || display.text);
 	when.createSpan({ cls: 'rv-qf-when-lead', text: lead });
 	when.createSpan({ cls: 'rv-qf-when-date', text: display.rest });
-	if (days != null) when.createSpan({ cls: 'rv-qf-when-ago', text: formatDaysAgo(days) });
+	if (days != null) when.createSpan({ cls: 'rv-qf-when-ago', text: formatGlanceableCounter(days) });
 	when.setAttr('title', display.title || raw);
 	const instant = parseDriveInstant(raw);
 	if (!instant) return;
@@ -524,7 +573,6 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 			row = stray instanceof HTMLElement ? stray : line.createSpan('rv-hub-row');
 			if (row.parentElement !== line) line.appendChild(row);
 		}
-		paragraph.querySelectorAll('.rv-hub-add, a.rv-map-button').forEach((node) => node.remove());
 		row.empty();
 		paintLabelIcon(hubLabel, 'layout-grid', 'Hub:');
 		const hubs = hubRefs(readProperty(data, 'Hub'));
@@ -533,6 +581,20 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 			row.appendChild(hubChip(paragraph.ownerDocument, path, resolveReturnHub(hub, returnHub), index, host));
 		});
 		armHubOverflow(row);
+		let add = line.querySelector(':scope > .rv-hub-add');
+		if (!(add instanceof HTMLElement)) {
+			const button = paragraph.ownerDocument.createElement('button');
+			button.className = 'rv-hub-add';
+			button.setAttribute('type', 'button');
+			button.setAttribute('aria-label', 'Add hub');
+			setIcon(button, 'plus');
+			button.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				host.addHub(path);
+			});
+			line.appendChild(button);
+		}
 		decorateAddress(paragraph, path, data, host);
 	}
 }
@@ -576,7 +638,7 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 			continue;
 		}
 		if (child.classList.contains('rv-map-button')) {
-			child.remove();
+			child.classList.remove('rv-address-hidden');
 			continue;
 		}
 		child.classList.add('rv-address-hidden');
@@ -592,15 +654,50 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	};
 	input.classList.add('rv-address-input');
 	showAddressLink(paragraph, input, path, host);
-	if (address.dataset.rvAddressEdit !== '1') {
-		address.dataset.rvAddressEdit = '1';
-		address.addEventListener('click', () => {
-			const link = paragraph.querySelector(':scope > a.rv-address-link');
-			if (link instanceof HTMLElement) link.hidden = true;
-			input.hidden = false;
-			input.focus();
+	ensureEarthButton(paragraph, path, host);
+}
+
+function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
+	let earth = paragraph.querySelector(':scope > a.rv-map-button');
+	if (!(earth instanceof HTMLElement)) {
+		const link = paragraph.ownerDocument.createElement('a');
+		link.className = 'rv-map-button';
+		link.setAttribute('href', '#');
+		link.setAttribute('aria-label', 'Map');
+		setIcon(link, 'earth');
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openMap(path);
 		});
+		paragraph.appendChild(link);
+		earth = link;
 	}
+	earth.classList.toggle('is-on', host.mapOpen());
+}
+
+function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
+	if (link.dataset.rvEdit === '1') return;
+	link.dataset.rvEdit = '1';
+	let timer = 0;
+	const start = (): void => {
+		link.hidden = true;
+		input.hidden = false;
+		input.focus();
+		if (typeof input.select === 'function') input.select();
+	};
+	link.addEventListener('contextmenu', (event) => {
+		event.preventDefault();
+		start();
+	});
+	link.addEventListener('pointerdown', () => {
+		window.clearTimeout(timer);
+		timer = window.setTimeout(start, LONG_PRESS_MS);
+	});
+	const cancel = (): void => { window.clearTimeout(timer); };
+	link.addEventListener('pointerup', cancel);
+	link.addEventListener('pointerleave', cancel);
+	link.addEventListener('pointercancel', cancel);
 }
 
 function paintLabelIcon(label: HTMLElement, icon: string, text: string): void {
@@ -623,7 +720,9 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 			event.stopPropagation();
 			host.openMap(path);
 		});
+		armAddressEdit(link, input);
 	}
+	link.classList.toggle('is-on', host.mapOpen());
 	link.classList.remove('rv-address-hidden');
 	const text = input.value.trim();
 	link.textContent = text || 'Add an address';

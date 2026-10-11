@@ -1,4 +1,4 @@
-import { Setting, type ColorComponent, type DropdownComponent } from 'obsidian';
+import { Setting, type ColorComponent } from 'obsidian';
 import {
 	URGENCY_LEVEL_LABELS,
 	URGENCY_PALETTES,
@@ -36,7 +36,6 @@ export function renderUrgencyPalette(
 	set: (choice: UrgencyPaletteChoice) => void | Promise<void>,
 ): void {
 	const host = containerEl.createDiv('rv-urgency-palette');
-	let dropdownRef: DropdownComponent | null = null;
 	let strip: HTMLElement | null = null;
 	const pickers: ColorComponent[] = [];
 	/** ColorComponent.setValue fires onChange. A repaint is not an edit. */
@@ -44,7 +43,6 @@ export function renderUrgencyPalette(
 
 	const refresh = (repaintPickers: boolean) => {
 		const { palette, custom } = get();
-		dropdownRef?.setValue(palette);
 		if (strip) paintSwatches(strip, urgencyColorsFor(palette, custom));
 		if (!repaintPickers) return;
 		const editable = editableUrgencyColors(palette, custom);
@@ -59,16 +57,40 @@ export function renderUrgencyPalette(
 		.setName('Urgency colors')
 		.setDesc('Colors the card edge, urgency marks, and chips in Nearby, from low urgency on the left to high on the right.');
 	strip = paletteSetting.controlEl.createDiv('rv-urgency-preview');
-	paletteSetting.addDropdown((dropdown) => {
-		dropdownRef = dropdown;
-		for (const palette of URGENCY_PALETTES) dropdown.addOption(palette.id, palette.label);
-		dropdown.addOption('custom', 'Custom');
-		dropdown.onChange(async (value) => {
-			const { custom } = get();
-			await set({ palette: sanitizeUrgencyPalette(value), custom });
-			refresh(true);
-		});
+	const picker = paletteSetting.controlEl.createEl('button', {
+		cls: 'rv-palette-picker',
+		attr: { type: 'button', 'aria-label': 'Urgency palette' },
 	});
+	const paintPicker = (): void => {
+		const { palette, custom } = get();
+		const known = URGENCY_PALETTES.find((item) => item.id === palette);
+		picker.empty();
+		picker.createSpan({ cls: 'rv-palette-label', text: known?.label ?? 'Custom' });
+		paintSwatches(picker.createSpan('rv-urgency-preview'), urgencyColorsFor(palette, custom));
+	};
+	picker.addEventListener('click', () => {
+		host.querySelector('.rv-palette-menu')?.remove();
+		const menu = host.createDiv('rv-palette-menu');
+		const { custom } = get();
+		const options: Array<{ id: UrgencyPaletteId; label: string; colors: readonly string[] }> = [
+			...URGENCY_PALETTES.map((item) => ({ id: item.id, label: item.label, colors: item.colors })),
+			{ id: 'custom', label: 'Custom', colors: custom },
+		];
+		for (const option of options) {
+			const row = menu.createEl('button', { cls: 'rv-palette-option', attr: { type: 'button' } });
+			row.createSpan({ text: option.label });
+			paintSwatches(row.createSpan('rv-urgency-preview'), option.colors);
+			row.addEventListener('click', () => {
+				menu.remove();
+				void (async () => {
+					await set({ palette: sanitizeUrgencyPalette(option.id), custom });
+					refresh(true);
+					paintPicker();
+				})();
+			});
+		}
+	});
+	paintPicker();
 
 	URGENCY_LEVEL_LABELS.forEach((label, index) => {
 		new Setting(host)

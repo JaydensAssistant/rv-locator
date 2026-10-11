@@ -123,7 +123,7 @@ actions:
 > [!example] Return Suggestions
 > No May-go-out days
 >
-> > [!note]- Attempt Log
+> > [!note]- Log
 > >
 > >| | Mor | Aft | Eve |
 > >| --- | --- | --- | --- |
@@ -135,4 +135,4 @@ actions:
 > >| Fri | 0/0 | 0/0 | 0/0 |
 > >| Sat | 0/0 | 0/0 | 0/0 |
 > >
-> >- <% rv.stamp %> — success<% rv.companionSuffix %>
+> >- <% rv.stamp %> — success<% rv.companionSuffix %><% rv.identitySuffix %>

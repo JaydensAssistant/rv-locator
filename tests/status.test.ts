@@ -77,7 +77,7 @@ describe('new note identity and card fit', () => {
 	it('titles a blank name from gender and can append the Met date', () => {
 		assert.equal(rvNoteTitleFromIdentity('', 'Man', '142 Maple Street'), 'Man on Maple Street');
 		assert.equal(rvNoteTitleFromIdentity('Alex', 'Woman', '142 Maple Street'), 'Alex on Maple Street');
-		assert.equal(appendMetDateToFilename('Man on Maple', '2026-10-01T16:32:00'), 'Man on Maple 2026-10-01');
+		assert.equal(appendMetDateToFilename('Man on Maple', '2026-10-01T16:32:00'), 'Man on Maple 2026-10-01 1632');
 		assert.equal(appendMetDateToFilename('', '2026-10-01'), '');
 	});
 

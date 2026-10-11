@@ -52,7 +52,7 @@ export function isDigestEndLine(line: string): boolean {
 	return line.includes(DIGEST_END) || line.includes(LEGACY_DIGEST_END);
 }
 
-const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*Attempt Log[\t ]*$/i;
+const ATTEMPT_LOG_CALLOUT = /^(?:>[\t ]*)+\[!note\][\t ]*([+-])?[\t ]*(?:Attempt Log|Log)[\t ]*$/i;
 const RETURN_SUGGESTIONS = /^(?:>[\t ]*)+\[!([A-Za-z0-9-]+)\][\t ]*([+-])?[\t ]*Return Suggestions[\t ]*$/i;
 
 export interface DigestNoteParts {
@@ -101,6 +101,7 @@ export function upsertAttemptDigest(markdown: string, parts: DigestNoteParts, op
 		type: sanitizeSuggestionType(options?.suggestionType),
 		suggestionFold,
 		logFold,
+		logTitle: /Attempt Log/i.test(lines[logAt] ?? '') ? 'Attempt Log' : 'Log',
 		sentences: quoteLines(parts),
 		table: parts.table,
 		bullets: extractBullets(lines.slice(logAt + 1, end)),
@@ -206,7 +207,8 @@ export function collapseAttemptLog(markdown: string): string {
 		if (!ATTEMPT_LOG_CALLOUT.test(line)) return line;
 		if (foldMark(line) === '-') return line;
 		changed = true;
-		return `${quoteMarks(quoteDepth(line))} [!note]- Attempt Log`;
+		const title = /Attempt Log/i.test(line) ? 'Attempt Log' : 'Log';
+		return `${quoteMarks(quoteDepth(line))} [!note]- ${title}`;
 	});
 	return changed ? next.join(newline) : markdown;
 }
@@ -297,13 +299,14 @@ function buildSuggestionsBlock(args: {
 	type: string;
 	suggestionFold: '' | '+' | '-';
 	logFold: '' | '+' | '-';
+	logTitle?: 'Log' | 'Attempt Log';
 	sentences: readonly string[];
 	table: string;
 	bullets: readonly string[];
 }): string[] {
 	const lines = [`> [!${args.type}]${args.suggestionFold} Return Suggestions`, ...args.sentences];
 	lines.push('>');
-	lines.push(`> > [!note]${args.logFold} Attempt Log`);
+	lines.push(`> > [!note]${args.logFold} ${args.logTitle ?? 'Log'}`);
 	lines.push('> >');
 	const table = args.table.split('\n').map((row) => row.trim()).filter((row) => row.length > 0).map((row) => `> >${row}`);
 	lines.push(...table);

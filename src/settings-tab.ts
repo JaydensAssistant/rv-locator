@@ -4,6 +4,7 @@ import { deleteCustom, rememberCustom } from './catalog';
 import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
 import { parseHomeCountyLines } from './home-base';
+import { cacheStats, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import {
 	DEFAULT_HOME_LOG_TEMPLATE_FILE,
 	DEFAULT_MISS_LOG_TEMPLATE_FILE,
@@ -268,6 +269,17 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 			{ key: 'centerVisitNotes', name: 'Center visit notes', desc: 'On when the setting is missing. Centers the Visit Notes heading, each visit stamp, and the notes block. The words in the notes box stay left aligned.' },
 			{ key: 'centerSuggestions', name: 'Center Return Suggestions', desc: 'Centers the Return Suggestions title and lines, the Attempt Log, its table, and its visit lines.' },
 		];
+		new Setting(containerEl)
+			.setName('Full-width dashboard callout')
+			.setDesc('Off by default. When on, the RV Dashboard callout runs edge to edge with no side padding.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.fullWidthCallout);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.fullWidthCallout = value;
+					await this.plugin.saveSettings();
+					this.plugin.applyLayoutClasses();
+				});
+			});
 		for (const center of centers) {
 			new Setting(containerEl)
 				.setName(center.name)
@@ -665,13 +677,37 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 		new Setting(containerEl)
-			.setName('Append Met date to new filenames')
-			.setDesc('Off by default. When on, a new RV filename gains the Met date as YYYY-MM-DD, so two people on the same street do not collide.')
+			.setName('Append Met date and time to new filenames')
+			.setDesc('On for new installs, and turned on once for everyone else. A new RV filename gains YYYY-MM-DD HHmm (no colon). Turning it off afterwards stays off. Existing notes are not renamed. The suffix is hidden everywhere a name is shown.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.plugin.settings.appendMetDateToFilename);
 				toggle.onChange(async (value) => {
 					this.plugin.settings.appendMetDateToFilename = value;
 					await this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(containerEl)
+			.setName('Hide the status bar on the standalone base')
+			.setDesc('Hides Obsidian’s backlinks and properties bar while a base is open on its own. A hub note can do the same with the cssclass rv-hide-statusbar. Removing that class brings the bar back.')
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.hideStatusBar);
+				toggle.onChange(async (value) => {
+					this.plugin.settings.hideStatusBar = value;
+					await this.plugin.saveSettings();
+					this.plugin.applyLayoutClasses();
+				});
+			});
+		const cache = cacheStats(loadTileIndex());
+		const formatBytes = (bytes: number): string => bytes < 1024 ? `${bytes} B` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+		new Setting(containerEl)
+			.setName('Map tile cache')
+			.setDesc(`Home is the box around your return-visit pins, expanded by ${HOME_PAD_DEG}° (about 25 miles). County names are not a boundary. Tiles are remembered only after you view them. Non-home tiles stop at 2,000 and expire after 2 weeks. Home tiles skip that cap and expiry, then stop at 20,000, dropping the deepest zoom first. Total ${cache.total} (${formatBytes(cache.bytes)}). Home ${cache.home} (${formatBytes(cache.homeBytes)}).`)
+			.addButton((button) => {
+				button.setButtonText('Clear map cache');
+				button.onClick(() => {
+					this.plugin.clearMapCache();
+					this.display();
 				});
 			});
 

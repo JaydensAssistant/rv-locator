@@ -691,7 +691,8 @@ function mapLevel(value: unknown): AvailabilityLevel {
 }
 
 const STAMP_BODY = /^(?:(Sun|Mon|Tue|Wed|Thu|Fri|Sat),?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)\s+[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})$/i;
-const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\s+with\s+(.+?))?(?:\*\*)?\s*$/i;
+const COVERED_TAIL = /\s+[—–-]\s+covered\s+(.+?)\s*$/i;
+const BULLET_LINE = /^(?:>\s*)*[-*]\s+(?:\*\*)?(.+?)\s+[—–-]\s+(success|home|not[ -]?home|miss)(?:\s+with\s+((?:(?!\s+[—–-]\s).)+))?(?:\s+[—–-]\s+.+)?(?:\*\*)?\s*$/i;
 const HEADING_LINE = /^(?:###|#####)\s+(.+?)\s*$/;
 
 export interface LogBullet {
@@ -699,18 +700,33 @@ export interface LogBullet {
 	home: boolean;
 	/** Person taken on that Home, from `— success with Name`. Empty when not recorded. */
 	companion: string;
+	/** Campaign this visit covered. Empty when the bullet has no token. */
+	covered: string;
 	when: Date;
 }
 
-/** One Attempt Log bullet, with the companion suffix and the stamp as a local date-time. */
+export function splitCoveredTail(line: string): { body: string; covered: string } {
+	const match = COVERED_TAIL.exec(line.trim());
+	if (!match || match.index == null) return { body: line.trim(), covered: '' };
+	return { body: line.trim().slice(0, match.index).trimEnd(), covered: (match[1] ?? '').trim() };
+}
+
+/** One Log bullet, with the companion suffix, an optional covered token, and a local date-time. */
 export function parseLogBullet(line: string): LogBullet | null {
-	const match = BULLET_LINE.exec(line.trim());
+	const split = splitCoveredTail(line);
+	const match = BULLET_LINE.exec(split.body);
 	if (!match) return null;
 	const parsed = parseStamp(match[1] ?? '');
 	const when = stampDateTime(match[1] ?? '');
 	if (!parsed || !when) return null;
 	const home = isHomeOutcome(match[2] ?? '');
-	return { stamp: parsed.stamp, home, companion: home ? (match[3] ?? '').trim() : '', when };
+	return {
+		stamp: parsed.stamp,
+		home,
+		companion: home ? (match[3] ?? '').trim() : '',
+		covered: split.covered,
+		when,
+	};
 }
 
 /** `Tue, 5pm — Sep 29, 2026` as a local Date on that hour. Null for anything else. */
@@ -724,7 +740,7 @@ export function stampDateTime(stamp: string): Date | null {
 }
 
 function parseBulletLine(line: string): AttemptEntry | null {
-	const match = BULLET_LINE.exec(line.trim());
+	const match = BULLET_LINE.exec(splitCoveredTail(line).body);
 	if (!match) return null;
 	const parsed = parseStamp(match[1] ?? '');
 	if (!parsed) return null;

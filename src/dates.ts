@@ -132,24 +132,10 @@ export function formatDaysAgo(days: number): string {
 	return `${whole} days ago`;
 }
 
-/**
- * Glanceable day counter. Days through 20, weeks for 3–9 weeks,
- * months from 64 days through 365, then years.
- */
+/** Day counters are always `Nd`. Zero is `0d`. Weeks and months are not used. */
 export function formatGlanceableCounter(days: number): string {
 	const whole = Math.max(0, Math.floor(days));
-	if (whole === 0) return 'Today';
-	if (whole <= 20) return whole === 1 ? '1 day' : `${whole} days`;
-	if (whole < 64) {
-		const weeks = Math.min(9, Math.max(3, Math.round(whole / 7)));
-		return weeks === 1 ? '1 week' : `${weeks} weeks`;
-	}
-	if (whole <= 365) {
-		const months = Math.max(2, Math.round(whole / 30.44));
-		return months === 1 ? '1 month' : `${months} months`;
-	}
-	const years = Math.max(1, Math.round(whole / 365.25));
-	return years === 1 ? '1 year' : `${years} years`;
+	return `${whole}d`;
 }
 
 const STAMP_DATE_ANYWHERE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/;

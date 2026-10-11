@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { MarkdownView, Menu, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { addressesMatchOneForOne, buildAutocompleteUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
@@ -15,7 +15,7 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { decideGeocodePick, preferHomeRegion } from './home-base';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
-import { appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
+import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, studyPrefill, type VisitShare } from './catalog';
@@ -23,7 +23,7 @@ import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
-import { campaignIsActive, isCovered, sanitizeCampaign, withCovered, type CampaignRecord } from './campaign';
+import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -41,6 +41,9 @@ import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
+import { clearInkCache } from './color-math';
+import { cardPersonTitle, sanitizeNoteName, stripFilenameStamp } from './note-name';
+import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
@@ -147,6 +150,12 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerHoverLinkSource(HOVER_SOURCE, {
 			display: 'RV Locator',
 			defaultMod: false,
+		});
+
+		this.addCommand({
+			id: 'new-rv',
+			name: 'New RV',
+			callback: () => { void this.createNewRv(); },
 		});
 
 		this.addCommand({
@@ -300,7 +309,14 @@ export default class RVLocatorPlugin extends Plugin {
 			this.onNoteOpened(this.app.workspace.getActiveFile());
 		});
 		this.registerEvent(this.app.workspace.on('file-open', (file) => this.onNoteOpened(file)));
-		this.registerEvent(this.app.workspace.on('active-leaf-change', () => this.scheduleAgeRefresh()));
+		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+			this.scheduleAgeRefresh();
+			this.applyLayoutClasses();
+		}));
+		this.registerEvent(this.app.workspace.on('css-change', () => {
+			clearInkCache();
+			for (const callback of this.viewRefreshers) callback();
+		}));
 		this.registerEvent(this.app.workspace.on('layout-change', () => this.scheduleAgeRefresh()));
 		this.registerEvent(this.app.workspace.on('css-change', () => {
 			this.recolorOpenSuggestions();
@@ -314,7 +330,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** Body classes for the center-align toggles and the Attempt Log width. */
-	private applyLayoutClasses(): void {
+	applyLayoutClasses(): void {
 		const on = !this.unloaded;
 		const body = document.body;
 		body.toggleClass('rv-center-dashboard', on && this.settings.centerDashboard);
@@ -325,6 +341,28 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-wide-hubs', on && this.settings.wideHubsAddress);
 		body.toggleClass('rv-wide-visit-buttons', on && this.settings.wideVisitButtons);
 		body.toggleClass('rv-suggestions-outside-left', on && this.settings.leftAlignSuggestionBullets);
+		body.toggleClass('rv-full-width-callout', on && this.settings.fullWidthCallout);
+		body.toggleClass('rv-map-open', on && this.hubMapOpen);
+		body.toggleClass('rv-hide-statusbar', on && (this.noteHidesStatusBar() || (this.settings.hideStatusBar && this.standaloneBaseOpen())));
+	}
+
+	private noteHidesStatusBar(): boolean {
+		const file = this.app.workspace.getActiveFile();
+		if (!file) return false;
+		const data = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		if (!data) return false;
+		const record = data as { cssclasses?: unknown; cssclass?: unknown };
+		const classes = record.cssclasses ?? record.cssclass;
+		const list: unknown[] = Array.isArray(classes) ? classes : typeof classes === 'string' ? classes.split(/[\s,]+/) : [];
+		return list.some((item) => String(item).trim().toLowerCase() === 'rv-hide-statusbar');
+	}
+
+	private standaloneBaseOpen(): boolean {
+		const leaf = this.app.workspace.getMostRecentLeaf();
+		const root = leaf?.view?.containerEl;
+		if (!(root instanceof HTMLElement)) return false;
+		if (root.closest('.markdown-embed, .internal-embed')) return false;
+		return root.querySelector('.rv-locator-view') != null;
 	}
 
 	/** Map earth, archive label, Quick Facts, and the shared Hub row. Meta Bind may remount, so this runs again. */
@@ -1154,6 +1192,14 @@ export default class RVLocatorPlugin extends Plugin {
 			setAddress: (path, address) => { void this.writeAddress(path, address); },
 			openMap: (path) => { void this.openMapSoon(path); },
 			openCompanion: (path) => { void this.attachCompanion(path); },
+			campaignMark: (path) => this.campaignMark(path),
+			noteTitle: (path) => {
+				const file = this.app.vault.getFileByPath(path);
+				return cardPersonTitle(file?.basename ?? path, false);
+			},
+			renameNote: (path) => { this.promptRename(path); },
+			mapOpen: () => this.hubMapOpen,
+			ghostIcon: (path) => this.ghostIconForCard(path),
 		};
 	}
 
@@ -1186,10 +1232,37 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!file) return;
 		const property = this.settings.addressProperty.trim() || 'Address';
 		const next = address.replace(/\r?\n/g, ' ').trim();
+		const previous = readAddress(await this.freshFrontmatter(file), property) ?? '';
+		if (previous === next) return;
 		this.addressOverride.set(path, next);
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			assignProperty(frontmatter as Record<string, unknown>, property, next);
 		});
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			const stamp = formatVisitStamp(new Date());
+			const line = `> - ${stamp} — address ${previous || 'blank'} → ${next || 'blank'}`;
+			return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
+		});
+		if (next) void this.geocodeFile(file);
+	}
+
+	/** One paced lookup after an address edit. The existing pacer spaces the request. */
+	private async geocodeFile(file: TFile): Promise<void> {
+		if (!this.settingsReady()) return;
+		const address = readAddress(await this.freshFrontmatter(file), this.settings.addressProperty);
+		if (!address) return;
+		const cached = getCached(this.geocodeCache, address);
+		if (cached) {
+			await this.presentHits(file, address, cached, true);
+			return;
+		}
+		try {
+			const hits = await this.lookupAddress(address, false);
+			await this.presentHits(file, address, hits, false);
+		} catch (error) {
+			new Notice(this.friendlyError(error));
+		}
 	}
 
 	private async writeStatus(path: string, status: RvStatus): Promise<void> {
@@ -1379,6 +1452,13 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Earth on a card focuses a pin and opens the in-view map.
 	 * The hub map icon toggles that map. It never opens a workspace leaf.
 	 */
+	hideSplitMap(): void {
+		this.hubMapOpen = false;
+		this.setHubMapFullscreen(false);
+		this.applyLayoutClasses();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
 	async openMapSoon(path?: string): Promise<void> {
 		if (path) {
 			this.mapFocusPath = path;
@@ -1387,6 +1467,7 @@ export default class RVLocatorPlugin extends Plugin {
 			this.hubMapOpen = !this.hubMapOpen;
 		}
 		if (!this.hubMapOpen) this.setHubMapFullscreen(false);
+		this.applyLayoutClasses();
 		for (const callback of this.viewRefreshers) callback();
 		if (path && this.hubMapOpen) this.focusMapPin(path, true);
 	}
@@ -1435,6 +1516,14 @@ export default class RVLocatorPlugin extends Plugin {
 	registerHubScroller(scroll: (path: string | null) => void): () => void {
 		this.hubScrollers.add(scroll);
 		return () => { this.hubScrollers.delete(scroll); };
+	}
+
+	tileCacheEpoch = 0;
+
+	clearMapCache(): void {
+		clearTileIndex();
+		this.tileCacheEpoch += 1;
+		for (const callback of this.viewRefreshers) callback();
 	}
 
 	attachMap(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void {
@@ -2025,14 +2114,118 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeVisit(file: TFile, outcome: VisitOutcome): Promise<void> {
+		if (outcome === 'miss') {
+			await this.commitInstantMiss(file);
+			return;
+		}
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
-		const share = await this.promptLiterature(file, outcome === 'home' ? { study, campaign: true } : undefined);
+		const share = await this.promptLiterature(file, { study, campaign: true });
 		if (share === false) {
-			if (outcome === 'home') this.coverageDecisions.delete(file.path);
+			this.coverageDecisions.delete(file.path);
 			return;
 		}
 		await this.commitVisit(file, outcome, '', share);
+	}
+
+	/** In-note Not home. Same instant write as the card and the hub. */
+	async logNoteMiss(file: TFile): Promise<boolean> {
+		await this.commitInstantMiss(file);
+		return true;
+	}
+
+	private missToast: { path: string; before: string; campaign: CampaignRecord | null; timer: number } | null = null;
+
+	private async commitInstantMiss(file: TFile): Promise<void> {
+		const before = await this.app.vault.read(file);
+		const campaign = this.campaign ? { ...this.campaign, covered: [...this.campaign.covered] } : null;
+		await this.commitVisit(file, 'miss', '', emptyShare(), true);
+		this.showNotHomeToast(file, before, campaign);
+	}
+
+	private showNotHomeToast(file: TFile, before: string, campaign: CampaignRecord | null): void {
+		this.missToast?.timer && window.clearTimeout(this.missToast.timer);
+		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
+		const toast = document.createElement('div');
+		toast.className = 'rv-nh-toast';
+		const text = document.createElement('span');
+		text.className = 'rv-toast-text';
+		const name = cardPersonTitle(file.basename, false);
+		text.textContent = `Not home logged · ${name}`;
+		const actions = document.createElement('span');
+		actions.className = 'rv-toast-actions';
+		const campaignOn = campaignIsActive(this.campaign);
+		if (campaignOn && this.campaign) {
+			const covered = document.createElement('button');
+			covered.className = 'mod-covered';
+			covered.type = 'button';
+			covered.textContent = 'Covered';
+			setIcon(covered, 'book-check');
+			covered.addEventListener('click', () => {
+				void this.coverInstantMiss(file, this.campaign?.name ?? '').then(() => covered.remove());
+			});
+			actions.appendChild(covered);
+		}
+		const undo = document.createElement('button');
+		undo.type = 'button';
+		undo.textContent = 'Undo';
+		undo.addEventListener('click', () => { void this.undoInstantMiss(); });
+		actions.append(undo);
+		const timer = document.createElement('span');
+		timer.className = 'rv-toast-timer';
+		timer.appendChild(document.createElement('i'));
+		toast.append(text, actions, timer);
+		document.body.appendChild(toast);
+		window.setTimeout(() => {
+			if (text.scrollWidth > text.clientWidth + 1) text.textContent = 'Not home';
+		}, 0);
+		const handle = window.setTimeout(() => {
+			toast.remove();
+			if (this.missToast?.path === file.path) this.missToast = null;
+		}, 6000);
+		this.missToast = { path: file.path, before, campaign, timer: handle };
+	}
+
+	private async coverInstantMiss(file: TFile, name: string): Promise<void> {
+		if (!name) return;
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			const body = data.slice(info.contentStart);
+			const lines = body.split('\n');
+			for (let index = lines.length - 1; index >= 0; index -= 1) {
+				const line = lines[index] ?? '';
+				if (!/not home/i.test(line) || /covered /i.test(line)) continue;
+				lines[index] = `${line.replace(/\s+$/, '')} — covered ${name}`;
+				return data.slice(0, info.contentStart) + lines.join('\n');
+			}
+			return data;
+		});
+		await this.markCovered(file.path);
+	}
+
+	private async undoInstantMiss(): Promise<void> {
+		const snap = this.missToast;
+		if (!snap) return;
+		window.clearTimeout(snap.timer);
+		this.missToast = null;
+		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
+		const file = this.app.vault.getFileByPath(snap.path);
+		if (file) await this.app.vault.modify(file, snap.before);
+		this.campaign = snap.campaign;
+		await this.persist();
+		for (const callback of this.viewRefreshers) callback();
+		const undone = document.createElement('div');
+		undone.className = 'rv-nh-toast';
+		undone.textContent = 'Undone';
+		document.body.appendChild(undone);
+		window.setTimeout(() => undone.remove(), 1600);
+	}
+
+	ghostIconForCard(path: string): 'hourglass' | 'ban' | null {
+		const until = this.snoozeUntilFor(path);
+		if (until && until.getTime() > Date.now()) return 'hourglass';
+		if (this.cardReturnBucket(path) === 'Avoid') return 'ban';
+		return null;
 	}
 
 	/** In-note Home. Same write as the card, including literature, media, and lessons. */
@@ -2044,8 +2237,9 @@ export default class RVLocatorPlugin extends Plugin {
 		return true;
 	}
 
-	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare): Promise<void> {
+	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare, silent = false): Promise<void> {
 		const now = new Date();
+		const coveredName = this.coverageDecisions.get(file.path) === 'yes' ? (this.campaign?.name ?? '') : '';
 		let notesProperty: string | null = null;
 		let visitsAfter: VisitEntry[] = [];
 		await this.app.vault.process(file, (data) => {
@@ -2053,7 +2247,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const head = data.slice(0, info.contentStart);
 			const body = data.slice(info.contentStart);
 			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
-			const nextBody = applyVisitBody(body, outcome, now, companion, share);
+			const nextBody = applyVisitBody(body, outcome, now, companion, share, coveredName);
 			visitsAfter = listVisits(nextBody);
 			return head + nextBody;
 		});
@@ -2065,8 +2259,10 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.rememberShare(share);
 		await this.restabilizeCompanions(file);
 		await this.consumeCoverage(file.path, outcome);
-		const label = outcome === 'home' ? 'Home' : 'Not home';
-		new Notice(`${label} logged on “${file.basename}”. Address was not changed.`);
+		if (!silent) {
+			const label = outcome === 'home' ? 'Home' : 'Not home';
+			new Notice(`${label} logged on “${cardPersonTitle(file.basename, false)}”. Address was not changed.`);
+		}
 		await this.afterVisitWrite(file, outcome, notesProperty);
 	}
 
@@ -2076,14 +2272,15 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async openPastVisit(file: TFile): Promise<void> {
-		const campaign = this.shouldAskCoverage(file.path) ? this.campaign : null;
+		const campaign = this.campaign;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		const defaults = await this.studyDefaults(file.path);
 		new VisitEditModal(this.app, {
-			title: `Log past visit on “${file.basename}”`,
+			title: `Log past visit on “${cardPersonTitle(file.basename, false)}”`,
 			recentCompanions: this.recentCompanionNames(),
-			campaignName: campaign?.name,
+			campaign: campaign ? { name: campaign.name, start: campaign.start, end: campaign.end } : null,
+			covered: true,
 			share: this.shareFieldOptions(study, defaults),
 			onCovered: (covered) => {
 				this.coverageDecisions.set(file.path, covered ? 'yes' : 'no');
@@ -2205,10 +2402,13 @@ export default class RVLocatorPlugin extends Plugin {
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		const defaults = await this.studyDefaults(file.path);
+		const campaign = this.campaign;
 		new VisitEditModal(this.app, {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
+			campaign: campaign ? { name: campaign.name, start: campaign.start, end: campaign.end } : null,
+			covered: Boolean(campaign && entry.covered === campaign.name),
 			share: this.shareFieldOptions(study, defaults),
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
@@ -2260,9 +2460,65 @@ export default class RVLocatorPlugin extends Plugin {
 			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, applied);
 		});
 		await this.restabilizeCompanions(file);
+		await this.syncEditedCoverage(file.path, applied);
 		await this.enqueueDigestRewrite(file);
 		for (const callback of this.viewRefreshers) callback();
 		new Notice(added ? `Saved ${describeVisit(added)}.` : `Deleted the visit on “${file.basename}”.`);
+	}
+
+	private async syncEditedCoverage(path: string, change: VisitChange): Promise<void> {
+		if (!this.campaign) return;
+		const name = this.campaign.name;
+		const before = change.removed?.covered ?? '';
+		const after = change.added?.covered ?? '';
+		const others = change.remaining.some((visit) => visit.covered === name);
+		if (after === name) {
+			await this.markCovered(path);
+			return;
+		}
+		if (before === name && !others && isCovered(this.campaign, path)) {
+			this.campaign = withoutCovered(this.campaign, path);
+			await this.persist();
+			for (const callback of this.viewRefreshers) callback();
+		}
+	}
+
+	private promptRename(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const current = stripFilenameStamp(file.basename);
+		const suffix = file.basename.slice(current.length);
+		const modal = new Modal(this.app);
+		modal.onOpen = () => {
+			modal.setTitle('Rename');
+			modal.modalEl.addClass('rv-locator-modal');
+			const input = modal.contentEl.createEl('input', { attr: { type: 'text', 'aria-label': 'Name' } });
+			input.value = current;
+			const bar = modal.contentEl.createDiv('rv-modal-actions');
+			const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+			const save = bar.createEl('button', { text: 'Rename', cls: 'mod-cta', attr: { type: 'button' } });
+			cancel.addEventListener('click', () => modal.close());
+			save.addEventListener('click', () => {
+				const name = sanitizeNoteName(stripFilenameStamp(input.value));
+				modal.close();
+				if (!name || name === current) return;
+				void this.applyRename(file, `${name}${suffix}`, current, name);
+			});
+		};
+		modal.open();
+	}
+
+	private async applyRename(file: TFile, nextBase: string, oldDisplay: string, newDisplay: string): Promise<void> {
+		const parent = file.parent?.path ?? '';
+		const dest = parent && parent !== '/' ? `${parent}/${nextBase}.md` : `${nextBase}.md`;
+		await this.app.fileManager.renameFile(file, dest);
+		const renamed = this.app.vault.getFileByPath(dest);
+		if (!renamed) return;
+		await this.app.vault.process(renamed, (data) => {
+			const info = getFrontMatterInfo(data);
+			const line = `> - ${formatVisitStamp(new Date())} — name ${oldDisplay} → ${newDisplay}`;
+			return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
+		});
 	}
 
 	confirmArchive(file: TFile): void {
@@ -2693,7 +2949,7 @@ export default class RVLocatorPlugin extends Plugin {
 				return;
 			}
 			if (!text.trim() || text.includes('<%')) continue;
-			const hasLog = /\[!note\][^\n]*Attempt Log/i.test(text);
+			const hasLog = /\[!note\][^\n]*(?:Attempt Log|Log)/i.test(text);
 			const hasVisit = /(?:success|\bhome\b|not home|\bmiss\b)/i.test(text);
 			if (hasLog && hasVisit) {
 				await this.refreshAttemptDigest(current);

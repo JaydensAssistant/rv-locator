@@ -167,7 +167,7 @@ export class NewRvIdentityModal extends Modal {
 				}
 			});
 		new Setting(contentEl)
-			.setName('Companion')
+			.setName('What publisher came with you?')
 			.setDesc('Optional. Leave blank and press Create to skip.')
 			.addText((text) => {
 				text.setPlaceholder('Companion (optional)');

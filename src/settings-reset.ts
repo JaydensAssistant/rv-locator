@@ -55,6 +55,7 @@ function applyEveryday(next: RVLocatorSettings): void {
 	next.wideHubsAddress = DEFAULT_SETTINGS.wideHubsAddress;
 	next.wideVisitButtons = DEFAULT_SETTINGS.wideVisitButtons;
 	next.centerDashboard = DEFAULT_SETTINGS.centerDashboard;
+	next.fullWidthCallout = DEFAULT_SETTINGS.fullWidthCallout;
 	next.centerVisitNotes = DEFAULT_SETTINGS.centerVisitNotes;
 	next.centerSuggestions = DEFAULT_SETTINGS.centerSuggestions;
 	next.showUrgencyBadge = DEFAULT_SETTINGS.showUrgencyBadge;
@@ -112,6 +113,7 @@ function applyTemplates(next: RVLocatorSettings): void {
 function applyAdvanced(next: RVLocatorSettings): void {
 	next.newRvFolder = DEFAULT_SETTINGS.newRvFolder;
 	next.appendMetDateToFilename = DEFAULT_SETTINGS.appendMetDateToFilename;
+	next.hideStatusBar = DEFAULT_SETTINGS.hideStatusBar;
 	next.addressProperty = DEFAULT_SETTINGS.addressProperty;
 	next.locationProperty = DEFAULT_SETTINGS.locationProperty;
 	next.mapLinkProperty = DEFAULT_SETTINGS.mapLinkProperty;

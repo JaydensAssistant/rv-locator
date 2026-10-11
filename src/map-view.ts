@@ -1,10 +1,11 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph } from './glancable-view';
-import { clusterAppearance, latToTileY, lonToTileX, mapPressIsClick, popupClearOfChrome, pinStackZ, rankPinsFromRenderedList, zoomToRevealPin, type MapPin } from './map-pins';
+import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapOpensTop, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
+import { homeBoxFromPoints, loadTileIndex, noteViewedTile, saveTileIndex, tileIsHome, tileKey, type TileRecord } from './tile-index';
+import { autoInk, paintUrgencyInk, parseHex } from './color-math';
 import type { RVLocatorSettings } from './types';
-import { urgencyInk } from './urgency-palette';
 
 export const MAP_VIEW_TYPE = 'rv-locator-map';
 
@@ -21,6 +22,8 @@ export interface MapHost {
 	setHubMapFullscreen?(on: boolean): void;
 	notifyPin?(path: string): void;
 	notifyMapCleared?(): void;
+	hideSplitMap?(): void;
+	tileCacheEpoch?: number;
 	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
 }
 
@@ -43,6 +46,10 @@ export class RvMapView extends ItemView {
 	private selectedPath: string | null = null;
 	private detachMap: (() => void) | null = null;
 	private stageObserver: ResizeObserver | null = null;
+	private hideMapButton: HTMLElement | null = null;
+	private tileImgs = new Map<string, HTMLImageElement>();
+	private tileIndex: TileRecord[] = loadTileIndex();
+	private tileEpoch = -1;
 	/** Fullscreen pin tap only. Card taps and split taps never set this. */
 	private popupPath: string | null = null;
 	private flashPath: string | null = null;
@@ -90,6 +97,13 @@ export class RvMapView extends ItemView {
 		});
 		locate.addEventListener('click', () => this.locateMe());
 		fit.addEventListener('click', () => this.fitAll());
+		const hide = bar.createEl('button', {
+			cls: 'rv-map-hide',
+			attr: { type: 'button', 'aria-label': 'Hide map', title: 'Hide map' },
+		});
+		setIcon(hide, 'chevron-down');
+		hide.addEventListener('click', () => this.host.hideSplitMap?.());
+		this.hideMapButton = hide;
 		this.pinLayer = this.stage.createDiv('rv-map-pins');
 		const scale = this.stage.createDiv('rv-map-scale');
 		this.scaleBarEl = scale.createSpan('rv-map-scale-bar');
@@ -231,6 +245,7 @@ export class RvMapView extends ItemView {
 		button.setAttr('title', label);
 		button.empty();
 		setIcon(button, on ? 'arrow-left' : 'expand');
+		this.hideMapButton?.toggleClass('is-hidden', on);
 	}
 
 	/** Called when an already-open map is asked to center again. */
@@ -294,8 +309,8 @@ export class RvMapView extends ItemView {
 		stage.addEventListener('pointermove', (event) => {
 			if (pointers.has(event.pointerId)) pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 			if (pointers.size >= 2 && pinchZoom != null && pinchDistance > 0) {
-				const steps = Math.round(Math.log2(pointerSpan(pointers) / pinchDistance));
-				if (steps !== 0) this.setZoom(pinchZoom + steps);
+				const ratio = pointerSpan(pointers) / pinchDistance;
+				if (ratio > 0) this.setZoom(pinchZoom + Math.log2(ratio), false);
 				return;
 			}
 			if (!this.drag) return;
@@ -357,12 +372,24 @@ export class RvMapView extends ItemView {
 		});
 		stage.addEventListener('wheel', (event) => {
 			event.preventDefault();
-			this.setZoom(this.zoom + (event.deltaY < 0 ? 1 : -1));
+			const pinch = event.ctrlKey || event.metaKey;
+			const mouseWheel = !pinch && Math.abs(event.deltaY) >= 40 && Math.abs(event.deltaX) < 8;
+			if (!pinch && !mouseWheel) {
+				const scale = TILE * 2 ** this.zoom;
+				this.centerLon -= (event.deltaX / scale) * 360;
+				const y = latToTileY(this.centerLat, this.zoom) + event.deltaY / TILE;
+				this.centerLat = tileYToLat(y, this.zoom);
+				this.paint();
+				return;
+			}
+			if (pinch) this.setZoom(this.zoom - event.deltaY * 0.01, false);
+			else this.setZoom(this.zoom + (event.deltaY < 0 ? 1 : -1), true);
 		}, { passive: false });
 	}
 
-	private setZoom(zoom: number): void {
-		this.zoom = Math.max(3, Math.min(18, Math.round(zoom)));
+	private setZoom(zoom: number, whole = true): void {
+		const next = whole ? Math.round(zoom) : zoom;
+		this.zoom = Math.max(3, Math.min(18, next));
 		this.paint();
 	}
 
@@ -372,37 +399,19 @@ export class RvMapView extends ItemView {
 		if (!stage || !pins) return;
 		const width = stage.clientWidth || 640;
 		const height = stage.clientHeight || 480;
-		stage.querySelectorAll('.rv-map-tile').forEach((node) => node.remove());
-		const scale = 2 ** this.zoom;
-		const cx = lonToTileX(this.centerLon, this.zoom);
-		const cy = latToTileY(this.centerLat, this.zoom);
-		const left = Math.floor(cx - width / 2 / TILE);
-		const right = Math.floor(cx + width / 2 / TILE);
-		const top = Math.floor(cy - height / 2 / TILE);
-		const bottom = Math.floor(cy + height / 2 / TILE);
-		for (let x = left; x <= right; x += 1) {
-			for (let y = top; y <= bottom; y += 1) {
-				if (y < 0 || y >= scale) continue;
-				const wrapped = ((x % scale) + scale) % scale;
-				const tile = stage.ownerDocument.createElement('img');
-				tile.className = 'rv-map-tile';
-				tile.alt = '';
-				tile.src = `https://tile.openstreetmap.org/${this.zoom}/${wrapped}/${y}.png`;
-				const px = (x - cx) * TILE + width / 2;
-				const py = (y - cy) * TILE + height / 2;
-				tile.style.left = `${px}px`;
-				tile.style.top = `${py}px`;
-				stage.insertBefore(tile, pins);
-			}
-		}
+		const z = Math.floor(this.zoom);
+		const frac = 2 ** (this.zoom - z);
+		const scale = 2 ** z;
+		const cx = lonToTileX(this.centerLon, z);
+		const cy = latToTileY(this.centerLat, z);
+		const tilePx = TILE * frac;
+		this.paintTiles(stage, pins, width, height, z, scale, cx, cy, tilePx);
 		pins.empty();
-		if (this.user) this.paintUser(pins, width, height, cx, cy);
-		const placed = this.pins.map((pin) => ({ pin, point: this.project(pin.lat, pin.lon, width, height, cx, cy) }));
-		if (this.zoom <= 12) this.paintClusters(pins, placed);
-		else {
-			const stacked = [...placed].sort((a, b) => b.pin.rank - a.pin.rank);
-			for (const item of stacked) this.paintPin(pins, item.pin, item.point);
-		}
+		const cxF = cx * frac;
+		const cyF = cy * frac;
+		if (this.user) this.paintUser(pins, width, height, cxF, cyF);
+		const placed = this.pins.map((pin) => ({ pin, point: this.project(pin.lat, pin.lon, width, height, cxF, cyF) }));
+		this.paintStacks(pins, placed);
 		const popup = this.popupPath && this.zoom > 12 && this.isFullscreen()
 			? placed.find((item) => item.pin.path === this.popupPath)
 			: null;
@@ -431,93 +440,170 @@ export class RvMapView extends ItemView {
 		dot.setAttr('title', 'Current location');
 	}
 
-	private paintPin(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
+	private paintTiles(
+		stage: HTMLElement,
+		pins: HTMLElement,
+		width: number,
+		height: number,
+		z: number,
+		scale: number,
+		cx: number,
+		cy: number,
+		tilePx: number,
+	): void {
+		const epoch = this.host.tileCacheEpoch ?? 0;
+		if (epoch !== this.tileEpoch) {
+			this.tileEpoch = epoch;
+			this.tileIndex = loadTileIndex();
+		}
+		const left = Math.floor(cx - width / 2 / tilePx) - 1;
+		const right = Math.floor(cx + width / 2 / tilePx) + 1;
+		const top = Math.floor(cy - height / 2 / tilePx) - 1;
+		const bottom = Math.floor(cy + height / 2 / tilePx) + 1;
+		const needed = new Set<string>();
+		const box = homeBoxFromPoints(this.pins);
+		for (let x = left; x <= right; x += 1) {
+			for (let y = top; y <= bottom; y += 1) {
+				if (y < 0 || y >= scale) continue;
+				const wrapped = ((x % scale) + scale) % scale;
+				const key = tileKey(z, wrapped, y);
+				needed.add(key);
+				let img = this.tileImgs.get(key);
+				if (!img) {
+					img = stage.ownerDocument.createElement('img');
+					img.className = 'rv-map-tile';
+					img.alt = '';
+					const parentKey = z > 0 ? tileKey(z - 1, Math.floor(wrapped / 2), Math.floor(y / 2)) : '';
+					const parent = parentKey ? this.tileImgs.get(parentKey) : undefined;
+					if (parent?.src) {
+						img.style.backgroundImage = `url("${parent.src}")`;
+						const quadX = wrapped % 2 === 0 ? '0%' : '100%';
+						const quadY = y % 2 === 0 ? '0%' : '100%';
+						img.style.backgroundPosition = `${quadX} ${quadY}`;
+						img.style.backgroundSize = '200% 200%';
+					}
+					img.addEventListener('load', () => {
+						img?.classList.add('is-ready');
+						this.tileIndex = noteViewedTile(this.tileIndex, {
+							z,
+							x: wrapped,
+							y,
+							home: tileIsHome(z, wrapped, y, box),
+						}, Date.now());
+						saveTileIndex(this.tileIndex);
+					});
+					img.src = `https://tile.openstreetmap.org/${z}/${wrapped}/${y}.png`;
+					this.tileImgs.set(key, img);
+					stage.insertBefore(img, pins);
+				}
+				img.style.width = `${tilePx}px`;
+				img.style.height = `${tilePx}px`;
+				img.style.left = `${(x - cx) * tilePx + width / 2}px`;
+				img.style.top = `${(y - cy) * tilePx + height / 2}px`;
+			}
+		}
+		const ready = [...needed].every((key) => this.tileImgs.get(key)?.classList.contains('is-ready') || this.tileImgs.get(key)?.complete);
+		if (!ready) return;
+		for (const [key, img] of this.tileImgs) {
+			if (needed.has(key)) continue;
+			img.remove();
+			this.tileImgs.delete(key);
+		}
+	}
+
+	private paintStacks(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {
+		const members = placed.map((item) => ({
+			path: item.pin.path,
+			x: item.point.x,
+			y: item.point.y,
+			urgency: item.pin.urgency,
+			priority: item.pin.priority,
+		}));
+		const groups = groupPinStacks(members);
+		for (const group of groups) {
+			const drawn = pinsToDraw(group);
+			drawn.drawn.forEach((member, index) => {
+				const item = placed.find((entry) => entry.pin.path === member.path);
+				if (!item) return;
+				this.paintPin(layer, item.pin, item.point, placed, index === 0 ? drawn.label : null);
+			});
+		}
+	}
+
+	private paintPin(
+		layer: HTMLElement,
+		pin: MapPin,
+		point: { x: number; y: number },
+		placed: { pin: MapPin; point: { x: number; y: number } }[],
+		count: string | null,
+	): void {
 		const selected = this.selectedPath === pin.path;
 		const ghost = pin.stateIcon != null;
 		const button = layer.createEl('button', {
-			cls: `rv-map-pin${ghost ? ' is-fresh' : ''}${selected ? ' is-selected' : ''}`,
+			cls: `rv-map-pin is-drop${ghost ? ' is-fresh' : ''}${selected ? ' is-selected' : ''}`,
 			attr: { type: 'button', 'aria-label': pin.name },
 		});
 		button.style.setProperty('--pin-color', pin.color);
 		button.style.setProperty('--rv-urgency-accent', pin.color);
+		paintUrgencyInk(button, pin.color);
+		button.createSpan('rv-pin-tipshadow');
+		const shape = button.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		shape.setAttribute('class', 'rv-pin-shape');
+		shape.setAttribute('viewBox', '0 0 42 54');
+		const outline = button.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'path');
+		outline.setAttribute('d', dropPath());
+		shape.appendChild(outline);
+		button.appendChild(shape);
+		const head = button.createSpan('rv-pin-head');
 		if (pin.stateIcon) {
 			button.dataset.pinState = pin.stateIcon;
-			setIcon(button, pin.stateIcon);
-		} else if (pin.shadeIcon) {
-			setIcon(button, pin.shadeIcon);
-		} else if (pin.markText) {
-			button.createSpan({ cls: 'rv-pin-mark', text: pin.markText });
-		} else mountUrgencyGlyph(button, pin.glyph);
-		sizePinGlyph(button);
+			setIcon(head, pin.stateIcon);
+			sizePinGlyph(head, 25);
+		} else {
+			mountUrgencyGlyph(head, pin.glyph);
+			sizePinGlyph(head, MAP_PIN_GLYPH_PX);
+		}
+		if (count) {
+			const dot = button.createSpan({ cls: 'rv-pin-stack-count', text: count });
+			const band = parseHex(pin.color);
+			if (band) dot.style.color = autoInk(band);
+		}
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
-		button.style.zIndex = String(pinStackZ(pin.rank, selected));
+		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected));
 		if (this.flashPath === pin.path && Date.now() < this.flashUntil) button.addClass('rv-pin-flash');
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
-			this.selectedPath = pin.path;
+			const near = placed.filter((item) => Math.hypot(item.point.x - point.x, item.point.y - point.y) <= 30);
+			if (tapZoomsStack(this.zoom, near.length)) {
+				this.centerLat = pin.lat;
+				this.centerLon = pin.lon;
+				this.setZoom(zoomToRevealPin(Math.floor(this.zoom)), true);
+				return;
+			}
+			const top = tapOpensTop(this.zoom, near.length)
+				? [...near].sort((a, b) => (b.pin.urgency ?? -1) - (a.pin.urgency ?? -1) || b.pin.priority - a.pin.priority)[0]?.pin ?? pin
+				: pin;
+			this.selectedPath = top.path;
 			if (this.isFullscreen()) {
-				this.popupPath = pin.path;
-				this.openCard(layer, pin, point);
+				this.popupPath = top.path;
+				const spot = placed.find((item) => item.pin.path === top.path)?.point ?? point;
+				this.openCard(layer, top, spot);
 				button.addClass('is-selected');
 				return;
 			}
 			this.popupPath = null;
-			this.host.notifyPin?.(pin.path);
+			this.host.notifyPin?.(top.path);
 			button.addClass('is-selected');
 		});
-	}
-
-	private paintClusters(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {
-		const groups: { x: number; y: number; pins: MapPin[] }[] = [];
-		const ordered = [...placed].sort((a, b) => a.pin.rank - b.pin.rank);
-		for (const item of ordered) {
-			const group = groups.find((entry) => Math.hypot(entry.x - item.point.x, entry.y - item.point.y) < 48);
-			if (!group) {
-				groups.push({ x: item.point.x, y: item.point.y, pins: [item.pin] });
-				continue;
-			}
-			group.pins.push(item.pin);
-			group.x = (group.x * (group.pins.length - 1) + item.point.x) / group.pins.length;
-			group.y = (group.y * (group.pins.length - 1) + item.point.y) / group.pins.length;
-		}
-		const painted = [...groups].sort((a, b) => bestRank(b.pins) - bestRank(a.pins));
-		for (const group of painted) {
-			group.pins.sort((a, b) => a.rank - b.rank);
-			if (group.pins.length === 1) {
-				const only = group.pins[0];
-				if (only) this.paintPin(layer, only, { x: group.x, y: group.y });
-				continue;
-			}
-			const look = clusterAppearance(group.pins);
-			const button = layer.createEl('button', {
-				cls: `rv-map-cluster${look.ghost ? ' is-fresh' : ''}`,
-				attr: { type: 'button', 'aria-label': `${group.pins.length} return visits` },
-			});
-			button.style.setProperty('--pin-color', look.color);
-			button.textContent = String(group.pins.length);
-			button.style.left = `${group.x}px`;
-			button.style.top = `${group.y}px`;
-			const top = group.pins[0];
-			button.style.zIndex = String(pinStackZ(top ? top.rank : 0));
-			button.addEventListener('click', (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				const lats = group.pins.map((pin) => pin.lat);
-				const lons = group.pins.map((pin) => pin.lon);
-				this.centerLat = average(lats);
-				this.centerLon = average(lons);
-				this.setZoom(this.zoom + 2);
-			});
-		}
 	}
 
 	private openCard(layer: HTMLElement, pin: MapPin, point: { x: number; y: number }): void {
 		layer.querySelectorAll('.rv-map-card').forEach((node) => node.remove());
 		const shell = layer.createDiv('rv-map-card rv-locator-glancable');
 		const stage = this.stage;
-		const origin = popupClearOfChrome(point, {
+		const origin = popupClearOfChrome({ x: point.x, y: point.y - 33 }, {
 			width: 280,
 			height: 180,
 		}, {
@@ -526,11 +612,11 @@ export class RvMapView extends ItemView {
 		});
 		shell.style.left = `${origin.left}px`;
 		shell.style.top = `${origin.top}px`;
-		shell.style.zIndex = String(pinStackZ(pin.rank, true) + 1);
+		shell.style.zIndex = String(pinUrgencyZ(pin.urgency, true) + 1);
 		const marks = urgencyMark(pin.urgency, pin.priority);
 		const card = shell.createDiv('rv-locator-card has-actions');
 		card.style.setProperty('--rv-urgency-accent', pin.color);
-		card.style.setProperty('--rv-urgency-ink', urgencyInk(pin.color));
+		paintUrgencyInk(card, pin.color);
 		card.style.setProperty('--rv-badge-count', '3');
 		card.style.setProperty('--rv-font-scale', '1');
 		card.style.setProperty('--rv-icon-scale', '1.2');
@@ -582,6 +668,11 @@ export class RvMapView extends ItemView {
 			attr: { 'data-band': String(marks.band), 'aria-label': 'Urgency' },
 		});
 		mountUrgencyGlyph(urgency, marks.glyphs);
+		if (pin.stateIcon) {
+			urgency.addClass('is-ghost');
+			urgency.empty();
+			setIcon(urgency, pin.stateIcon);
+		}
 		actions.createSpan({
 			cls: 'rv-locator-priority-pill',
 			text: String(pin.priority),
@@ -676,18 +767,20 @@ export const MAP_POPUP_BADGE_PX = 38;
  */
 export const MAP_PIN_PX = 48;
 
-/** 15% over the original 18px glyph. Bang marks and ghost hourglass/ban icons. */
-export const MAP_PIN_GLYPH_PX = 21;
+/** 0.70 × the 42px teardrop head. */
+export const MAP_PIN_GLYPH_PX = 29.4;
 
 /** 15% over the original 46px cluster. */
 export const MAP_CLUSTER_PX = 53;
 
 /** Force pin icons past `svg { width: 1em }`, which followed the 22px pin font-size. */
-export function sizePinGlyph(host: HTMLElement): void {
+export function sizePinGlyph(host: HTMLElement, px = MAP_PIN_GLYPH_PX): void {
 	host.querySelectorAll('svg').forEach((node) => {
 		if (!(node instanceof SVGElement)) return;
-		node.style.setProperty('width', `${MAP_PIN_GLYPH_PX}px`, 'important');
-		node.style.setProperty('height', `${MAP_PIN_GLYPH_PX}px`, 'important');
+		node.style.setProperty('width', `${px}px`, 'important');
+		node.style.setProperty('height', `${px}px`, 'important');
+		node.style.setProperty('min-width', `${px}px`, 'important');
+		node.style.setProperty('min-height', `${px}px`, 'important');
 	});
 }
 
