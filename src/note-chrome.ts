@@ -14,6 +14,7 @@ import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
 import { paintUrgencyInk } from './color-math';
+import { SNOOZE_SLATE } from './snooze';
 import { fitEndEllipsis, showTitlePopover } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { urgencyColorsFor } from './urgency-palette';
@@ -154,7 +155,9 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	const priority = finiteNumber(readProperty(data, 'Priority'));
 	const urgency = noteUrgency(path, data, priority, host);
 	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
-	const accent = urgencyAccentColor(urgency, priority, colors);
+	const snoozed = host.ghostIcon(path) === 'moon';
+	const accent = snoozed ? SNOOZE_SLATE : urgencyAccentColor(urgency, priority, colors);
+	markSnoozedDashboard(start, hosts, snoozed);
 	const inkHost = hosts[0];
 	if (inkHost) paintUrgencyInk(inkHost, accent);
 	const ink = inkHost?.style.getPropertyValue('--rv-urgency-ink') || accent;
@@ -206,6 +209,14 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 	});
 }
 
+function markSnoozedDashboard(start: HTMLElement, hosts: readonly HTMLElement[], snoozed: boolean): void {
+	const mark = (el: HTMLElement): void => {
+		if (el.classList.contains('rv-dashboard')) el.classList.toggle('is-snoozed', snoozed);
+	};
+	mark(start);
+	for (const el of hosts) mark(el);
+}
+
 function markUrgencyReady(hosts: readonly HTMLElement[]): void {
 	for (const el of hosts) {
 		if (el.matches(URGENCY_READY_SELECTOR)) el.classList.add('is-urgency-ready');
@@ -231,11 +242,13 @@ function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string
 	const status = resolveStatus(readProperty(data, 'Status'), priority);
 	const urgency = noteUrgency(path, data, priority, host);
 	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
-	const accent = urgencyAccentColor(urgency, priority, colors);
+	const snoozed = host.ghostIcon(path) === 'moon';
+	const accent = snoozed ? SNOOZE_SLATE : urgencyAccentColor(urgency, priority, colors);
 	callout.style.setProperty('--rv-urgency-accent', accent);
 	paintUrgencyInk(callout, accent);
 	const dashboard = callout.closest('.rv-dashboard');
 	if (dashboard instanceof HTMLElement) {
+		dashboard.classList.toggle('is-snoozed', snoozed);
 		dashboard.style.setProperty('--rv-urgency-accent', accent);
 		paintUrgencyInk(dashboard, accent);
 	}
@@ -281,10 +294,19 @@ function paintFactsTitle(
 		mountUrgencyGlyph(button, marks.glyphs);
 		const ghost = host.ghostIcon(path);
 		if (ghost) {
-			button.addClass('is-ghost');
+			if (ghost !== 'moon') button.addClass('is-ghost');
 			button.empty();
 			setIcon(button, ghost);
 			pinBadgeStroke(button);
+			if (ghost === 'moon') {
+				button.style.setProperty('color', SNOOZE_SLATE, 'important');
+				button.style.setProperty('border-color', SNOOZE_SLATE, 'important');
+				button.querySelectorAll('svg').forEach((node) => {
+					const styled = node as { style?: { setProperty?: (name: string, value: string, priority?: string) => void } };
+					styled.style?.setProperty?.('color', SNOOZE_SLATE, 'important');
+					styled.style?.setProperty?.('stroke', SNOOZE_SLATE, 'important');
+				});
+			}
 		}
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
@@ -1020,7 +1042,8 @@ function decorateSlotOverride(root: HTMLElement, path: string, data: Record<stri
 		const priority = finiteNumber(readProperty(data, 'Priority'));
 		const urgency = noteUrgency(path, data, priority, host);
 		const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
-		callout.style.setProperty('--rv-urgency-accent', urgencyAccentColor(urgency, priority, colors));
+		const accent = host.ghostIcon(path) === 'moon' ? SNOOZE_SLATE : urgencyAccentColor(urgency, priority, colors);
+		callout.style.setProperty('--rv-urgency-accent', accent);
 		let badges = title.querySelector(':scope > .rv-qf-badges');
 		if (!(badges instanceof HTMLElement)) badges = title.createSpan('rv-qf-badges');
 		badges.empty();

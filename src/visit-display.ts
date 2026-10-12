@@ -115,7 +115,7 @@ function layoutVisitNotesNow(
 		return;
 	}
 	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
-	if (visitNotesTyping(preview)) {
+	if (visitNotesTyping(preview) && !olderChromeMissing(preview, markdown, options)) {
 		releaseRecentNotesTail(preview);
 		rememberRecentTail(preview);
 		return;

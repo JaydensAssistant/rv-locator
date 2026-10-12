@@ -4921,7 +4921,7 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-visit-note-box > :is(p, div, .el-p, blockquote):not(.rv-item-strip) {
-	margin: 0.35em 0 0;
+	margin: 0;
 	padding: 0;
 	font-size: 13px;
 	line-height: 1.45;
@@ -6941,8 +6941,46 @@ textarea.rv-native-notes-area {
 	border-radius: 0 !important;
 	resize: none;
 	box-sizing: border-box;
+	margin: 0;
 	padding: 8px;
 	line-height: 1.45;
+}
+
+.markdown-preview-view .rv-visit-note-box :is(p, .el-p, .markdown-preview-section),
+.markdown-reading-view .rv-visit-note-box :is(p, .el-p, .markdown-preview-section),
+.rv-dashboard .rv-visit-note-box :is(p, .el-p, .markdown-preview-section) {
+	margin: 0 !important;
+	margin-block: 0 !important;
+	padding: 0 !important;
+}
+
+.rv-visit-note-box p > code,
+.rv-visit-note-box .el-p code,
+.rv-visit-note-box code.mb-input {
+	display: block;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+	background: transparent !important;
+	font-size: 0;
+	line-height: 0;
+}
+
+.rv-visit-note-box code textarea.rv-native-notes-area {
+	font-size: var(--font-text-size, 16px);
+	line-height: 1.45;
+}
+
+.rv-dashboard.is-snoozed .mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
+	--rv-visit-btn-bg: #6b7a99 !important;
+	background-color: #6b7a99 !important;
+	border-color: #6b7a99 !important;
+}
+
+.rv-dashboard.is-snoozed button.rv-locator-urgency {
+	color: #6b7a99 !important;
+	border-color: #6b7a99 !important;
+	border-style: solid !important;
 }
 
 .rv-study-stop,

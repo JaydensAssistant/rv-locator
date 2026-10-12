@@ -22,7 +22,7 @@ import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickMod
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
-import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, rehoistVisitNotes, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -540,11 +540,14 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!file) return;
 		void this.app.vault.cachedRead(file).then((markdown) => {
 			if (this.unloaded) return;
-			layoutVisitNotes(element, markdown, {
+			const live = element.isConnected ? element : this.markdownSurface(path);
+			if (!live) return;
+			layoutVisitNotes(live, markdown, {
 				newestFirst: this.settings.visitsNewestFirst,
 				collapseOlder: this.settings.collapseOlderVisits,
 				limit: this.settings.visibleVisitCount,
 			});
+			this.mountNativeVisitNotes(live, path);
 		});
 	}
 
@@ -639,7 +642,8 @@ export default class RVLocatorPlugin extends Plugin {
 			return coveredCampaignFor(body, when, newestIndex);
 		};
 		const notesBusy = visitNoteBusy(surface);
-		if (!notesBusy) {
+		const layoutMissing = visitLayoutMissing(surface);
+		if (!notesBusy || layoutMissing) {
 			decorateVisitControls(
 				surface,
 				() => null,
@@ -649,8 +653,9 @@ export default class RVLocatorPlugin extends Plugin {
 			rehoistVisitNotes(surface);
 		}
 		applyLiveUrgency(surface, path, this.noteChromeHost(), true);
-		if (chrome && !notesBusy) this.decorateOpenNote(surface, path);
-		if (notesFallback || chrome) this.mountNativeVisitNotes(surface, path);
+		if (chrome) this.decorateOpenNote(surface, path);
+		else this.layoutOpenVisits(surface, path);
+		if (notesFallback || chrome || layoutMissing) this.mountNativeVisitNotes(surface, path);
 		this.bindVisitSurface(surface, path);
 	}
 

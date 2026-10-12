@@ -124,7 +124,8 @@ export function decorateVisitControls(
 	coveredFor?: CoveredLookup,
 ): void {
 	const surface = coveredSearchRoot(root);
-	if (visitNoteBusy(surface) || visitNoteBusy(root)) return;
+	const busy = visitNoteBusy(surface) || visitNoteBusy(root);
+	if (busy && !visitLayoutMissing(root) && !visitLayoutMissing(surface)) return;
 	tagVisitNotesHeading(root);
 	const ownLine = sectionLine();
 	const localStamps = stampHeadings(root);
@@ -644,12 +645,42 @@ function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): voi
 }
 
 /**
+ * A Reading view rebuild drops `.rv-visit-stamp` and the note box.
+ * That pass still has to run while the textarea is focused, or the boxes stay gone.
+ */
+export function visitLayoutMissing(root: HTMLElement): boolean {
+	if (typeof root.querySelectorAll !== 'function') return false;
+	const headings = root.querySelectorAll('h3, h5');
+	for (const node of Array.from(headings)) {
+		if (!(node instanceof HTMLElement)) continue;
+		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) continue;
+		const raw = (node.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/^#{1,6}\s+/, '');
+		const decorated = node.classList.contains('rv-visit-stamp');
+		if (!decorated && !stampDateTime(raw)) continue;
+		if (!decorated || !noteBoxNear(node)) return true;
+	}
+	return false;
+}
+
+function noteBoxNear(heading: HTMLElement): boolean {
+	const hosts = [heading, heading.closest('.el-h3, .el-h5, .cm-line')];
+	for (const host of hosts) {
+		if (!(host instanceof HTMLElement)) continue;
+		const next = host.nextElementSibling;
+		if (!(next instanceof HTMLElement)) continue;
+		if (next.classList.contains('rv-visit-note-box')) return true;
+		if (next.querySelector('.rv-visit-note-box')) return true;
+	}
+	return false;
+}
+
+/**
  * A later or earlier post-processor pass still owns the notes that follow each stamp.
  * A scroll re-render drops a fresh paragraph back beside the heading; pull it in again.
  */
 export function rehoistVisitNotes(root: HTMLElement): void {
 	const surface = coveredSearchRoot(root);
-	if (visitNoteBusy(surface)) return;
+	if (visitNoteBusy(surface) && !visitLayoutMissing(surface)) return;
 	for (const heading of stampHeadings(surface)) {
 		const strip = findItemStrip(heading);
 		if (strip) ensureNoteBox(heading, strip);

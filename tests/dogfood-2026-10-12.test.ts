@@ -8,6 +8,8 @@ import { SNOOZE_SLATE, snoozeCardCaption } from '../src/snooze';
 import { mountStudyPanel } from '../src/study-panel';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { mountRawVisitNotes, rawVisitNoteKey } from '../src/visit-notes-field';
+import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
+import { visitLayoutMissing } from '../src/visit-controls';
 
 function source(name: string): string {
 	return readFileSync(path.join(process.cwd(), name), 'utf8');
@@ -302,5 +304,57 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(source('src/visit-modals.ts'), /this\.campaignHost = null/);
 		assert.match(source('src/suggest-field.ts'), /if \(!gestured\) return/);
 		assert.match(source('src/visit-live-preview.ts'), /noteWritePending\(\)/);
+	});
+
+	it('rebuilds a wiped reading-view layout and paints a snoozed dashboard slate', () => {
+		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+		const { window } = dom;
+		(globalThis as typeof globalThis & { HTMLElement: typeof window.HTMLElement }).HTMLElement = window.HTMLElement;
+		const bare = window.document.createElement('div');
+		const heading = window.document.createElement('h5');
+		heading.textContent = 'Sun, 9:05am — Oct 11, 2026';
+		bare.appendChild(heading);
+		assert.equal(visitLayoutMissing(bare), true);
+		heading.classList.add('rv-visit-stamp');
+		const box = window.document.createElement('div');
+		box.className = 'rv-visit-note-box';
+		heading.insertAdjacentElement('afterend', box);
+		assert.equal(visitLayoutMissing(bare), false);
+		const dashboard = window.document.createElement('div');
+		dashboard.className = 'rv-dashboard';
+		const host = {
+			frontmatter: () => ({ Status: 'Active', Priority: 1, 'Last Spoke': '2026-10-11' }),
+			settings: { ...DEFAULT_SETTINGS },
+			snoozeUntil: () => new Date('2099-01-01'),
+			setStatus: () => {},
+			setPriority: () => {},
+			openUrgency: () => {},
+			openPriority: () => {},
+			openRoute: () => {},
+			openHub: () => {},
+			addHub: () => {},
+			removeHub: () => {},
+			moveHub: () => {},
+			openSlotOverride: () => {},
+			setAddress: () => {},
+			openMap: () => {},
+			openCompanion: () => {},
+			campaignMark: () => null,
+			noteTitle: () => 'Ada',
+			renameNote: () => {},
+			mapOpen: () => false,
+			ghostIcon: () => 'moon' as const,
+		} satisfies NoteChromeHost;
+		applyLiveUrgency(dashboard, 'RVs/Ada.md', host, true);
+		assert.equal(dashboard.classList.contains('is-snoozed'), true);
+		assert.equal(dashboard.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), SNOOZE_SLATE);
+		assert.match(source('src/main.ts'), /const layoutMissing = visitLayoutMissing\(surface\)/);
+		assert.match(source('src/main.ts'), /if \(chrome\) this\.decorateOpenNote\(surface, path\)/);
+		assert.match(source('src/visit-display.ts'), /visitNotesTyping\(preview\) && !olderChromeMissing/);
+		assert.match(css, /\.rv-visit-note-box code\.mb-input \{[^}]*font-size:\s*0/);
+		assert.match(css, /\.rv-dashboard\.is-snoozed button\.rv-locator-urgency \{[^}]*border-style:\s*solid !important/);
+		const chrome = source('src/note-chrome.ts');
+		assert.match(chrome, /=== 'moon' \? SNOOZE_SLATE/);
+		assert.match(chrome, /if \(ghost !== 'moon'\) button\.addClass\('is-ghost'\)/);
 	});
 });
