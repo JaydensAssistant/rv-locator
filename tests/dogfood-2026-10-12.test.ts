@@ -349,7 +349,7 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.equal(dashboard.classList.contains('is-snoozed'), true);
 		assert.equal(dashboard.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), SNOOZE_SLATE);
 		assert.match(source('src/main.ts'), /const layoutMissing = visitLayoutMissing\(surface\)/);
-		assert.match(source('src/main.ts'), /if \(chrome\) this\.decorateOpenNote\(surface, path\)/);
+		assert.match(source('src/main.ts'), /if \(chrome\) this\.decorateOpenNote\(surface, shown\)/);
 		assert.match(source('src/visit-display.ts'), /visitNotesTyping\(preview\) && !olderChromeMissing/);
 		assert.match(css, /\.rv-visit-note-box code\.mb-input \{[^}]*font-size:\s*0/);
 		assert.match(css, /\.rv-dashboard\.is-snoozed button\.rv-locator-urgency \{[^}]*border-style:\s*solid !important/);

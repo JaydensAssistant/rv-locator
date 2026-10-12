@@ -7,7 +7,7 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
 import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
@@ -1410,7 +1410,7 @@ describe('smoke layout', () => {
 		assert.match(main, /active-leaf-change', \(\) => \{\s*clearVisitNoteCaches\(\)/);
 		assert.match(main, /onunload\(\): void \{\s*this\.unloaded = true;\s*clearVisitNoteCaches\(\)/);
 		assert.match(main, /releaseClosedVisitNotes\(open\)/);
-		assert.match(main, /getActiveFile\(\)\?\.path \?\? ''\) !== path\) return/);
+		assert.match(main, /getActiveFile\(\)\?\.path \?\? ''\) !== shown\) return/);
 		clearVisitNoteCaches();
 		const stamps = [
 			['Sun, 9:05am — Oct 11, 2026', 'sVisit5Notes'],
@@ -1535,6 +1535,88 @@ describe('smoke layout', () => {
 			setActiveVisitNote('');
 			preview.remove();
 			throw error;
+		}
+	});
+
+	it('rebuilds every Reading visit box when one view opens A, then B, then C, then A', () => {
+		const main = readFileSync('src/main.ts', 'utf8');
+		assert.match(main, /scheduleReadingDecorate\(file\)/);
+		assert.equal(main.includes('surfaceMatches'), false);
+		const notes = [
+			{
+				path: 'A.md',
+				stamps: [
+					'Mon, 9:00am — Sep 1, 2026',
+					'Tue, 10:00am — Sep 2, 2026',
+					'Wed, 11:00am — Sep 3, 2026',
+					'Thu, 12:00pm — Sep 4, 2026',
+				],
+			},
+			{
+				path: 'B.md',
+				stamps: [
+					'Fri, 1:00pm — Sep 5, 2026',
+					'Sat, 2:00pm — Sep 6, 2026',
+				],
+			},
+			{
+				path: 'C.md',
+				stamps: [
+					'Sun, 3:00pm — Sep 7, 2026',
+					'Mon, 4:00pm — Sep 8, 2026',
+					'Tue, 5:00pm — Sep 9, 2026',
+					'Wed, 6:00pm — Sep 10, 2026',
+					'Thu, 7:00pm — Sep 11, 2026',
+				],
+			},
+		] as const;
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer markdown-preview-section';
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		let previous = '';
+		const paint = (note: { path: string; stamps: readonly string[] }): void => {
+			sizer.replaceChildren();
+			for (const stamp of note.stamps) {
+				const heading = window.document.createElement('div');
+				heading.className = 'markdown-preview-section';
+				heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
+				const paragraph = window.document.createElement('div');
+				paragraph.className = 'markdown-preview-section';
+				paragraph.innerHTML = '<div class="el-p"><p><code>INPUT[textArea:sVisit1Notes]</code></p></div>';
+				sizer.append(heading, paragraph);
+			}
+			if (previous) {
+				const stale = window.document.createElement('textarea');
+				stale.className = 'rv-native-notes-area';
+				stale.dataset.rvNoteFile = previous;
+				preview.dataset.rvNoteFile = previous;
+				preview.appendChild(stale);
+				stale.focus();
+			}
+			const markdown = note.stamps.map((stamp) => `##### ${stamp}`).join('\n');
+			decorateReadingSurface(preview, markdown, {
+				newestFirst: true,
+				collapseOlder: true,
+				limit: 3,
+			}, note.path);
+			const boxes = sizer.querySelectorAll('.rv-visit-note-box');
+			assert.equal(boxes.length, note.stamps.length, note.path);
+			assert.equal(sizer.querySelectorAll('h5.rv-visit-stamp').length, note.stamps.length, note.path);
+			const older = preview.querySelector('.rv-older-visits');
+			if (note.stamps.length > 3) assert.ok(older, note.path);
+			else assert.equal(older, null, note.path);
+			previous = note.path;
+		};
+		try {
+			paint(notes[0]);
+			paint(notes[1]);
+			paint(notes[2]);
+			paint(notes[0]);
+		} finally {
+			preview.remove();
 		}
 	});
 

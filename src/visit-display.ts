@@ -1027,7 +1027,10 @@ function visitNotesTyping(preview: HTMLElement): boolean {
 	const active = doc?.activeElement;
 	if (!(active instanceof HTMLElement)) return false;
 	if (!isVisitTextArea(active)) return false;
-	return preview.contains(active);
+	if (!preview.contains(active)) return false;
+	const file = preview.dataset.rvNoteFile || '';
+	const bound = active.dataset.rvNoteFile || '';
+	return !file || !bound || file === bound;
 }
 
 /** Recent Notes collapse stops at the Older Visits heading. Anything from there on stays shown. */

@@ -3,7 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter } from './dates';
 import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
-import { mountHeadingChevron, visitNoteBusy } from './visit-display';
+import { layoutVisitNotes, mountHeadingChevron, visitNoteBusy, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
@@ -136,6 +136,8 @@ export function decorateVisitControls(
 		const when = stampDateTime(headingSource(heading)) ?? stampDateTime(headingStampText(heading));
 		if (!when) continue;
 		heading.addClass('rv-visit-stamp');
+		const shown = surface.dataset.rvNoteFile || root.dataset.rvNoteFile || '';
+		if (shown) heading.dataset.rvNoteFile = shown;
 		moreButton(heading, 'Visit options', (evt) => {
 			open({ when, home: true, ordinal: 0, fileLine: sectionLine() }, evt);
 		});
@@ -676,6 +678,10 @@ function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): voi
  */
 export function visitLayoutMissing(root: HTMLElement): boolean {
 	if (typeof root.querySelectorAll !== 'function') return false;
+	const host = root.closest?.('.markdown-preview-view, .markdown-reading-view');
+	const expected = root.dataset.rvNoteFile
+		|| (host instanceof HTMLElement ? host.dataset.rvNoteFile : '')
+		|| '';
 	const headings = root.querySelectorAll('h3, h5');
 	for (const node of Array.from(headings)) {
 		if (!(node instanceof HTMLElement)) continue;
@@ -683,9 +689,31 @@ export function visitLayoutMissing(root: HTMLElement): boolean {
 		const raw = (node.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/^#{1,6}\s+/, '');
 		const decorated = node.classList.contains('rv-visit-stamp');
 		if (!decorated && !stampDateTime(raw)) continue;
+		if (expected && (node.dataset.rvNoteFile || '') !== expected) return true;
 		if (!decorated || !noteBoxNear(node)) return true;
 	}
 	return false;
+}
+
+/**
+ * Stamp every visit that is already in this Reading view, then fold Older Visits.
+ * The file argument is the note the view is showing. A draft from another note
+ * does not skip this pass.
+ */
+export function decorateReadingSurface(
+	root: HTMLElement,
+	markdown: string,
+	options: VisitLayoutOptions,
+	filePath = '',
+): void {
+	const surface = coveredSearchRoot(root);
+	if (filePath) {
+		surface.dataset.rvNoteFile = filePath;
+		root.dataset.rvNoteFile = filePath;
+	}
+	decorateVisitControls(root, () => null, () => {});
+	rehoistVisitNotes(root);
+	layoutVisitNotes(surface, markdown, options);
 }
 
 function noteBoxNear(heading: HTMLElement): boolean {
