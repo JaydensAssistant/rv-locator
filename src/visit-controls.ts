@@ -256,20 +256,55 @@ function headingSource(heading: HTMLElement): string {
 	return textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator, .rv-stamp-row, .collapse-indicator, .rv-stamp-source`);
 }
 
+/** Companion on a home visit, from the note markdown. Live Preview reads this before the card is mounted. */
+export function publisherForVisit(markdown: string, when: Date): string {
+	let found = '';
+	for (const line of markdown.split(/\r?\n/)) {
+		const next = companionFromBullet(line, when, found);
+		found = next.found;
+		if (next.done) return found;
+	}
+	return found;
+}
+
+/** Reading view has the log on screen. A mounted Live Preview card can see the editor lines. */
+function companionSearchRoot(heading: HTMLElement): HTMLElement {
+	const wide = heading.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view, .cm-editor, .workspace-leaf-content');
+	if (wide instanceof HTMLElement) return wide;
+	if (!heading.isConnected) return heading;
+	return heading.ownerDocument.body;
+}
+
+function companionFromBullet(text: string, when: Date, found: string): { found: string; done: boolean } {
+	const bullet = parseLogBullet(text);
+	if (!bullet?.companion || !sameLocalDay(bullet.when, when)) return { found, done: false };
+	const name = bullet.companion.trim();
+	if (Math.abs(bullet.when.getTime() - when.getTime()) < 90 * 60 * 1000) return { found: name, done: true };
+	return { found: name, done: false };
+}
+
 /** Companion from the same day's attempt-log line, when someone came along. */
 function companionNear(heading: HTMLElement, when: Date): string {
-	const host = heading.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered, .workspace-leaf-content');
-	const root = host instanceof HTMLElement ? host : heading.ownerDocument.body;
+	const stored = heading.dataset.rvCompanion?.trim();
+	if (stored) return stored;
+	const root = companionSearchRoot(heading);
 	if (!(root instanceof HTMLElement) || typeof root.querySelectorAll !== 'function') return '';
 	let found = '';
 	for (const callout of attemptLogCallouts(root)) {
 		for (const item of Array.from(callout.querySelectorAll('li'))) {
 			if (!(item instanceof HTMLElement)) continue;
-			const bullet = parseLogBullet(`- ${item.textContent ?? ''}`);
-			if (!bullet?.companion || !sameLocalDay(bullet.when, when)) continue;
-			found = bullet.companion.trim();
-			if (Math.abs(bullet.when.getTime() - when.getTime()) < 90 * 60 * 1000) return found;
+			const next = companionFromBullet(`- ${item.textContent ?? ''}`, when, found);
+			found = next.found;
+			if (next.done) return found;
 		}
+	}
+	for (const line of Array.from(root.querySelectorAll('.cm-line'))) {
+		if (!(line instanceof HTMLElement) || line.closest('.rv-lp-visit')) continue;
+		const text = (line.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (!text) continue;
+		const next = companionFromBullet(text, when, found);
+		found = next.found;
+		if (next.done) return found;
 	}
 	return found;
 }

@@ -6364,6 +6364,21 @@ button.rv-study-toggle {
 	padding-top: 12px;
 }
 
+.modal.rv-locator-modal .rv-modal-section > .rv-campaign-choice,
+.rv-locator-modal .rv-modal-section > .rv-campaign-choice {
+	border-top: 0;
+	margin-top: 0;
+	padding-top: 0;
+}
+
+.rv-locator-modal .rv-modal-section:empty,
+.rv-locator-modal .rv-visit-campaign:empty {
+	display: none;
+	border: 0;
+	margin: 0;
+	padding: 0;
+}
+
 .modal .rv-campaign-actions button,
 .is-phone .modal .rv-campaign-actions button,
 .rv-locator-modal .rv-campaign-actions button {
@@ -6804,6 +6819,11 @@ textarea.rv-native-notes-area {
 	background: transparent;
 }
 
+textarea.rv-mb-notes-silenced,
+.rv-mb-notes-silenced {
+	display: none !important;
+}
+
 button.rv-study-change,
 button.rv-study-skip,
 .rv-study-change,
@@ -7004,6 +7024,34 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	background: var(--text-faint);
 }
 
+.rv-study-tick:first-child:not(:last-child) {
+	left: calc((var(--rv-thumb, 16px) / 2) + (100% - var(--rv-thumb, 16px)) * var(--stop, 0));
+	transform: none;
+	text-align: left;
+	overflow: visible;
+	text-overflow: clip;
+	max-width: none;
+}
+
+.rv-study-tick:first-child:not(:last-child)::before {
+	margin-left: 0;
+	margin-right: auto;
+}
+
+.rv-study-tick:last-child:not(:first-child) {
+	left: calc((var(--rv-thumb, 16px) / 2) + (100% - var(--rv-thumb, 16px)) * var(--stop, 1));
+	transform: translateX(-100%);
+	text-align: right;
+	overflow: visible;
+	text-overflow: clip;
+	max-width: none;
+}
+
+.rv-study-tick:last-child:not(:first-child)::before {
+	margin-left: auto;
+	margin-right: 0;
+}
+
 .rv-study-panel,
 .rv-study-modes {
 	width: 100%;
@@ -7035,6 +7083,29 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.rv-study-modes button {
+	flex: 1 1 auto !important;
+	min-width: min-content !important;
+	padding-left: 2px !important;
+	padding-right: 2px !important;
+	overflow: visible;
+	gap: 3px;
+	font-size: 12px;
+}
+
+.rv-study-mode-icon,
+.rv-study-mode-icon svg {
+	width: 14px;
+	height: 14px;
+	flex: 0 0 auto;
+}
+
+.rv-study-mode-text {
+	min-width: min-content;
+	overflow: visible;
+	text-overflow: clip;
 }
 
 .modal.rv-locator-modal .setting-item.rv-gender-choice {

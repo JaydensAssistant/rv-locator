@@ -183,6 +183,9 @@ describe('live preview older visits', () => {
 
 	it('mounts the native notes textarea inside the live preview card', async () => {
 		const doc = [
+			'> [!note]- Attempt Log',
+			'> - Sun, 9:05am — Oct 11, 2026 — success with Mom',
+			'',
 			'##### Sun, 9:05am — Oct 11, 2026',
 			'`INPUT[textArea:sVisit1Notes]`',
 		].join('\n');
@@ -205,6 +208,7 @@ describe('live preview older visits', () => {
 		assert.ok(area instanceof window.HTMLTextAreaElement);
 		assert.equal(area.value, 'from the hub');
 		assert.equal(view.dom.querySelector('.rv-lp-visit')?.textContent?.includes('INPUT[textArea'), false);
+		assert.equal(view.dom.querySelector('.rv-lp-visit .rv-stamp-with')?.textContent, 'with Mom');
 		onLiveVisitHost(null);
 		view.destroy();
 	});

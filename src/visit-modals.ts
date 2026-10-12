@@ -141,8 +141,9 @@ export class VisitEditModal extends Modal {
 					text.setValue(picked);
 				});
 			});
-		this.campaignHost = contentEl.createDiv('rv-visit-campaign rv-modal-section');
+		this.campaignHost = null;
 		if (this.options.campaign) {
+			this.campaignHost = contentEl.createDiv('rv-visit-campaign rv-modal-section');
 			mountCampaignChoice(
 				this.campaignHost,
 				coverageQuestion(this.options.campaign.pronoun ?? 'them', this.options.campaign.name),

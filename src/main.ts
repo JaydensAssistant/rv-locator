@@ -42,7 +42,7 @@ import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { mountRawVisitNotes } from './visit-notes-field';
+import { mountRawVisitNotes, visitNoteKeys } from './visit-notes-field';
 import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
@@ -655,14 +655,16 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Meta Bind sometimes leaves `INPUT[textArea:sVisitNNotes]` as raw text
-	 * when a note is opened from the hub. A native box reads and writes that
-	 * same key. A textarea Meta Bind already built is left alone.
+	 * One debounced textarea per `sVisitNNotes` key, in Live Preview and in
+	 * Reading view. Meta Bind's own textarea is hidden so it cannot save on
+	 * each keystroke. A frontmatter write from this box is ignored while the
+	 * caret is still in it; a rebuild restores the in-memory draft.
 	 */
 	private mountNativeVisitNotes(surface: HTMLElement, path: string): void {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		const keys = visitNoteKeys(this.noteBodies.get(path) ?? '');
 		mountRawVisitNotes(
 			surface,
 			(key) => {
@@ -674,6 +676,7 @@ export default class RVLocatorPlugin extends Plugin {
 					data[key] = value;
 				});
 			},
+			keys,
 		);
 	}
 
@@ -1867,6 +1870,16 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	async openMapSoon(path?: string): Promise<void> {
+		if (path && this.noteMapOpen && this.mapFocusPath === path) {
+			this.noteMapOpen = false;
+			this.hubMapOpen = false;
+			this.setHubMapFullscreen(false);
+			this.applyLayoutClasses();
+			this.syncNoteMap();
+			for (const callback of this.viewRefreshers) callback();
+			this.refreshVisitCards(path, undefined, true);
+			return;
+		}
 		if (path) {
 			this.mapFocusPath = path;
 			this.hubMapOpen = true;

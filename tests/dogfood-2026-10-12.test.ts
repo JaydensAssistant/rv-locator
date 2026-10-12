@@ -209,23 +209,64 @@ describe('2026-10-12 dogfood round 2', () => {
 		});
 	});
 
-	it('leaves the raw field alone when Meta Bind already has that key', () => {
+	it('hides Meta Bind and keeps one debounced writer, including a rebuild', () => {
 		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 		const { window } = dom;
-		(globalThis as typeof globalThis & { HTMLElement: typeof window.HTMLElement }).HTMLElement = window.HTMLElement;
+		const host = globalThis as typeof globalThis & {
+			HTMLElement: typeof window.HTMLElement;
+			Element: typeof window.Element;
+		};
+		host.HTMLElement = window.HTMLElement;
+		host.Element = window.Element;
 		const root = window.document.createElement('div');
 		const raw = window.document.createElement('p');
 		raw.textContent = 'INPUT[textArea:sVisit5Notes]';
 		const bound = window.document.createElement('div');
 		bound.className = 'mb-input-wrapper';
 		bound.setAttribute('data-mb-bind', 'sVisit5Notes');
-		bound.appendChild(window.document.createElement('textarea'));
+		const meta = window.document.createElement('textarea');
+		meta.className = 'mb-input-textarea';
+		bound.appendChild(meta);
 		root.append(raw, bound);
 		window.document.body.appendChild(root);
-		mountRawVisitNotes(root, () => 'nope', () => {});
-		assert.equal(raw.querySelector('textarea'), null);
-		assert.match(raw.textContent ?? '', /sVisit5Notes/);
-		assert.equal(root.querySelectorAll('textarea').length, 1);
+		const writes: string[] = [];
+		mountRawVisitNotes(root, () => 'Third', (key, value) => {
+			writes.push(`${key}=${value}`);
+		}, ['sVisit5Notes']);
+		const mounted = raw.querySelector('textarea.rv-native-notes-area');
+		assert.ok(mounted instanceof window.HTMLTextAreaElement);
+		assert.equal(root.querySelectorAll('textarea.rv-native-notes-area').length, 1);
+		assert.equal(meta.disabled, true);
+		assert.equal(bound.hidden, true);
+		const typed = 'Third box.\n';
+		for (let index = 0; index < typed.length; index += 1) {
+			mounted.value = typed.slice(0, index + 1);
+			mounted.setSelectionRange(mounted.value.length, mounted.value.length);
+			mounted.dispatchEvent(new window.Event('input', { bubbles: true }));
+		}
+		root.remove();
+		const again = window.document.createElement('div');
+		const paragraph = window.document.createElement('p');
+		const rebound = window.document.createElement('div');
+		rebound.className = 'mb-input-wrapper';
+		rebound.setAttribute('data-mb-bind', 'sVisit5Notes');
+		rebound.appendChild(window.document.createElement('textarea'));
+		paragraph.appendChild(rebound);
+		again.appendChild(paragraph);
+		window.document.body.appendChild(again);
+		mountRawVisitNotes(again, () => 'hird box.', () => {}, ['sVisit5Notes']);
+		const restored = again.querySelector('textarea.rv-native-notes-area');
+		assert.ok(restored instanceof window.HTMLTextAreaElement);
+		assert.equal(again.querySelectorAll('textarea.rv-native-notes-area').length, 1);
+		assert.equal(restored.value, typed);
+		assert.equal(restored.selectionStart, typed.length);
+		assert.equal(restored.selectionEnd, typed.length);
+		return new Promise<void>((resolve) => {
+			window.setTimeout(() => {
+				assert.deepEqual(writes, [`sVisit5Notes=${typed}`]);
+				resolve();
+			}, 450);
+		});
 	});
 
 	it('puts a snoozed pin under a red cluster', () => {
@@ -249,8 +290,16 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(css, /var\(--rv-thumb, 16px\) \/ 2/);
 		assert.match(css, /button\.rv-study-change,\s*button\.rv-study-skip[\s\S]*min-height:\s*32px/);
 		assert.match(css, /\.rv-study-modes button \{[^}]*min-width:\s*0 !important/);
+		assert.match(css, /\.rv-study-tick:first-child:not\(:last-child\) \{[^}]*text-align:\s*left/);
+		assert.match(css, /\.rv-study-tick:last-child:not\(:first-child\) \{[^}]*text-align:\s*right/);
+		assert.match(css, /\.rv-study-modes button \{[^}]*min-width:\s*min-content !important/);
+		assert.match(css, /\.rv-study-mode-text \{[^}]*text-overflow:\s*clip/);
+		assert.match(css, /\.rv-modal-section > \.rv-campaign-choice \{[^}]*border-top:\s*0/);
 		assert.match(css, /\.setting-item\.rv-gender-choice \{[^}]*flex-direction:\s*row !important/);
 		assert.match(source('src/main.ts'), /rv-hide-note-status/);
+		assert.match(source('src/main.ts'), /this\.noteMapOpen && this\.mapFocusPath === path/);
+		assert.match(source('src/main.ts'), /noteMapOpen = true/);
+		assert.match(source('src/visit-modals.ts'), /this\.campaignHost = null/);
 		assert.match(source('src/suggest-field.ts'), /if \(!gestured\) return/);
 		assert.match(source('src/visit-live-preview.ts'), /noteWritePending\(\)/);
 	});

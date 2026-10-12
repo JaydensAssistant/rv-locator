@@ -2,7 +2,7 @@ import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extens
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { coveredCampaignFor, stampDateTime } from './schedule';
 import { visitStampLine } from './visit-display';
-import { decorateVisitControls, type VisitTarget } from './visit-controls';
+import { decorateVisitControls, publisherForVisit, type VisitTarget } from './visit-controls';
 import { noteWritePending } from './visit-notes-field';
 
 export interface VisitPreviewSettings {
@@ -197,6 +197,11 @@ class VisitCardWidget extends WidgetType {
 			wrap.appendChild(paragraph);
 		}
 		try {
+			const when = stampDateTime((lines[0] ?? '').replace(/^#{1,6}\s+/, ''));
+			if (when) {
+				const publisher = publisherForVisit(view.state.doc.toString(), when);
+				if (publisher) heading.dataset.rvCompanion = publisher;
+			}
 			decorateVisitControls(wrap, () => null, (target: VisitTarget, evt: MouseEvent) => {
 				wrap.dispatchEvent(new CustomEvent('rv-open-visit', { bubbles: true, detail: { target, event: evt } }));
 			}, () => this.covered);
