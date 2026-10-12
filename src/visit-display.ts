@@ -813,11 +813,90 @@ function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitSt
 	});
 }
 
+function isVisitTextArea(node: EventTarget | null | undefined): node is HTMLTextAreaElement {
+	return node instanceof HTMLElement && node.tagName === 'TEXTAREA';
+}
+
+let heldNote: HTMLTextAreaElement | null = null;
+let heldNoteUntil = 0;
+
+/** Keep a visit note focused across the short window where a repaint would drop it. */
+export function holdVisitNote(area: HTMLTextAreaElement, ms = 900): void {
+	heldNote = area;
+	heldNoteUntil = Date.now() + ms;
+}
+
+export function releaseVisitNote(next: EventTarget | null): void {
+	if (!(next instanceof Element) || next === heldNote) return;
+	if (next.tagName === 'BODY' || next.tagName === 'HTML') return;
+	heldNote = null;
+	heldNoteUntil = 0;
+}
+
+/** True while a visit textarea in `root` is focused, or was just tapped and must stay focused. */
+export function visitNoteBusy(root: HTMLElement): boolean {
+	const active = root.ownerDocument?.activeElement;
+	if (isVisitTextArea(active) && root.contains(active)) return true;
+	return heldNote != null && heldNote.isConnected && Date.now() < heldNoteUntil && root.contains(heldNote);
+}
+
+/** Put the caret back when a repaint left it on the document body. */
+export function restoreHeldNote(): void {
+	const area = heldNote;
+	if (!area || !area.isConnected || Date.now() >= heldNoteUntil) return;
+	const doc = area.ownerDocument;
+	const active = doc.activeElement;
+	if (active === area) return;
+	if (active instanceof Element && active !== doc.body && active !== doc.documentElement) return;
+	try {
+		area.focus({ preventScroll: true });
+	} catch {
+		area.focus();
+	}
+}
+
+/** The first textarea rendered after the `ordinal`th heading showing `stamp`. */
+export function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
+	const headings = Array.from(root.querySelectorAll('h3, h5, .cm-line.HyperMD-header'))
+		.filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').includes(stamp));
+	const heading = headings[ordinal] ?? headings[headings.length - 1];
+	if (!heading) return null;
+	const areas = Array.from(root.querySelectorAll('textarea'));
+	for (const area of areas) {
+		if (heading.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING) {
+			return area;
+		}
+	}
+	return null;
+}
+
+/** Focus the stamp's notes box, or the first visit textarea when the stamp has not painted yet. */
+export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
+	const matched = stamp ? notesBoxAfterStamp(root, stamp, ordinal) : null;
+	const found = root.querySelector('textarea');
+	const area = matched ?? (isVisitTextArea(found) ? found : null);
+	if (!area) return null;
+	holdVisitNote(area, 1600);
+	try {
+		area.focus({ preventScroll: true });
+	} catch {
+		area.focus();
+	}
+	const end = area.value.length;
+	try {
+		area.setSelectionRange(end, end);
+	} catch {
+		/* The box is not editable yet. */
+	}
+	return area;
+}
+
 function visitNotesTyping(preview: HTMLElement): boolean {
+	if (visitNoteBusy(preview)) return true;
 	const doc = preview.ownerDocument as { activeElement?: Element | null } | null;
 	const active = doc?.activeElement;
 	if (!(active instanceof HTMLElement)) return false;
-	if (active.tagName !== 'TEXTAREA') return false;
+	if (!isVisitTextArea(active)) return false;
 	return preview.contains(active);
 }
 

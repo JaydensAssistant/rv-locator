@@ -7,7 +7,8 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateVisitControls, rehoistVisitNotes } from '../src/visit-controls';
+import { decorateVisitControls, refitItemStrip, rehoistVisitNotes } from '../src/visit-controls';
+import { placeVisitNoteFocus, restoreHeldNote } from '../src/visit-display';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
 import type { MapPin } from '../src/map-pins';
@@ -48,6 +49,9 @@ proto.toggleClass = function toggleClass(this: HTMLElement, cls: string, force?:
 };
 proto.empty = function empty(this: HTMLElement) {
 	this.replaceChildren();
+};
+proto.setText = function setText(this: HTMLElement, text: string) {
+	this.textContent = text;
 };
 proto.setAttr = function setAttr(this: HTMLElement, name: string, value: string) {
 	this.setAttribute(name, value);
@@ -1094,6 +1098,86 @@ describe('smoke layout', () => {
 				root.remove();
 			}
 		}
+	});
+
+	it('recolors the note from a fresh Last Attempted while Last Spoke is still old', () => {
+		const root = window.document.createElement('div');
+		root.className = 'rv-dashboard';
+		const stale = {
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			Priority: 1,
+			'Last Spoke': '2019-01-01',
+			'Last Attempted': '2019-01-01',
+		};
+		applyLiveUrgency(root, 'RVs/Ada.md', chromeHost(stale, { count: 0 }));
+		const before = root.style.getPropertyValue('--rv-urgency-accent').toLowerCase();
+		const now = new Date();
+		const freshStamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T08:00:00`;
+		const fresh = { ...stale, 'Last Attempted': freshStamp };
+		applyLiveUrgency(root, 'RVs/Ada.md', chromeHost(fresh, { count: 0 }));
+		const after = root.style.getPropertyValue('--rv-urgency-accent').toLowerCase();
+		assert.equal(before, '#d63c3c');
+		assert.equal(after, '#1f8a4c');
+	});
+
+	it('focuses the first visit note and puts the caret back if it falls on the body', () => {
+		const root = window.document.createElement('div');
+		root.className = 'markdown-preview-view rv-dashboard';
+		root.innerHTML = '<h5>Mon, 10:40am — Oct 6, 2025</h5><textarea class="rv-visit-note"></textarea>';
+		window.document.body.appendChild(root);
+		const area = placeVisitNoteFocus(root, 'Mon, 10:40am — Oct 6, 2025', 0);
+		assert.ok(area instanceof window.HTMLTextAreaElement);
+		assert.equal(window.document.activeElement, area);
+		area.blur();
+		assert.notEqual(window.document.activeElement, area);
+		restoreHeldNote();
+		assert.equal(window.document.activeElement, area);
+		root.remove();
+	});
+
+	it('opens the Taken popover on mouse hover', () => {
+		const root = window.document.createElement('div');
+		root.innerHTML = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Quick Facts</div></div><div class="callout-content"></div></div>';
+		const data = {
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			Priority: 1,
+			Taken: ['Ada Publisher', 'Bea Publisher'],
+		};
+		decorateNoteChrome(root, 'RVs/Ada.md', chromeHost(data, { count: 0 }));
+		const taken = root.querySelector('.rv-qf-companion .rv-qf-value');
+		assert.ok(taken instanceof window.HTMLElement);
+		taken.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+		const pop = window.document.querySelector('.rv-title-popover');
+		assert.ok(pop);
+		assert.match(pop?.textContent ?? '', /Ada Publisher/);
+		assert.match(pop?.textContent ?? '', /Bea Publisher/);
+		pop?.remove();
+	});
+
+	it('turns strip overflow into a +n chip and keeps the campaign chip', () => {
+		const root = visitRoot(LONG, 'Talked.', 'Log');
+		decorateVisitControls(root, () => null, () => {});
+		const strip = root.querySelector('.rv-item-strip');
+		assert.ok(strip instanceof window.HTMLElement);
+		const chips = () => Array.from(strip.querySelectorAll(':scope > .rv-item:not(.rv-item-more)'));
+		assert.equal(chips().length, 4);
+		Object.defineProperty(strip, 'clientWidth', { configurable: true, get: () => 90 });
+		Object.defineProperty(strip, 'scrollWidth', {
+			configurable: true,
+			get: () => chips().filter((chip) => !chip.hasAttribute('hidden')).length * 80,
+		});
+		refitItemStrip(strip);
+		const more = strip.querySelector('.rv-item-more');
+		assert.ok(more);
+		assert.match(more?.textContent ?? '', /^\+\d+$/);
+		assert.ok(strip.querySelector(':scope > .rv-item.is-campaign:not([hidden])'));
+		more?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		const pop = window.document.querySelector('.rv-title-popover');
+		assert.ok(pop);
+		assert.match(pop?.textContent ?? '', /Enjoy Life Forever|Why Study the Bible|How Can the Bible/);
+		pop?.remove();
 	});
 
 });

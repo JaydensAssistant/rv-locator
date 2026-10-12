@@ -2,9 +2,9 @@ import { addIcon, displayTooltip, getIcon, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter } from './dates';
-import { mountFittedTitle, watchTitleRow } from './title-fit';
+import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
+import { mountHeadingChevron, visitNoteBusy } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
-import { mountHeadingChevron } from './visit-display';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
 export interface VisitTarget {
@@ -123,8 +123,8 @@ export function decorateVisitControls(
 	open: VisitMenuOpener,
 	coveredFor?: CoveredLookup,
 ): void {
-	const active = root.ownerDocument?.activeElement;
-	if (active instanceof HTMLElement && active.tagName === 'TEXTAREA' && root.contains(active)) return;
+	const surface = coveredSearchRoot(root);
+	if (visitNoteBusy(surface) || visitNoteBusy(root)) return;
 	tagVisitNotesHeading(root);
 	const ownLine = sectionLine();
 	const localStamps = stampHeadings(root);
@@ -370,9 +370,8 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	const campaign = items.filter((item) => item.campaign);
 	const rest = items.filter((item) => !item.campaign);
 	for (const item of [...campaign, ...rest]) paintStripChip(strip, item);
-	collapseStripOverflow(strip);
 	ensureNoteBox(heading, strip);
-	watchTitleRow(strip);
+	watchTitleRow(strip, () => refitItemStrip(strip));
 }
 
 function paintStripChip(strip: HTMLElement, item: { icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }): void {
@@ -388,40 +387,59 @@ function paintStripChip(strip: HTMLElement, item: { icon: string; title: string;
 	mountFittedTitle(chip, item.title, item.kind);
 }
 
+/** Restore full chip titles, then fold the ones that do not fit into a +n chip. Campaign stays. */
+export function refitItemStrip(strip: HTMLElement): void {
+	for (const stem of Array.from(strip.querySelectorAll('.rv-fit-stem'))) {
+		const host = stem.closest('.rv-fit');
+		const full = host instanceof HTMLElement ? host.getAttribute('data-stem') ?? '' : '';
+		if (full) stem.textContent = full;
+	}
+	collapseStripOverflow(strip);
+}
+
+function stripChipTitle(chip: HTMLElement): string {
+	const fitted = chip.querySelector('.rv-fit');
+	const full = fitted instanceof HTMLElement ? fitted.getAttribute('data-full') : '';
+	return (full || chip.textContent || '').replace(/\s+/g, ' ').trim();
+}
+
 /** One row. Campaign stays. Extra chips become a +n button once the row is wider than its box. */
 function collapseStripOverflow(strip: HTMLElement): void {
+	const parked = strip.querySelector(':scope > .rv-item-overflow');
+	if (parked) parked.remove();
+	strip.querySelector(':scope > .rv-item-more')?.remove();
+	const chips = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.is-campaign):not(.rv-item-more)'))
+		.filter((node): node is HTMLElement => node instanceof HTMLElement);
+	for (const chip of chips) chip.hidden = false;
 	if (strip.clientWidth <= 0) return;
 	const hidden: HTMLElement[] = [];
 	const fits = (): boolean => strip.scrollWidth <= strip.clientWidth + 1;
 	while (!fits()) {
-		const chips = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.is-campaign):not(.rv-item-more)'));
-		const last = chips[chips.length - 1];
-		if (!(last instanceof HTMLElement)) break;
+		const visible = chips.filter((chip) => !chip.hidden);
+		const last = visible[visible.length - 1];
+		if (!last) break;
+		last.hidden = true;
 		hidden.unshift(last);
-		last.remove();
 	}
-	strip.querySelector(':scope > .rv-item-more')?.remove();
 	if (hidden.length === 0) return;
 	const more = strip.ownerDocument.createElement('button');
 	more.type = 'button';
 	more.className = 'rv-item rv-item-more';
 	more.textContent = `+${hidden.length}`;
-	more.addEventListener('click', (event) => {
+	const show = (event: Event): void => {
 		event.preventDefault();
 		event.stopPropagation();
-		const open = strip.querySelector(':scope > .rv-item-overflow');
-		if (open) {
-			open.remove();
-			return;
-		}
-		const list = strip.ownerDocument.createElement('div');
-		list.className = 'rv-item-overflow';
-		for (const chip of hidden) list.appendChild(chip);
-		strip.appendChild(list);
-	});
+		showTitlePopover(more, hidden.map(stripChipTitle).filter(Boolean).join('\n'));
+	};
+	more.addEventListener('click', show);
 	strip.appendChild(more);
-	if (!fits() && hidden.length > 0) {
-		/* The +n chip itself overflowed. Leave it; the campaign chip stays. */
+	while (!fits()) {
+		const visible = chips.filter((chip) => !chip.hidden);
+		const last = visible[visible.length - 1];
+		if (!last) break;
+		last.hidden = true;
+		hidden.unshift(last);
+		more.textContent = `+${hidden.length}`;
 	}
 }
 
@@ -555,6 +573,7 @@ function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): voi
  */
 export function rehoistVisitNotes(root: HTMLElement): void {
 	const surface = coveredSearchRoot(root);
+	if (visitNoteBusy(surface)) return;
 	for (const heading of stampHeadings(surface)) {
 		const strip = findItemStrip(heading);
 		if (strip) ensureNoteBox(heading, strip);

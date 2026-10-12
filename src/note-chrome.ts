@@ -397,6 +397,7 @@ function paintClampList(host: HTMLElement, items: readonly string[]): void {
 		showTitlePopover(host, full);
 	};
 	host.addEventListener('click', reveal);
+	host.addEventListener('mouseenter', () => showTitlePopover(host, full));
 	host.addEventListener('pointerdown', (event) => {
 		if (!(event instanceof PointerEvent) || event.pointerType === 'mouse') return;
 		const timer = window.setTimeout(() => reveal(event), LONG_PRESS_MS);
@@ -615,13 +616,13 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 }
 
 function ensureAddressInput(paragraph: HTMLElement): HTMLInputElement {
-	const found = paragraph.querySelector(':scope > input.rv-address-input');
+	const found = paragraph.querySelector(':scope > input.rv-address-input, :scope > .rv-address-line input.rv-address-input');
 	if (found instanceof HTMLInputElement) return found;
 	const created = paragraph.ownerDocument.createElement('input');
 	created.className = 'rv-address-input';
 	created.type = 'text';
 	created.setAttribute('aria-label', 'Address');
-	const map = paragraph.querySelector(':scope > a.rv-map-button');
+	const map = paragraph.querySelector(':scope > a.rv-map-button, :scope > .rv-address-line > a.rv-map-button');
 	if (map) paragraph.insertBefore(created, map);
 	else paragraph.appendChild(created);
 	return created;
@@ -652,7 +653,7 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 			child.classList.remove('rv-address-hidden');
 			continue;
 		}
-		if (child.classList.contains('rv-map-button')) {
+		if (child.classList.contains('rv-map-button') || child.classList.contains('rv-address-line')) {
 			child.classList.remove('rv-address-hidden');
 			continue;
 		}
@@ -675,10 +676,35 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	input.classList.add('rv-address-input');
 	showAddressLink(paragraph, input, path, host);
 	ensureEarthButton(paragraph, path, host);
+	assembleAddressLine(paragraph);
+}
+
+function assembleAddressLine(paragraph: HTMLElement): void {
+	const address = labeledStrong(paragraph, 'address');
+	if (!address) return;
+	const doc = paragraph.ownerDocument;
+	let line = paragraph.querySelector(':scope > .rv-address-line');
+	if (!(line instanceof HTMLElement)) {
+		line = doc.createElement('span');
+		line.className = 'rv-address-line';
+		paragraph.appendChild(line);
+	}
+	let field = line.querySelector(':scope > .rv-address-field');
+	if (!(field instanceof HTMLElement)) {
+		field = doc.createElement('span');
+		field.className = 'rv-address-field';
+	}
+	const input = paragraph.querySelector('input.rv-address-input');
+	const link = paragraph.querySelector('a.rv-address-link');
+	const earth = paragraph.querySelector('a.rv-map-button');
+	line.append(address, field);
+	if (input) field.append(input);
+	if (link instanceof HTMLElement) field.append(link);
+	if (earth instanceof HTMLElement) line.append(earth);
 }
 
 function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
-	let earth = paragraph.querySelector(':scope > a.rv-map-button');
+	let earth = paragraph.querySelector(':scope > a.rv-map-button, :scope > .rv-address-line > a.rv-map-button');
 	if (!(earth instanceof HTMLElement)) {
 		const link = paragraph.ownerDocument.createElement('a');
 		link.className = 'rv-map-button';
@@ -728,7 +754,7 @@ function paintLabelIcon(label: HTMLElement, icon: string, text: string): void {
 }
 
 function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: string, host: NoteChromeHost): void {
-	const found = paragraph.querySelector(':scope > a.rv-address-link');
+	const found = paragraph.querySelector(':scope > a.rv-address-link, :scope > .rv-address-line a.rv-address-link');
 	const link = found instanceof HTMLElement ? found : paragraph.ownerDocument.createElement('a');
 	if (!(found instanceof HTMLElement)) {
 		link.className = 'rv-address-link';
@@ -887,10 +913,16 @@ function decorateSlotOverride(root: HTMLElement, path: string, data: Record<stri
 	}
 }
 
+function propertyDays(value: unknown): number | null {
+	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	return raw ? calendarDaysSince(raw, new Date()) : null;
+}
+
 function noteUrgency(path: string, data: Record<string, unknown>, priority: number | null, host: NoteChromeHost): number | null {
-	const spoke = readProperty(data, 'Last Spoke');
-	const raw = spoke instanceof Date ? spoke.toISOString() : typeof spoke === 'string' ? spoke : '';
-	const days = raw ? calendarDaysSince(raw, new Date()) : null;
+	const spoke = propertyDays(readProperty(data, 'Last Spoke'));
+	const attempted = propertyDays(readProperty(data, 'Last Attempted'));
+	const known = [spoke, attempted].filter((day): day is number => day != null);
+	const days = known.length === 0 ? null : Math.min(...known);
 	return displayedUrgency(days, priority, host.settings, host.snoozeUntil(path), new Date());
 }
 

@@ -29,7 +29,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { concealCollapsedVisitNotes, layoutVisitNotes } from './visit-display';
+import { concealCollapsedVisitNotes, holdVisitNote, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy } from './visit-display';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
@@ -147,6 +147,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private homeBiasPoint: GeocodeBias | null = null;
 	/** Hub lists written before the metadata cache catches up, so the chip row updates immediately. */
 	private hubOverride = new Map<string, unknown>();
+	/** Dates written by a visit, used until the metadata cache catches up. */
+	private visitPaint = new Map<string, { attempted: unknown; spoke: unknown }>();
 	/** Address typed into the custom box before the cache catches up. */
 	private addressOverride = new Map<string, string>();
 	/** Value already handed to an in-flight address write. Blocks blur+change doubles. */
@@ -309,8 +311,21 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerDomEvent(document, 'input', (evt) => {
 			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
 		});
+		this.registerDomEvent(document, 'pointerdown', (evt) => {
+			const area = evt.target instanceof Element ? evt.target.closest('textarea') : null;
+			if (area instanceof HTMLTextAreaElement && area.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(area, 900);
+		}, { capture: true });
 		this.registerDomEvent(document, 'focusin', (evt) => {
 			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
+			if (evt.target instanceof HTMLTextAreaElement && evt.target.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(evt.target, 900);
+		});
+		this.registerDomEvent(document, 'focusout', (evt) => {
+			if (!(evt.target instanceof HTMLTextAreaElement)) return;
+			if (!evt.target.closest('.rv-dashboard, .rv-visit-note-box')) return;
+			releaseVisitNote(evt.relatedTarget);
+			if (evt.relatedTarget instanceof Element && evt.relatedTarget !== evt.target) return;
+			holdVisitNote(evt.target, 900);
+			for (const delay of [0, 120, 250]) window.setTimeout(() => restoreHeldNote(), delay);
 		});
 		this.registerDomEvent(window, 'resize', () => this.scheduleNotesFit());
 		ensureIconAlias('rotate-ccw-clock', 'history');
@@ -554,15 +569,18 @@ export default class RVLocatorPlugin extends Plugin {
 			const newestIndex = line >= 0 ? headingNewestIndex(body, when, line) : domIndex;
 			return coveredCampaignFor(body, when, newestIndex);
 		};
-		decorateVisitControls(
-			surface,
-			() => null,
-			(target, evt) => this.openVisitMenu(path, target, evt),
-			coveredFor,
-		);
-		rehoistVisitNotes(surface);
+		const notesBusy = visitNoteBusy(surface);
+		if (!notesBusy) {
+			decorateVisitControls(
+				surface,
+				() => null,
+				(target, evt) => this.openVisitMenu(path, target, evt),
+				coveredFor,
+			);
+			rehoistVisitNotes(surface);
+		}
 		applyLiveUrgency(surface, path, this.noteChromeHost(), true);
-		if (chrome) this.decorateOpenNote(surface, path);
+		if (chrome && !notesBusy) this.decorateOpenNote(surface, path);
 		this.bindVisitSurface(surface, path);
 	}
 
@@ -1455,6 +1473,13 @@ export default class RVLocatorPlugin extends Plugin {
 		};
 	}
 
+	private pinVisitPaint(path: string, data: Record<string, unknown>): void {
+		this.visitPaint.set(path, {
+			attempted: readProperty(data, 'Last Attempted'),
+			spoke: readProperty(data, 'Last Spoke'),
+		});
+	}
+
 	private noteFrontmatter(path: string): Record<string, unknown> | null {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return null;
@@ -1475,6 +1500,20 @@ export default class RVLocatorPlugin extends Plugin {
 			const cachedText = typeof cached === 'string' ? cached : '';
 			if (cachedText === address) this.addressOverride.delete(path);
 			else if (data) data[property] = address;
+		}
+		const paint = this.visitPaint.get(path);
+		if (paint) {
+			const cachedAttempt = readProperty(data, 'Last Attempted');
+			const cachedSpoke = readProperty(data, 'Last Spoke');
+			const same = String(cachedAttempt ?? '') === String(paint.attempted ?? '')
+				&& String(cachedSpoke ?? '') === String(paint.spoke ?? '');
+			if (same) this.visitPaint.delete(path);
+			else if (data) {
+				assignProperty(data, 'Last Attempted', paint.attempted);
+				assignProperty(data, 'Last Spoke', paint.spoke);
+			} else {
+				return { 'Last Attempted': paint.attempted, 'Last Spoke': paint.spoke };
+			}
 		}
 		return data;
 	}
@@ -1732,16 +1771,23 @@ export default class RVLocatorPlugin extends Plugin {
 		if (path && this.hubMapOpen) this.focusMapPin(path, true);
 	}
 
-	/** Keep the in-view map on screen when a note asks for it. */
+	/**
+	 * Open the registered map beside the note. The glancable id is a Bases view,
+	 * not a workspace leaf, so it cannot be shown with setViewState. A new leaf
+	 * keeps the map up when another note opens in the note's leaf.
+	 */
 	private async revealGlancable(): Promise<void> {
-		const leaves = this.app.workspace.getLeavesOfType(GLANCABLE_VIEW_TYPE);
-		const open = leaves[0];
+		const workspace = this.app.workspace;
+		const maps = workspace.getLeavesOfType(MAP_VIEW_TYPE);
+		const open = maps[0];
 		if (open) {
-			this.app.workspace.revealLeaf(open);
+			workspace.revealLeaf(open);
 			return;
 		}
-		const leaf = this.app.workspace.getLeaf(true);
-		await leaf.setViewState({ type: GLANCABLE_VIEW_TYPE, active: true });
+		const previous = workspace.activeLeaf ?? null;
+		const leaf = workspace.getLeaf(true);
+		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: false });
+		if (previous && previous !== leaf) workspace.setActiveLeaf(previous, { focus: false });
 	}
 
 	hubMapIsFullscreen(): boolean {
@@ -2715,6 +2761,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const data = frontmatter as Record<string, unknown>;
 			applyVisitFrontmatter(data, outcome, now, companion, share);
 			syncMet(data, visitsAfter, now);
+			this.pinVisitPaint(file.path, data);
 		});
 		await this.rememberShare(share);
 		await this.restabilizeCompanions(file);
@@ -2774,7 +2821,9 @@ export default class RVLocatorPlugin extends Plugin {
 			return data.slice(0, info.contentStart) + insertVisit(body, visit, { now: new Date(), notesProperty });
 		});
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, { added: visit, remaining });
+			const data = frontmatter as Record<string, unknown>;
+			applyVisitChangeFrontmatter(data, { added: visit, remaining });
+			this.pinVisitPaint(file.path, data);
 		});
 		await this.restabilizeCompanions(file);
 		await this.rememberShare({
@@ -2938,7 +2987,9 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			applyVisitChangeFrontmatter(frontmatter as Record<string, unknown>, applied);
+			const data = frontmatter as Record<string, unknown>;
+			applyVisitChangeFrontmatter(data, applied);
+			this.pinVisitPaint(file.path, data);
 		});
 		await this.restabilizeCompanions(file);
 		await this.syncEditedCoverage(file.path, applied);
@@ -3075,21 +3126,18 @@ export default class RVLocatorPlugin extends Plugin {
 		for (let attempt = 0; attempt < FOCUS_ATTEMPTS && steady < 3; attempt += 1) {
 			if (this.unloaded) return;
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
-			const area = notesBoxAfterStamp(view.containerEl, stamp, ordinal);
+			const area = placeVisitNoteFocus(view.containerEl, stamp, ordinal);
 			if (!area) continue;
-			if (area.ownerDocument.activeElement === area) {
-				steady += 1;
-			} else {
-				steady = 0;
-				area.focus({ preventScroll: true });
-				const end = area.value.length;
-				area.setSelectionRange(end, end);
-			}
+			holdVisitNote(area, 1600);
+			if (area.ownerDocument.activeElement === area) steady += 1;
+			else steady = 0;
+			restoreHeldNote();
 			if (placed === area) continue;
 			fitNotesBox(area);
 			area.scrollIntoView({ block: 'center' });
 			placed = area;
 		}
+		for (const delay of [0, 120, 250]) window.setTimeout(() => restoreHeldNote(), delay);
 	}
 
 	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): void {
@@ -3628,21 +3676,6 @@ function highestNotesProperty(body: string): string | null {
 		if (Number.isInteger(index) && index > highest) highest = index;
 	}
 	return highest > 0 ? `sVisit${highest}Notes` : null;
-}
-
-/** The first textarea rendered after the `ordinal`th heading showing `stamp`. */
-function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
-	const headings = Array.from(root.querySelectorAll('h3, h5, .cm-line.HyperMD-header'))
-		.filter((node) => (node.textContent ?? '').replace(/\s+/g, ' ').includes(stamp));
-	const heading = headings[ordinal] ?? headings[headings.length - 1];
-	if (!heading) return null;
-	const areas = Array.from(root.querySelectorAll('textarea'));
-	for (const area of areas) {
-		if (heading.compareDocumentPosition(area) & Node.DOCUMENT_POSITION_FOLLOWING) {
-			return area;
-		}
-	}
-	return null;
 }
 
 function finiteVisitCount(value: unknown): number | null {

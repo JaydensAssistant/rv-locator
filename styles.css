@@ -4746,7 +4746,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner {
-	font-size: 1.15em;
+	font-size: 20.4px;
 	font-weight: var(--font-semibold, 600);
 }
 
@@ -5500,7 +5500,7 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-stamp-count {
 .rv-visit-notes-heading,
 .rv-older-heading,
 h3.rv-older-visits {
-	margin-bottom: 6px;
+	margin-bottom: 22px;
 }
 
 body.rv-center-visit-notes .rv-visit-notes-heading,
@@ -5817,4 +5817,116 @@ body.rv-center-visit-notes .rv-older-heading {
 	background: transparent;
 	border: 0;
 	box-shadow: none;
+}
+
+/*
+  Smoke cascade. These selectors are at least as specific as the earlier
+  rules they replace, and they come last, so the used value is the one below.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner .rv-dash-name {
+	font-size: 20.4px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line {
+	display: grid;
+	grid-column: 1 / -1;
+	grid-template-columns: max-content minmax(0, 1fr) 40px;
+	column-gap: 12px;
+	row-gap: 0;
+	align-items: center;
+	width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line > strong {
+	width: max-content;
+	max-width: none;
+	margin: 0;
+	padding: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line > .rv-address-field {
+	grid-column: 2;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	justify-self: stretch;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line input.rv-address-input,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line .rv-hub-chip {
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	box-sizing: border-box;
+	color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line,
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line {
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	background: var(--background-primary);
+	overflow: hidden;
+}
+
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line input.rv-address-input,
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line a.rv-address-link,
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line .rv-hub-row,
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line .rv-hub-chip {
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line > a.rv-map-button {
+	border: 0;
+	border-left: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+}
+
+:is(.rv-locator-view.rv-locator-glancable, .rv-map-card.rv-locator-glancable, .rv-dashboard .rv-qf-badges, .rv-dashboard .rv-locator-attempt-log) .rv-locator-urgency,
+:is(.rv-locator-view.rv-locator-glancable, .rv-map-card.rv-locator-glancable, .rv-dashboard .rv-qf-badges, .rv-dashboard .rv-locator-attempt-log) .rv-locator-urgency[data-band="0"] {
+	border: 2px solid var(--rv-urgency-accent, var(--text-faint));
+	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 22%, transparent);
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-locator-campaign-mark,
+.rv-locator-glancable .rv-locator-card-name .rv-locator-campaign-mark svg {
+	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	color: #fff;
+}
+
+.rv-dashboard h3.rv-visit-notes-heading,
+.rv-dashboard h3.rv-older-heading,
+.rv-dashboard h3.rv-older-visits,
+.markdown-preview-view h3.rv-visit-notes-heading,
+.markdown-preview-view h3.rv-older-visits {
+	margin-bottom: 22px;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item,
+.rv-item-strip:not(.is-ghost) .rv-fit,
+.rv-item-strip:not(.is-ghost) .rv-fit-stem {
+	flex: 0 0 auto;
+	flex-shrink: 0;
+	min-width: max-content;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+}
+
+.rv-title-popover {
+	white-space: pre-line;
 }

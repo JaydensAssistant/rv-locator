@@ -172,15 +172,19 @@ function applyStripSplit(row: HTMLElement, splitAt: number): void {
 	else row.appendChild(breaker);
 }
 
-export function watchTitleRow(row: HTMLElement): void {
-	fitTitleRow(row);
+export function watchTitleRow(row: HTMLElement, refit?: () => void): void {
+	const run = (): void => {
+		if (refit) refit();
+		else fitTitleRow(row);
+	};
+	run();
 	if (row.clientWidth <= 0 && typeof requestAnimationFrame === 'function') {
-		requestAnimationFrame(() => fitTitleRow(row));
+		requestAnimationFrame(run);
 	}
 	if (row.dataset.rvFit === '1' || typeof ResizeObserver === 'undefined') return;
 	row.dataset.rvFit = '1';
 	try {
-		const observer = new ResizeObserver(() => fitTitleRow(row));
+		const observer = new ResizeObserver(() => run());
 		observer.observe(row);
 	} catch {
 		/* Not a browser node. */
@@ -347,6 +351,7 @@ export function showTitlePopover(anchor: HTMLElement, text: string): void {
 	doc.querySelectorAll('.rv-title-popover').forEach((node) => node.remove());
 	const pop = doc.createElement('div');
 	pop.className = 'rv-title-popover';
+	pop.style.whiteSpace = 'pre-line';
 	pop.textContent = text;
 	doc.body.appendChild(pop);
 	const box = anchor.getBoundingClientRect();
