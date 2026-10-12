@@ -1,7 +1,7 @@
 import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { equalizeSortPills } from './sort-pills';
-import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope } from './status';
+import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
 import { Notice } from 'obsidian';
@@ -237,7 +237,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const open = (evt: MouseEvent) => {
 			if (evt.button !== 0 && evt.button !== 1) return;
 			evt.preventDefault();
-			const newLeaf = Keymap.isModEvent(evt) || evt.button === 1;
+			const newLeaf = Keymap.isModEvent(evt) || evt.button === 1 || this.plugin.hubMapOpen;
 			void this.app.workspace.openLinkText(path, '', newLeaf);
 		};
 		link.addEventListener('click', open);
@@ -553,7 +553,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const scope = this.plugin.settings.returnScope;
 		const gender = this.plugin.settings.genderFilter;
 		const campaignFilter = this.plugin.settings.campaignListFilter;
-		const narrowed = filtersDifferFromDefault(scope, gender, campaignFilter);
+		const snooze = this.plugin.settings.snoozeListFilter;
+		const narrowed = filtersDifferFromDefault(scope, gender, campaignFilter, snooze);
 		const button = host.createEl('button', {
 			cls: `rv-locator-toolbar-quiet rv-locator-filter${narrowed ? ' is-filtering' : ''}`,
 			attr: { type: 'button', 'aria-label': 'Filters', title: 'Filters' },
@@ -574,6 +575,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				.setTitle(GENDER_FILTER_LABEL[gender])
 				.setIcon(gender === 'women' ? 'venus' : gender === 'men' ? 'mars' : 'venus-and-mars')
 				.onClick(() => { void this.plugin.setGenderFilter(nextGenderFilter(gender)); }));
+			menu.addItem((item) => item
+				.setTitle(SNOOZE_FILTER_LABEL[snooze])
+				.setIcon('moon')
+				.onClick(() => { void this.plugin.setSnoozeListFilter(nextSnoozeListFilter(snooze)); }));
 			menu.showAtMouseEvent(event);
 		});
 	}

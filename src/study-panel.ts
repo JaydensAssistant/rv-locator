@@ -74,11 +74,14 @@ export function mountStudyPanel(
 		if (skipped) return;
 		const modes = host.createDiv('rv-study-modes');
 		for (const item of [
-			['partway', 'Partway'],
-			['finished', 'Finished'],
-			['next', 'Next lesson'],
+			['partway', 'Partway', 'gauge'],
+			['finished', 'Finished', 'check'],
+			['next', 'Next lesson', 'skip-forward'],
 		] as const) {
-			const button = modes.createEl('button', { text: item[1], attr: { type: 'button' } });
+			const button = modes.createEl('button', { attr: { type: 'button', 'aria-label': item[1] } });
+			const icon = button.createSpan('rv-study-mode-icon');
+			setIcon(icon, item[2]);
+			button.createSpan({ cls: 'rv-study-mode-text', text: item[1] });
 			button.classList.toggle('is-selected', mode === item[0]);
 			button.addEventListener('click', (event) => {
 				event?.preventDefault?.();
@@ -194,9 +197,10 @@ function openChange(
 	share: VisitShare,
 	onDone: () => void,
 ): void {
-	const existing = host.querySelector('.rv-study-change-panel');
-	existing?.remove();
-	const panel = host.createDiv('rv-study-change-panel');
+	host.ownerDocument.querySelectorAll('.rv-study-change-modal').forEach((node) => node.remove());
+	const panel = host.ownerDocument.createElement('div');
+	panel.className = 'rv-study-change-modal';
+	host.ownerDocument.body.appendChild(panel);
 	panel.createEl('p', { cls: 'rv-study-change-title', text: 'Change study' });
 	const input = panel.createEl('input', { attr: { type: 'search', placeholder: 'Search lessons' } });
 	const list = panel.createDiv('rv-study-change-list');
@@ -214,7 +218,8 @@ function openChange(
 				share.lesson = picked;
 				share.lessonFrom = bounds.from;
 				startIndex = 0;
-				paintList(query);
+				(input as HTMLInputElement).value = '';
+				paintList('');
 			});
 		}
 	};
@@ -235,6 +240,12 @@ function openChange(
 	const cancel = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 	const done = actions.createEl('button', { text: 'Done', attr: { type: 'button' } });
 	done.classList.add('mod-cta');
+	const startLabel = panel.querySelector('p:last-of-type');
+	const paintStart = (): void => {
+		const live = lessonPartOptions(lessonByTitle(picked, names));
+		if (startLabel) startLabel.textContent = `Start at point ${live[startIndex] ?? live[0] ?? ''}`;
+	};
+	paintStart();
 	cancel.addEventListener('click', (event) => {
 		event?.preventDefault?.();
 		panel.remove();

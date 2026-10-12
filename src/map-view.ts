@@ -24,6 +24,7 @@ export interface MapHost {
 	notifyPin?(path: string): void;
 	notifyMapCleared?(): void;
 	hideSplitMap?(): void;
+	promptUrgencyMenu?(path: string, name: string, event: MouseEvent): void;
 	tileCacheEpoch?: number;
 	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
 }
@@ -1008,9 +1009,9 @@ export class RvMapView extends ItemView {
 		const ratio = pin.card.study ? pin.card.studyRatio : pin.card.visits;
 		if (ratio) this.cardSlot(foot, pin.card.study ? 'percent' : 'list-checks', ratio, false);
 		const actions = card.createSpan('rv-locator-card-actions');
-		const urgency = actions.createSpan({
+		const urgency = actions.createEl('button', {
 			cls: 'rv-locator-urgency',
-			attr: { 'data-band': String(marks.band), 'aria-label': 'Urgency' },
+			attr: { type: 'button', 'data-band': String(marks.band), 'aria-label': 'Urgency' },
 		});
 		mountUrgencyGlyph(urgency, marks.glyphs);
 		if (pin.stateIcon) {
@@ -1018,6 +1019,11 @@ export class RvMapView extends ItemView {
 			urgency.empty();
 			setIcon(urgency, pin.stateIcon);
 		}
+		urgency.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			this.host.promptUrgencyMenu?.(pin.path, pin.name, event);
+		});
 		actions.createSpan({
 			cls: 'rv-locator-priority-pill',
 			text: String(pin.priority),

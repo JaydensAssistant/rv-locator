@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, buildAutocompleteUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
@@ -12,7 +12,7 @@ import {
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
-import { decideGeocodePick, preferHomeRegion } from './home-base';
+import { countyFilterParam, decideGeocodePick, hitInHomeCounties, mergeHomeFirst, preferHomeRegion } from './home-base';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
@@ -39,7 +39,7 @@ import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './
 import { shadeHeats } from './map-shade';
 import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
-import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
+import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
@@ -54,11 +54,11 @@ import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './sc
 import { fillToastText, watchBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
-import { URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, type SnoozeChoice } from './snooze';
+import { SNOOZE_LABEL_PROPERTY, SNOOZE_START_PROPERTY, URGENCY_SNOOZE_PROPERTY, formatSnoozeStart, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, snoozeDaysLeft, type SnoozeChoice, type SnoozeWrite } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { latLonFromUnknown, validLatLon } from './distance';
-import { idealityScore } from './scoring';
+import { idealityScore, insidePriorityFloor } from './scoring';
 import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -748,18 +748,17 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Show an RV note in Reading view. Only the first open of a file in a leaf
-	 * is switched, so choosing editing afterwards is kept until the next open.
-	 * `force` is for a new note whose template finished after it was opened.
+	 * Show an RV note in Reading view. Reopening the note restores Reading view
+	 * even after a switch to editing. `force` is for a new note whose template
+	 * finished after it was opened.
 	 */
 	private openInReadingView(file: TFile, force: boolean): void {
+		void force;
 		if (this.unloaded) return;
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) continue;
-			const previous = this.readingViewFor.get(leaf);
 			this.readingViewFor.set(leaf, file.path);
-			if (!force && previous === file.path) continue;
 			if (!this.settings.openRvInReadingView || this.isTemplateNote(file)) continue;
 			if (!isRvDashboardNote(this.app.metadataCache.getFileCache(file)?.frontmatter)) continue;
 			if (view.getMode() === 'preview') continue;
@@ -1189,10 +1188,11 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Hub filters return to their defaults each time the hub view is created. */
 	resetHubFilters(): void {
-		if (this.settings.returnScope === 'active' && this.settings.genderFilter === 'all' && this.settings.campaignListFilter === 'all') return;
+		if (this.settings.returnScope === 'active' && this.settings.genderFilter === 'all' && this.settings.campaignListFilter === 'all' && this.settings.snoozeListFilter === 'all') return;
 		this.settings.returnScope = 'active';
 		this.settings.genderFilter = 'all';
 		this.settings.campaignListFilter = 'all';
+		this.settings.snoozeListFilter = 'all';
 		void this.saveSettings();
 	}
 
@@ -1446,8 +1446,9 @@ export default class RVLocatorPlugin extends Plugin {
 			campaignMark: (path) => this.campaignMark(path),
 			noteTitle: (path) => {
 				const file = this.app.vault.getFileByPath(path);
-				return cardPersonTitle(file?.basename ?? path, false);
+				return cardPersonTitle(file?.basename ?? path, true);
 			},
+			openReturn: (path, name) => { void this.suggestReturnFor(path, name); },
 			renameNote: (path) => { this.promptRename(path); },
 			mapOpen: () => this.hubMapOpen,
 			ghostIcon: (path) => this.ghostIconForCard(path),
@@ -1621,11 +1622,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	promptUrgencySnooze(path: string, displayName: string): void {
-		const until = this.snoozeUntilFor(path);
-		const modal = new UrgencySnoozeModal(this.app, displayName, snoozeActive(until, new Date()), (choice) => {
-			void this.applySnooze(path, choice);
-		});
-		modal.open();
+		this.openSnoozeModal(path, displayName);
 	}
 
 	/**
@@ -1691,6 +1688,11 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.saveSettings();
 	}
 
+	async setSnoozeListFilter(filter: SnoozeListFilter): Promise<void> {
+		this.settings.snoozeListFilter = sanitizeSnoozeListFilter(filter);
+		await this.saveSettings();
+	}
+
 	mapFocusPath: string | null = null;
 	mapSelectedPath: string | null = null;
 	/** In-view map. Fullscreen stays on the map that was toggled. */
@@ -1720,6 +1722,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (path) {
 			this.mapFocusPath = path;
 			this.hubMapOpen = true;
+			void this.revealGlancable();
 		} else {
 			this.hubMapOpen = !this.hubMapOpen;
 		}
@@ -1727,6 +1730,18 @@ export default class RVLocatorPlugin extends Plugin {
 		this.applyLayoutClasses();
 		for (const callback of this.viewRefreshers) callback();
 		if (path && this.hubMapOpen) this.focusMapPin(path, true);
+	}
+
+	/** Keep the in-view map on screen when a note asks for it. */
+	private async revealGlancable(): Promise<void> {
+		const leaves = this.app.workspace.getLeavesOfType(GLANCABLE_VIEW_TYPE);
+		const open = leaves[0];
+		if (open) {
+			this.app.workspace.revealLeaf(open);
+			return;
+		}
+		const leaf = this.app.workspace.getLeaf(true);
+		await leaf.setViewState({ type: GLANCABLE_VIEW_TYPE, active: true });
 	}
 
 	hubMapIsFullscreen(): boolean {
@@ -1828,8 +1843,18 @@ export default class RVLocatorPlugin extends Plugin {
 
 	async suggestAddressHome(query: string): Promise<SuggestFetchResult> {
 		const bias = await this.suggestBias();
-		const hits = await this.autocompleteAddress(query, bias, Boolean(bias));
-		return { hits, allowBroad: Boolean(bias) };
+		const counties = this.settings.homeCounties.map((line) => line.trim()).filter((line) => line.length > 0);
+		if (counties.length === 0) {
+			const hits = await this.autocompleteAddress(query, bias, Boolean(bias));
+			return { hits, allowBroad: Boolean(bias) };
+		}
+		const county = countyFilterParam(counties);
+		const [sorted, bounded] = await Promise.all([
+			this.autocompleteAddress(query, bias, false, null, true),
+			this.autocompleteAddress(query, bias, false, county, false),
+		]);
+		const homeBounded = bounded.filter((hit) => hitInHomeCounties(hit, counties));
+		return { hits: mergeHomeFirst(homeBounded, sorted), allowBroad: false };
 	}
 
 	async suggestAddressBroad(query: string): Promise<GeocodeHit[]> {
@@ -1846,7 +1871,13 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Autocomplete only. Full geocode search stays on the 750ms pacer.
 	 * The home pass adds a circle filter. A broader pass keeps the bias and drops the circle.
 	 */
-	private async autocompleteAddress(query: string, bias: GeocodeBias | null, filterCircle: boolean): Promise<GeocodeHit[]> {
+	private async autocompleteAddress(
+		query: string,
+		bias: GeocodeBias | null,
+		filterCircle: boolean,
+		countyFilter: string | null = null,
+		sortHome = true,
+	): Promise<GeocodeHit[]> {
 		const apiKey = this.settings.geoapifyApiKey.trim();
 		const text = query.trim();
 		if (!apiKey || text.length < 3) return [];
@@ -1854,11 +1885,13 @@ export default class RVLocatorPlugin extends Plugin {
 			const url = buildAutocompleteUrl(text, apiKey, this.settings.geoapifyRegion, {
 				bias,
 				filterRadiusM: filterCircle && bias ? ADDRESS_SUGGEST_HOME_RADIUS_M : null,
+				countyFilter,
 			});
 			const response = await fetch(url);
 			if (!response.ok) return [];
 			const body: unknown = await response.json();
-			return preferHomeRegion(parseGeocodeBody(body), this.settings.homeCounties);
+			const hits = parseGeocodeBody(body);
+			return sortHome ? preferHomeRegion(hits, this.settings.homeCounties) : hits;
 		} catch {
 			return [];
 		}
@@ -2151,10 +2184,16 @@ export default class RVLocatorPlugin extends Plugin {
 			.setIcon(inactive ? 'archive-restore' : 'archive')
 			.onClick(() => { this.confirmArchive(file); }));
 		menu.addSeparator();
-		menu.addItem((item) => item.setTitle('Snooze today').setIcon('moon').onClick(() => { void this.applySnooze(path, 'today'); }));
-		menu.addItem((item) => item.setTitle('Snooze 7 days').setIcon('moon').onClick(() => { void this.applySnooze(path, '7'); }));
-		menu.addItem((item) => item.setTitle('Snooze 14 days').setIcon('moon').onClick(() => { void this.applySnooze(path, '14'); }));
+		menu.addItem((item) => item.setTitle('Snooze').setIcon('moon').onClick(() => { this.openSnoozeModal(path, file.basename); }));
 		menu.showAtMouseEvent(event);
+	}
+
+	private openSnoozeModal(path: string, displayName: string): void {
+		const until = this.snoozeUntilFor(path);
+		const label = this.snoozeLabelFor(path);
+		new UrgencySnoozeModal(this.app, cardPersonTitle(displayName, true), { until, label }, (next) => {
+			void this.applySnooze(path, next);
+		}).open();
 	}
 
 	promptPriority(path: string, displayName: string): void {
@@ -2432,7 +2471,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** Confirmation. Sits above the phone nav and the desktop status bar. */
-	private showLoggedToast(message: string): void {
+	private showLoggedToast(message: string, undo?: () => void): void {
 		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
 		const toast = document.createElement('div');
 		toast.className = 'rv-nh-toast';
@@ -2440,8 +2479,23 @@ export default class RVLocatorPlugin extends Plugin {
 		text.className = 'rv-toast-text';
 		fillToastText(text, message);
 		toast.append(text);
+		if (undo) toast.append(this.undoButton(undo));
 		this.mountToast(toast);
-		window.setTimeout(() => toast.remove(), 4500);
+		window.setTimeout(() => toast.remove(), undo ? 6000 : 4500);
+	}
+
+	private undoButton(undo: () => void): HTMLButtonElement {
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.className = 'mod-undo';
+		const icon = document.createElement('span');
+		icon.className = 'rv-toast-icon';
+		setIcon(icon, 'undo-2');
+		const label = document.createElement('span');
+		label.textContent = 'Undo';
+		button.append(icon, label);
+		button.addEventListener('click', () => undo());
+		return button;
 	}
 
 	/** Measure the nav, toolbar, and status bar, and keep the toast above them. */
@@ -2477,12 +2531,7 @@ export default class RVLocatorPlugin extends Plugin {
 			});
 			actions.appendChild(covered);
 		}
-		const undo = document.createElement('button');
-		undo.type = 'button';
-		undo.className = 'mod-undo';
-		undo.textContent = 'Undo';
-		undo.addEventListener('click', () => { void this.undoInstantMiss(); });
-		actions.append(undo);
+		actions.append(this.undoButton(() => { void this.undoInstantMiss(); }));
 		const timer = document.createElement('span');
 		timer.className = 'rv-toast-timer';
 		timer.appendChild(document.createElement('i'));
@@ -2536,11 +2585,77 @@ export default class RVLocatorPlugin extends Plugin {
 		window.setTimeout(() => undone.remove(), 1600);
 	}
 
-	ghostIconForCard(path: string): 'hourglass' | 'ban' | null {
-		const until = this.snoozeUntilFor(path);
-		if (until && until.getTime() > Date.now()) return 'hourglass';
-		if (this.cardReturnBucket(path) === 'Avoid') return 'ban';
+	ghostIconForCard(path: string): 'hourglass' | 'moon' | 'ban' | null {
+		if (this.snoozeActiveFor(path)) return 'moon';
+		const file = this.app.vault.getFileByPath(path);
+		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
+		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority'));
+		const days = propertyDays(readProperty(frontmatter, 'Last Spoke'));
+		if (days != null && insidePriorityFloor(days, priority, this.settings.idealityFloorDays)) return 'hourglass';
 		return null;
+	}
+
+	snoozeActiveFor(path: string): boolean {
+		return snoozeActive(this.snoozeUntilFor(path), new Date());
+	}
+
+	snoozeLabelFor(path: string): string {
+		const file = this.app.vault.getFileByPath(path);
+		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
+		const label = readProperty(frontmatter, SNOOZE_LABEL_PROPERTY);
+		return typeof label === 'string' ? label.trim() : '';
+	}
+
+	snoozeDaysLeftFor(path: string): number {
+		const until = this.snoozeUntilFor(path);
+		if (!until) return 0;
+		return snoozeDaysLeft(until, new Date());
+	}
+
+	passesSnoozeFilter(path: string): boolean {
+		const filter = this.settings.snoozeListFilter;
+		if (filter !== 'snoozed' && filter !== 'awake') return true;
+		const active = this.snoozeActiveFor(path);
+		return filter === 'snoozed' ? active : !active;
+	}
+
+	private countySuggestCache: string[] = [];
+
+	/** Vault counties, plus any county names the last Geoapify lookup returned. */
+	knownCounties(query = ''): string[] {
+		const needle = query.trim().toLowerCase();
+		const seen = new Set<string>();
+		const names: string[] = [];
+		const push = (text: string): void => {
+			const trimmed = text.trim();
+			if (!trimmed) return;
+			const key = trimmed.toLowerCase();
+			if (seen.has(key)) return;
+			if (needle && !key.includes(needle)) return;
+			seen.add(key);
+			names.push(trimmed);
+		};
+		for (const cached of this.countySuggestCache) push(cached);
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const raw = readProperty(frontmatter, 'County') ?? readProperty(frontmatter, 'county');
+			if (typeof raw === 'string') push(raw);
+		}
+		return names.sort((a, b) => a.localeCompare(b));
+	}
+
+	/** Fill the county cache when an API key is set. The chevron reads the cache. */
+	warmCountySuggest(query: string): void {
+		const apiKey = this.settings.geoapifyApiKey.trim();
+		const text = query.trim();
+		if (!apiKey || text.length < 3) return;
+		const url = buildCountySuggestUrl(text, apiKey, this.settings.geoapifyRegion);
+		void fetch(url).then(async (response) => {
+			if (!response.ok) return;
+			const hits = parseGeocodeBody(await response.json());
+			const next = hits.map((hit) => hit.county || hit.formattedAddress).filter((name) => name.trim().length > 0);
+			if (next.length > 0) this.countySuggestCache = next;
+		}).catch(() => undefined);
 	}
 
 	/** In-note Home. Same write as the card, including literature, media, and lessons. */
@@ -2581,6 +2696,8 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare, silent = false): Promise<void> {
+		const before = silent ? '' : await this.app.vault.read(file);
+		const campaignSnap = this.campaign ? { ...this.campaign, covered: [...this.campaign.covered] } : null;
 		const now = new Date();
 		const coveredName = this.coverageDecisions.get(file.path) === 'yes' ? (this.campaign?.name ?? '') : '';
 		let notesProperty: string | null = null;
@@ -2604,7 +2721,10 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.consumeCoverage(file.path, outcome);
 		if (!silent) {
 			const label = outcome === 'home' ? 'Home' : 'Not home';
-			this.showLoggedToast(`${label} logged on “${cardPersonTitle(file.basename, false)}”. Address was not changed.`);
+			const name = cardPersonTitle(file.basename, true);
+			this.showLoggedToast(`${label} logged on “${name}”.`, () => {
+				void this.undoVisitWrite(file, before, campaignSnap);
+			});
 		}
 		await this.afterVisitWrite(file, outcome, notesProperty);
 	}
@@ -2675,6 +2795,8 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Digest, open the new notes box, then the priority nudge. */
 	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
 		await this.enqueueDigestRewrite(file);
+		this.refreshOpenNoteChrome();
+		this.repaintOpenUrgency();
 		for (const callback of this.viewRefreshers) {
 			try {
 				callback();
@@ -3355,17 +3477,40 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async applySnooze(path: string, choice: SnoozeChoice | 'clear'): Promise<void> {
+	private async undoVisitWrite(file: TFile, before: string, campaign: CampaignRecord | null): Promise<void> {
+		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
+		const current = this.app.vault.getFileByPath(file.path);
+		if (current && before) await this.app.vault.modify(current, before);
+		this.campaign = campaign;
+		await this.persist();
+		this.refreshOpenNoteChrome();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	private async applySnooze(path: string, choice: SnoozeChoice | SnoozeWrite | 'clear'): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
 			if (choice === 'clear') {
 				removeProperty(data, URGENCY_SNOOZE_PROPERTY);
+				removeProperty(data, SNOOZE_START_PROPERTY);
+				removeProperty(data, SNOOZE_LABEL_PROPERTY);
 				return;
 			}
-			assignProperty(data, URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil(choice, new Date()));
+			if (typeof choice === 'string') {
+				const now = new Date();
+				assignProperty(data, URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil(choice, now));
+				assignProperty(data, SNOOZE_START_PROPERTY, formatSnoozeStart(now));
+				removeProperty(data, SNOOZE_LABEL_PROPERTY);
+				return;
+			}
+			assignProperty(data, URGENCY_SNOOZE_PROPERTY, choice.until);
+			assignProperty(data, SNOOZE_START_PROPERTY, choice.start);
+			if (choice.label) assignProperty(data, SNOOZE_LABEL_PROPERTY, choice.label);
+			else removeProperty(data, SNOOZE_LABEL_PROPERTY);
 		});
+		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();
 	}
 

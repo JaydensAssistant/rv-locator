@@ -73,7 +73,7 @@ export function buildAutocompleteUrl(
 	address: string,
 	apiKey: string,
 	region: GeoapifyRegion = 'global',
-	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null },
+	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null; countyFilter?: string | null },
 ): string {
 	const text = addressForQuery(address);
 	if (!text) throw new Error('Address is empty.');
@@ -87,10 +87,19 @@ export function buildAutocompleteUrl(
 	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
 		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
 		const radius = options?.filterRadiusM;
-		if (radius && radius > 0) {
+		if (radius && radius > 0 && !options?.countyFilter) {
 			url.searchParams.set('filter', `circle:${bias.lon},${bias.lat},${Math.round(radius)}`);
 		}
 	}
+	const county = options?.countyFilter?.trim();
+	if (county) url.searchParams.set('filter', `county:${county}`);
+	return url.toString();
+}
+
+/** County type-ahead for the home-county setting. */
+export function buildCountySuggestUrl(text: string, apiKey: string, region: GeoapifyRegion = 'global'): string {
+	const url = new URL(buildAutocompleteUrl(text, apiKey, region));
+	url.searchParams.set('type', 'county');
 	return url.toString();
 }
 

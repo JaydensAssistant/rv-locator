@@ -221,6 +221,8 @@ function mountTitleList(
 		});
 		text.inputEl.addEventListener('blur', () => { commit(draft); });
 		mountAlwaysChevron(text.inputEl, () => suggestions(draft), (picked) => {
+			draft = '';
+			text.setValue('');
 			commit(picked);
 		}, (value) => splitTitleSuffix(value));
 	});

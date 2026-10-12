@@ -93,11 +93,20 @@ export function mountAlwaysChevron(
 	const paint = (): void => {
 		panel.replaceChildren();
 		const items = suggestions().filter((item) => item.trim());
-		if (items.length === 0) {
+		const typed = 'value' in input ? String((input as HTMLInputElement).value ?? '') : '';
+		const emptyQuery = !typed.trim();
+		if (items.length === 0 && !emptyQuery) {
 			panel.hidden = true;
 			return;
 		}
 		panel.hidden = false;
+		if (emptyQuery) {
+			const hint = panel.ownerDocument.createElement('div');
+			hint.className = 'rv-suggest-hint';
+			hint.textContent = 'Start typing';
+			panel.appendChild(hint);
+		}
+		if (items.length === 0) return;
 		for (const item of items) {
 			if (item === SUGGEST_PENDING) {
 				const pending = panel.ownerDocument.createElement('div');

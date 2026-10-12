@@ -101,7 +101,7 @@ export class NewRvIdentityModal extends Modal {
 			button.setButtonText('♂');
 			button.buttonEl.dataset.gender = 'Man';
 			button.setTooltip('Man');
-			if (this.gender === 'Man') button.setCta();
+			if (this.gender === 'Man') button.buttonEl.addClass('is-selected');
 			button.onClick(() => {
 				this.gender = 'Man';
 				this.paintGender(gender);
@@ -111,7 +111,7 @@ export class NewRvIdentityModal extends Modal {
 			button.setButtonText('♀');
 			button.buttonEl.dataset.gender = 'Woman';
 			button.setTooltip('Woman');
-			if (this.gender === 'Woman') button.setCta();
+			if (this.gender === 'Woman') button.buttonEl.addClass('is-selected');
 			button.onClick(() => {
 				this.gender = 'Woman';
 				this.paintGender(gender);
@@ -263,7 +263,8 @@ export class NewRvIdentityModal extends Modal {
 	private paintGender(setting: Setting): void {
 		const buttons = setting.controlEl.querySelectorAll('button');
 		buttons.forEach((button) => {
-			button.classList.toggle('mod-cta', button.dataset.gender === this.gender);
+			button.classList.remove('mod-cta');
+			button.classList.toggle('is-selected', button.dataset.gender === this.gender);
 		});
 	}
 

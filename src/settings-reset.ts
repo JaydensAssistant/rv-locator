@@ -87,6 +87,7 @@ function applyEveryday(next: RVLocatorSettings): void {
 	next.studyShowSpoke = DEFAULT_SETTINGS.studyShowSpoke;
 	next.studyShowAttempted = DEFAULT_SETTINGS.studyShowAttempted;
 	next.campaignListFilter = DEFAULT_SETTINGS.campaignListFilter;
+	next.snoozeListFilter = DEFAULT_SETTINGS.snoozeListFilter;
 	next.dashboardPagePreview = DEFAULT_SETTINGS.dashboardPagePreview;
 }
 

@@ -6,7 +6,7 @@ import { mountAlwaysChevron } from './suggest-field';
 import { mountCampaignChoice } from './campaign-choice';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { coverageQuestion } from './modals';
-import { dateInputValue, defaultPastVisitTime, describeVisit, hourLabel, isFutureVisit, snapFiveMinutes, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
+import { clockFace, dateInputValue, defaultPastVisitTime, describeVisit, hour24FromFace, isFutureVisit, snapFiveMinutes, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
 export interface VisitEditOptions {
 	title: string;
@@ -94,21 +94,38 @@ export class VisitEditModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
-			.setName('Hour')
-			.addDropdown((dropdown) => {
-				for (let hour = 0; hour < 24; hour += 1) dropdown.addOption(String(hour), hourLabel(hour));
-				dropdown.setValue(String(this.hour));
-				dropdown.onChange((value) => { this.hour = Number(value); });
+		const face = clockFace(this.hour);
+		let hour12 = face.hour12;
+		let meridiem = face.meridiem;
+		const syncHour = (): void => {
+			this.hour = hour24FromFace(hour12, meridiem);
+		};
+		const time = new Setting(contentEl).setName('Time').setClass('rv-time-row');
+		time.addDropdown((dropdown) => {
+			dropdown.selectEl.setAttribute('aria-label', 'Hour');
+			for (let hour = 1; hour <= 12; hour += 1) dropdown.addOption(String(hour), String(hour));
+			dropdown.setValue(String(hour12));
+			dropdown.onChange((value) => {
+				hour12 = Number(value);
+				syncHour();
 			});
-		new Setting(contentEl)
-			.setName('Minutes')
-			.setDesc('Five-minute steps. Starts at 00.')
-			.addDropdown((dropdown) => {
-				for (let minute = 0; minute < 60; minute += 5) dropdown.addOption(String(minute), String(minute).padStart(2, '0'));
-				dropdown.setValue(String(this.minute));
-				dropdown.onChange((value) => { this.minute = Number(value); });
+		});
+		time.addDropdown((dropdown) => {
+			dropdown.selectEl.setAttribute('aria-label', 'Minute');
+			for (let minute = 0; minute < 60; minute += 5) dropdown.addOption(String(minute), String(minute).padStart(2, '0'));
+			dropdown.setValue(String(this.minute));
+			dropdown.onChange((value) => { this.minute = Number(value); });
+		});
+		time.addDropdown((dropdown) => {
+			dropdown.selectEl.setAttribute('aria-label', 'AM or PM');
+			dropdown.addOption('AM', 'AM');
+			dropdown.addOption('PM', 'PM');
+			dropdown.setValue(meridiem);
+			dropdown.onChange((value) => {
+				meridiem = value === 'PM' ? 'PM' : 'AM';
+				syncHour();
 			});
+		});
 
 		this.companionSetting = new Setting(contentEl)
 			.setName('What publisher came with you?')

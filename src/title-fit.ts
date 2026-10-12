@@ -342,7 +342,7 @@ export function fitMiddleEllipsis(el: HTMLElement, full: string): void {
 	}
 }
 
-function showTitlePopover(anchor: HTMLElement, text: string): void {
+export function showTitlePopover(anchor: HTMLElement, text: string): void {
 	const doc = anchor.ownerDocument;
 	doc.querySelectorAll('.rv-title-popover').forEach((node) => node.remove());
 	const pop = doc.createElement('div');

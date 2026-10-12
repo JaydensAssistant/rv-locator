@@ -59,17 +59,16 @@ export class CampaignModal extends Modal {
 				text.setValue(this.end);
 				text.onChange((value) => { this.end = value; });
 			});
-		new Setting(contentEl).addButton((button) => {
-			if (active) {
-				button.setButtonText('End campaign');
-				button.setWarning();
-				button.onClick(() => this.askRemove());
-			} else {
-				button.setButtonText('Start campaign');
-				button.setCta();
-				button.onClick(() => this.startCampaign());
-			}
-		});
+		const footer = contentEl.createDiv('rv-modal-actions is-footer');
+		if (active) {
+			const end = footer.createEl('button', { text: 'End campaign', attr: { type: 'button' } });
+			end.addClass('mod-warning');
+			end.addEventListener('click', () => this.askRemove());
+		} else {
+			const start = footer.createEl('button', { text: 'Start campaign', attr: { type: 'button' } });
+			start.addClass('mod-cta');
+			start.addEventListener('click', () => this.startCampaign());
+		}
 		iconizeModal(contentEl);
 	}
 
@@ -80,14 +79,15 @@ export class CampaignModal extends Modal {
 		const { contentEl } = this;
 		const ask = contentEl.createDiv({ cls: 'rv-locator-modal-copy' });
 		ask.setText('Remove this campaign?');
-		const actions = contentEl.createDiv('rv-locator-suggest-actions');
+		const actions = contentEl.createDiv('rv-modal-actions is-footer');
+		const keep = actions.createEl('button', { text: 'Keep', attr: { type: 'button' } });
 		const remove = actions.createEl('button', { text: 'Remove', attr: { type: 'button' } });
+		remove.addClass('mod-cta');
 		remove.addEventListener('click', () => {
 			this.saved = true;
 			this.onSave(null);
 			this.close();
 		});
-		const keep = actions.createEl('button', { text: 'Keep', attr: { type: 'button' } });
 		keep.addEventListener('click', () => {
 			this.confirming = false;
 			ask.empty();

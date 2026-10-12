@@ -62,9 +62,34 @@ export function nextCampaignListFilter(current: CampaignListFilter): CampaignLis
 	return CAMPAIGN_LIST_ORDER[(index + 1) % CAMPAIGN_LIST_ORDER.length] ?? 'all';
 }
 
-/** True when Campaign, Active, or Men+Women is not the default list. */
-export function filtersDifferFromDefault(scope: ReturnScope, gender: GenderFilter, campaign: CampaignListFilter): boolean {
-	return scope !== 'active' || gender !== 'all' || campaign !== 'all';
+/** Glancable snooze cycle. Default shows snoozed and awake cards together. */
+export type SnoozeListFilter = 'all' | 'snoozed' | 'awake';
+
+export const SNOOZE_FILTER_ORDER: readonly SnoozeListFilter[] = ['all', 'snoozed', 'awake'];
+
+export const SNOOZE_FILTER_LABEL: Record<SnoozeListFilter, string> = {
+	all: 'Snoozed + not',
+	snoozed: 'Snoozed only',
+	awake: 'Not snoozed',
+};
+
+export function sanitizeSnoozeListFilter(value: unknown): SnoozeListFilter {
+	return value === 'snoozed' || value === 'awake' || value === 'all' ? value : 'all';
+}
+
+export function nextSnoozeListFilter(current: SnoozeListFilter): SnoozeListFilter {
+	const index = SNOOZE_FILTER_ORDER.indexOf(current);
+	return SNOOZE_FILTER_ORDER[(index + 1) % SNOOZE_FILTER_ORDER.length] ?? 'all';
+}
+
+/** True when Campaign, Active, Men+Women, or Snooze is not the default list. */
+export function filtersDifferFromDefault(
+	scope: ReturnScope,
+	gender: GenderFilter,
+	campaign: CampaignListFilter,
+	snooze: SnoozeListFilter = 'all',
+): boolean {
+	return scope !== 'active' || gender !== 'all' || campaign !== 'all' || snooze !== 'all';
 }
 
 export function sanitizeStatus(value: unknown): RvStatus | null {

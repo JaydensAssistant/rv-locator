@@ -59,6 +59,38 @@ export function parseHomeCountyLines(value: string): string[] {
  * Put home-region hits first. This is a sort, not a filter: a miss stays in the list.
  * County, city, and state matches outrank a formatted-line mention.
  */
+/** Bounded hits first, then the home-sorted list, dropping duplicates. */
+export function mergeHomeFirst<T extends { formattedAddress?: string; lat?: number; lon?: number }>(
+	bounded: readonly T[],
+	sorted: readonly T[],
+): T[] {
+	const seen = new Set<string>();
+	const out: T[] = [];
+	const keyOf = (hit: T): string => `${(hit.formattedAddress ?? '').trim().toLowerCase()}|${hit.lat ?? ''}|${hit.lon ?? ''}`;
+	for (const hit of [...bounded, ...sorted]) {
+		const key = keyOf(hit);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(hit);
+	}
+	return out;
+}
+
+/** True when the hit's county is one of the home counties. */
+export function hitInHomeCounties(hit: { county?: string }, homeCounties: readonly string[]): boolean {
+	const homes = homeCounties.map(normalizeCounty).filter((name) => name.length > 0);
+	if (homes.length === 0) return false;
+	const county = hit.county ? normalizeCounty(hit.county) : '';
+	return county.length > 0 && homes.includes(county);
+}
+
+/** Pipe-joined Geoapify county filter, or null when no counties are set. */
+export function countyFilterParam(homeCounties: readonly string[]): string | null {
+	const names = homeCounties.map((line) => line.trim()).filter((line) => line.length > 0);
+	if (names.length === 0) return null;
+	return names.join('|');
+}
+
 export function preferHomeRegion<T extends {
 	city?: string;
 	county?: string;

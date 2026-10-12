@@ -28,7 +28,7 @@ import {
 	type UrgencyPaletteId,
 } from './urgency-palette';
 import { sanitizeMapShade, type MapShadeMode } from './map-shade';
-import { sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, type CampaignListFilter, type GenderFilter, type ReturnScope } from './status';
+import { sanitizeCampaignListFilter, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, type CampaignListFilter, type GenderFilter, type ReturnScope, type SnoozeListFilter } from './status';
 
 export type DistanceUnit = 'miles' | 'kilometers';
 
@@ -155,6 +155,8 @@ export interface RVLocatorSettings {
 	returnHubNote: string;
 	/** Glancable campaign cycle: all, uncovered, covered. */
 	campaignListFilter: CampaignListFilter;
+	/** Glancable snooze cycle. Default shows snoozed and awake cards together. */
+	snoozeListFilter: SnoozeListFilter;
 	/** When on, the core Page Preview plugin may preview RV Dashboard titles. Off by default. */
 	dashboardPagePreview: boolean;
 	/** Folder for notes created with New RV. Empty keeps Templater's folder. */
@@ -368,6 +370,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	compactMode: true,
 	returnHubNote: 'Return Visits Hub',
 	campaignListFilter: 'all',
+	snoozeListFilter: 'all',
 	dashboardPagePreview: false,
 	newRvFolder: '',
 	appendMetDateToFilename: true,
@@ -549,6 +552,7 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 			? input.returnHubNote.trim()
 			: DEFAULT_SETTINGS.returnHubNote,
 		campaignListFilter: sanitizeCampaignListFilter(input.campaignListFilter),
+		snoozeListFilter: sanitizeSnoozeListFilter(input.snoozeListFilter),
 		dashboardPagePreview: input.dashboardPagePreview === true,
 		newRvFolder: folderSetting(input.newRvFolder),
 		appendMetDateToFilename: input.filenameStampMigrated === true

@@ -3,7 +3,8 @@ import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_
 import { deleteCustom, rememberCustom } from './catalog';
 import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
-import { parseHomeCountyLines } from './home-base';
+import { normalizeCounty, parseHomeCountyLines } from './home-base';
+import { mountAlwaysChevron } from './suggest-field';
 import { cacheStats, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import {
 	DEFAULT_HOME_LOG_TEMPLATE_FILE,
@@ -157,7 +158,16 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				text.setValue(this.plugin.settings.homeCounties.join('\n'));
 				text.onChange(async (value) => {
 					this.plugin.settings.homeCounties = parseHomeCountyLines(value);
+					this.plugin.warmCountySuggest(value.split('\n').pop() ?? '');
 					await this.plugin.saveSettings();
+				});
+				mountAlwaysChevron(text.inputEl, () => this.plugin.knownCounties(text.inputEl.value.split('\n').pop() ?? ''), (picked) => {
+					const lines = parseHomeCountyLines(text.inputEl.value);
+					if (!lines.some((line) => normalizeCounty(line) === normalizeCounty(picked))) lines.push(picked);
+					const next = lines.join('\n');
+					text.setValue(next);
+					this.plugin.settings.homeCounties = lines;
+					void this.plugin.saveSettings();
 				});
 			});
 
@@ -1032,6 +1042,7 @@ class CatalogRenameModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Rename');
 		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-rename-modal');
 		new Setting(this.contentEl)
 			.setName('Name')
 			.addText((text) => {

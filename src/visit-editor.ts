@@ -526,6 +526,21 @@ export function snapFiveMinutes(minute: number): number {
 	return snapped >= 60 ? 0 : snapped;
 }
 
+/** 24-hour clock split into a 1–12 hour and AM/PM. */
+export function clockFace(hour24: number): { hour12: number; meridiem: 'AM' | 'PM' } {
+	const hour = ((Math.round(hour24) % 24) + 24) % 24;
+	return {
+		hour12: hour % 12 === 0 ? 12 : hour % 12,
+		meridiem: hour >= 12 ? 'PM' : 'AM',
+	};
+}
+
+/** 1–12 plus AM/PM back to 0–23. */
+export function hour24FromFace(hour12: number, meridiem: 'AM' | 'PM'): number {
+	const face = hour12 === 12 ? 0 : hour12;
+	return meridiem === 'PM' ? face + 12 : face;
+}
+
 /** `12am` … `11pm`. */
 export function hourLabel(hour: number): string {
 	const onClock = hour % 12 === 0 ? 12 : hour % 12;

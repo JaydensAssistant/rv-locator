@@ -170,13 +170,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 	protected override sortedGroups() {
 		const groups = super.sortedGroups();
 		const text = this.glanceQuery.trim();
-		if (!text) return groups;
-		this.loadSearchBodies();
-		const query = this.queryFor(text);
+		if (text) this.loadSearchBodies();
+		const query = text ? this.queryFor(text) : null;
 		return groups
 			.map((group) => ({
 				label: group.label,
-				rows: group.rows.filter((row) => matchesGlanceQuery(this.recordFor(row), query)),
+				rows: group.rows.filter((row) => {
+					if (!this.plugin.passesSnoozeFilter(row.path)) return false;
+					if (!query) return true;
+					return matchesGlanceQuery(this.recordFor(row), query);
+				}),
 			}))
 			.filter((group) => group.rows.length > 0);
 	}
@@ -213,7 +216,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	/**
-	 * Search replaces the pills row. The action buttons stay.
+	 * Search replaces the toolbar button row.
 	 * The field is created once so typing keeps focus.
 	 */
 	private searchReplacesBar(open: boolean): void {
@@ -431,6 +434,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (showMet) this.iconSlot(when, row, 'Met', 'home', 'Met', glancableLineId(4), compactDates);
 		}
 
+		const snoozed = this.plugin.snoozeActiveFor(row.path);
+		if (snoozed) {
+			card.addClass('is-snoozed');
+			card.style.setProperty('--rv-urgency-accent', '#6b7a99');
+		}
 		const foot = card.createDiv('rv-locator-card-foot');
 		foot.setAttr('data-line', glancableLineId(5));
 		if (this.lineOn('met-with')) {
@@ -444,20 +452,30 @@ export class NearbyGlancableView extends NearbyBasesView {
 			? (study ? studyRatio(note, this.plugin.settings.studyRatio) : visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits')))
 			: null;
 		const overrideLabel = this.plugin.settings.showCardReturnStatus ? this.plugin.cardOverrideLabel(row.path) : null;
-		if (overrideLabel) {
+		if (snoozed) {
+			const line = foot.createSpan('rv-locator-snooze-line');
+			line.createSpan({ cls: 'rv-snooze-kicker', text: 'Snoozed' });
+			const reason = this.plugin.snoozeLabelFor(row.path);
+			if (reason) line.createSpan({ cls: 'rv-snooze-reason', text: reason });
+			const left = line.createSpan({
+				cls: 'rv-snooze-left',
+				text: `${this.plugin.snoozeDaysLeftFor(row.path)}d left`,
+			});
+			left.style.color = '#6b7a99';
+		} else if (overrideLabel) {
 			foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-override-label',
 				text: overrideLabel,
 				attr: { 'aria-label': `Return override ${overrideLabel}` },
 			});
-		} else if (ratio && !this.plugin.settings.showCardReturnStatus) {
+		} else if (!snoozed && ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-visits',
 				attr: { 'aria-label': ratio.title },
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		if (!overrideLabel && ratio && this.plugin.settings.showCardReturnStatus) {
+		if (!snoozed && !overrideLabel && ratio && this.plugin.settings.showCardReturnStatus) {
 			const line = foot.createSpan('rv-locator-return-inline');
 			line.createSpan({
 				cls: 'rv-locator-return-visits',
@@ -468,9 +486,22 @@ export class NearbyGlancableView extends NearbyBasesView {
 				cls: 'rv-locator-return-when',
 				text: cardReturnLead(new Date(), this.plugin.settings.cardReturnFormat),
 			});
-			line.createSpan({
+			const bucket = line.createSpan({
 				cls: 'rv-locator-return-bucket',
 				text: this.plugin.cardReturnBucket(row.path),
+			});
+			bucket.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void this.plugin.suggestReturnFor(row.path, row.name);
+			});
+		}
+		const overrideEl = foot.querySelector('.rv-locator-override-label');
+		if (overrideEl instanceof HTMLElement) {
+			overrideEl.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void this.plugin.suggestReturnFor(row.path, row.name);
 			});
 		}
 		const lines: CompactLineKind[] = [];

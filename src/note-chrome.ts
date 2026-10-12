@@ -14,7 +14,7 @@ import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
 import { paintUrgencyInk } from './color-math';
-import { fitEndEllipsis } from './title-fit';
+import { fitEndEllipsis, showTitlePopover } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { urgencyColorsFor } from './urgency-palette';
 
@@ -39,7 +39,8 @@ export interface NoteChromeHost {
 	noteTitle(path: string): string;
 	renameNote(path: string): void;
 	mapOpen(): boolean;
-	ghostIcon(path: string): 'hourglass' | 'ban' | null;
+	ghostIcon(path: string): 'hourglass' | 'moon' | 'ban' | null;
+	openReturn?(path: string, name: string): void;
 }
 
 const LONG_PRESS_MS = 500;
@@ -69,17 +70,18 @@ function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<
 		const raw = (node.dataset.rvNamed === '1' ? 'RV Dashboard' : (node.textContent ?? '')).replace(/\s+/g, ' ').trim();
 		if (raw !== 'RV Dashboard' && node.dataset.rvNamed !== '1') return;
 		node.dataset.rvNamed = '1';
-		node.replaceChildren(node.ownerDocument.createTextNode(host.noteTitle(path)));
+		node.replaceChildren();
+		const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
+		const statusEl = node.createSpan('rv-dash-status');
+		setIcon(statusEl, statusIcon(status));
+		statusEl.setAttribute('aria-label', status);
 		const mark = host.campaignMark(path);
 		if (mark) {
 			const icon = node.createSpan('rv-dash-campaign');
 			setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
 			icon.setAttribute('aria-label', mark === 'covered' ? 'Covered this campaign' : 'Campaign');
 		}
-		const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
-		const statusEl = node.createSpan('rv-dash-status');
-		setIcon(statusEl, statusIcon(status));
-		statusEl.setAttribute('aria-label', status);
+		node.createSpan({ cls: 'rv-dash-name', text: host.noteTitle(path) });
 		const more = node.createEl('button', {
 			cls: 'rv-dash-rename clickable-icon',
 			attr: { type: 'button', 'aria-label': 'Rename' },
@@ -388,19 +390,24 @@ function paintClampList(host: HTMLElement, items: readonly string[]): void {
 	host.classList.add('is-collapsible');
 	host.setAttr('role', 'button');
 	host.tabIndex = 0;
-	let open = false;
-	const toggle = (event: Event): void => {
+	const full = items.join(' · ');
+	const reveal = (event: Event): void => {
 		event.preventDefault();
 		event.stopPropagation();
-		open = !open;
-		box.setText((open ? items : recent).join(' · '));
-		host.classList.toggle('is-expanded', open);
+		showTitlePopover(host, full);
 	};
-	host.addEventListener('click', toggle);
+	host.addEventListener('click', reveal);
+	host.addEventListener('pointerdown', (event) => {
+		if (!(event instanceof PointerEvent) || event.pointerType === 'mouse') return;
+		const timer = window.setTimeout(() => reveal(event), LONG_PRESS_MS);
+		const stop = (): void => window.clearTimeout(timer);
+		host.addEventListener('pointerup', stop, { once: true });
+		host.addEventListener('pointercancel', stop, { once: true });
+	});
 	host.addEventListener('keydown', (event) => {
 		if (!(event instanceof KeyboardEvent)) return;
 		if (event.key !== 'Enter' && event.key !== ' ') return;
-		toggle(event);
+		reveal(event);
 	});
 }
 

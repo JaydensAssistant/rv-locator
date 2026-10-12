@@ -123,6 +123,8 @@ export function decorateVisitControls(
 	open: VisitMenuOpener,
 	coveredFor?: CoveredLookup,
 ): void {
+	const active = root.ownerDocument?.activeElement;
+	if (active instanceof HTMLElement && active.tagName === 'TEXTAREA' && root.contains(active)) return;
 	tagVisitNotesHeading(root);
 	const ownLine = sectionLine();
 	const localStamps = stampHeadings(root);
@@ -254,6 +256,24 @@ function headingSource(heading: HTMLElement): string {
 	return textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator, .rv-stamp-row, .collapse-indicator, .rv-stamp-source`);
 }
 
+/** Companion from the same day's attempt-log line, when someone came along. */
+function companionNear(heading: HTMLElement, when: Date): string {
+	const host = heading.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered, .workspace-leaf-content');
+	const root = host instanceof HTMLElement ? host : heading.ownerDocument.body;
+	if (!(root instanceof HTMLElement) || typeof root.querySelectorAll !== 'function') return '';
+	let found = '';
+	for (const callout of attemptLogCallouts(root)) {
+		for (const item of Array.from(callout.querySelectorAll('li'))) {
+			if (!(item instanceof HTMLElement)) continue;
+			const bullet = parseLogBullet(`- ${item.textContent ?? ''}`);
+			if (!bullet?.companion || !sameLocalDay(bullet.when, when)) continue;
+			found = bullet.companion.trim();
+			if (Math.abs(bullet.when.getTime() - when.getTime()) < 90 * 60 * 1000) return found;
+		}
+	}
+	return found;
+}
+
 /** Heading row and item strip. The markdown line is only restructured on screen. */
 function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string): void {
 	const source = headingSource(heading);
@@ -301,6 +321,18 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 	}
 	const whenEl = row.querySelector('.rv-stamp-when');
 	if (whenEl) whenEl.textContent = lead;
+	const publisher = companionNear(heading, when);
+	let withEl = row.querySelector('.rv-stamp-with');
+	if (publisher) {
+		if (!(withEl instanceof HTMLElement)) {
+			withEl = doc.createElement('span');
+			withEl.className = 'rv-stamp-with';
+			whenEl?.insertAdjacentElement('afterend', withEl);
+		}
+		withEl.textContent = `with ${publisher}`;
+	} else if (withEl) {
+		withEl.remove();
+	}
 	const pill = row.querySelector('.rv-stamp-count');
 	if (pill instanceof HTMLElement) pill.textContent = count;
 	const more = heading.querySelector(`.${MORE_CLASS}`);
@@ -335,19 +367,62 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	}
 	if (items.length === 0) strip.classList.add('is-ghost');
 	else strip.classList.remove('is-ghost');
-	for (const item of items) {
-		const chip = doc.createElement('span');
-		chip.className = 'rv-item';
-		const icon = doc.createElement('span');
-		icon.className = 'rv-item-icon';
-		setIcon(icon, item.icon);
-		chip.appendChild(icon);
-		if (item.campaign) chip.classList.add('is-campaign');
-		strip.appendChild(chip);
-		mountFittedTitle(chip, item.title, item.kind);
-	}
+	const campaign = items.filter((item) => item.campaign);
+	const rest = items.filter((item) => !item.campaign);
+	for (const item of [...campaign, ...rest]) paintStripChip(strip, item);
+	collapseStripOverflow(strip);
 	ensureNoteBox(heading, strip);
 	watchTitleRow(strip);
+}
+
+function paintStripChip(strip: HTMLElement, item: { icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }): void {
+	const doc = strip.ownerDocument;
+	const chip = doc.createElement('span');
+	chip.className = 'rv-item';
+	if (item.campaign) chip.classList.add('is-campaign');
+	const icon = doc.createElement('span');
+	icon.className = 'rv-item-icon';
+	setIcon(icon, item.icon);
+	chip.appendChild(icon);
+	strip.appendChild(chip);
+	mountFittedTitle(chip, item.title, item.kind);
+}
+
+/** One row. Campaign stays. Extra chips become a +n button once the row is wider than its box. */
+function collapseStripOverflow(strip: HTMLElement): void {
+	if (strip.clientWidth <= 0) return;
+	const hidden: HTMLElement[] = [];
+	const fits = (): boolean => strip.scrollWidth <= strip.clientWidth + 1;
+	while (!fits()) {
+		const chips = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.is-campaign):not(.rv-item-more)'));
+		const last = chips[chips.length - 1];
+		if (!(last instanceof HTMLElement)) break;
+		hidden.unshift(last);
+		last.remove();
+	}
+	strip.querySelector(':scope > .rv-item-more')?.remove();
+	if (hidden.length === 0) return;
+	const more = strip.ownerDocument.createElement('button');
+	more.type = 'button';
+	more.className = 'rv-item rv-item-more';
+	more.textContent = `+${hidden.length}`;
+	more.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		const open = strip.querySelector(':scope > .rv-item-overflow');
+		if (open) {
+			open.remove();
+			return;
+		}
+		const list = strip.ownerDocument.createElement('div');
+		list.className = 'rv-item-overflow';
+		for (const chip of hidden) list.appendChild(chip);
+		strip.appendChild(list);
+	});
+	strip.appendChild(more);
+	if (!fits() && hidden.length > 0) {
+		/* The +n chip itself overflowed. Leave it; the campaign chip stays. */
+	}
 }
 
 /** Reading view wraps the heading in `.el-h5`. A rendered preview line keeps it in a `.cm-line`. */
@@ -607,7 +682,7 @@ function markStampDate(heading: HTMLElement): void {
 
 /** Date and day-count jump to that day's attempt-log line, not the visit notes. */
 function wireStampJump(heading: HTMLElement, when: Date): void {
-	heading.querySelectorAll('.rv-stamp-date, .rv-stamp-ago').forEach((node) => {
+	heading.querySelectorAll('.rv-stamp-date, .rv-stamp-ago, .rv-stamp-when, .rv-cal, .rv-stamp-row').forEach((node) => {
 		if (!domInstanceOf(node, HTMLElement) || node.dataset.rvJump === '1') return;
 		node.dataset.rvJump = '1';
 		node.addEventListener('click', (event) => {

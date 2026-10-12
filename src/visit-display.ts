@@ -115,7 +115,7 @@ function layoutVisitNotesNow(
 		return;
 	}
 	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
-	if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
+	if (visitNotesTyping(preview)) {
 		releaseRecentNotesTail(preview);
 		rememberRecentTail(preview);
 		return;
@@ -387,7 +387,7 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 		try {
 			restoreRecentTail(preview);
 			if (preview.dataset.rvLaying === '1') return;
-			if (visitNotesTyping(preview) && preview.querySelector('.rv-older-visits')) {
+			if (visitNotesTyping(preview)) {
 				releaseRecentNotesTail(preview);
 				rememberRecentTail(preview);
 				return;
