@@ -1185,6 +1185,8 @@ describe('smoke layout', () => {
 	it('corrects a zoomed badge stroke back to 2px and keeps ghosts dashed', () => {
 		assert.equal(correctedStrokePx(2), '2px');
 		assert.equal(correctedStrokePx(1.01587), '3.938px');
+		// 3.938px was the wrong divisor: Obsidian used it as 3.04762px (6 device px).
+		assert.equal(correctedStrokePx(3.04762, 3.938), '2.584px');
 		const button = window.document.createElement('button');
 		button.className = 'rv-locator-urgency is-ghost';
 		window.document.body.appendChild(button);
@@ -1192,7 +1194,14 @@ describe('smoke layout', () => {
 		assert.equal(button.style.getPropertyValue('border-style'), 'dashed');
 		assert.equal(button.style.getPropertyPriority('border-width'), 'important');
 		assert.equal(button.style.getPropertyValue('border-width'), '2px');
+		const pin = window.document.createElement('button');
+		pin.className = 'rv-locator-map-pin';
+		window.document.body.appendChild(pin);
+		pinBadgeStroke(pin);
+		assert.equal(pin.style.getPropertyValue('border-width'), '2px');
+		assert.equal(pin.style.getPropertyPriority('border-width'), 'important');
 		button.remove();
+		pin.remove();
 	});
 
 	it('focuses the visit textarea after the Templater prompt closes', async () => {
@@ -1202,9 +1211,14 @@ describe('smoke layout', () => {
 		const prompt = window.document.createElement('input');
 		prompt.className = 'templater-prompt-input';
 		window.document.body.appendChild(prompt);
+		prompt.focus();
 		const stop = armVisitNoteFocus(root);
 		const area = window.document.createElement('textarea');
 		root.appendChild(area);
+		const enter = new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+		prompt.dispatchEvent(enter);
+		assert.equal(enter.defaultPrevented, false);
+		assert.equal(window.document.activeElement, prompt);
 		await new Promise((resolve) => window.setTimeout(resolve, 0));
 		assert.notEqual(window.document.activeElement, area);
 		prompt.remove();
@@ -1219,12 +1233,17 @@ describe('smoke layout', () => {
 		assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\) 28px !important/);
 		assert.match(css, /a\.rv-address-link[\s\S]*white-space: normal !important/);
 		assert.match(css, /text-overflow: clip !important/);
+		assert.match(css, /grid-column: 3 !important;[\s\S]{0,800}min-height: 28px !important/);
+		assert.match(css, /max-height: 28px !important/);
 		assert.match(css, /\.rv-fit-stem[\s\S]*color: var\(--rv-urgency-accent, var\(--text-normal\)\) !important/);
 		assert.match(css, /\.is-note-map-side/);
 		assert.doesNotMatch(css, /body\.is-phone \.workspace-leaf-content\.is-note-map/);
 		const main = readFileSync('src/main.ts', 'utf8');
 		assert.match(main, /frontmatterFromMarkdown\(data\)/);
 		assert.match(main, /is-note-map-side/);
+		const activate = main.slice(main.indexOf('private async activateNewRvNote'), main.indexOf('private noteMapHost'));
+		assert.match(activate, /openFile/);
+		assert.match(activate, /setActiveLeaf/);
 		const visit = readFileSync('src/visit-display.ts', 'utf8');
 		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));
 		assert.match(arm, /templater-prompt-input/);

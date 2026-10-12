@@ -664,6 +664,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
 		setIcon(button, 'route');
+		pinBadgeStroke(button);
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -891,74 +892,100 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
  * Band 0's inner ring stays a stroke.
  */
-/**
- * Product of ancestor (and own) CSS `zoom` and transform scale.
- * Chrome's used border-width is the specified width times that product,
- * so a declared 2px paints at 1.01587px when an ancestor is zoomed by ~0.508.
- */
-export function paintedScale(el: Element): number {
-	const zoomed = el as Element & { currentCSSZoom?: number };
-	if (typeof zoomed.currentCSSZoom === 'number' && zoomed.currentCSSZoom > 0) {
-		return zoomed.currentCSSZoom * ancestorTransformScale(el);
-	}
-	let scale = 1;
-	const view = el.ownerDocument.defaultView;
-	if (!view || typeof view.getComputedStyle !== 'function') return 1;
-	let node: Element | null = el;
-	while (node) {
-		try {
-			const cs = view.getComputedStyle(node);
-			const zoom = Number.parseFloat(cs.getPropertyValue('zoom') || (cs as CSSStyleDeclaration & { zoom?: string }).zoom || '');
-			if (Number.isFinite(zoom) && zoom > 0) scale *= zoom;
-			scale *= matrixScale(cs.transform);
-		} catch {
-			/* jsdom may omit zoom. */
-		}
-		node = node.parentElement;
-	}
-	return scale > 0 ? scale : 1;
-}
+const STROKE_TARGET_PX = 2;
 
-function ancestorTransformScale(el: Element): number {
-	let scale = 1;
-	const view = el.ownerDocument.defaultView;
-	if (!view || typeof view.getComputedStyle !== 'function') return 1;
-	let node: Element | null = el;
-	while (node) {
-		try {
-			scale *= matrixScale(view.getComputedStyle(node).transform);
-		} catch {
-			/* ignore */
-		}
-		node = node.parentElement;
-	}
-	return scale > 0 ? scale : 1;
-}
-
-function matrixScale(transform: string): number {
-	if (!transform || transform === 'none') return 1;
-	const match = /matrix\(\s*([-\d.eE]+)[,\s]+([-\d.eE]+)/.exec(transform);
-	if (!match) return 1;
-	const sx = Math.hypot(Number(match[1]), Number(match[2]));
-	return Number.isFinite(sx) && sx > 0 ? sx : 1;
+function strokeLabel(px: number): string {
+	const rounded = Math.round(px * 1000) / 1000;
+	return `${rounded}px`;
 }
 
 /**
- * Specified width whose used value is 2px.
- * A used width of 1.01587px means the declared 2px was scaled by ~0.508,
- * so the next specified width is 4/used.
+ * Next specified width so a border that is currently `specifiedPx` and paints
+ * at `usedPx` paints at 2 CSS px. One step from a declared 2px used as
+ * 1.01587px is 3.938px. A declared 3.938px that paints at 3.04762px is not
+ * done: zoom is not that divisor, so the next step is 2.584px.
  */
-export function correctedStrokePx(usedPx: number): string {
-	if (!Number.isFinite(usedPx) || usedPx <= 0.01 || Math.abs(usedPx - 2) <= 0.05) return '2px';
-	const next = 4 / usedPx;
+export function correctedStrokePx(usedPx: number, specifiedPx = STROKE_TARGET_PX): string {
+	if (!Number.isFinite(usedPx) || usedPx <= 0.01) return '2px';
+	if (!Number.isFinite(specifiedPx) || specifiedPx <= 0) return '2px';
+	if (Math.abs(usedPx - STROKE_TARGET_PX) <= 0.05) return strokeLabel(specifiedPx);
+	const next = specifiedPx * (STROKE_TARGET_PX / usedPx);
 	if (!Number.isFinite(next) || next <= 0) return '2px';
-	return `${Math.round(next * 1000) / 1000}px`;
+	return strokeLabel(Math.min(8, Math.max(0.5, next)));
 }
 
-/** Keep the used badge ring at 2 CSS px. Ghosts stay dashed. */
+/**
+ * Used border of `host` after `specifiedPx` is applied.
+ * getComputedStyle already includes the zoom that changes the border, so this
+ * does not multiply by currentCSSZoom or an ancestor transform. When the
+ * computed width is still the specified width, a 2px probe in the same
+ * parent supplies the painted ratio (its border box versus the unzoomed
+ * offset width) and that ratio is applied once.
+ */
+function usedBorderPx(host: HTMLElement, specifiedPx: number): number {
+	const view = host.ownerDocument.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return specifiedPx;
+	host.style.setProperty('border-width', strokeLabel(specifiedPx), 'important');
+	const computed = Number.parseFloat(view.getComputedStyle(host).borderTopWidth);
+	if (Number.isFinite(computed) && computed > 0 && Math.abs(computed - specifiedPx) > 0.02) return computed;
+	const probed = probeBorderRatio(host);
+	if (probed > 0 && Math.abs(probed - 1) > 0.02) return specifiedPx * probed;
+	return Number.isFinite(computed) && computed > 0 ? computed : specifiedPx;
+}
+
+function probeBorderRatio(host: HTMLElement): number {
+	const doc = host.ownerDocument;
+	const view = doc.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return 1;
+	const probe = doc.createElement('span');
+	probe.setAttribute('aria-hidden', 'true');
+	probe.style.position = 'absolute';
+	probe.style.left = '0';
+	probe.style.top = '0';
+	probe.style.width = '0';
+	probe.style.height = '0';
+	probe.style.padding = '0';
+	probe.style.margin = '0';
+	probe.style.borderStyle = 'solid';
+	probe.style.borderWidth = '2px';
+	probe.style.boxSizing = 'content-box';
+	probe.style.pointerEvents = 'none';
+	probe.style.visibility = 'hidden';
+	const parent = host.parentElement ?? host;
+	parent.appendChild(probe);
+	let ratio = 1;
+	try {
+		const computed = Number.parseFloat(view.getComputedStyle(probe).borderTopWidth);
+		if (Number.isFinite(computed) && computed > 0 && Math.abs(computed - 2) > 0.02) ratio = computed / 2;
+		else {
+			const offset = probe.offsetWidth;
+			const painted = probe.getBoundingClientRect().width;
+			if (offset > 0.5 && painted > 0) ratio = painted / offset;
+		}
+	} finally {
+		probe.remove();
+	}
+	return ratio > 0 ? ratio : 1;
+}
+
+/** Specified width whose painted border is 2 CSS px. Measured, then adjusted again. */
+function badgeStrokePx(host: HTMLElement): string {
+	if (!host.isConnected) return '2px';
+	let specified = STROKE_TARGET_PX;
+	for (let pass = 0; pass < 4; pass += 1) {
+		const used = usedBorderPx(host, specified);
+		if (!Number.isFinite(used) || used <= 0.01) return '2px';
+		if (Math.abs(used - STROKE_TARGET_PX) <= 0.05) return strokeLabel(specified);
+		const next = Number.parseFloat(correctedStrokePx(used, specified));
+		if (!Number.isFinite(next) || Math.abs(next - specified) < 0.01) return strokeLabel(specified);
+		specified = next;
+	}
+	return strokeLabel(specified);
+}
+
+/** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. */
 export function pinBadgeStroke(host: HTMLElement): void {
-	const px = badgeStrokePx(host);
-	applyBadgeStroke(host, px);
+	applyBadgeStroke(host, badgeStrokePx(host));
 	const view = host.ownerDocument.defaultView;
 	if (!view || host.dataset.rvStrokeFrame === '1') return;
 	host.dataset.rvStrokeFrame = '1';
@@ -968,20 +995,6 @@ export function pinBadgeStroke(host: HTMLElement): void {
 		applyBadgeStroke(host, badgeStrokePx(host));
 	};
 	if (typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(again);
-}
-
-function badgeStrokePx(host: HTMLElement): string {
-	const scale = paintedScale(host);
-	// Ancestor zoom/transform scales the used border. A declared 2px is used as
-	// 2×scale (1.01587px at zoom ≈ 0.508). Specify 2/scale so the used width is 2px.
-	if (Number.isFinite(scale) && scale > 0 && Math.abs(scale - 1) > 0.02) {
-		return `${Math.round((2 / scale) * 1000) / 1000}px`;
-	}
-	const view = host.ownerDocument.defaultView;
-	if (!view || typeof view.getComputedStyle !== 'function' || !host.isConnected) return '2px';
-	host.style.setProperty('border-width', '2px', 'important');
-	const used = Number.parseFloat(view.getComputedStyle(host).borderTopWidth);
-	return correctedStrokePx(used);
 }
 
 function applyBadgeStroke(host: HTMLElement, px: string): void {

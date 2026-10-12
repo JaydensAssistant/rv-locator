@@ -320,6 +320,7 @@ function paintFactsTitle(
 			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
 		setIcon(route, 'route');
+		pinBadgeStroke(route);
 		route.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -748,19 +749,49 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
 	line.style.setProperty('display', 'grid', 'important');
 	line.style.setProperty('grid-template-columns', 'max-content minmax(0, 1fr) 28px', 'important');
+	line.style.setProperty('grid-template-rows', 'auto', 'important');
 	line.style.setProperty('grid-column', '1 / -1', 'important');
 	line.style.setProperty('column-gap', '4px', 'important');
-	line.style.setProperty('align-items', 'center', 'important');
+	line.style.setProperty('align-items', 'start', 'important');
+	line.style.setProperty('justify-items', 'stretch', 'important');
 	line.style.setProperty('width', '100%', 'important');
-	line.style.setProperty('max-width', '100%', 'important');
+	line.style.setProperty('max-width', 'none', 'important');
 	line.style.setProperty('min-width', '0', 'important');
 	line.style.setProperty('box-sizing', 'border-box', 'important');
+	address.style.setProperty('grid-column', '1', 'important');
+	address.style.setProperty('grid-row', '1', 'important');
+	address.style.setProperty('width', 'max-content', 'important');
+	address.style.setProperty('max-width', 'none', 'important');
 	address.style.setProperty('margin', '0', 'important');
+	address.style.setProperty('white-space', 'nowrap', 'important');
 	field.style.setProperty('grid-column', '2', 'important');
-	field.style.setProperty('width', '100%', 'important');
+	field.style.setProperty('grid-row', '1', 'important');
+	field.style.setProperty('display', 'block', 'important');
+	field.style.setProperty('width', 'auto', 'important');
 	field.style.setProperty('min-width', '0', 'important');
-	field.style.setProperty('max-width', '100%', 'important');
+	field.style.setProperty('max-width', 'none', 'important');
+	field.style.setProperty('flex', '1 1 auto', 'important');
+	field.style.setProperty('position', 'static', 'important');
 	field.style.removeProperty('overflow');
+	if (earth instanceof HTMLElement) {
+		earth.style.setProperty('grid-column', '3', 'important');
+		earth.style.setProperty('grid-row', '1', 'important');
+		earth.style.setProperty('align-self', 'start', 'important');
+		earth.style.setProperty('justify-self', 'center', 'important');
+		earth.style.setProperty('position', 'static', 'important');
+		earth.style.setProperty('inset', 'auto', 'important');
+		earth.style.setProperty('transform', 'none', 'important');
+		earth.style.setProperty('margin', '0', 'important');
+		earth.style.setProperty('margin-top', 'calc((1.25em - 28px) / 2)', 'important');
+		earth.style.setProperty('width', '28px', 'important');
+		earth.style.setProperty('height', '28px', 'important');
+		earth.style.setProperty('min-width', '28px', 'important');
+		earth.style.setProperty('max-width', '28px', 'important');
+		earth.style.setProperty('min-height', '28px', 'important');
+		earth.style.setProperty('max-height', '28px', 'important');
+		earth.style.setProperty('flex', '0 0 28px', 'important');
+		earth.style.setProperty('z-index', '0', 'important');
+	}
 }
 
 function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
@@ -837,6 +868,11 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 		host.openMap(path);
 	};
 	link.style.setProperty('display', 'block', 'important');
+	link.style.setProperty('grid-column', 'auto', 'important');
+	link.style.setProperty('width', '100%', 'important');
+	link.style.setProperty('max-width', '100%', 'important');
+	link.style.setProperty('min-width', '0', 'important');
+	link.style.setProperty('position', 'static', 'important');
 	link.style.setProperty('white-space', 'normal', 'important');
 	link.style.setProperty('overflow-wrap', 'anywhere', 'important');
 	link.style.setProperty('word-break', 'break-word', 'important');

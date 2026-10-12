@@ -1035,6 +1035,7 @@ export class RvMapView extends ItemView {
 			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
 		setIcon(route, 'route');
+		pinBadgeStroke(route);
 		route.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();

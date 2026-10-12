@@ -6164,13 +6164,19 @@ button.rv-locator-urgency.is-ghost {
 }
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
-.markdown-preview-view p.rv-hub-owned > .rv-address-line > .rv-address-field,
 .markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
-.markdown-rendered p.rv-hub-owned > .rv-address-line > .rv-address-field,
-.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
-.rv-dashboard p.rv-hub-owned > .rv-address-line > .rv-address-field {
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-row {
 	flex: 1 1 0;
 	width: 0;
+	min-width: 0;
+	max-width: none;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > .rv-address-field {
+	flex: 1 1 auto;
+	width: auto;
 	min-width: 0;
 	max-width: none;
 }
@@ -6469,7 +6475,7 @@ button.rv-study-toggle {
 	grid-column: 1 / -1;
 	column-gap: 4px !important;
 	gap: 4px !important;
-	align-items: center;
+	align-items: start !important;
 	width: 100% !important;
 	max-width: 100% !important;
 	min-width: 0 !important;
@@ -6501,13 +6507,40 @@ button.rv-study-toggle {
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line > a.rv-map-button,
 .markdown-preview-view p.rv-hub-owned > .rv-address-line > a.rv-map-button,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > a.rv-map-button,
 .rv-dashboard p.rv-hub-owned > .rv-address-line > a.rv-map-button {
+	grid-column: 3 !important;
+	grid-row: 1 !important;
+	align-self: start !important;
+	justify-self: center !important;
+	position: static !important;
+	inset: auto !important;
+	transform: none !important;
+	margin: 0 !important;
+	margin-top: calc((1.25em - 28px) / 2) !important;
 	flex: 0 0 28px !important;
+	box-sizing: border-box !important;
 	width: 28px !important;
 	min-width: 28px !important;
 	max-width: 28px !important;
 	height: 28px !important;
-	justify-self: center;
+	min-height: 28px !important;
+	max-height: 28px !important;
+	z-index: 0 !important;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line > .rv-address-field {
+	grid-column: 2 !important;
+	grid-row: 1 !important;
+	display: block !important;
+	flex: 1 1 auto !important;
+	width: auto !important;
+	min-width: 0 !important;
+	max-width: none !important;
+	position: static !important;
 }
 
 .markdown-preview-view .rv-item,

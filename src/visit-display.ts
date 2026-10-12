@@ -938,22 +938,37 @@ export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
  */
 export function armVisitNoteFocus(root: HTMLElement): () => void {
 	let stop = false;
+	let won = false;
 	const doc = root.ownerDocument;
-	const promptOpen = (): boolean => doc.querySelector('input.templater-prompt-input') != null;
+	const promptOpen = (): boolean => doc.querySelector('input.templater-prompt-input, textarea.templater-prompt-input, .modal-container') != null;
 	const visitArea = (): HTMLTextAreaElement | null => {
 		const found = root.querySelector('textarea');
 		if (!isVisitTextArea(found) || !found.isConnected) return null;
 		return found;
+	};
+	const editingElsewhere = (node: Element | null): boolean => {
+		if (!(node instanceof HTMLElement)) return false;
+		if (node.classList.contains('templater-prompt-input')) return true;
+		const tag = node.tagName;
+		const field = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
+		if (!field) return false;
+		return !isVisitTextArea(node);
 	};
 	const focusArea = (): boolean => {
 		if (stop || !root.isConnected || promptOpen()) return false;
 		const area = visitArea();
 		if (!area) return false;
 		const active = doc.activeElement;
-		if (active === area) return true;
-		if (active && !isFocusThief(active)) return false;
+		if (active === area) {
+			won = true;
+			return true;
+		}
+		// Leave the Templater prompt and any other field alone so Enter still submits.
+		if (editingElsewhere(active instanceof Element ? active : null)) return false;
+		if (won && active instanceof Element && !isFocusThief(active)) return false;
 		placeVisitNoteFocus(root, '', 0);
-		return doc.activeElement === area || doc.activeElement === visitArea();
+		won = doc.activeElement === area || doc.activeElement === visitArea();
+		return won;
 	};
 	const observer = new MutationObserver(() => { focusArea(); });
 	observer.observe(root, { childList: true, subtree: true });

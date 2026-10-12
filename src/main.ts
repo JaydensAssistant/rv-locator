@@ -155,6 +155,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** New RV focus waits for the template prompt to close. No clock during the prompt. */
 	private pendingNewRvPath: string | null = null;
 	private armedNewRvPath: string | null = null;
+	private armedNewRvEl: HTMLElement | null = null;
 	private stopVisitFocus: (() => void) | null = null;
 	private noteMapResize: ResizeObserver | null = null;
 	/** Address typed into the custom box before the cache catches up. */
@@ -577,6 +578,7 @@ export default class RVLocatorPlugin extends Plugin {
 		else if (file && this.pendingNewRvPath && file.path !== this.pendingNewRvPath) {
 			this.pendingNewRvPath = null;
 			this.armedNewRvPath = null;
+			this.armedNewRvEl = null;
 			this.stopVisitFocus?.();
 			this.stopVisitFocus = null;
 		}
@@ -1015,7 +1017,6 @@ export default class RVLocatorPlugin extends Plugin {
 				await this.refreshAttemptDigest(created);
 				if (sourcePath) await this.linkHousehold(sourcePath, created);
 				this.pendingNewRvPath = created.path;
-				this.openInReadingView(created, true);
 				this.armNewRvFocus(created);
 			}
 		} catch (error) {
@@ -1909,13 +1910,43 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private armNewRvFocus(file: TFile): void {
-		if (this.armedNewRvPath === file.path && this.stopVisitFocus) return;
-		const leaf = this.app.workspace.getLeavesOfType('markdown')
-			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
-		const view = leaf?.view;
+		void this.activateNewRvNote(file);
+	}
+
+	/**
+	 * Templater leaves the bases file active. Open the new note, make it the
+	 * active file, then focus its visit textarea once the preview has the box.
+	 * The companion dialog is already closed: the template awaits it.
+	 */
+	private async activateNewRvNote(file: TFile): Promise<void> {
+		if (this.unloaded) return;
+		const found = this.app.vault.getFileByPath(file.path);
+		const current = found instanceof TFile ? found : file;
+		this.pendingNewRvPath = current.path;
+		let leaf = this.app.workspace.getLeavesOfType('markdown')
+			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === current.path);
+		if (leaf) {
+			if (this.app.workspace.getActiveFile()?.path !== current.path) {
+				this.app.workspace.setActiveLeaf(leaf, { focus: true });
+			}
+		} else {
+			const next = this.app.workspace.getLeaf('tab');
+			await next.openFile(current, { active: true });
+			if (next.view instanceof MarkdownView && next.view.file?.path === current.path) leaf = next;
+			else {
+				leaf = this.app.workspace.getLeavesOfType('markdown')
+					.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === current.path);
+			}
+		}
+		if (!leaf) return;
+		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
+		this.pendingNewRvPath = current.path;
+		this.openInReadingView(current, true);
+		if (this.armedNewRvPath === current.path && this.armedNewRvEl === view.containerEl && this.stopVisitFocus) return;
 		this.stopVisitFocus?.();
-		this.armedNewRvPath = file.path;
+		this.armedNewRvPath = current.path;
+		this.armedNewRvEl = view.containerEl;
 		this.stopVisitFocus = armVisitNoteFocus(view.containerEl);
 	}
 
