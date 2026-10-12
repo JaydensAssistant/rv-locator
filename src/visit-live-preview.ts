@@ -304,6 +304,12 @@ class OlderVisitsWidget extends WidgetType {
 	}
 }
 
+/** A frontmatter save keeps the visit cards. A different note does not. */
+function visitCardsUnchanged(before: string, after: string): boolean {
+	const signature = (doc: string): string => planVisitCardRanges(doc).map((range) => doc.slice(range.from, range.to)).join('\0');
+	return signature(before) === signature(after);
+}
+
 function editorIsLivePreview(view: EditorView): boolean {
 	const dom = view.dom;
 	if (typeof dom.closest !== 'function') return true;
@@ -395,7 +401,9 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 			const refresh = transaction.effects.some((effect) => (
 				effect.is(refreshVisitPreviewEffect) || effect.is(setOlderVisitsOpen) || effect.is(setLivePreview)
 			));
-			if (!refresh && transaction.docChanged && noteWritePending()) return value.map(transaction.changes);
+			if (!refresh && transaction.docChanged && noteWritePending() && visitCardsUnchanged(transaction.startState.doc.toString(), transaction.state.doc.toString())) {
+				return value.map(transaction.changes);
+			}
 			if (!transaction.docChanged && !refresh) return value;
 			return decorate(transaction.state);
 		},

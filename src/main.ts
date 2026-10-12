@@ -42,7 +42,7 @@ import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { mountRawVisitNotes, visitNoteKeys } from './visit-notes-field';
+import { clearVisitNoteCaches, mountRawVisitNotes, releaseClosedVisitNotes, setActiveVisitNote, visitNoteKeys } from './visit-notes-field';
 import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
@@ -319,13 +319,14 @@ export default class RVLocatorPlugin extends Plugin {
 			this.bindVisitSurface(element, path);
 			const lastDelay = NOTES_FIT_DELAYS_MS[NOTES_FIT_DELAYS_MS.length - 1] ?? 2_500;
 			for (const delay of NOTES_FIT_DELAYS_MS) {
-				window.setTimeout(() => {
-					if (this.unloaded) return;
-					const live = this.markdownSurface(path);
-					if (live) fitNotesBoxes(live);
-					else if (element.isConnected) fitNotesBoxes(element);
-					this.refreshVisitCards(path, element, delay === lastDelay, delay >= 250);
-				}, delay);
+			window.setTimeout(() => {
+				if (this.unloaded) return;
+				if (element.isConnected && !this.surfaceMatches(element, path)) return;
+				const live = this.markdownSurface(path);
+				if (live) fitNotesBoxes(live);
+				else if (element.isConnected) fitNotesBoxes(element);
+				this.refreshVisitCards(path, element, delay === lastDelay, delay >= 250);
+			}, delay);
 			}
 		});
 
@@ -374,6 +375,8 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		this.registerEvent(this.app.workspace.on('file-open', (file) => this.onNoteOpened(file)));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
+			clearVisitNoteCaches();
+			setActiveVisitNote(this.app.workspace.getActiveFile()?.path ?? '');
 			this.scheduleAgeRefresh();
 			this.applyLayoutClasses();
 			this.maskFilenameStamps();
@@ -418,7 +421,10 @@ export default class RVLocatorPlugin extends Plugin {
 			this.repaintOpenUrgency();
 			window.requestAnimationFrame(() => this.repaintOpenUrgency());
 		}));
-		this.registerEvent(this.app.workspace.on('layout-change', () => this.scheduleAgeRefresh()));
+		this.registerEvent(this.app.workspace.on('layout-change', () => {
+			this.scheduleAgeRefresh();
+			this.releaseClosedVisitNotes();
+		}));
 		this.registerEvent(this.app.workspace.on('css-change', () => {
 			this.recolorOpenSuggestions();
 			this.checkAccent();
@@ -541,7 +547,7 @@ export default class RVLocatorPlugin extends Plugin {
 		void this.app.vault.cachedRead(file).then((markdown) => {
 			if (this.unloaded) return;
 			const live = element.isConnected ? element : this.markdownSurface(path);
-			if (!live) return;
+			if (!live || !this.surfaceMatches(live, path)) return;
 			layoutVisitNotes(live, markdown, {
 				newestFirst: this.settings.visitsNewestFirst,
 				collapseOlder: this.settings.collapseOlderVisits,
@@ -573,6 +579,8 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private onNoteOpened(file: TFile | null): void {
+		clearVisitNoteCaches();
+		setActiveVisitNote(file?.path ?? '');
 		this.applyLayoutClasses();
 		this.scheduleAgeRefresh();
 		this.scheduleNotesFit();
@@ -634,7 +642,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private refreshVisitCards(path: string, fallback?: HTMLElement, chrome = false, notesFallback = false): void {
 		if (this.unloaded || !path) return;
 		const surface = this.markdownSurface(path) ?? (fallback?.isConnected ? fallback : null);
-		if (!surface) return;
+		if (!surface || !this.surfaceMatches(surface, path)) return;
+		surface.dataset.rvNoteFile = path;
 		const coveredFor = (when: Date, line = -1, domIndex = 0): string | null => {
 			if (!this.noteBodies.has(path)) return null;
 			const body = this.noteBodies.get(path) ?? '';
@@ -666,8 +675,9 @@ export default class RVLocatorPlugin extends Plugin {
 	 * caret is still in it; a rebuild restores the in-memory draft.
 	 */
 	private mountNativeVisitNotes(surface: HTMLElement, path: string): void {
+		if (!path || !this.surfaceMatches(surface, path)) return;
 		const file = this.app.vault.getFileByPath(path);
-		if (!file) return;
+		if (!file || file.path !== path) return;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const keys = visitNoteKeys(this.noteBodies.get(path) ?? '');
 		const wide = surface.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view, .cm-editor');
@@ -678,12 +688,34 @@ export default class RVLocatorPlugin extends Plugin {
 				return typeof value === 'string' ? value : value == null ? '' : String(value);
 			},
 			(key, value) => {
-				void this.app.fileManager.processFrontMatter(file, (data) => {
+				if ((this.app.workspace.getActiveFile()?.path ?? '') !== path) return;
+				if (!this.surfaceMatches(surface, path)) return;
+				const current = this.app.vault.getFileByPath(path);
+				if (!current || current.path !== path) return;
+				void this.app.fileManager.processFrontMatter(current, (data) => {
+					if ((this.app.workspace.getActiveFile()?.path ?? '') !== path) return;
 					data[key] = value;
 				});
 			},
 			keys,
+			path,
 		);
+	}
+
+	/** The preview still belongs to this file. A recycled leaf must not keep the previous note. */
+	private surfaceMatches(surface: HTMLElement, path: string): boolean {
+		const owner = this.pathForSurface(surface);
+		return !owner || owner === path;
+	}
+
+	/** A closed markdown view drops its note cache. The open note keeps its own. */
+	private releaseClosedVisitNotes(): void {
+		const open = new Set<string>();
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView && view.file) open.add(view.file.path);
+		}
+		releaseClosedVisitNotes(open);
 	}
 
 	private markdownSurface(path: string): HTMLElement | null {
@@ -1114,6 +1146,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
+		clearVisitNoteCaches();
 		document.body.classList.remove('rv-hide-backlinks', 'rv-hide-note-status');
 		this.stopVisitFocus?.();
 		this.stopVisitFocus = null;

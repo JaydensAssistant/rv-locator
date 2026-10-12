@@ -8,9 +8,9 @@ import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
-import { mountRawVisitNotes } from '../src/visit-notes-field';
+import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
-import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote } from '../src/visit-display';
+import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
@@ -1402,6 +1402,140 @@ describe('smoke layout', () => {
 				resolve();
 			}, 450);
 		});
+	});
+
+	it('keeps each note\'s visit text and writes on that file', () => {
+		const main = readFileSync('src/main.ts', 'utf8');
+		assert.match(main, /private onNoteOpened[\s\S]{0,120}clearVisitNoteCaches\(\)/);
+		assert.match(main, /active-leaf-change', \(\) => \{\s*clearVisitNoteCaches\(\)/);
+		assert.match(main, /onunload\(\): void \{\s*this\.unloaded = true;\s*clearVisitNoteCaches\(\)/);
+		assert.match(main, /releaseClosedVisitNotes\(open\)/);
+		assert.match(main, /getActiveFile\(\)\?\.path \?\? ''\) !== path\) return/);
+		clearVisitNoteCaches();
+		const stamps = [
+			['Sun, 9:05am — Oct 11, 2026', 'sVisit5Notes'],
+			['Sat, 8:00am — Oct 4, 2026', 'sVisit4Notes'],
+			['Fri, 7:00pm — Sep 26, 2026', 'sVisit3Notes'],
+		] as const;
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer markdown-preview-section';
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		const fill = (values: Record<string, string>): Map<string, string> => {
+			const front = new Map(Object.entries(values));
+			sizer.replaceChildren();
+			for (const [stamp, key] of stamps) {
+				const heading = window.document.createElement('div');
+				heading.className = 'markdown-preview-section';
+				heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
+				const note = window.document.createElement('div');
+				note.className = 'markdown-preview-section';
+				note.innerHTML = `<div class="el-p"><p><code>INPUT[textArea:${key}]</code></p></div>`;
+				sizer.append(heading, note);
+			}
+			decorateVisitControls(preview, () => null, () => {});
+			rehoistVisitNotes(preview);
+			preview.querySelectorAll('code').forEach((code) => {
+				code.textContent = '';
+				const wrap = window.document.createElement('div');
+				wrap.className = 'mb-input-wrapper mb-input-type-textArea';
+				const meta = window.document.createElement('textarea');
+				meta.className = 'mb-input-textarea';
+				wrap.appendChild(meta);
+				code.appendChild(wrap);
+			});
+			preview.querySelectorAll('.rv-visit-note-box').forEach((box) => box.removeAttribute('data-rv-visit-key'));
+			return front;
+		};
+		const boFront = fill({ sVisit5Notes: 'bo newest', sVisit4Notes: 'bo middle', sVisit3Notes: 'bo oldest' });
+		const boWrites: Array<[string, string]> = [];
+		const mount = (path: string, front: Map<string, string>, writes: Array<[string, string]>): void => {
+			setActiveVisitNote(path);
+			mountRawVisitNotes(preview, (key) => front.get(key) ?? '', (key, value) => {
+				writes.push([key, value]);
+				front.set(key, value);
+			}, stamps.map((row) => row[1]), path);
+		};
+		try {
+			mount('Bo.md', boFront, boWrites);
+			const boAreas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
+			assert.deepEqual(boAreas.map((area) => area.value), ['bo newest', 'bo middle', 'bo oldest']);
+			assert.deepEqual(boAreas.map((area) => area.dataset.rvNoteFile), ['Bo.md', 'Bo.md', 'Bo.md']);
+			assert.deepEqual(boAreas.map((area) => area.dataset.rvNoteKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
+			const boBox = boAreas[1];
+			assert.ok(boBox);
+			boBox.focus();
+			boBox.value = 'from bo';
+			boBox.setSelectionRange(4, 4);
+			boBox.dispatchEvent(new window.Event('input', { bubbles: true }));
+			clearVisitNoteCaches();
+			setActiveVisitNote('Pat.md');
+			preview.dataset.rvNoteFile = 'Pat.md';
+			assert.equal(visitNoteBusy(preview), false);
+			const earlyWrites: Array<[string, string]> = [];
+			const earlyFront = new Map([
+				['sVisit5Notes', 'pat newest'],
+				['sVisit4Notes', 'pat middle'],
+				['sVisit3Notes', 'pat oldest'],
+			]);
+			mount('Pat.md', earlyFront, earlyWrites);
+			const carried = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
+			assert.deepEqual(carried.map((area) => area.value), ['pat newest', 'pat middle', 'pat oldest']);
+			assert.equal(carried.some((area) => area.value.includes('from bo')), false);
+			assert.deepEqual(carried.map((area) => area.dataset.rvNoteFile), ['Pat.md', 'Pat.md', 'Pat.md']);
+			assert.deepEqual(carried.map((area) => area.dataset.rvNoteKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
+			const patFront = fill({ sVisit5Notes: 'pat newest', sVisit4Notes: 'pat middle', sVisit3Notes: 'pat oldest' });
+			const patWrites: Array<[string, string]> = [];
+			mount('Pat.md', patFront, patWrites);
+			const patAreas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
+			assert.equal(preview.querySelectorAll('h5.rv-visit-stamp').length, 3);
+			assert.deepEqual(patAreas.map((area) => area.value), ['pat newest', 'pat middle', 'pat oldest']);
+			assert.equal(patAreas.some((area) => area.value.includes('from bo')), false);
+			assert.deepEqual(patAreas.map((area) => area.dataset.rvNoteFile), ['Pat.md', 'Pat.md', 'Pat.md']);
+			assert.deepEqual(patAreas.map((area) => area.dataset.rvNoteKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
+			const patBox = patAreas[1];
+			assert.ok(patBox);
+			patBox.focus();
+			patBox.value = 'from pat';
+			patBox.setSelectionRange(4, 4);
+			patBox.dispatchEvent(new window.Event('input', { bubbles: true }));
+			return new Promise<void>((resolve, reject) => {
+				setTimeout(() => {
+					try {
+						assert.deepEqual(boWrites, []);
+						assert.deepEqual(patWrites, [['sVisit4Notes', 'from pat']]);
+						assert.equal(patFront.get('sVisit3Notes'), 'pat oldest');
+						assert.equal(boFront.get('sVisit4Notes'), 'bo middle');
+						clearVisitNoteCaches();
+						const again = fill({
+							sVisit5Notes: boFront.get('sVisit5Notes') ?? '',
+							sVisit4Notes: boFront.get('sVisit4Notes') ?? '',
+							sVisit3Notes: boFront.get('sVisit3Notes') ?? '',
+						});
+						const againWrites: Array<[string, string]> = [];
+						mount('Bo.md', again, againWrites);
+						const back = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
+						assert.deepEqual(back.map((area) => area.value), ['bo newest', 'bo middle', 'bo oldest']);
+						assert.equal(back.some((area) => area.value.includes('from pat')), false);
+						assert.deepEqual(back.map((area) => area.dataset.rvNoteFile), ['Bo.md', 'Bo.md', 'Bo.md']);
+						preview.remove();
+						resolve();
+					} catch (error) {
+						reject(error);
+					} finally {
+						clearVisitNoteCaches();
+						setActiveVisitNote('');
+					}
+				}, 450);
+			});
+		} catch (error) {
+			clearVisitNoteCaches();
+			setActiveVisitNote('');
+			preview.remove();
+			throw error;
+		}
 	});
 
 	it('draws a centered chevron on the companion and literature dropdown', () => {

@@ -253,11 +253,10 @@ describe('live preview older visits', () => {
 		assert.equal(same, area);
 		assert.equal(area.selectionStart, 2);
 		assert.equal(area.selectionEnd, 2);
-		const needle = '`INPUT[textArea:sVisit1Notes]`';
-		const at = view.state.doc.toString().lastIndexOf(needle);
-		assert.ok(at >= 0);
+		const outside = view.state.doc.toString().indexOf('Attempt Log');
+		assert.ok(outside >= 0);
 		view.dispatch({
-			changes: { from: at + needle.length, to: at + needle.length, insert: ' ' },
+			changes: { from: outside + 'Attempt Log'.length, to: outside + 'Attempt Log'.length, insert: ' ' },
 			selection: { anchor: 0 },
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -265,8 +264,11 @@ describe('live preview older visits', () => {
 		assert.equal(skipped, area);
 		assert.equal(area.selectionStart, 2);
 		assert.equal(area.selectionEnd, 2);
+		const needle = '`INPUT[textArea:sVisit1Notes]`';
+		const at = view.state.doc.toString().lastIndexOf(needle);
+		assert.ok(at >= 0);
 		view.dispatch({
-			effects: refreshVisitPreviewEffect.of(null),
+			changes: { from: at + needle.length, to: at + needle.length, insert: ' ' },
 			selection: { anchor: 0 },
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));

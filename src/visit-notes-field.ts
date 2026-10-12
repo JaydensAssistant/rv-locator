@@ -1,5 +1,5 @@
 import { NOTES_MAX_LINES, NOTES_MIN_LINES, fitNotesBox } from './notes-autosize';
-import { holdVisitNote, isFocusThief } from './visit-display';
+import { dropHeldVisitNote, holdVisitNote, isFocusThief } from './visit-display';
 
 const RAW_NOTE = /^['"`]?INPUT\[textArea:(sVisit\d+Notes)\]['"`]?$/;
 const NOTE_KEY = /sVisit\d+Notes/;
@@ -7,6 +7,7 @@ const NOTE_KEY = /sVisit\d+Notes/;
 const writeTimers = new WeakMap<HTMLTextAreaElement, ReturnType<typeof setTimeout>>();
 
 interface NoteDraft {
+	path: string;
 	value: string;
 	start: number;
 	end: number;
@@ -14,16 +15,57 @@ interface NoteDraft {
 }
 
 const draftByKey = new Map<string, NoteDraft>();
-let ownWriteUntil = 0;
+const pendingByPath = new Map<string, number>();
+const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+let session = 0;
+let activeNotePath = '';
 
-/** True while a visit-notes textarea is writing its own frontmatter. */
-export function noteWritePending(): boolean {
-	return Date.now() < ownWriteUntil;
+function cacheKey(path: string, key: string): string {
+	return `${path}\0${key}`;
+}
+
+/** The file whose visit notes may be read or written. Set on file-open and leaf change. */
+export function setActiveVisitNote(path: string): void {
+	activeNotePath = path;
+}
+
+/**
+ * Drop drafts, caret positions, and in-flight saves.
+ * A value mounted for one file must not appear in, or be written from, another.
+ */
+export function clearVisitNoteCaches(): void {
+	session += 1;
+	draftByKey.clear();
+	pendingByPath.clear();
+	for (const timer of pendingTimers) clearTimeout(timer);
+	pendingTimers.clear();
+	dropHeldVisitNote();
+}
+
+/** A view that closed keeps its text out of every note that is still open. */
+export function releaseClosedVisitNotes(openPaths: ReadonlySet<string>): void {
+	for (const id of [...draftByKey.keys()]) {
+		const path = id.split('\0')[0] ?? '';
+		if (path && !openPaths.has(path)) draftByKey.delete(id);
+	}
+	for (const path of [...pendingByPath.keys()]) {
+		if (path && !openPaths.has(path)) pendingByPath.delete(path);
+	}
+}
+
+/** True while this file (or any file, when path is omitted) is writing its own frontmatter. */
+export function noteWritePending(path?: string): boolean {
+	const now = Date.now();
+	if (path != null) return now < (pendingByPath.get(path) ?? 0);
+	for (const until of pendingByPath.values()) {
+		if (now < until) return true;
+	}
+	return false;
 }
 
 /** Skip the next preview rebuild so that write does not move the caret. */
-export function markOwnNoteWrite(): void {
-	ownWriteUntil = Date.now() + 2500;
+export function markOwnNoteWrite(path = ''): void {
+	pendingByPath.set(path, Date.now() + 2500);
 }
 
 /** `sVisitNNotes` keys in the order the note writes them. */
@@ -95,20 +137,23 @@ function isMetaBindArea(area: HTMLTextAreaElement): boolean {
 	return boundKey(area) !== '';
 }
 
-function liveDraft(key: string): NoteDraft | null {
-	const saved = draftByKey.get(key);
-	if (!saved || Date.now() >= saved.until) return null;
+function liveDraft(path: string, key: string): NoteDraft | null {
+	const saved = draftByKey.get(cacheKey(path, key));
+	if (!saved || saved.path !== path || Date.now() >= saved.until) return null;
 	return saved;
 }
 
 let suppressCaret = false;
 
 /** The live caret. A missing selection does not mean the end of the text. */
-function rememberCaret(area: HTMLTextAreaElement, key: string): void {
-	const previous = draftByKey.get(key);
+function rememberCaret(area: HTMLTextAreaElement, path: string, key: string): void {
+	if ((area.dataset.rvNoteFile || '') !== path) return;
+	const id = cacheKey(path, key);
+	const previous = draftByKey.get(id);
 	const start = typeof area.selectionStart === 'number' ? area.selectionStart : previous?.start ?? 0;
 	const end = typeof area.selectionEnd === 'number' ? area.selectionEnd : previous?.end ?? start;
-	draftByKey.set(key, {
+	draftByKey.set(id, {
+		path,
 		value: area.value,
 		start,
 		end,
@@ -116,8 +161,8 @@ function rememberCaret(area: HTMLTextAreaElement, key: string): void {
 	});
 }
 
-function rememberDraft(area: HTMLTextAreaElement, key: string): void {
-	rememberCaret(area, key);
+function rememberDraft(area: HTMLTextAreaElement, path: string, key: string): void {
+	rememberCaret(area, path, key);
 }
 
 /** Clicks and arrow keys move the caret without an input event. Keep that position. */
@@ -131,8 +176,10 @@ function watchCaretMoves(area: HTMLTextAreaElement): void {
 		const active = doc.activeElement;
 		if (!isTextArea(active) || !active.classList.contains('rv-native-notes-area')) return;
 		const key = active.dataset.rvNoteKey || active.dataset.rvNativeNotes || '';
+		const path = active.dataset.rvNoteFile || '';
 		if (!NOTE_KEY.test(key)) return;
-		rememberCaret(active, key);
+		if (activeNotePath && path !== activeNotePath) return;
+		rememberCaret(active, path, key);
 	};
 	doc.addEventListener('selectionchange', pull);
 	doc.addEventListener('keyup', pull, true);
@@ -140,8 +187,8 @@ function watchCaretMoves(area: HTMLTextAreaElement): void {
 	doc.addEventListener('mouseup', pull, true);
 }
 
-function desiredValue(key: string, readValue: (key: string) => string): string {
-	return liveDraft(key)?.value ?? readValue(key);
+function desiredValue(path: string, key: string, readValue: (key: string) => string): string {
+	return liveDraft(path, key)?.value ?? readValue(key);
 }
 
 function selectionOf(area: HTMLTextAreaElement, saved: NoteDraft): { start: number; end: number } {
@@ -163,9 +210,9 @@ function editingElsewhere(node: EventTarget | null): boolean {
  * A new textarea after the preview DOM was actually replaced.
  * The same element surviving our own save is left untouched.
  */
-function placeRebuiltCaret(area: HTMLTextAreaElement, key: string): void {
-	const saved = liveDraft(key);
-	if (!saved) return;
+function placeRebuiltCaret(area: HTMLTextAreaElement, path: string, key: string): void {
+	const saved = liveDraft(path, key);
+	if (!saved || saved.path !== path) return;
 	const { start, end } = selectionOf(area, saved);
 	const active = area.ownerDocument.activeElement;
 	suppressCaret = true;
@@ -184,10 +231,11 @@ function placeRebuiltCaret(area: HTMLTextAreaElement, key: string): void {
 	}
 }
 
-function findNative(root: ParentNode, key: string): HTMLTextAreaElement | null {
+function findNative(root: ParentNode, key: string, path: string): HTMLTextAreaElement | null {
 	const areas = root.querySelectorAll('textarea.rv-native-notes-area');
 	for (const node of Array.from(areas)) {
 		if (!isTextArea(node) || !node.isConnected || hiddenSource(node)) continue;
+		if ((node.dataset.rvNoteFile || '') !== path) continue;
 		if (node.dataset.rvNoteKey === key || node.dataset.rvNativeNotes === key) return node;
 		const marked = node.closest('[data-rv-native-notes]');
 		if (isElement(marked) && marked !== node && !node.dataset.rvNoteKey && marked.dataset.rvNativeNotes === key) return node;
@@ -235,14 +283,15 @@ function silenceMetaBind(root: HTMLElement, area: HTMLTextAreaElement): HTMLElem
 	return hold;
 }
 
-function syncNative(area: HTMLTextAreaElement, key: string, readValue: (key: string) => string): void {
+function syncNative(area: HTMLTextAreaElement, path: string, key: string, readValue: (key: string) => string): void {
+	if ((area.dataset.rvNoteFile || '') !== path) return;
 	const focused = area.ownerDocument.activeElement === area;
 	// Our save skips the rebuild. The textarea is the same node, so the caret stays.
-	if (focused || noteWritePending()) {
+	if (focused || noteWritePending(path)) {
 		fitNativeNotes(area);
 		return;
 	}
-	const next = desiredValue(key, readValue);
+	const next = desiredValue(path, key, readValue);
 	if (area.value !== next) {
 		suppressCaret = true;
 		area.value = next;
@@ -372,19 +421,60 @@ function fieldHost(box: HTMLElement): HTMLElement {
 	return hold;
 }
 
-function pinKey(area: HTMLTextAreaElement, host: HTMLElement, key: string): void {
+function pinKey(area: HTMLTextAreaElement, host: HTMLElement, key: string, path: string): void {
 	area.dataset.rvNoteKey = key;
 	area.dataset.rvNativeNotes = key;
+	area.dataset.rvNoteFile = path;
 	host.dataset.rvNativeNotes = key;
+	host.dataset.rvNoteFile = path;
 	host.classList.add('rv-native-notes');
 	const box = host.closest('.rv-visit-note-box');
 	if (isElement(box)) box.dataset.rvVisitKey = key;
+}
+
+function dropForeignArea(area: HTMLTextAreaElement | null, path: string): HTMLTextAreaElement | null {
+	if (!isTextArea(area) || !area.isConnected) return null;
+	if ((area.dataset.rvNoteFile || '') === path) return area;
+	area.remove();
+	return null;
+}
+
+function scheduleNoteWrite(
+	area: HTMLTextAreaElement,
+	path: string,
+	key: string,
+	typed: string,
+	writeValue: (key: string, value: string) => void,
+): void {
+	const stamp = session;
+	const pending = writeTimers.get(area);
+	if (pending) {
+		clearTimeout(pending);
+		pendingTimers.delete(pending);
+	}
+	const timer = setTimeout(() => {
+		pendingTimers.delete(timer);
+		writeTimers.delete(area);
+		if (stamp !== session) return;
+		if ((area.dataset.rvNoteFile || '') !== path) return;
+		if (activeNotePath && path !== activeNotePath) return;
+		const writeKey = area.dataset.rvNoteKey || area.dataset.rvNativeNotes || '';
+		if (writeKey !== key) return;
+		if (area.isConnected) rememberCaret(area, path, writeKey);
+		markOwnNoteWrite(path);
+		const saved = liveDraft(path, writeKey);
+		if (saved && saved.path !== path) return;
+		writeValue(writeKey, saved?.value ?? typed);
+	}, 400);
+	writeTimers.set(area, timer);
+	pendingTimers.add(timer);
 }
 
 function wireNative(
 	root: ParentNode,
 	host: HTMLElement,
 	key: string,
+	path: string,
 	readValue: (key: string) => string,
 	writeValue: (key: string, value: string) => void,
 ): void {
@@ -397,53 +487,48 @@ function wireNative(
 		host = hold;
 	}
 	const box = host.closest('.rv-visit-note-box');
-	const already = isElement(box) ? pinnedArea(box) : null;
-	if (isTextArea(already) && already.isConnected) {
+	const already = dropForeignArea(isElement(box) ? pinnedArea(box) : null, path);
+	if (isTextArea(already)) {
 		const holder = already.parentElement;
-		pinKey(already, isElement(holder) ? holder : host, key);
-		syncNative(already, key, readValue);
+		pinKey(already, isElement(holder) ? holder : host, key, path);
+		syncNative(already, path, key, readValue);
 		return;
 	}
-	const existing = findNative(host, key);
-	if (isTextArea(existing) && existing.isConnected) {
-		pinKey(existing, host, key);
-		syncNative(existing, key, readValue);
+	const existing = dropForeignArea(findNative(host, key, path), path);
+	if (isTextArea(existing)) {
+		pinKey(existing, host, key, path);
+		syncNative(existing, path, key, readValue);
 		return;
 	}
-	if (findNative(root, key) || foreignWriter(host)) return;
+	if (findNative(root, key, path) || foreignWriter(host)) return;
 	if (!host.classList.contains('rv-visit-note-box') && !broadContainer(host)) host.replaceChildren();
 	const area = host.ownerDocument.createElement('textarea');
 	area.className = 'rv-native-notes-area';
 	area.rows = NOTES_MIN_LINES;
-	pinKey(area, host, key);
-	area.value = desiredValue(key, readValue);
+	pinKey(area, host, key, path);
+	area.value = desiredValue(path, key, readValue);
 	area.setAttribute('aria-label', 'Visit notes');
 	watchCaretMoves(area);
 	area.addEventListener('focus', () => holdVisitNote(area, 2500));
 	area.addEventListener('input', () => {
+		const writePath = area.dataset.rvNoteFile || '';
 		const writeKey = area.dataset.rvNoteKey || key;
+		if (writePath !== path) return;
+		if (activeNotePath && writePath !== activeNotePath) return;
 		const typed = area.value;
-		rememberDraft(area, writeKey);
-		markOwnNoteWrite();
+		rememberDraft(area, writePath, writeKey);
+		markOwnNoteWrite(writePath);
 		holdVisitNote(area, 2500);
-		const pending = writeTimers.get(area);
-		if (pending) clearTimeout(pending);
-		writeTimers.set(area, setTimeout(() => {
-			writeTimers.delete(area);
-			if (area.isConnected) rememberCaret(area, writeKey);
-			markOwnNoteWrite();
-			const saved = liveDraft(writeKey);
-			writeValue(writeKey, saved?.value ?? typed);
-		}, 400));
+		scheduleNoteWrite(area, writePath, writeKey, typed, writeValue);
 		fitNativeNotes(area);
 	});
 	host.appendChild(area);
 	fitNativeNotes(area);
-	const saved = liveDraft(key);
+	const saved = liveDraft(path, key);
 	suppressCaret = true;
 	area.value = saved?.value ?? readValue(key);
 	suppressCaret = false;
-	placeRebuiltCaret(area, key);
+	placeRebuiltCaret(area, path, key);
 }
 
 function foreignWriter(host: HTMLElement): HTMLTextAreaElement | null {
@@ -477,12 +562,15 @@ export function mountRawVisitNotes(
 	readValue: (key: string) => string,
 	writeValue: (key: string, value: string) => void,
 	orderedKeys: readonly string[] = [],
+	path = '',
 ): void {
 	const surface = visitSurface(root);
+	surface.dataset.rvNoteFile = path;
 	surface.querySelectorAll('textarea.rv-native-notes-area').forEach((node) => {
 		if (!isTextArea(node) || !node.isConnected) return;
+		if ((node.dataset.rvNoteFile || '') !== path) return;
 		const key = node.dataset.rvNoteKey || node.dataset.rvNativeNotes || '';
-		if (NOTE_KEY.test(key)) rememberCaret(node, key);
+		if (NOTE_KEY.test(key)) rememberCaret(node, path, key);
 	});
 	const boxes = boxesAfterStamps(surface);
 	const used = new Set<string>();
@@ -495,7 +583,7 @@ export function mountRawVisitNotes(
 		box.querySelectorAll('textarea').forEach((node) => {
 			if (isTextArea(node) && isMetaBindArea(node)) silenceMetaBind(root.contains(node) ? root : surface, node);
 		});
-		wireNative(surface, fieldHost(box), key, readValue, writeValue);
+		wireNative(surface, fieldHost(box), key, path, readValue, writeValue);
 	});
 	const claimed: Array<{ key: string; host: HTMLElement }> = [];
 	root.querySelectorAll('textarea').forEach((node) => {
@@ -518,8 +606,18 @@ export function mountRawVisitNotes(
 			const key = (isTextArea(area) ? (area.dataset.rvNoteKey || area.dataset.rvNativeNotes || '') : '')
 				|| node.dataset.rvNoteKey
 				|| '';
-			if (isTextArea(area) && area.isConnected && NOTE_KEY.test(key)) syncNative(area, key, readValue);
-			else if (isTextArea(area) && area.isConnected) fitNativeNotes(area);
+			if (isTextArea(area) && area.isConnected && (area.dataset.rvNoteFile || '') !== path) {
+				area.remove();
+			} else if (isTextArea(area) && area.isConnected && NOTE_KEY.test(key)) {
+				syncNative(area, path, key, readValue);
+				return;
+			} else if (isTextArea(area) && area.isConnected) {
+				fitNativeNotes(area);
+				return;
+			}
+			if (!NOTE_KEY.test(key) || used.has(key)) return;
+			used.add(key);
+			wireNative(surface, node, key, path, readValue, writeValue);
 			return;
 		}
 		const key = rawVisitNoteKey(ownText(node)) || rawVisitNoteKey(node.textContent ?? '');
@@ -528,18 +626,18 @@ export function mountRawVisitNotes(
 		const host = node.matches('p, .el-p')
 			? node
 			: (isElement(parent) && !broadContainer(parent) && !parent.classList.contains('rv-visit-note-box') ? parent : node);
-		if (hiddenSource(host) || broadContainer(host) || findNative(surface, key)) return;
+		if (hiddenSource(host) || broadContainer(host) || findNative(surface, key, path)) return;
 		if (foreignWriter(host)) return;
 		used.add(key);
-		wireNative(surface, host, key, readValue, writeValue);
+		wireNative(surface, host, key, path, readValue, writeValue);
 	});
 	for (const item of claimed) {
-		const unused = !item.key || used.has(item.key) || !item.host.isConnected || findNative(surface, item.key) != null;
+		const unused = !item.key || used.has(item.key) || !item.host.isConnected || findNative(surface, item.key, path) != null;
 		if (unused) {
 			if (item.host.dataset.rvNotesHold === '1' && !item.host.querySelector('textarea')) item.host.remove();
 			continue;
 		}
 		used.add(item.key);
-		wireNative(surface, item.host, item.key, readValue, writeValue);
+		wireNative(surface, item.host, item.key, path, readValue, writeValue);
 	}
 }

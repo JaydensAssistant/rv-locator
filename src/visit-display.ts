@@ -846,11 +846,23 @@ export function releaseVisitNote(next: EventTarget | null): void {
 	heldNoteUntil = 0;
 }
 
+/** A file switch must not keep the previous note focused or block the next layout. */
+export function dropHeldVisitNote(): void {
+	heldNote = null;
+	heldNoteUntil = 0;
+}
+
+function noteOwnedHere(root: HTMLElement, area: HTMLTextAreaElement): boolean {
+	const file = root.dataset.rvNoteFile || '';
+	const bound = area.dataset.rvNoteFile || '';
+	return !file || !bound || file === bound;
+}
+
 /** True while a visit textarea in `root` is focused, or was just tapped and must stay focused. */
 export function visitNoteBusy(root: HTMLElement): boolean {
 	const active = root.ownerDocument?.activeElement;
-	if (isVisitTextArea(active) && root.contains(active)) return true;
-	return heldNote != null && heldNote.isConnected && Date.now() < heldNoteUntil && root.contains(heldNote);
+	if (isVisitTextArea(active) && root.contains(active) && noteOwnedHere(root, active)) return true;
+	return heldNote != null && heldNote.isConnected && noteOwnedHere(root, heldNote) && Date.now() < heldNoteUntil && root.contains(heldNote);
 }
 
 /** Put the caret back when a repaint left it on the document body. */
