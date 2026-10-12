@@ -3,6 +3,7 @@
  * Display titles come from the supplied list. Parenthetical aliases match search only.
  */
 import { LESSON_ENTRIES, MEDIA_ENTRIES, PUBLICATION_ENTRIES, type CatalogTitle } from './catalog-data';
+import { isClosingPart, sliderStopsFor } from './lesson-stops';
 
 export type { CatalogTitle };
 
@@ -90,7 +91,7 @@ export function nextStudyStart(lesson: string, endedOn: string, catalog: readonl
 	const current = lessonByTitle(title, catalog.map((item) => item.title));
 	const parts = [...lessonPartOptions(current)];
 	const index = parts.findIndex((part) => part.toLowerCase() === ended.toLowerCase());
-	const finished = ended.toLowerCase() === 'summary' || (index >= 0 && index === parts.length - 1);
+	const finished = isClosingPart(ended) || (index >= 0 && index === parts.length - 1);
 	if (finished) {
 		const at = catalog.findIndex((item) => item.title.trim().toLowerCase() === title.toLowerCase());
 		const next = at >= 0 ? catalog[at + 1] : undefined;
@@ -221,14 +222,19 @@ export function lessonByTitle(title: string, custom: readonly string[] = []): Le
 
 /** Where a lesson can start or end. A review uses its section's question numbers. */
 export function lessonPartOptions(lesson: LessonSpec | null): readonly string[] {
-	if (lesson?.review) {
+	if (lesson?.review && !lookupKnownStops(lesson.title)) {
 		const section = lesson.reviewSection && REVIEW_QUESTION_COUNTS[lesson.reviewSection]
 			? lesson.reviewSection
 			: 1;
 		const count = REVIEW_QUESTION_COUNTS[section];
 		return Array.from({ length: count }, (_, index) => String(index + 1));
 	}
+	if (lesson?.title) return sliderStopsFor(lesson.title, NORMAL_LESSON_PARTS);
 	return NORMAL_LESSON_PARTS;
+}
+
+function lookupKnownStops(title: string): boolean {
+	return sliderStopsFor(title, []).length > 0;
 }
 
 function normalize(value: string): string {

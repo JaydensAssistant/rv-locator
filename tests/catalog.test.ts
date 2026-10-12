@@ -23,6 +23,7 @@ import {
 	splitTitleSuffix,
 	type LessonSpec,
 } from '../src/catalog';
+import { formatLessonLine, partwayCopy } from '../src/lesson-stops';
 import { formatGlanceableCounter } from '../src/dates';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin, clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, orderByHubSort, pinStackZ, popupClearOfChrome, pinStateIcon, rankPinsFromRenderedList, zoomToRevealPin, type MapPin } from '../src/map-pins';
 import { SORT_PRESETS, visibleSortPresets } from '../src/active-layout';
@@ -111,6 +112,19 @@ describe('official catalogs', () => {
 });
 
 describe('lesson sections', () => {
+	it('uses intro, numbered points, and one Outro for an official lesson', () => {
+		const lesson = LESSONS.find((item) => item.title.startsWith('12 '));
+		assert.ok(lesson);
+		assert.deepEqual(lessonPartOptions(lesson ?? null), ['Intro', '1', '2', '3', '4', '5', '6', 'Outro']);
+		assert.equal(formatLessonLine(lesson?.title ?? '', '3'), 'Lesson 12, point 3');
+		assert.equal(formatLessonLine(lesson?.title ?? '', 'Intro'), 'Lesson 12, Intro');
+		assert.equal(formatLessonLine(lesson?.title ?? '', 'Outro'), 'Lesson 12, Outro');
+		const review = LESSONS.find((item) => item.title === 'Section 1 Review');
+		assert.equal(lessonPartOptions(review ?? null).length, 10);
+		assert.equal(formatLessonLine('Section 1 Review', '4'), 'Section 1 Review, question 4');
+		assert.deepEqual(partwayCopy(['Intro', '1', '2', '3'], 2), { done: 'Done through 2', next: 'Next time: point 3' });
+	});
+
 	it('uses intro through review for a normal lesson and question counts for a marked review', () => {
 		const normal: LessonSpec = { title: 'Sample lesson', review: false };
 		assert.deepEqual(lessonPartOptions(normal), [...NORMAL_LESSON_PARTS]);
@@ -319,7 +333,8 @@ describe('in-note urgency chrome', () => {
 		assert.match(ghostPin, /opacity:\s*1/);
 		assert.match(ghostPin, /background-color: color-mix\(in srgb, var\(--background-primary\) 88%, var\(--background-primary\)\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
-		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin svg \{[^}]*width: 21px !important;[^}]*height: 21px !important/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin:not\(\.is-drop\) svg \{[^}]*width: 21px !important;[^}]*height: 21px !important/);
+		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-drop \.rv-pin-shape svg \{[^}]*width: 42px !important;[^}]*height: 54px !important/);
 		assert.match(css, /\.rv-map-card\.rv-locator-glancable \{[^}]*--rv-control-size: 38px/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: var\(--background-secondary\);/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background: linear-gradient\(color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\), color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)\), var\(--background-secondary\);/);

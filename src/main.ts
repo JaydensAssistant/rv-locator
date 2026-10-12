@@ -1107,6 +1107,7 @@ export default class RVLocatorPlugin extends Plugin {
 			showLiterature: true,
 			literatureCollapsed: study,
 			lessonExpanded: study,
+			studyFirst: study,
 			showLesson: false,
 			optionalLesson: true,
 			lessonPrefill: defaults,

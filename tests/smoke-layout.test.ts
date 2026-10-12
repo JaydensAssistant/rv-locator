@@ -265,6 +265,43 @@ describe('smoke layout', () => {
 		assert.match(map, /zoomToRevealPin\(zed\)/);
 	});
 
+	it('drops the padded visit card and keeps the item strip or the ghost header', () => {
+		const filled = visitRoot(LONG, 'Showed the video and started lesson 1.', 'Log');
+		decorateVisitControls(filled, () => 1, () => {});
+		const filledBox = filled.querySelector('.rv-visit-note-box');
+		const filledStrip = filledBox?.querySelector(':scope > .rv-item-strip');
+		assert.ok(filledBox);
+		assert.equal(filledStrip?.classList.contains('is-ghost'), false);
+		const titles = Array.from(filledStrip?.querySelectorAll('.rv-item') ?? []).map((node) => node.textContent ?? '');
+		assert.ok(titles.some((text) => /Enjoy Life Forever/.test(text)));
+		assert.ok(titles.some((text) => /Why Study the Bible/.test(text)));
+		assert.ok(titles.some((text) => /How Can the Bible Help You/.test(text)));
+		assert.equal(filledBox?.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
+
+		const empty = visitRoot('Tue, 6:15pm — Aug 12, 2026', 'Nobody answered.', 'Log');
+		decorateVisitControls(empty, () => null, () => {});
+		const emptyBox = empty.querySelector('.rv-visit-note-box');
+		const ghost = emptyBox?.querySelector(':scope > .rv-item-strip');
+		assert.ok(emptyBox);
+		assert.equal(ghost?.classList.contains('is-ghost'), true);
+		assert.equal(ghost?.childElementCount, 0);
+		assert.equal(emptyBox?.querySelector('p')?.textContent, 'Nobody answered.');
+
+		const css = readFileSync('styles.css', 'utf8');
+		const boxRule = css.match(/\.rv-visit-note-box \{([^}]*)\}/)?.[1] ?? '';
+		assert.match(boxRule, /background:\s*transparent/);
+		assert.match(boxRule, /border:\s*0/);
+		assert.doesNotMatch(boxRule, /border-radius:\s*8px/);
+		assert.doesNotMatch(boxRule, /border:\s*1px/);
+		const noteRule = css.match(/\.rv-visit-note-box > :is\(p, div, \.el-p, blockquote\):not\(\.rv-item-strip\) \{([^}]*)\}/)?.[1] ?? '';
+		assert.match(noteRule, /padding:\s*0/);
+		assert.doesNotMatch(noteRule, /padding:\s*7px/);
+		assert.equal(css.includes('.rv-visit-note-box textarea'), false);
+		assert.match(css, /\.theme-light \.rv-visit-note-box/);
+		assert.match(css, /\.theme-dark \.rv-visit-note-box/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*5px/);
+	});
+
 	it('keeps a 5px ghost strip inside the note box when a visit has no items', () => {
 		const root = visitRoot('Tue, 6:15pm — Aug 12, 2026', null, 'Attempt Log');
 		decorateVisitControls(root, () => null, () => {});

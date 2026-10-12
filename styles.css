@@ -3130,12 +3130,19 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	cursor: pointer;
 }
 
-/* 21px is 15% over the original 18px glyph. !important beats app `svg { width: 1em }`. */
-.rv-map .rv-map-pins > button.rv-map-pin svg {
+/* Legacy round pins only. Teardrop shape SVGs must stay 42×54 or the glyph sits outside the pin. */
+.rv-map .rv-map-pins > button.rv-map-pin:not(.is-drop) svg {
 	width: 21px !important;
 	height: 21px !important;
 	min-width: 21px !important;
 	min-height: 21px !important;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop .rv-pin-shape svg {
+	width: 42px !important;
+	height: 54px !important;
+	min-width: 42px !important;
+	min-height: 54px !important;
 }
 
 .rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph {
@@ -3531,9 +3538,62 @@ a.rv-address-link.is-empty {
 	padding-top: 0.35em;
 }
 
-.rv-study-heading {
+.rv-study-heading,
+.rv-study-toggle {
 	margin: 0.6em 0 0.2em;
-	font-size: var(--font-ui-medium);
+	font-size: 1.05rem;
+	font-weight: 700;
+}
+
+.rv-study-line {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+	align-items: center;
+	column-gap: 8px;
+	min-height: 32px;
+}
+
+.rv-study-label {
+	grid-column: 1;
+	justify-self: start;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-study-change {
+	grid-column: 2;
+	justify-self: center;
+}
+
+.rv-study-skip {
+	grid-column: 3;
+	justify-self: end;
+}
+
+.rv-study-change,
+.rv-study-skip,
+.rv-study-modes button {
+	border-radius: 4px;
+	min-height: 32px;
+}
+
+.rv-study-modes {
+	display: flex;
+	gap: 8px;
+	margin-top: 8px;
+}
+
+.rv-study-modes button {
+	flex: 1 1 0;
+}
+
+.rv-study-modes button.is-selected,
+.rv-study-skip.is-on {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	border: 1px solid var(--interactive-accent);
+	color: var(--interactive-accent);
 }
 
 .rv-study-toggle {
@@ -4751,16 +4811,25 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	margin-left: 0;
 }
 
+/* Grouping only. The padded card (border, radius, fill) is not part of the visit. */
 .rv-visit-note-box {
 	margin: 0.35em 0 0.75em;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 8px;
-	background: color-mix(in srgb, var(--text-normal) 4%, var(--background-primary));
-	overflow: hidden;
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	box-shadow: none;
+	overflow: visible;
 	box-sizing: border-box;
 	width: 100%;
 	max-width: 100%;
 	min-width: 0;
+}
+
+.theme-light .rv-visit-note-box,
+.theme-dark .rv-visit-note-box {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
 }
 
 .rv-item-strip {
@@ -4825,18 +4894,14 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-visit-note-box > :is(p, div, .el-p, blockquote):not(.rv-item-strip) {
-	margin: 0;
-	padding: 7px 10px;
+	margin: 0.35em 0 0;
+	padding: 0;
 	font-size: 13px;
 	line-height: 1.45;
-	background: transparent;
 	text-align: start;
-}
-
-.rv-visit-note-box textarea,
-.rv-visit-note-box .mb-input {
-	font-size: 13px;
-	background: transparent;
+	width: 100%;
+	max-width: 100%;
+	box-sizing: border-box;
 }
 
 .rv-log-covered {
@@ -5027,9 +5092,23 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	justify-content: center;
 	gap: 6px;
 	min-width: 0;
-	min-height: 40px;
+	min-height: 32px;
+	font-size: 13px;
+	border-radius: 4px;
 	width: auto;
 	max-width: none;
+}
+
+.rv-campaign-actions button.is-selected {
+	background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+	border: 1px solid var(--interactive-accent);
+	color: var(--interactive-accent);
+	box-shadow: none;
+}
+
+.rv-campaign-actions .rv-campaign-icon svg {
+	width: 14px;
+	height: 14px;
 }
 
 .rv-campaign-actions .rv-campaign-icon,

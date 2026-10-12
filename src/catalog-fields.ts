@@ -14,6 +14,7 @@ import {
 } from './catalog';
 import { mountAlwaysChevron } from './suggest-field';
 import { displayTitle, mountFittedTitle } from './title-fit';
+import { mountStudyPanel } from './study-panel';
 
 export interface ShareFieldOptions {
 	publications: readonly string[];
@@ -24,6 +25,8 @@ export interface ShareFieldOptions {
 	showLesson: boolean;
 	/** Studies wrap literature and media in a collapsed disclosure. */
 	literatureCollapsed?: boolean;
+	/** Study-status notes put Study above Literature and media. */
+	studyFirst?: boolean;
 	/** Studies start the lesson disclosure open. */
 	lessonExpanded?: boolean;
 	/** Collapsed "Studied a lesson?" block. Every visit modal starts here. */
@@ -46,6 +49,11 @@ export function mountShareFields(
 		Object.assign(share, next);
 		onChange({ ...share });
 	};
+	const mountStudy = (): void => {
+		if (options.showLesson) mountLessonBlock(contentEl, options, share, publish, 'Study');
+		else if (options.optionalLesson) mountOptionalLesson(contentEl, options, share, publish, options.lessonExpanded === true);
+	};
+	if (options.studyFirst) mountStudy();
 	if (options.showLiterature) {
 		const paintLists = (parent: HTMLElement): void => {
 			mountTitleList(
@@ -70,8 +78,7 @@ export function mountShareFields(
 		if (options.literatureCollapsed) mountDisclosure(contentEl, 'Literature and media', paintLists);
 		else paintLists(contentEl);
 	}
-	if (options.showLesson) mountLessonBlock(contentEl, options, share, publish, 'Study');
-	else if (options.optionalLesson) mountOptionalLesson(contentEl, options, share, publish, options.lessonExpanded === true);
+	if (!options.studyFirst) mountStudy();
 	return share;
 }
 
@@ -110,7 +117,7 @@ function mountOptionalLesson(
 	const host = contentEl.createDiv('rv-study-optional');
 	const toggle = host.createEl('button', {
 		cls: 'rv-study-toggle',
-		text: 'Studied from Enjoy Life Forever?',
+		text: 'Study',
 		attr: { type: 'button', 'aria-expanded': startOpen ? 'true' : 'false' },
 	});
 	const body = host.createDiv('rv-study-optional-body');
@@ -126,7 +133,7 @@ function mountOptionalLesson(
 			share.lessonTo = prefill.to;
 			publish({ lesson: prefill.lesson, lessonFrom: prefill.from, lessonTo: prefill.to });
 		}
-		mountLessonBlock(body, options, share, publish, 'Study');
+		mountStudyPanel(body, options, share, publish);
 	};
 	if (startOpen) reveal();
 	toggle.addEventListener('click', (event) => {
@@ -150,144 +157,9 @@ function mountLessonBlock(
 	heading: string,
 ): void {
 	const block = parent.createDiv('rv-study-block');
-	block.createEl('h3', { cls: 'rv-study-heading', text: heading });
-	const lessonNames = [
-		...options.customLessons,
-		...options.lessons.map((lesson) => lesson.title),
-	];
-	let parts = partsFor(share.lesson, options);
-	const from = { current: share.lessonFrom };
-	const to = { current: share.lessonTo };
-	const holders: { from?: HTMLElement } = {};
-	mountField(
-		block,
-		'What lesson did you work on?',
-		'',
-		'Optional',
-		share.lesson,
-		(query) => rankSuggestions(query, lessonNames),
-		(value) => {
-			parts = partsFor(value, options);
-			const bounds = lessonBounds(value, options.lessons, options.customLessons);
-			from.current = bounds.from;
-			to.current = bounds.to;
-			publish({ lesson: value, lessonFrom: bounds.from, lessonTo: bounds.to });
-			repaintRange(holders, parts, from, to, publish);
-		},
-		true,
-		true,
-	);
-	const range = block.createDiv('rv-lesson-range');
-	holders.from = range;
-	repaintRange(holders, parts, from, to, publish);
-	mountExtraLesson(block, options, share, lessonNames, publish);
+	if (heading !== 'Study') block.createEl('h3', { cls: 'rv-study-heading', text: heading });
+	mountStudyPanel(block, options, share, publish);
 }
-
-function mountExtraLesson(
-	block: HTMLElement,
-	options: ShareFieldOptions,
-	share: VisitShare,
-	lessonNames: readonly string[],
-	publish: (next: Partial<VisitShare>) => void,
-): void {
-	const host = block.createDiv('rv-study-extra');
-	const open = Boolean(share.extraLesson?.trim());
-	const select = host.createEl('select', { cls: 'rv-study-extra-select' });
-	select.createEl('option', { text: 'One lesson this visit', value: 'one' });
-	select.createEl('option', { text: 'Also covered another lesson', value: 'more' });
-	select.value = open ? 'more' : 'one';
-	const fields = host.createDiv('rv-study-extra-fields');
-	const paint = (): void => {
-		fields.empty();
-		fields.hidden = select.value !== 'more';
-		if (fields.hidden) return;
-		let parts = partsFor(share.extraLesson ?? '', options);
-		const from = { current: share.extraFrom ?? '' };
-		const to = { current: share.extraTo ?? '' };
-		const holders: { from?: HTMLElement } = {};
-		mountField(
-			fields,
-			'Other lesson',
-			'Only when this visit covered two.',
-			'Optional',
-			share.extraLesson ?? '',
-			(query) => rankSuggestions(query, lessonNames),
-			(value) => {
-				parts = partsFor(value, options);
-				const bounds = lessonBounds(value, options.lessons, options.customLessons);
-				from.current = bounds.from;
-				to.current = bounds.to;
-				publish({ extraLesson: value, extraFrom: bounds.from, extraTo: bounds.to });
-				repaintExtra(holders, parts, from, to, publish);
-			},
-			true,
-			true,
-		);
-		const range = fields.createDiv('rv-lesson-range');
-		holders.from = range;
-		repaintExtra(holders, parts, from, to, publish);
-	};
-	select.addEventListener('change', () => {
-		if (select.value !== 'more') publish({ extraLesson: '', extraFrom: '', extraTo: '' });
-		paint();
-	});
-	paint();
-}
-
-function partsFor(title: string, options: ShareFieldOptions): readonly string[] {
-	return lessonPartOptions(lessonByTitle(title, [...options.customLessons, ...options.lessons.map((lesson) => lesson.title)]));
-}
-
-function repaintRange(
-	holders: { from?: HTMLElement },
-	parts: readonly string[],
-	from: { current: string },
-	to: { current: string },
-	publish: (next: Partial<VisitShare>) => void,
-): void {
-	const host = holders.from;
-	if (!host) return;
-	host.empty();
-	mountField(host, 'Where did you start?', 'The part you began with.', 'Start', from.current, (query) => rankSuggestions(query, parts), (value) => {
-		from.current = value;
-		publish({ lessonFrom: value });
-	}, false, true);
-	mountField(
-		host,
-		'Where did you end?',
-		'The part you finished.',
-		'End',
-		to.current,
-		(query) => rankSuggestions(query, parts),
-		(value) => {
-			to.current = value;
-			publish({ lessonTo: value });
-		},
-		false,
-		true,
-	);
-}
-
-function repaintExtra(
-	holders: { from?: HTMLElement },
-	parts: readonly string[],
-	from: { current: string },
-	to: { current: string },
-	publish: (next: Partial<VisitShare>) => void,
-): void {
-	const host = holders.from;
-	if (!host) return;
-	host.empty();
-	mountField(host, 'Where did that one start?', '', 'Start', from.current, (query) => rankSuggestions(query, parts), (value) => {
-		from.current = value;
-		publish({ extraFrom: value });
-	}, false, true);
-	mountField(host, 'Where did that one end?', '', 'End', to.current, (query) => rankSuggestions(query, parts), (value) => {
-		to.current = value;
-		publish({ extraTo: value });
-	}, false, true);
-}
-
 function mountTitleList(
 	parent: HTMLElement,
 	name: string,

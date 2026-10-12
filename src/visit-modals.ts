@@ -124,13 +124,7 @@ export class VisitEditModal extends Modal {
 					text.setValue(picked);
 				});
 			});
-		if (this.options.share) {
-			this.shareHost = contentEl.createDiv('rv-visit-share');
-			mountShareFields(this.shareHost, { ...this.options.share, initial: this.share }, (next) => {
-				this.share = next;
-			});
-		}
-		this.campaignHost = contentEl.createDiv('rv-visit-campaign');
+		this.campaignHost = contentEl.createDiv('rv-visit-campaign rv-modal-section');
 		if (this.options.campaign) {
 			mountCampaignChoice(
 				this.campaignHost,
@@ -138,6 +132,12 @@ export class VisitEditModal extends Modal {
 				this.covered,
 				(covered) => { this.covered = covered; },
 			);
+		}
+		if (this.options.share) {
+			this.shareHost = contentEl.createDiv('rv-visit-share rv-modal-section');
+			mountShareFields(this.shareHost, { ...this.options.share, initial: this.share }, (next) => {
+				this.share = next;
+			});
 		}
 		this.syncCompanion();
 

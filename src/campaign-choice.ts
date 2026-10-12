@@ -13,11 +13,13 @@ export function mountCampaignChoice(
 	const block = parent.createDiv('rv-campaign-choice');
 	block.createEl('p', { cls: 'rv-locator-modal-copy rv-campaign-question', text: question });
 	const choice = block.createDiv('rv-locator-suggest-actions rv-campaign-actions');
-	const yes = labeledChoice(choice, 'Covered', 'book-check');
 	const no = labeledChoice(choice, 'Not this time', 'book-x');
+	const yes = labeledChoice(choice, 'Covered', 'book-check');
 	const paint = (covered: boolean): void => {
-		yes.classList.toggle('mod-cta', covered);
-		no.classList.toggle('mod-cta', !covered);
+		yes.classList.toggle('is-selected', covered);
+		no.classList.toggle('is-selected', !covered);
+		yes.classList.remove('mod-cta');
+		no.classList.remove('mod-cta');
 		yes.setAttribute('aria-pressed', covered ? 'true' : 'false');
 		no.setAttribute('aria-pressed', covered ? 'false' : 'true');
 	};

@@ -1856,7 +1856,7 @@ describe('companion prompt', () => {
 		});
 		modal.onOpen();
 		const copy = collectText(modal.contentEl as unknown as Clickable);
-		assert.equal(copy.includes('Cover them with Spring?'), true);
+		assert.equal(copy.includes("Did you cover them with the 'Spring' campaign yet?"), true);
 		const input = findTagged(modal.contentEl as unknown as Clickable, 'input');
 		input.emit('input', 'Devin');
 		assert.deepEqual(seen, []);

@@ -41,10 +41,11 @@ describe('1.3.5 dogfood helpers', () => {
 		assert.equal(coveragePronoun('mixed'), 'them');
 		assert.equal(coveragePronoun('Mixed'), 'them');
 		assert.equal(coveragePronoun('unknown'), 'them');
-		assert.equal(coverageQuestion('her', 'Convention'), 'Cover her with Convention?');
-		assert.equal(coverageQuestion(coveragePronoun('Woman'), 'Convention'), 'Cover her with Convention?');
-		assert.equal(coverageQuestion(coveragePronoun('Man'), 'Convention'), 'Cover him with Convention?');
-		assert.equal(coverageQuestion(coveragePronoun('mixed'), 'Convention'), 'Cover them with Convention?');
+		assert.equal(coverageQuestion('her', 'Convention'), "Did you cover her with the 'Convention' campaign yet?");
+		assert.equal(coverageQuestion('her', ''), 'Did you cover her with the campaign yet?');
+		assert.equal(coverageQuestion(coveragePronoun('Woman'), 'Convention'), "Did you cover her with the 'Convention' campaign yet?");
+		assert.equal(coverageQuestion(coveragePronoun('Man'), 'Convention'), "Did you cover him with the 'Convention' campaign yet?");
+		assert.equal(coverageQuestion(coveragePronoun('mixed'), 'Convention'), "Did you cover them with the 'Convention' campaign yet?");
 		const campaign = { name: 'Convention', start: '2020-01-01', end: '2099-12-31' };
 		const question = (modal: VisitEditModal): string => {
 			const walk = (node: { text?: string; children?: unknown[] }): string => {
@@ -61,7 +62,7 @@ describe('1.3.5 dogfood helpers', () => {
 			onSave: () => {},
 		});
 		woman.onOpen();
-		assert.equal(question(woman).includes('Cover her with Convention?'), true);
+		assert.equal(question(woman).includes("Did you cover her with the 'Convention' campaign yet?"), true);
 		const mixed = new VisitEditModal({} as never, {
 			title: 'Edit visit',
 			recentCompanions: [],
@@ -70,8 +71,8 @@ describe('1.3.5 dogfood helpers', () => {
 		});
 		mixed.onOpen();
 		const mixedCopy = question(mixed);
-		assert.equal(mixedCopy.includes('Cover them with Convention?'), true);
-		assert.equal(mixedCopy.includes('Cover her'), false);
+		assert.equal(mixedCopy.includes("Did you cover them with the 'Convention' campaign yet?"), true);
+		assert.equal(mixedCopy.includes('Did you cover her'), false);
 		const css = readFileSync('styles.css', 'utf8');
 		assert.match(css, /--rv-dash-pad:\s*12px/);
 		assert.doesNotMatch(css, /--rv-dash-pad:\s*8px/);

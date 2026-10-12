@@ -500,7 +500,9 @@ export function coveragePronoun(gender: unknown): 'him' | 'her' | 'them' {
 }
 
 export function coverageQuestion(pronoun: 'him' | 'her' | 'them', campaign: string): string {
-	return `Cover ${pronoun} with ${campaign}?`;
+	const label = campaign.trim();
+	if (!label) return `Did you cover ${pronoun} with the campaign yet?`;
+	return `Did you cover ${pronoun} with the '${label}' campaign yet?`;
 }
 
 /**
@@ -561,16 +563,17 @@ export class CompanionSuggestModal extends Modal {
 					this.selectCompanion(match?.value ?? picked);
 				});
 			});
+		if (this.campaign) {
+			const pronoun = this.campaign.pronoun ?? 'them';
+			const campaign = contentEl.createDiv('rv-modal-section');
+			mountCampaignChoice(campaign, coverageQuestion(pronoun, this.campaign.name), this.covered, (covered) => {
+				this.covered = covered;
+			});
+		}
 		if (this.literature) {
 			mountShareFields(contentEl, this.literature, (next) => {
 				this.share = next;
 				this.literature?.onShare(next);
-			});
-		}
-		if (this.campaign) {
-			const pronoun = this.campaign.pronoun ?? 'them';
-			mountCampaignChoice(contentEl, coverageQuestion(pronoun, this.campaign.name), this.covered, (covered) => {
-				this.covered = covered;
 			});
 		}
 		const bar = contentEl.createDiv('rv-locator-suggest-actions is-end rv-modal-actions');
