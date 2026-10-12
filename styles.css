@@ -918,7 +918,7 @@
 	height: var(--rv-control-size, 28px);
 	margin: 0;
 	padding: 0;
-	border: calc(1.25px * var(--rv-font-scale, 1)) solid var(--rv-urgency-accent, var(--text-faint));
+	border: 2px solid var(--rv-urgency-accent, var(--text-faint));
 	border-radius: 999px;
 	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 13%, transparent);
 	box-shadow: none;
@@ -932,7 +932,7 @@
 
 /* Band 0 keeps the outer circle and adds the inner ring drawn in the glyph. */
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency[data-band="0"] {
-	border-width: calc(1.25px * var(--rv-font-scale, 1));
+	border-width: 2px;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
@@ -1432,8 +1432,8 @@ table.rv-locator-digest-table,
 
 .rv-locator-modal .setting-item:has(input[type="text"], input[type="search"], input[type="date"], input:not([type])) .setting-item-control {
 	flex: 1 1 auto;
-	width: min(16.5rem, 100%);
-	max-width: 100%;
+	width: 100%;
+	max-width: none;
 }
 
 .rv-locator-modal .rv-suggest-host {
@@ -4274,7 +4274,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency,
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency[data-band="0"] {
-	border-width: calc(2px * var(--rv-font-scale, 1));
+	border-width: 2px;
 	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 14%, var(--background-primary));
 	color: var(--rv-urgency-ink, var(--rv-urgency-accent));
 }
@@ -5929,4 +5929,317 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .rv-title-popover {
 	white-space: pre-line;
+}
+
+/*
+  Obsidian 1.14 app.css wins several of the rules above (range width 100px,
+  button height, h3 size, last setting padding). These come last and use
+  the extra class or element app.css also uses.
+*/
+button.rv-locator-urgency {
+	border-width: 2px !important;
+	border-style: solid !important;
+}
+
+button.rv-locator-urgency.is-ghost {
+	border-style: dashed !important;
+	border-width: 2px !important;
+}
+
+.markdown-preview-view .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
+.markdown-rendered .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
+	display: block;
+	width: 100%;
+	max-width: none;
+	box-sizing: border-box;
+}
+
+.markdown-preview-view .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
+.markdown-rendered .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+	display: block;
+	width: 100%;
+	max-width: none;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.markdown-preview-view p.rv-hub-owned,
+.markdown-rendered p.rv-hub-owned,
+.rv-dashboard p.rv-hub-owned,
+.el-p > p.rv-hub-owned,
+.callout-content > .el-p > p.rv-hub-owned {
+	display: flex !important;
+	flex-direction: column;
+	align-items: stretch;
+	width: 100% !important;
+	max-width: none !important;
+	min-width: 0 !important;
+	box-sizing: border-box;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line,
+.markdown-rendered p.rv-hub-owned > .rv-address-line,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line,
+.rv-dashboard p.rv-hub-owned > .rv-address-line,
+.el-p > p.rv-hub-owned > .rv-hub-line,
+.el-p > p.rv-hub-owned > .rv-address-line {
+	display: flex !important;
+	flex-flow: row nowrap;
+	align-items: center;
+	justify-content: flex-start;
+	gap: 12px;
+	column-gap: 12px;
+	width: 100% !important;
+	max-width: none !important;
+	min-width: 0 !important;
+	box-sizing: border-box;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > strong,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > strong,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line > strong,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > strong,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > strong,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > strong {
+	flex: 0 0 auto;
+	width: max-content;
+	max-width: none;
+	margin: 0;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > .rv-address-field,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > .rv-address-field {
+	flex: 1 1 0;
+	width: 0;
+	min-width: 0;
+	max-width: none;
+}
+
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip,
+.markdown-preview-view p.rv-hub-owned input.rv-address-input,
+.markdown-preview-view p.rv-hub-owned a.rv-address-link,
+.markdown-rendered p.rv-hub-owned .rv-hub-chip,
+.markdown-rendered p.rv-hub-owned input.rv-address-input,
+.markdown-rendered p.rv-hub-owned a.rv-address-link,
+.rv-dashboard p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned input.rv-address-input,
+.rv-dashboard p.rv-hub-owned a.rv-address-link {
+	display: block !important;
+	width: 100% !important;
+	max-width: none !important;
+	min-width: 0 !important;
+	box-sizing: border-box;
+	white-space: nowrap !important;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > a.rv-map-button,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > a.rv-map-button,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > a.rv-map-button {
+	flex: 0 0 40px;
+	width: 40px;
+	min-width: 40px;
+	max-width: 40px;
+}
+
+.rv-item-strip:not(.is-ghost) {
+	min-width: 0 !important;
+	width: 100% !important;
+	max-width: 100% !important;
+	box-sizing: border-box;
+	overflow: hidden;
+}
+
+.rv-item-strip > .rv-item.is-overflow {
+	display: none !important;
+}
+
+.workspace-leaf-content[data-type="rv-locator-map"] .rv-map,
+.workspace-leaf-content[data-type="rv-locator-map"] .rv-map-stage {
+	min-height: 240px;
+	width: 100%;
+	height: 100%;
+}
+
+.modal.rv-locator-modal input.rv-snooze-slider[type="range"],
+.modal.rv-locator-modal input.rv-study-slider[type="range"],
+.rv-study-change-modal input.rv-study-slider[type="range"],
+.rv-study-change-modal input[type="range"] {
+	width: 100% !important;
+	max-width: none !important;
+	box-sizing: border-box;
+}
+
+.modal.rv-locator-modal .setting-item {
+	flex-direction: column;
+	align-items: stretch;
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.modal.rv-locator-modal .setting-item-info,
+.modal.rv-locator-modal .setting-item:not(.rv-modal-actions) .setting-item-control,
+.modal.rv-locator-modal .setting-item:has(input) .setting-item-control {
+	width: 100% !important;
+	max-width: none !important;
+	box-sizing: border-box;
+}
+
+.modal.rv-locator-modal .setting-item-control input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+	width: 100% !important;
+	max-width: none !important;
+	box-sizing: border-box;
+}
+
+.modal h3.rv-study-heading,
+.modal button.rv-study-toggle,
+.rv-locator-modal h3.rv-study-heading,
+.rv-locator-modal button.rv-study-toggle,
+.markdown-rendered h3.rv-study-heading,
+h3.rv-study-heading,
+button.rv-study-toggle {
+	font-size: 17px !important;
+	font-weight: 700 !important;
+}
+
+.rv-study-change-list {
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	gap: 4px;
+	max-height: 240px;
+	overflow: auto;
+}
+
+.rv-study-change-list > button {
+	display: block;
+	width: 100%;
+	text-align: start;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rv-study-ticks {
+	display: flex;
+	flex-wrap: nowrap;
+	justify-content: space-between;
+	gap: 2px;
+	width: 100%;
+	overflow-x: auto;
+	font-size: 10px;
+	line-height: 1.2;
+}
+
+.rv-study-tick {
+	flex: 1 1 0;
+	min-width: 0;
+	text-align: center;
+}
+
+.rv-study-change-modal .rv-modal-actions {
+	display: flex;
+	width: 100%;
+	gap: 8px;
+	margin-top: 8px;
+	box-sizing: border-box;
+}
+
+.rv-study-change-modal .rv-modal-actions button {
+	flex: 1 1 0;
+}
+
+.rv-locator-modal .rv-campaign-choice {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
+.modal .rv-campaign-actions button,
+.is-phone .modal .rv-campaign-actions button,
+.rv-locator-modal .rv-campaign-actions button {
+	height: 32px !important;
+	min-height: 32px !important;
+	max-height: 32px !important;
+	padding: 0 10px !important;
+	font-size: 13px !important;
+	line-height: 1;
+	box-sizing: border-box;
+}
+
+.rv-campaign-actions .rv-campaign-icon svg {
+	width: 14px !important;
+	height: 14px !important;
+}
+
+.modal.rv-locator-modal {
+	display: flex;
+	flex-direction: column;
+}
+
+.modal.rv-locator-modal .modal-content {
+	display: flex;
+	flex-direction: column;
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.modal.rv-locator-modal .rv-modal-actions.is-footer {
+	display: flex;
+	width: 100%;
+	margin-top: auto;
+	box-sizing: border-box;
+}
+
+.modal.rv-locator-modal .setting-item.rv-modal-actions .setting-item-control {
+	display: flex;
+	width: 100%;
+	gap: 8px;
+}
+
+.modal.rv-locator-modal .rv-modal-actions.is-footer button,
+.modal.rv-locator-modal .setting-item.rv-modal-actions button {
+	flex: 1 1 0;
+}
+
+.rv-locator-modal .setting-item.rv-modal-actions {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
+.rv-rename-modal .rv-rename-field,
+.rv-rename-modal .setting-item:not(.rv-modal-actions) {
+	margin-bottom: 16px !important;
+	padding-bottom: 16px !important;
+}
+
+.rv-rename-modal .rv-modal-actions,
+.rv-rename-modal .setting-item.rv-modal-actions {
+	margin-top: 16px !important;
+}
+
+.rv-rename-modal input[type="text"] {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+.rv-suggest-pending {
+	display: flex;
+	align-items: center;
+	min-height: 32px;
+	padding: 6px 10px;
+	box-sizing: border-box;
 }

@@ -820,15 +820,28 @@ function isVisitTextArea(node: EventTarget | null | undefined): node is HTMLText
 let heldNote: HTMLTextAreaElement | null = null;
 let heldNoteUntil = 0;
 
-/** Keep a visit note focused across the short window where a repaint would drop it. */
+/**
+ * Obsidian puts focus on the note title after a new file opens. That is not
+ * the user leaving the visit note, so the hold has to take the caret back.
+ */
+export function isFocusThief(node: EventTarget | null | undefined): boolean {
+	if (!(node instanceof Element)) return true;
+	const tag = node.tagName;
+	if (tag === 'BODY' || tag === 'HTML') return true;
+	if (node.classList.contains('view-header-title') || node.classList.contains('inline-title') || node.classList.contains('view-header')) return true;
+	return typeof node.closest === 'function' && node.closest('.view-header, .view-header-title, .inline-title') != null;
+}
+
+/** Keep a visit note focused. A shorter later hold does not cut a longer one short. */
 export function holdVisitNote(area: HTMLTextAreaElement, ms = 900): void {
+	const until = Date.now() + ms;
+	if (heldNote === area && heldNoteUntil >= until) return;
 	heldNote = area;
-	heldNoteUntil = Date.now() + ms;
+	heldNoteUntil = until;
 }
 
 export function releaseVisitNote(next: EventTarget | null): void {
-	if (!(next instanceof Element) || next === heldNote) return;
-	if (next.tagName === 'BODY' || next.tagName === 'HTML') return;
+	if (next === heldNote || isFocusThief(next)) return;
 	heldNote = null;
 	heldNoteUntil = 0;
 }
@@ -847,7 +860,7 @@ export function restoreHeldNote(): void {
 	const doc = area.ownerDocument;
 	const active = doc.activeElement;
 	if (active === area) return;
-	if (active instanceof Element && active !== doc.body && active !== doc.documentElement) return;
+	if (!isFocusThief(active)) return;
 	try {
 		area.focus({ preventScroll: true });
 	} catch {
@@ -876,7 +889,7 @@ export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: n
 	const found = root.querySelector('textarea');
 	const area = matched ?? (isVisitTextArea(found) ? found : null);
 	if (!area) return null;
-	holdVisitNote(area, 1600);
+	holdVisitNote(area, 8000);
 	try {
 		area.focus({ preventScroll: true });
 	} catch {

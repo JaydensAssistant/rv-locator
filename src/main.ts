@@ -29,7 +29,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { concealCollapsedVisitNotes, holdVisitNote, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy } from './visit-display';
+import { concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy } from './visit-display';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
@@ -41,7 +41,7 @@ import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
+import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
@@ -323,8 +323,8 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!(evt.target instanceof HTMLTextAreaElement)) return;
 			if (!evt.target.closest('.rv-dashboard, .rv-visit-note-box')) return;
 			releaseVisitNote(evt.relatedTarget);
-			if (evt.relatedTarget instanceof Element && evt.relatedTarget !== evt.target) return;
-			holdVisitNote(evt.target, 900);
+			if (!isFocusThief(evt.relatedTarget) && evt.relatedTarget instanceof Element && evt.relatedTarget !== evt.target) return;
+			holdVisitNote(evt.target, 8000);
 			for (const delay of [0, 120, 250]) window.setTimeout(() => restoreHeldNote(), delay);
 		});
 		this.registerDomEvent(window, 'resize', () => this.scheduleNotesFit());
@@ -362,6 +362,8 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!active || file.path === active.path) this.applyLayoutClasses();
 			if (file instanceof TFile) this.rememberNoteText(file);
 			this.maskFilenameStamps();
+			this.repaintOpenUrgency();
+			this.refreshOpenNoteChrome();
 		}));
 		this.registerEvent(this.app.vault.on('modify', (file) => {
 			if (file instanceof TFile && file.extension === 'md') this.rememberNoteText(file);
@@ -1145,12 +1147,17 @@ export default class RVLocatorPlugin extends Plugin {
 	private async promptLiterature(file: TFile, options?: { study?: boolean; campaign?: boolean }): Promise<VisitShare | false> {
 		const study = options?.study === true;
 		const defaults = await this.studyDefaults(file.path);
-		const campaign = options?.campaign && this.shouldAskCoverage(file.path) ? this.campaign : null;
+		const campaign = options?.campaign && campaignIsActive(this.campaign) ? this.campaign : null;
 		const gender = readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender');
+		const fields = this.shareFieldOptions(study, defaults);
+		if (study) {
+			fields.askCompanion = true;
+			fields.companions = this.recentCompanionNames();
+		}
 		return new Promise((resolve) => {
 			new LiteraturePromptModal(
 				this.app,
-				this.shareFieldOptions(study, defaults),
+				fields,
 				(share) => resolve(share),
 				campaign ? {
 					name: campaign.name,
@@ -1505,8 +1512,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (paint) {
 			const cachedAttempt = readProperty(data, 'Last Attempted');
 			const cachedSpoke = readProperty(data, 'Last Spoke');
-			const same = String(cachedAttempt ?? '') === String(paint.attempted ?? '')
-				&& String(cachedSpoke ?? '') === String(paint.spoke ?? '');
+			const same = sameVisitStamp(cachedAttempt, paint.attempted) && sameVisitStamp(cachedSpoke, paint.spoke);
 			if (same) this.visitPaint.delete(path);
 			else if (data) {
 				assignProperty(data, 'Last Attempted', paint.attempted);
@@ -1747,8 +1753,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private hubScrollers = new Set<(path: string | null) => void>();
 
 	/**
-	 * Earth on a card focuses a pin and opens the in-view map.
-	 * The hub map icon toggles that map. It never opens a workspace leaf.
+	 * Earth on a note opens the map leaf beside that note.
+	 * The hub map icon only toggles the embedded map. It does not open a leaf.
 	 */
 	hideSplitMap(): void {
 		this.hubMapOpen = false;
@@ -1782,12 +1788,26 @@ export default class RVLocatorPlugin extends Plugin {
 		const open = maps[0];
 		if (open) {
 			workspace.revealLeaf(open);
+			this.wakeMapLeaf(open);
 			return;
 		}
 		const previous = workspace.activeLeaf ?? null;
-		const leaf = workspace.getLeaf(true);
-		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: false });
+		const leaf = workspace.getLeaf('split', 'vertical');
+		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
+		this.wakeMapLeaf(leaf);
 		if (previous && previous !== leaf) workspace.setActiveLeaf(previous, { focus: false });
+	}
+
+	/** A hidden tab lays the map stage out at 0×0. Reveal it, then let the canvas read the real size. */
+	private wakeMapLeaf(leaf: WorkspaceLeaf): void {
+		const view = leaf.view;
+		if (!(view instanceof RvMapView)) return;
+		for (const delay of [0, 250]) {
+			window.setTimeout(() => {
+				if (this.unloaded) return;
+				view.invalidateSize();
+			}, delay);
+		}
 	}
 
 	hubMapIsFullscreen(): boolean {
@@ -2473,7 +2493,8 @@ export default class RVLocatorPlugin extends Plugin {
 			this.coverageDecisions.delete(file.path);
 			return;
 		}
-		await this.commitVisit(file, outcome, '', share);
+		const companion = share.companion?.trim() ? formatStoredCompanion(share.companion) : '';
+		await this.commitVisit(file, outcome, companion, share);
 	}
 
 	/** In-note Not home. Same instant write as the card and the hub. */
@@ -2846,6 +2867,13 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.enqueueDigestRewrite(file);
 		this.refreshOpenNoteChrome();
 		this.repaintOpenUrgency();
+		for (const delay of [0, 50, 200, 600]) {
+			window.setTimeout(() => {
+				if (this.unloaded) return;
+				this.repaintOpenUrgency();
+				this.refreshOpenNoteChrome();
+			}, delay);
+		}
 		for (const callback of this.viewRefreshers) {
 			try {
 				callback();
@@ -3024,7 +3052,9 @@ export default class RVLocatorPlugin extends Plugin {
 		modal.onOpen = () => {
 			modal.setTitle('Rename');
 			modal.modalEl.addClass('rv-locator-modal');
-			const input = modal.contentEl.createEl('input', { attr: { type: 'text', 'aria-label': 'Name' } });
+			modal.modalEl.addClass('rv-rename-modal');
+			const field = modal.contentEl.createDiv('rv-rename-field');
+			const input = field.createEl('input', { attr: { type: 'text', 'aria-label': 'Name' } });
 			input.value = current;
 			const bar = modal.contentEl.createDiv('rv-modal-actions');
 			const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
@@ -3128,7 +3158,7 @@ export default class RVLocatorPlugin extends Plugin {
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
 			const area = placeVisitNoteFocus(view.containerEl, stamp, ordinal);
 			if (!area) continue;
-			holdVisitNote(area, 1600);
+			holdVisitNote(area, 8000);
 			if (area.ownerDocument.activeElement === area) steady += 1;
 			else steady = 0;
 			restoreHeldNote();
@@ -3137,7 +3167,7 @@ export default class RVLocatorPlugin extends Plugin {
 			area.scrollIntoView({ block: 'center' });
 			placed = area;
 		}
-		for (const delay of [0, 120, 250]) window.setTimeout(() => restoreHeldNote(), delay);
+		for (const delay of [0, 120, 250, 600, 1200, 2500, 4000, 6000]) window.setTimeout(() => restoreHeldNote(), delay);
 	}
 
 	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): void {
@@ -3480,13 +3510,13 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!text.trim() || text.includes('<%')) continue;
 			const hasLog = /\[!note\][^\n]*(?:Attempt Log|Log)/i.test(text);
 			const hasVisit = /(?:success|\bhome\b|not home|\bmiss\b)/i.test(text);
+			this.openInReadingView(current, true);
+			await this.focusVisitNotes(current, 'sVisit1Notes');
 			if (hasLog && hasVisit) {
 				await this.refreshAttemptDigest(current);
-				this.openInReadingView(current, true);
-				await this.focusVisitNotes(current, 'sVisit1Notes');
 				return;
 			}
-			if (attempt >= 2) return;
+			if (attempt >= 8) return;
 		}
 	}
 
@@ -3692,8 +3722,16 @@ function textProperty(value: unknown): string {
 }
 
 function propertyDays(value: unknown): number | null {
-	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	const raw = dateTextFromUnknown(value);
 	return raw ? calendarDaysSince(raw) : null;
+}
+
+/** Calendar-day match. Empty on both sides counts as the cache having caught up. */
+function sameVisitStamp(cached: unknown, painted: unknown): boolean {
+	const left = dateTextFromUnknown(cached).slice(0, 10);
+	const right = dateTextFromUnknown(painted).slice(0, 10);
+	if (!left && !right) return true;
+	return left.length > 0 && left === right;
 }
 
 function lessonList(value: unknown): string[] {

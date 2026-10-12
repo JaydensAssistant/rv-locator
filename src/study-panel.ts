@@ -37,7 +37,7 @@ export function mountStudyPanel(
 	const paint = (): void => {
 		host.empty();
 		const line = host.createDiv('rv-study-line');
-		const label = line.createSpan({ cls: 'rv-study-label', text: skipped ? 'No study' : formatLessonLine(share.lesson, displayPart(share, options, mode, stopIndex)) });
+		const label = line.createSpan({ cls: 'rv-study-label', text: skipped ? 'No study' : studyLine(share, options, mode, stopIndex) });
 		label.setAttribute('aria-label', label.textContent ?? '');
 		const change = line.createEl('button', { cls: 'rv-study-change', text: 'Change', attr: { type: 'button' } });
 		const skip = line.createEl('button', { cls: 'rv-study-skip', text: "Didn't study", attr: { type: 'button' } });
@@ -112,6 +112,8 @@ export function mountStudyPanel(
 			const next = stop.querySelector('.rv-study-next');
 			if (done) done.textContent = live.done;
 			if (next) next.textContent = live.next;
+			const heading = host.querySelector('.rv-study-label');
+			if (heading) heading.textContent = studyLine(share, options, mode, stopIndex);
 		});
 		stop.createEl('p', { cls: 'rv-study-next', text: copy.next });
 	};
@@ -124,21 +126,27 @@ export function mountStudyPanel(
 		const startParts = lessonPartOptions(lessonByTitle(share.lesson, names));
 		const start = share.lessonFrom || startParts[0] || '';
 		if (mode === 'next') {
+			const catalog = [...options.customLessons, ...options.lessons.map((lesson) => lesson.title)];
+			const last = startParts[startParts.length - 1] ?? '';
+			const reached = share.lessonTo.trim();
+			const atEnd = !reached || reached.toLowerCase() === last.toLowerCase();
+			const fromPart = atEnd ? (share.lessonFrom || startParts[0] || '') : reached;
 			const nextTitle = nextLessonTitle(share.lesson, options.lessons);
-			const nextParts = lessonPartOptions(lessonByTitle(nextTitle, names));
+			const nextParts = lessonPartOptions(lessonByTitle(nextTitle, catalog));
 			const end = nextParts[stopIndex] ?? nextParts[nextParts.length - 1] ?? '';
-			share.lessonFrom = start;
-			share.lessonTo = startParts[startParts.length - 1] ?? start;
-			share.extraLesson = nextTitle;
-			share.extraFrom = nextParts[0] ?? '';
-			share.extraTo = end;
+			const crossed = nextTitle.trim().toLowerCase() !== share.lesson.trim().toLowerCase();
+			share.lessonFrom = fromPart;
+			share.lessonTo = last || fromPart;
+			share.extraLesson = crossed ? nextTitle : '';
+			share.extraFrom = crossed ? (nextParts[0] ?? '') : '';
+			share.extraTo = crossed ? end : '';
 			publish({
 				lesson: share.lesson,
 				lessonFrom: share.lessonFrom,
 				lessonTo: share.lessonTo,
-				extraLesson: nextTitle,
+				extraLesson: share.extraLesson,
 				extraFrom: share.extraFrom,
-				extraTo: end,
+				extraTo: share.extraTo,
 			});
 			return;
 		}
@@ -185,8 +193,39 @@ function displayPart(share: VisitShare, options: StudyPanelOptions, mode: StudyM
 	return share.lessonFrom || parts[0] || '';
 }
 
+/** The line under the modes. Partway follows the slider. Next lesson shows both ends. */
+function studyLine(share: VisitShare, options: StudyPanelOptions, mode: StudyMode, stopIndex: number): string {
+	if (!share.lesson.trim()) return 'No study';
+	if (mode !== 'next') return formatLessonLine(share.lesson, displayPart(share, options, mode, stopIndex));
+	const names = [...options.customLessons, ...options.lessons.map((lesson) => lesson.title)];
+	const nextTitle = nextLessonTitle(share.lesson, options.lessons);
+	const nextParts = lessonPartOptions(lessonByTitle(nextTitle, names));
+	const end = nextParts[stopIndex] ?? share.extraTo ?? '';
+	const from = share.lessonFrom || '';
+	if (!nextTitle.trim() || nextTitle.trim().toLowerCase() === share.lesson.trim().toLowerCase()) {
+		return formatLessonLine(share.lesson, from);
+	}
+	return `${formatLessonLine(share.lesson, from)} → ${formatLessonLine(nextTitle, end)}`;
+}
+
 function nextLessonTitle(current: string, lessons: readonly LessonSpec[]): string {
-	const at = lessons.findIndex((lesson) => lesson.title.trim().toLowerCase() === current.trim().toLowerCase());
+	const wanted = current.trim().toLowerCase();
+	let at = lessons.findIndex((lesson) => lesson.title.trim().toLowerCase() === wanted);
+	if (at < 0) {
+		const bare = wanted.replace(/^\d+\s+/, '');
+		at = lessons.findIndex((lesson) => lesson.title.trim().toLowerCase().replace(/^\d+\s+/, '') === bare);
+	}
+	if (at < 0) {
+		const number = /^(\d+)/.exec(current.trim());
+		if (number) {
+			const n = String(Number(number[1]));
+			at = lessons.findIndex((lesson) => {
+				const lead = /^0*(\d+)/.exec(lesson.title.trim());
+				return lead != null && String(Number(lead[1])) === n;
+			});
+		}
+	}
+	if (at < 0) return current;
 	return lessons[at + 1]?.title ?? current;
 }
 
@@ -206,20 +245,40 @@ function openChange(
 	const list = panel.createDiv('rv-study-change-list');
 	let picked = share.lesson;
 	let startIndex = 0;
+	const startLabel = panel.createEl('p', { cls: 'rv-study-start-label', text: 'Start at' });
+	const slider = panel.createEl('input', { attr: { type: 'range', min: '0', max: '0', value: '0' } });
+	slider.classList.add('rv-study-slider');
+	const ticks = panel.createDiv('rv-study-ticks');
+	const partsNow = (): readonly string[] => lessonPartOptions(lessonByTitle(picked, names));
+	const paintSlider = (): void => {
+		const live = partsNow();
+		const max = Math.max(0, live.length - 1);
+		if (startIndex > max) startIndex = 0;
+		slider.setAttribute('max', String(max));
+		slider.setAttribute('value', String(startIndex));
+		if ('value' in slider) (slider as HTMLInputElement).value = String(startIndex);
+		ticks.replaceChildren();
+		live.forEach((part, index) => {
+			const tick = ticks.createSpan({ cls: 'rv-study-tick', text: part });
+			if (index === startIndex) tick.classList.add('is-current');
+		});
+		const current = live[startIndex] ?? '';
+		startLabel.textContent = current ? `Start at ${current}` : 'Start at';
+	};
 	const paintList = (query: string): void => {
-		list.empty();
-		for (const title of rankSuggestions(query, names).slice(0, 8)) {
+		list.replaceChildren();
+		for (const title of rankSuggestions(query, names)) {
 			const row = list.createEl('button', { text: title, attr: { type: 'button' } });
 			if (title === picked) row.classList.add('is-selected');
 			row.addEventListener('click', (event) => {
 				event?.preventDefault?.();
 				picked = title;
+				startIndex = 0;
 				const bounds = lessonBounds(picked, options.lessons, options.customLessons);
 				share.lesson = picked;
 				share.lessonFrom = bounds.from;
-				startIndex = 0;
-				(input as HTMLInputElement).value = '';
-				paintList('');
+				paintList(query);
+				paintSlider();
 			});
 		}
 	};
@@ -227,32 +286,28 @@ function openChange(
 		const value = (input as HTMLInputElement).value ?? '';
 		paintList(value);
 	});
-	paintList('');
-	const parts = lessonPartOptions(lessonByTitle(picked, names));
-	panel.createEl('p', { text: 'Start at' });
-	const slider = panel.createEl('input', { attr: { type: 'range', min: '0', max: String(Math.max(0, parts.length - 1)) } });
 	slider.addEventListener('input', () => {
 		startIndex = Number((slider as HTMLInputElement).value) || 0;
-		const live = lessonPartOptions(lessonByTitle(picked, names));
+		const live = partsNow();
 		share.lessonFrom = live[startIndex] ?? live[0] ?? '';
+		startLabel.textContent = live[startIndex] ? `Start at ${live[startIndex]}` : 'Start at';
+		ticks.querySelectorAll('.rv-study-tick').forEach((node, index) => {
+			node.classList.toggle('is-current', index === startIndex);
+		});
 	});
-	const actions = panel.createDiv('rv-modal-actions');
+	paintList('');
+	paintSlider();
+	const actions = panel.createDiv('rv-modal-actions is-footer');
 	const cancel = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 	const done = actions.createEl('button', { text: 'Done', attr: { type: 'button' } });
 	done.classList.add('mod-cta');
-	const startLabel = panel.querySelector('p:last-of-type');
-	const paintStart = (): void => {
-		const live = lessonPartOptions(lessonByTitle(picked, names));
-		if (startLabel) startLabel.textContent = `Start at point ${live[startIndex] ?? live[0] ?? ''}`;
-	};
-	paintStart();
 	cancel.addEventListener('click', (event) => {
 		event?.preventDefault?.();
 		panel.remove();
 	});
 	done.addEventListener('click', (event) => {
 		event?.preventDefault?.();
-		const live = lessonPartOptions(lessonByTitle(picked, names));
+		const live = partsNow();
 		share.lesson = picked;
 		share.lessonFrom = live[startIndex] ?? live[0] ?? '';
 		share.lessonTo = live[live.length - 1] ?? '';

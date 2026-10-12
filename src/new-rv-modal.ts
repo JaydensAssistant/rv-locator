@@ -285,6 +285,8 @@ export class NewRvIdentityModal extends Modal {
 	}
 
 	private addressChevronItems(): string[] {
+		const typed = this.addressInput?.inputEl instanceof HTMLInputElement ? this.addressInput.inputEl.value : this.address;
+		if (!typed.trim()) return [SUGGEST_PENDING];
 		const labels = this.addressResults.map((hit) => hit.formattedAddress).filter((label) => label.length > 0);
 		return this.addressLoading ? [SUGGEST_PENDING, ...labels] : labels;
 	}

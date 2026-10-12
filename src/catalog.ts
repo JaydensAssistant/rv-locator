@@ -186,6 +186,8 @@ export interface VisitShare {
 	publicationList?: string[];
 	/** Every media piece shown on this visit. The first is also {@link media}. */
 	mediaList?: string[];
+	/** Publisher who came along. Empty unless the study log asks. */
+	companion?: string;
 }
 
 export function emptyShare(): VisitShare {

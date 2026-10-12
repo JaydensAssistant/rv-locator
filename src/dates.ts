@@ -178,6 +178,43 @@ const BOOLEAN_WORD = /^(true|false|yes|no)$/i;
 const MS_PER_DAY = 86_400_000;
 
 /**
+ * Obsidian's metadata cache returns Last Spoke / Last Attempted as a string,
+ * a Date, or a moment-like object. A missed parse used to fall through to
+ * band 0, so the note stayed #1f8a4c after a visit.
+ */
+export function dateTextFromUnknown(value: unknown): string {
+	if (value == null) return '';
+	if (value instanceof Date) return localDateTimeText(value);
+	if (typeof value === 'number' && Number.isFinite(value)) return localDateTimeText(new Date(value));
+	if (typeof value === 'string') return value.trim();
+	if (typeof value === 'object') {
+		const boxed = value as { toDate?: () => unknown; format?: (pattern: string) => string };
+		if (typeof boxed.toDate === 'function') {
+			try {
+				return dateTextFromUnknown(boxed.toDate());
+			} catch {
+				/* Not a real date. */
+			}
+		}
+		if (typeof boxed.format === 'function') {
+			try {
+				const formatted = boxed.format('YYYY-MM-DDTHH:mm:ss');
+				if (formatted.trim()) return formatted.trim();
+			} catch {
+				/* Moment format failed. */
+			}
+		}
+	}
+	return '';
+}
+
+function localDateTimeText(date: Date): string {
+	if (Number.isNaN(date.getTime())) return '';
+	const pad = (part: number) => String(part).padStart(2, '0');
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+/**
  * Whole calendar days from the written date to `today`, in local dates.
  * Time of day is ignored, including the display-only hour rounding.
  * Empty, boolean, unparseable, and future dates return null.

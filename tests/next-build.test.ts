@@ -66,9 +66,9 @@ describe('next build helpers', () => {
 		assert.match(main, /cardPersonTitle\(file\?\.basename \?\? path, true\)/);
 		assert.match(main, /allowBroad: false/);
 		assert.match(main, /revealGlancable/);
-		assert.match(main, /setViewState\(\{ type: MAP_VIEW_TYPE, active: false \}\)/);
+		assert.match(main, /setViewState\(\{ type: MAP_VIEW_TYPE, active: true \}\)/);
+		assert.match(main, /getLeaf\('split', 'vertical'\)/);
 		assert.doesNotMatch(main, /type: GLANCABLE_VIEW_TYPE/);
-		assert.doesNotMatch(main, /getLeaf\('split'/);
 		assert.match(readFileSync('src/glancable-view.ts', 'utf8'), /searchReplacesBar/);
 		assert.match(readFileSync('src/visit-controls.ts', 'utf8'), /\.rv-stamp-when/);
 	});

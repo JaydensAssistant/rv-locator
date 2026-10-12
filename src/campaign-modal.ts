@@ -11,6 +11,7 @@ export class CampaignModal extends Modal {
 	private end = '';
 	private saved = false;
 	private confirming = false;
+	private endFooter: HTMLElement | null = null;
 
 	constructor(
 		app: App,
@@ -59,12 +60,9 @@ export class CampaignModal extends Modal {
 				text.setValue(this.end);
 				text.onChange((value) => { this.end = value; });
 			});
-		const footer = contentEl.createDiv('rv-modal-actions is-footer');
-		if (active) {
-			const end = footer.createEl('button', { text: 'End campaign', attr: { type: 'button' } });
-			end.addClass('mod-warning');
-			end.addEventListener('click', () => this.askRemove());
-		} else {
+		if (active) this.paintEndFooter();
+		else {
+			const footer = contentEl.createDiv('rv-modal-actions is-footer');
 			const start = footer.createEl('button', { text: 'Start campaign', attr: { type: 'button' } });
 			start.addClass('mod-cta');
 			start.addEventListener('click', () => this.startCampaign());
@@ -72,16 +70,25 @@ export class CampaignModal extends Modal {
 		iconizeModal(contentEl);
 	}
 
+	/** One solid End button. The first click swaps that same footer for Keep | Remove. */
+	private paintEndFooter(): void {
+		const footer = this.endFooter ?? this.contentEl.createDiv('rv-modal-actions is-footer');
+		this.endFooter = footer;
+		footer.empty();
+		const end = footer.createEl('button', { text: 'End campaign', attr: { type: 'button' } });
+		end.addClass('mod-warning');
+		end.addEventListener('click', () => this.askRemove());
+	}
+
 	/** The first click asks. The campaign stays until they confirm. */
 	private askRemove(): void {
 		if (this.confirming) return;
 		this.confirming = true;
-		const { contentEl } = this;
-		const ask = contentEl.createDiv({ cls: 'rv-locator-modal-copy' });
-		ask.setText('Remove this campaign?');
-		const actions = contentEl.createDiv('rv-modal-actions is-footer');
-		const keep = actions.createEl('button', { text: 'Keep', attr: { type: 'button' } });
-		const remove = actions.createEl('button', { text: 'Remove', attr: { type: 'button' } });
+		const footer = this.endFooter;
+		if (!footer) return;
+		footer.empty();
+		const keep = footer.createEl('button', { text: 'Keep', attr: { type: 'button' } });
+		const remove = footer.createEl('button', { text: 'Remove', attr: { type: 'button' } });
 		remove.addClass('mod-cta');
 		remove.addEventListener('click', () => {
 			this.saved = true;
@@ -90,8 +97,7 @@ export class CampaignModal extends Modal {
 		});
 		keep.addEventListener('click', () => {
 			this.confirming = false;
-			ask.empty();
-			actions.empty();
+			this.paintEndFooter();
 		});
 	}
 

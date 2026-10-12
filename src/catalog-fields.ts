@@ -12,6 +12,7 @@ import {
 	type LessonSpec,
 	type VisitShare,
 } from './catalog';
+import { companionChoices } from './companions';
 import { mountAlwaysChevron } from './suggest-field';
 import { displayTitle, mountFittedTitle } from './title-fit';
 import { mountStudyPanel } from './study-panel';
@@ -32,6 +33,9 @@ export interface ShareFieldOptions {
 	/** Collapsed "Studied a lesson?" block. Every visit modal starts here. */
 	optionalLesson?: boolean;
 	lessonPrefill?: { lesson: string; from: string; to: string };
+	/** Study log asks who came along, after literature and before the campaign row. */
+	askCompanion?: boolean;
+	companions?: readonly string[];
 	initial: VisitShare;
 }
 
@@ -79,6 +83,18 @@ export function mountShareFields(
 		else paintLists(contentEl);
 	}
 	if (!options.studyFirst) mountStudy();
+	if (options.askCompanion) {
+		mountField(
+			contentEl,
+			'What publisher came with you?',
+			'',
+			'Companion (optional)',
+			share.companion ?? '',
+			(query) => companionChoices(options.companions ?? [], query).map((item) => item.label),
+			(value) => publish({ companion: value }),
+			false,
+		);
+	}
 	return share;
 }
 
@@ -219,7 +235,14 @@ function mountTitleList(
 			event.preventDefault();
 			commit(draft);
 		});
-		text.inputEl.addEventListener('blur', () => { commit(draft); });
+		text.inputEl.addEventListener('blur', () => {
+			const dataset = text.inputEl?.dataset;
+			if (dataset?.rvPicking === '1') {
+				delete dataset.rvPicking;
+				return;
+			}
+			commit(draft);
+		});
 		mountAlwaysChevron(text.inputEl, () => suggestions(draft), (picked) => {
 			draft = '';
 			text.setValue('');

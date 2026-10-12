@@ -1,7 +1,7 @@
 import { Menu, setIcon } from 'obsidian';
 import { attemptLogCallouts, isLogCalloutTitle } from './attempt-digest';
 import { pickDayJump, type DayJumpCandidate } from './day-jump';
-import { calendarDaysSince, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
+import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
 import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
@@ -177,6 +177,20 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 		node.style.setProperty('color', ink, 'important');
 	});
 	markUrgencyReady(hosts);
+	paintUrgencyDetails(start, accent);
+}
+
+/** Address, item icons, and badge strokes follow the accent even when a child kept an old inline color. */
+function paintUrgencyDetails(start: HTMLElement, accent: string): void {
+	const colorOf = '.rv-address-link, .rv-address-input, .rv-item-icon, .rv-stamp-kind, .rv-hub-chip';
+	start.querySelectorAll(colorOf).forEach((node) => {
+		if (node instanceof HTMLElement) node.style.setProperty('color', accent, 'important');
+	});
+	start.querySelectorAll('.rv-locator-urgency').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		node.style.setProperty('border-color', accent, 'important');
+		node.style.setProperty('color', accent, 'important');
+	});
 }
 
 function markUrgencyReady(hosts: readonly HTMLElement[]): void {
@@ -914,7 +928,7 @@ function decorateSlotOverride(root: HTMLElement, path: string, data: Record<stri
 }
 
 function propertyDays(value: unknown): number | null {
-	const raw = value instanceof Date ? value.toISOString() : typeof value === 'string' ? value : '';
+	const raw = dateTextFromUnknown(value);
 	return raw ? calendarDaysSince(raw, new Date()) : null;
 }
 

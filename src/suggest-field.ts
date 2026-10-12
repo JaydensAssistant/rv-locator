@@ -134,6 +134,12 @@ export function mountAlwaysChevron(
 				row.textContent = item;
 			}
 			row.dataset.value = item;
+			row.addEventListener('pointerdown', (event) => {
+				event.preventDefault();
+				if (input instanceof HTMLElement) input.dataset.rvPicking = '1';
+				onPick(item);
+				panel.hidden = true;
+			});
 			row.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();

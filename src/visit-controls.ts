@@ -403,6 +403,29 @@ function stripChipTitle(chip: HTMLElement): string {
 	return (full || chip.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
+/** The narrowest clipping ancestor. A flex strip can grow past the box that hides it. */
+function clipWidth(strip: HTMLElement): number {
+	let budget = strip.clientWidth;
+	const view = strip.ownerDocument.defaultView;
+	let node: HTMLElement | null = strip.parentElement;
+	while (node && node !== strip.ownerDocument.body && node !== strip.ownerDocument.documentElement) {
+		const width = node.clientWidth;
+		if (width > 0 && width < budget) {
+			const style = view?.getComputedStyle(node);
+			const overflow = `${style?.overflowX ?? ''} ${style?.overflow ?? ''}`;
+			const clips = /hidden|clip|auto|scroll/.test(overflow);
+			const frame = node.classList.contains('markdown-preview-view')
+				|| node.classList.contains('workspace-leaf-content')
+				|| node.classList.contains('callout-content')
+				|| node.classList.contains('rv-visit-note-box');
+			if (clips || frame) budget = width;
+		}
+		if (node.classList.contains('workspace-leaf-content') || node.classList.contains('markdown-preview-view')) break;
+		node = node.parentElement;
+	}
+	return budget;
+}
+
 /** One row. Campaign stays. Extra chips become a +n button once the row is wider than its box. */
 function collapseStripOverflow(strip: HTMLElement): void {
 	const parked = strip.querySelector(':scope > .rv-item-overflow');
@@ -410,15 +433,21 @@ function collapseStripOverflow(strip: HTMLElement): void {
 	strip.querySelector(':scope > .rv-item-more')?.remove();
 	const chips = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.is-campaign):not(.rv-item-more)'))
 		.filter((node): node is HTMLElement => node instanceof HTMLElement);
-	for (const chip of chips) chip.hidden = false;
+	for (const chip of chips) showStripChip(chip);
 	if (strip.clientWidth <= 0) return;
+	const budget = clipWidth(strip);
+	if (budget > 0) {
+		strip.style.setProperty('max-width', `${budget}px`, 'important');
+		strip.style.setProperty('width', `${budget}px`, 'important');
+	}
+	const limit = budget > 0 ? budget : strip.clientWidth;
 	const hidden: HTMLElement[] = [];
-	const fits = (): boolean => strip.scrollWidth <= strip.clientWidth + 1;
+	const fits = (): boolean => strip.scrollWidth <= limit + 1;
 	while (!fits()) {
 		const visible = chips.filter((chip) => !chip.hidden);
 		const last = visible[visible.length - 1];
 		if (!last) break;
-		last.hidden = true;
+		hideStripChip(last);
 		hidden.unshift(last);
 	}
 	if (hidden.length === 0) return;
@@ -437,10 +466,22 @@ function collapseStripOverflow(strip: HTMLElement): void {
 		const visible = chips.filter((chip) => !chip.hidden);
 		const last = visible[visible.length - 1];
 		if (!last) break;
-		last.hidden = true;
+		hideStripChip(last);
 		hidden.unshift(last);
 		more.textContent = `+${hidden.length}`;
 	}
+}
+
+function hideStripChip(chip: HTMLElement): void {
+	chip.hidden = true;
+	chip.classList.add('is-overflow');
+	chip.style.setProperty('display', 'none', 'important');
+}
+
+function showStripChip(chip: HTMLElement): void {
+	chip.hidden = false;
+	chip.classList.remove('is-overflow');
+	chip.style.removeProperty('display');
 }
 
 /** Reading view wraps the heading in `.el-h5`. A rendered preview line keeps it in a `.cm-line`. */
