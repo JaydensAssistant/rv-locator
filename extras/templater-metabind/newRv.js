@@ -117,7 +117,7 @@ async function uniqueTitle(title, ignorePath) {
 }
 
 function yamlQuoted(value) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ").trim();
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\r?\n/g, " ").trim();
 }
 
 /** Same formula as src/address.ts googleMapsAddressLink. */
@@ -205,7 +205,7 @@ function resolveFile(tp) {
 }
 
 function unquote(value) {
-  const text = value.trim();
+  const text = String(value ?? "").trim();
   if (text.length >= 2) {
     const open = text[0];
     const close = text[text.length - 1];
@@ -251,9 +251,18 @@ function assignIfEmpty(fm, property, value) {
 }
 
 async function focusNote(file) {
+  const plugin = rvPlugin();
+  if (plugin && typeof plugin.focusNewRvNote === "function") {
+    try {
+      await plugin.focusNewRvNote(file);
+      return;
+    } catch {
+      /* Reading view is also armed from the plugin after create returns. */
+    }
+  }
   const active = app.workspace.getActiveFile();
-  if (active && active.path === file.path) return;
-  await app.workspace.getLeaf(false).openFile(file);
+  if (active && file && active.path === file.path) return;
+  if (file) await app.workspace.getLeaf(false).openFile(file);
 }
 
 function refreshCreatedDigest(file) {
@@ -429,7 +438,9 @@ function recentNamesFromVault() {
 }
 
 function formatStoredCompanion(name) {
-  return companionDisplayName(name) || String(name || "").trim();
+  const shown = companionDisplayName(name);
+  if (shown) return shown;
+  return typeof name === "string" ? name.trim() : "";
 }
 
 function companionFrontmatterBlock(stored) {
@@ -475,7 +486,9 @@ async function askCompanion(tp) {
   if (plugin && typeof plugin.promptCompanion === "function") {
     try {
       const value = await plugin.promptCompanion();
-      return typeof value === "string" ? value.trim() : "";
+      // Cancel is false. Skip is null. Either stores a blank Met With.
+      if (typeof value !== "string") return "";
+      return formatStoredCompanion(value);
     } catch {
       return "";
     }

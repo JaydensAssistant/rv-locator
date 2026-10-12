@@ -279,9 +279,9 @@ function trimEdgeBlanks(lines: readonly string[]): string[] {
 }
 
 /** `success`, `success with Devin`, or `not home`. The companion is only kept on a Home. */
-export function visitPhrase(home: boolean, companion = ''): string {
+export function visitPhrase(home: boolean, companion?: unknown): string {
 	if (!home) return 'not home';
-	const name = companion.trim();
+	const name = typeof companion === 'string' ? companion.trim() : '';
 	return name ? `success with ${name}` : 'success';
 }
 

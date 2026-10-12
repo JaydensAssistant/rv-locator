@@ -6483,11 +6483,10 @@ button.rv-study-toggle {
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line > .rv-address-field,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line a.rv-address-link,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line input.rv-address-input,
-.markdown-preview-view p.rv-hub-owned .rv-address-line a.rv-address-link,
-.markdown-rendered p.rv-hub-owned .rv-address-line a.rv-address-link,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line a.rv-address-link:not([hidden]),
+.markdown-preview-view p.rv-hub-owned .rv-address-line a.rv-address-link:not([hidden]),
+.markdown-rendered p.rv-hub-owned .rv-address-line a.rv-address-link:not([hidden]),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link:not([hidden]) {
 	display: block !important;
 	grid-column: auto;
 	width: 100% !important;
@@ -6541,6 +6540,118 @@ button.rv-study-toggle {
 	min-width: 0 !important;
 	max-width: none !important;
 	position: static !important;
+}
+
+/*
+  The quote callout's own padding was 4px, but .callout-content still used
+  --rv-dash-pad (12px). Together that is 16px on each side. Zero the content
+  padding and keep 4px on the callout, including when rv-dashboard is the
+  markdown view class rather than a wrapper.
+*/
+.markdown-preview-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
+.markdown-reading-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
+.markdown-source-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
+.markdown-rendered.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
+	--callout-padding: 4px !important;
+	--rv-dash-pad: 0px;
+	--rv-pair-label: 56px;
+	padding: 4px !important;
+}
+
+.markdown-preview-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
+.markdown-reading-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
+.markdown-source-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
+.markdown-rendered.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+	--callout-content-padding: 0px !important;
+	padding: 0 !important;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line {
+	display: grid !important;
+	grid-template-columns: var(--rv-pair-label) minmax(0, 1fr) 40px !important;
+	column-gap: 4px !important;
+	gap: 4px !important;
+	align-items: center !important;
+	width: 100% !important;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-address-line,
+.markdown-rendered p.rv-hub-owned > .rv-address-line,
+.rv-dashboard p.rv-hub-owned > .rv-address-line {
+	grid-template-columns: var(--rv-pair-label) minmax(0, 1fr) 28px !important;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > strong,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > strong,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line > strong,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > strong,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > strong,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > strong {
+	display: inline-flex !important;
+	align-items: center !important;
+	gap: 2px !important;
+	grid-column: 1 !important;
+	box-sizing: border-box !important;
+	width: var(--rv-pair-label) !important;
+	min-width: var(--rv-pair-label) !important;
+	max-width: var(--rv-pair-label) !important;
+	margin: 0 !important;
+	font-size: 10px !important;
+	line-height: 1.15 !important;
+	white-space: nowrap !important;
+	overflow: hidden !important;
+}
+
+.rv-hub-line > strong > .rv-label-icon,
+.rv-address-line > strong > .rv-label-icon,
+.rv-label-icon {
+	margin: 0 !important;
+}
+
+.rv-hub-line > strong > .rv-label-icon svg,
+.rv-address-line > strong > .rv-label-icon svg {
+	width: 11px !important;
+	height: 11px !important;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-row {
+	grid-column: 2 !important;
+	width: auto !important;
+	min-width: 0 !important;
+	max-width: none !important;
+}
+
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-add {
+	grid-column: 3 !important;
+	width: 40px !important;
+	min-width: 40px !important;
+	max-width: 40px !important;
+}
+
+.rv-hub-line .rv-hub-chip,
+.rv-hub-owned .rv-hub-chip {
+	white-space: nowrap !important;
+}
+
+.theme-light .rv-dashboard .rv-hub-line,
+.rv-dashboard .rv-hub-line {
+	border: 0 !important;
+	background: transparent;
+	overflow: visible;
+	margin: 0 !important;
+}
+
+input.rv-address-input[hidden],
+a.rv-address-link[hidden] {
+	display: none !important;
 }
 
 .markdown-preview-view .rv-item,

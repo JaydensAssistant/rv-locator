@@ -1659,10 +1659,38 @@ describe('companions', () => {
 		assert.equal(formatStoredCompanion('[[Nobody]]'), 'Nobody');
 		assert.equal(formatStoredCompanion('  Ada  '), 'Ada');
 		assert.equal(formatStoredCompanion(''), '');
+		assert.equal(formatStoredCompanion(undefined), '');
+		assert.equal(formatStoredCompanion(null), '');
+		assert.equal(formatStoredCompanion(false), '');
+		assert.equal(companionFrontmatterBlock(undefined), 'Met With:\nTaken:');
+		assert.equal(companionFrontmatterBlock(false), 'Met With:\nTaken:');
+		assert.equal(companionFrontmatterBlock('Sam'), 'Met With: "Sam"\nTaken:\n  - "Sam"');
 		assert.deepEqual(appendCompanionTaken([['Ada']], 'Pat'), ['[[Ada]]', 'Pat']);
+		assert.deepEqual(appendCompanionTaken(['Sam'], undefined), ['Sam']);
 		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
 		assert.equal(companionFrontmatterBlock('Pat'), 'Met With: "Pat"\nTaken:\n  - "Pat"');
 		assert.equal(companionFrontmatterBlock(formatStoredCompanion('[[Pat]]')), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+	});
+
+	it('stores a blank Met With on cancel and the chosen name otherwise', async () => {
+		const cancelled = await new Promise<unknown>((resolve) => {
+			const gate = createCompanionPromptGate(resolve);
+			gate.cancel();
+		});
+		assert.equal(cancelled, false);
+		assert.equal(companionFrontmatterBlock(cancelled), 'Met With:\nTaken:');
+		const chosen = await new Promise<unknown>((resolve) => {
+			const gate = createCompanionPromptGate(resolve);
+			gate.choose('Sam');
+		});
+		assert.equal(formatStoredCompanion(chosen), 'Sam');
+		assert.equal(companionFrontmatterBlock(chosen), 'Met With: "Sam"\nTaken:\n  - "Sam"');
+		const skipped = await new Promise<unknown>((resolve) => {
+			const gate = createCompanionPromptGate(resolve);
+			gate.skip();
+		});
+		assert.equal(skipped, null);
+		assert.equal(companionFrontmatterBlock(skipped), 'Met With:\nTaken:');
 	});
 
 	it('quotes Taken and Met With wikilinks that Obsidian flattened', () => {

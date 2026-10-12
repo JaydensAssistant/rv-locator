@@ -72,9 +72,11 @@ function cacheValue(frontmatter: { [key: string]: unknown } | undefined, key: st
 }
 
 function frontmatterFromMarkdown(text: string): Record<string, unknown> | null {
+	if (typeof text !== 'string') return null;
 	const info = getFrontMatterInfo(text);
-	if (!info.exists || !info.frontmatter.trim()) return null;
-	const parsed: unknown = parseYaml(info.frontmatter);
+	const block = typeof info?.frontmatter === 'string' ? info.frontmatter : '';
+	if (!info?.exists || !block.trim()) return null;
+	const parsed: unknown = parseYaml(block);
 	if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
 	return parsed as Record<string, unknown>;
 }
@@ -831,7 +833,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * even after a switch to editing. `force` is for a new note whose template
 	 * finished after it was opened.
 	 */
-	private openInReadingView(file: TFile, force: boolean): void {
+	private async openInReadingView(file: TFile, force: boolean): Promise<void> {
 		if (this.unloaded) return;
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
@@ -843,7 +845,12 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 			if (view.getMode() === 'preview') continue;
 			const state = leaf.getViewState();
-			void leaf.setViewState({ ...state, state: { ...state.state, mode: 'preview' } });
+			const inner = state.state && typeof state.state === 'object' ? state.state : {};
+			try {
+				await leaf.setViewState({ ...state, state: { ...inner, mode: 'preview', source: false } });
+			} catch {
+				/* Leave the leaf as it is. The visit focus still runs. */
+			}
 		}
 	}
 
@@ -1012,12 +1019,17 @@ export default class RVLocatorPlugin extends Plugin {
 			const created = await create.call(templater.templater, template);
 			if (!created) new Notice('Templater did not create the New RV note.');
 			else if (created instanceof TFile) {
-				await this.suffixCollidingName(created);
-				if (draft) await this.writeNewRvShare(created, draft);
-				await this.refreshAttemptDigest(created);
-				if (sourcePath) await this.linkHousehold(sourcePath, created);
+				try {
+					await this.suffixCollidingName(created);
+					if (draft) await this.writeNewRvShare(created, draft);
+					await this.refreshAttemptDigest(created);
+					if (sourcePath) await this.linkHousehold(sourcePath, created);
+				} catch (error) {
+					const reason = error instanceof Error && error.message ? error.message : 'New RV could not finish setup.';
+					new Notice(reason);
+				}
 				this.pendingNewRvPath = created.path;
-				this.armNewRvFocus(created);
+				await this.activateNewRvNote(created);
 			}
 		} catch (error) {
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
@@ -1169,7 +1181,8 @@ export default class RVLocatorPlugin extends Plugin {
 			modal.open();
 		});
 		if (picked === false) return false;
-		const name = picked?.trim() ?? '';
+		if (typeof picked !== 'string') return '';
+		const name = picked.trim();
 		if (!name) return '';
 		return formatStoredCompanion(name);
 	}
@@ -1939,15 +1952,26 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 		}
 		if (!leaf) return;
+		await this.openInReadingView(current, true);
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
 		this.pendingNewRvPath = current.path;
-		this.openInReadingView(current, true);
-		if (this.armedNewRvPath === current.path && this.armedNewRvEl === view.containerEl && this.stopVisitFocus) return;
-		this.stopVisitFocus?.();
-		this.armedNewRvPath = current.path;
-		this.armedNewRvEl = view.containerEl;
-		this.stopVisitFocus = armVisitNoteFocus(view.containerEl);
+		const sameWatch = this.armedNewRvPath === current.path && this.armedNewRvEl === view.containerEl && this.stopVisitFocus;
+		if (!sameWatch) {
+			this.stopVisitFocus?.();
+			this.armedNewRvPath = current.path;
+			this.armedNewRvEl = view.containerEl;
+			this.stopVisitFocus = armVisitNoteFocus(view.containerEl);
+		}
+		placeVisitNoteFocus(view.containerEl, '', 0);
+	}
+
+	/** Templater's post-create hook. Reading view and the visit note, even if geocode fails. */
+	async focusNewRvNote(file: TFile | { path?: string } | null | undefined): Promise<void> {
+		const note = file instanceof TFile ? file : this.asNoteFile(file ?? null);
+		if (!note || this.unloaded) return;
+		this.pendingNewRvPath = note.path;
+		await this.activateNewRvNote(note);
 	}
 
 	private noteMapHost(): HTMLElement | null {
@@ -2294,7 +2318,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		const picked = await this.promptCompanion();
-		if (picked === false || !picked.trim()) return;
+		if (typeof picked !== 'string' || !picked.trim()) return;
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
 			assignProperty(data, 'Met With', picked);

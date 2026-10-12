@@ -1228,6 +1228,24 @@ describe('smoke layout', () => {
 		root.remove();
 	});
 
+	it('moves focus from the note title onto the visit textarea', async () => {
+		hostGlobals.MutationObserver = window.MutationObserver;
+		const root = window.document.createElement('div');
+		const title = window.document.createElement('div');
+		title.className = 'view-header-title';
+		title.contentEditable = 'true';
+		window.document.body.append(title, root);
+		title.focus();
+		const stop = armVisitNoteFocus(root);
+		const area = window.document.createElement('textarea');
+		root.appendChild(area);
+		await new Promise((resolve) => window.setTimeout(resolve, 20));
+		assert.equal(window.document.activeElement, area);
+		stop();
+		title.remove();
+		root.remove();
+	});
+
 	it('wraps the address in the callout and stacks the note map from the leaf width', () => {
 		const css = readFileSync('styles.css', 'utf8');
 		assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\) 28px !important/);
@@ -1244,6 +1262,12 @@ describe('smoke layout', () => {
 		const activate = main.slice(main.indexOf('private async activateNewRvNote'), main.indexOf('private noteMapHost'));
 		assert.match(activate, /openFile/);
 		assert.match(activate, /setActiveLeaf/);
+		assert.match(activate, /await this\.openInReadingView/);
+		assert.match(main, /source: false/);
+		assert.match(css, /--rv-pair-label: 56px/);
+		assert.match(css, /padding: 4px !important/);
+		assert.match(css, /> \.callout-content \{[^}]*padding: 0 !important/);
+		assert.match(css, /input\.rv-address-input\[hidden\],\s*a\.rv-address-link\[hidden\] \{\s*display: none !important;/);
 		const visit = readFileSync('src/visit-display.ts', 'utf8');
 		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));
 		assert.match(arm, /templater-prompt-input/);

@@ -435,7 +435,8 @@ function updateTaken(frontmatter: Record<string, unknown>, removed: VisitFacts |
 		const recorded = after.some((visit) => visit.home && companionKey(visit.companion) === gone);
 		if (!recorded && metWith !== gone) items = items.filter((item) => companionKey(item) !== gone);
 	}
-	if (added?.home && added.companion.trim()) items = appendCompanionTaken(items, added.companion.trim());
+	const addedName = added?.home && typeof added.companion === 'string' ? added.companion.trim() : '';
+	if (addedName) items = appendCompanionTaken(items, addedName);
 	const same = items.length === original.length && items.every((item, index) => item === original[index]);
 	if (!same) assignProperty(frontmatter, 'Taken', items);
 }
@@ -443,7 +444,7 @@ function updateTaken(frontmatter: Record<string, unknown>, removed: VisitFacts |
 /** `Tue, 5pm — Sep 29, 2026 · Home with Devin` for menus and confirmations. */
 export function describeVisit(entry: VisitFacts): string {
 	const outcome = entry.home ? 'Home' : 'Not home';
-	const name = entry.home ? entry.companion.trim() : '';
+	const name = entry.home && typeof entry.companion === 'string' ? entry.companion.trim() : '';
 	return `${formatVisitStamp(entry.when)} · ${outcome}${name ? ` with ${name}` : ''}`;
 }
 

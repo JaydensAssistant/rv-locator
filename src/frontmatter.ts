@@ -3,8 +3,8 @@ import { parseDisplayAddress } from './address-display';
 import { coordString, latLonFromUnknown, roundCoord } from './distance';
 import type { GeocodeHit, RVLocatorSettings } from './types';
 
-export function readProperty(frontmatter: Record<string, unknown> | null | undefined, name: string): unknown {
-	if (!frontmatter) return undefined;
+export function readProperty(frontmatter: Record<string, unknown> | null | undefined, name: unknown): unknown {
+	if (!frontmatter || typeof name !== 'string') return undefined;
 	const wanted = name.trim();
 	if (!wanted) return undefined;
 	if (Object.prototype.hasOwnProperty.call(frontmatter, wanted)) {

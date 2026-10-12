@@ -142,9 +142,9 @@ export function companionRecency(
  * Append one companion to Taken. Wikilink and plain forms of the same name
  * count as one entry. An empty companion leaves the list unchanged.
  */
-export function appendCompanionTaken(existing: unknown, companion: string): string[] {
+export function appendCompanionTaken(existing: unknown, companion: unknown): string[] {
 	const items = takenItems(existing);
-	const stored = companion.trim();
+	const stored = typeof companion === 'string' ? companion.trim() : '';
 	if (!stored) return items;
 	const key = companionKey(stored);
 	if (!key || items.some((item) => companionKey(item) === key)) return items;
@@ -155,8 +155,10 @@ export function appendCompanionTaken(existing: unknown, companion: string): stri
  * Plain name appended to Taken. A wikilink is reduced to its display name.
  * New companion writes do not create wikilinks.
  */
-export function formatStoredCompanion(name: string): string {
-	return companionDisplayName(name) || name.trim();
+export function formatStoredCompanion(name: unknown): string {
+	const shown = companionDisplayName(name);
+	if (shown) return shown;
+	return typeof name === 'string' ? name.trim() : '';
 }
 
 /**
@@ -290,8 +292,8 @@ function stripYamlQuote(value: string): string {
  * the create companion goes on Met With and is also the first Taken entry.
  * A skip leaves both blank. Later Home visits append to Taken only.
  */
-export function companionFrontmatterBlock(stored: string): string {
-	const name = stored.trim();
+export function companionFrontmatterBlock(stored: unknown): string {
+	const name = formatStoredCompanion(stored);
 	if (!name) return 'Met With:\nTaken:';
 	const quoted = `"${name.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 	return `Met With: ${quoted}\nTaken:\n  - ${quoted}`;

@@ -635,6 +635,13 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		}
 		row.empty();
 		paintLabelIcon(hubLabel, 'layout-grid', 'Hub:');
+		pinPairLabel(hubLabel);
+		if (!(line instanceof HTMLElement)) continue;
+		line.style.setProperty('display', 'grid', 'important');
+		line.style.setProperty('grid-template-columns', 'var(--rv-pair-label) minmax(0, 1fr) 40px', 'important');
+		line.style.setProperty('column-gap', '4px', 'important');
+		line.style.setProperty('align-items', 'center', 'important');
+		line.style.setProperty('width', '100%', 'important');
 		const hubs = hubRefs(readProperty(data, 'Hub'));
 		const returnHub = host.settings.returnHubNote;
 		hubs.forEach((hub, index) => {
@@ -748,7 +755,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (earth instanceof HTMLElement) line.append(earth);
 	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
 	line.style.setProperty('display', 'grid', 'important');
-	line.style.setProperty('grid-template-columns', 'max-content minmax(0, 1fr) 28px', 'important');
+	line.style.setProperty('grid-template-columns', 'var(--rv-pair-label) minmax(0, 1fr) 28px', 'important');
 	line.style.setProperty('grid-template-rows', 'auto', 'important');
 	line.style.setProperty('grid-column', '1 / -1', 'important');
 	line.style.setProperty('column-gap', '4px', 'important');
@@ -760,10 +767,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	line.style.setProperty('box-sizing', 'border-box', 'important');
 	address.style.setProperty('grid-column', '1', 'important');
 	address.style.setProperty('grid-row', '1', 'important');
-	address.style.setProperty('width', 'max-content', 'important');
-	address.style.setProperty('max-width', 'none', 'important');
-	address.style.setProperty('margin', '0', 'important');
-	address.style.setProperty('white-space', 'nowrap', 'important');
+	pinPairLabel(address);
 	field.style.setProperty('grid-column', '2', 'important');
 	field.style.setProperty('grid-row', '1', 'important');
 	field.style.setProperty('display', 'block', 'important');
@@ -820,6 +824,8 @@ function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 	const start = (): void => {
 		link.hidden = true;
 		input.hidden = false;
+		link.style.setProperty('display', 'none', 'important');
+		input.style.setProperty('display', 'block', 'important');
 		input.focus();
 		if (typeof input.select === 'function') input.select();
 	};
@@ -835,6 +841,20 @@ function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 	link.addEventListener('pointerup', cancel);
 	link.addEventListener('pointerleave', cancel);
 	link.addEventListener('pointercancel', cancel);
+}
+
+function pinPairLabel(label: HTMLElement): void {
+	label.style.setProperty('display', 'inline-flex', 'important');
+	label.style.setProperty('align-items', 'center', 'important');
+	label.style.setProperty('gap', '2px', 'important');
+	label.style.setProperty('width', 'var(--rv-pair-label)', 'important');
+	label.style.setProperty('min-width', 'var(--rv-pair-label)', 'important');
+	label.style.setProperty('max-width', 'var(--rv-pair-label)', 'important');
+	label.style.setProperty('margin', '0', 'important');
+	label.style.setProperty('white-space', 'nowrap', 'important');
+	label.style.setProperty('font-size', '10px', 'important');
+	label.style.setProperty('line-height', '1.15', 'important');
+	label.style.setProperty('overflow', 'hidden', 'important');
 }
 
 function paintLabelIcon(label: HTMLElement, icon: string, text: string): void {
@@ -885,8 +905,11 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	link.classList.toggle('is-empty', !text);
 	link.textContent = text || 'Add an address';
 	const editing = paragraph.ownerDocument.activeElement === input;
-	link.hidden = editing || text.length === 0;
-	input.hidden = !editing && text.length > 0;
+	const showInput = editing || text.length === 0;
+	link.hidden = showInput;
+	input.hidden = !showInput;
+	link.style.setProperty('display', showInput ? 'none' : 'block', 'important');
+	input.style.setProperty('display', showInput ? 'block' : 'none', 'important');
 }
 
 function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLElement | null {

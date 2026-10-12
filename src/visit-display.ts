@@ -948,6 +948,8 @@ export function armVisitNoteFocus(root: HTMLElement): () => void {
 	};
 	const editingElsewhere = (node: Element | null): boolean => {
 		if (!(node instanceof HTMLElement)) return false;
+		// The note title is contenteditable, and it is where Obsidian leaves the caret.
+		if (isFocusThief(node)) return false;
 		if (node.classList.contains('templater-prompt-input')) return true;
 		const tag = node.tagName;
 		const field = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
