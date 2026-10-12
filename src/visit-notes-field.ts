@@ -12,6 +12,8 @@ interface NoteDraft {
 	start: number;
 	end: number;
 	until: number;
+	/** Set only by typing or a caret move. A mount must not invent this. */
+	typed: boolean;
 }
 
 const draftByKey = new Map<string, NoteDraft>();
@@ -19,6 +21,8 @@ const pendingByPath = new Map<string, number>();
 const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
 let session = 0;
 let activeNotePath = '';
+/** The visit key that was focused while the user was actually editing. */
+let caretFocus: { path: string; key: string } | null = null;
 
 function cacheKey(path: string, key: string): string {
 	return `${path}\0${key}`;
@@ -37,6 +41,7 @@ export function clearVisitNoteCaches(): void {
 	session += 1;
 	draftByKey.clear();
 	pendingByPath.clear();
+	caretFocus = null;
 	for (const timer of pendingTimers) clearTimeout(timer);
 	pendingTimers.clear();
 	dropHeldVisitNote();
@@ -145,24 +150,32 @@ function liveDraft(path: string, key: string): NoteDraft | null {
 
 let suppressCaret = false;
 
-/** The live caret. A missing selection does not mean the end of the text. */
-function rememberCaret(area: HTMLTextAreaElement, path: string, key: string): void {
+/**
+ * The live caret. Only the focused box, or a box with a save in flight, is recorded.
+ * `typed` is true only for a real input or caret move, never for a mount.
+ */
+function rememberCaret(area: HTMLTextAreaElement, path: string, key: string, typed = false): void {
 	if ((area.dataset.rvNoteFile || '') !== path) return;
+	const active = area.ownerDocument.activeElement === area;
+	if (!typed && !active && !writeTimers.has(area)) return;
 	const id = cacheKey(path, key);
 	const previous = draftByKey.get(id);
 	const start = typeof area.selectionStart === 'number' ? area.selectionStart : previous?.start ?? 0;
 	const end = typeof area.selectionEnd === 'number' ? area.selectionEnd : previous?.end ?? start;
+	const nowTyped = typed || previous?.typed === true;
 	draftByKey.set(id, {
 		path,
 		value: area.value,
 		start,
 		end,
 		until: Date.now() + 2500,
+		typed: nowTyped,
 	});
+	if (nowTyped && (typed || active)) caretFocus = { path, key };
 }
 
 function rememberDraft(area: HTMLTextAreaElement, path: string, key: string): void {
-	rememberCaret(area, path, key);
+	rememberCaret(area, path, key, true);
 }
 
 /** Clicks and arrow keys move the caret without an input event. Keep that position. */
@@ -179,7 +192,7 @@ function watchCaretMoves(area: HTMLTextAreaElement): void {
 		const path = active.dataset.rvNoteFile || '';
 		if (!NOTE_KEY.test(key)) return;
 		if (activeNotePath && path !== activeNotePath) return;
-		rememberCaret(active, path, key);
+		rememberCaret(active, path, key, true);
 	};
 	doc.addEventListener('selectionchange', pull);
 	doc.addEventListener('keyup', pull, true);
@@ -212,7 +225,9 @@ function editingElsewhere(node: EventTarget | null): boolean {
  */
 function placeRebuiltCaret(area: HTMLTextAreaElement, path: string, key: string): void {
 	const saved = liveDraft(path, key);
-	if (!saved || saved.path !== path) return;
+	// A fresh note open has no typed draft, and a mount must not focus a box.
+	if (!saved || saved.path !== path || !saved.typed) return;
+	if (!caretFocus || caretFocus.path !== path || caretFocus.key !== key) return;
 	const { start, end } = selectionOf(area, saved);
 	const active = area.ownerDocument.activeElement;
 	suppressCaret = true;
@@ -223,7 +238,7 @@ function placeRebuiltCaret(area: HTMLTextAreaElement, path: string, key: string)
 			} catch {
 				area.focus();
 			}
-			holdVisitNote(area, 2500);
+			holdVisitNote(area, 2500, true);
 		}
 		area.setSelectionRange(start, end);
 	} finally {
@@ -460,7 +475,7 @@ function scheduleNoteWrite(
 		if (activeNotePath && path !== activeNotePath) return;
 		const writeKey = area.dataset.rvNoteKey || area.dataset.rvNativeNotes || '';
 		if (writeKey !== key) return;
-		if (area.isConnected) rememberCaret(area, path, writeKey);
+		if (area.isConnected) rememberCaret(area, path, writeKey, true);
 		markOwnNoteWrite(path);
 		const saved = liveDraft(path, writeKey);
 		if (saved && saved.path !== path) return;
@@ -509,7 +524,10 @@ function wireNative(
 	area.value = desiredValue(path, key, readValue);
 	area.setAttribute('aria-label', 'Visit notes');
 	watchCaretMoves(area);
-	area.addEventListener('focus', () => holdVisitNote(area, 2500));
+	area.addEventListener('focus', (evt) => {
+		if (!evt.isTrusted && liveDraft(path, key)?.typed !== true) return;
+		holdVisitNote(area, 2500, true);
+	});
 	area.addEventListener('input', () => {
 		const writePath = area.dataset.rvNoteFile || '';
 		const writeKey = area.dataset.rvNoteKey || key;
@@ -566,11 +584,14 @@ export function mountRawVisitNotes(
 ): void {
 	const surface = visitSurface(root);
 	surface.dataset.rvNoteFile = path;
+	const activeArea = surface.ownerDocument.activeElement;
 	surface.querySelectorAll('textarea.rv-native-notes-area').forEach((node) => {
 		if (!isTextArea(node) || !node.isConnected) return;
 		if ((node.dataset.rvNoteFile || '') !== path) return;
 		const key = node.dataset.rvNoteKey || node.dataset.rvNativeNotes || '';
-		if (NOTE_KEY.test(key)) rememberCaret(node, path, key);
+		if (!NOTE_KEY.test(key)) return;
+		if (node !== activeArea && !writeTimers.has(node)) return;
+		rememberCaret(node, path, key, false);
 	});
 	const boxes = boxesAfterStamps(surface);
 	const used = new Set<string>();

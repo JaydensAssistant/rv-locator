@@ -22,7 +22,7 @@ import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickMod
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
-import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, readingDomIsStale, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -30,7 +30,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { armVisitNoteFocus, concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy, watchVisitNoteFocus } from './visit-display';
+import { armVisitNoteFocus, concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteHoldTyped, watchVisitNoteFocus } from './visit-display';
 import { dispatchVisitPreviewRefresh, onLiveVisitHost, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
@@ -338,18 +338,20 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		this.registerDomEvent(document, 'pointerdown', (evt) => {
 			const area = evt.target instanceof Element ? evt.target.closest('textarea') : null;
-			if (area instanceof HTMLTextAreaElement && area.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(area, 900);
+			if (area instanceof HTMLTextAreaElement && area.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(area, 900, true);
 		}, { capture: true });
 		this.registerDomEvent(document, 'focusin', (evt) => {
 			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
-			if (evt.target instanceof HTMLTextAreaElement && evt.target.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(evt.target, 900);
+			if (evt.isTrusted && evt.target instanceof HTMLTextAreaElement && evt.target.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(evt.target, 900, true);
 		});
 		this.registerDomEvent(document, 'focusout', (evt) => {
 			if (!(evt.target instanceof HTMLTextAreaElement)) return;
 			if (!evt.target.closest('.rv-dashboard, .rv-visit-note-box')) return;
+			const typedHold = visitNoteHoldTyped(evt.target);
 			releaseVisitNote(evt.relatedTarget);
 			if (!isFocusThief(evt.relatedTarget) && evt.relatedTarget instanceof Element && evt.relatedTarget !== evt.target) return;
-			holdVisitNote(evt.target, 8000);
+			if (!typedHold) return;
+			holdVisitNote(evt.target, 8000, true);
 			for (const delay of [0, 120, 250]) window.setTimeout(() => restoreHeldNote(), delay);
 		});
 		this.registerDomEvent(window, 'resize', () => this.scheduleNotesFit());
@@ -553,7 +555,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const current = this.pathForSurface(element) || shown;
 			if (current !== shown) return;
 			const live = element.isConnected ? element : this.markdownSurface(shown);
-			if (!live) return;
+			if (!live || readingDomIsStale(live, markdown)) return;
 			live.dataset.rvNoteFile = shown;
 			layoutVisitNotes(live, markdown, {
 				newestFirst: this.settings.visitsNewestFirst,
@@ -667,6 +669,8 @@ export default class RVLocatorPlugin extends Plugin {
 		const shown = this.pathForSurface(hinted) || path;
 		const surface = this.markdownSurface(shown) ?? hinted;
 		if (!surface) return;
+		const body = this.noteBodies.get(shown) ?? '';
+		if (readingDomIsStale(surface, body)) return;
 		surface.dataset.rvNoteFile = shown;
 		const coveredFor = (when: Date, line = -1, domIndex = 0): string | null => {
 			if (!this.noteBodies.has(shown)) return null;
@@ -674,17 +678,14 @@ export default class RVLocatorPlugin extends Plugin {
 			const newestIndex = line >= 0 ? headingNewestIndex(body, when, line) : domIndex;
 			return coveredCampaignFor(body, when, newestIndex);
 		};
-		const notesBusy = visitNoteBusy(surface);
 		const layoutMissing = visitLayoutMissing(surface);
-		if (!notesBusy || layoutMissing) {
-			decorateVisitControls(
-				surface,
-				() => null,
-				(target, evt) => this.openVisitMenu(shown, target, evt),
-				coveredFor,
-			);
-			rehoistVisitNotes(surface);
-		}
+		decorateVisitControls(
+			surface,
+			() => null,
+			(target, evt) => this.openVisitMenu(shown, target, evt),
+			coveredFor,
+		);
+		rehoistVisitNotes(surface);
 		applyLiveUrgency(surface, shown, this.noteChromeHost(), true);
 		if (chrome) this.decorateOpenNote(surface, shown);
 		else this.layoutOpenVisits(surface, shown);

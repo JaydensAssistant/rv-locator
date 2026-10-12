@@ -319,6 +319,12 @@ describe('2026-10-12 dogfood round 2', () => {
 		const box = window.document.createElement('div');
 		box.className = 'rv-visit-note-box';
 		heading.insertAdjacentElement('afterend', box);
+		bare.dataset.rvNoteFile = 'RVs/Ada.md';
+		heading.dataset.rvNoteFile = 'RVs/Ada.md';
+		assert.equal(visitLayoutMissing(bare), true);
+		const row = window.document.createElement('span');
+		row.className = 'rv-stamp-row';
+		heading.appendChild(row);
 		assert.equal(visitLayoutMissing(bare), false);
 		const dashboard = window.document.createElement('div');
 		dashboard.className = 'rv-dashboard';

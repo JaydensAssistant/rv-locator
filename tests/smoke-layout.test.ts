@@ -7,10 +7,10 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
-import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
+import { armVisitNoteFocus, holdVisitNote, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
@@ -1617,6 +1617,110 @@ describe('smoke layout', () => {
 			paint(notes[0]);
 		} finally {
 			preview.remove();
+		}
+	});
+
+	it('does not focus a textarea on a note switch, and one focused box does not block the others', () => {
+		clearVisitNoteCaches();
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		const paint = (stamps: readonly string[], keys: readonly string[]): void => {
+			sizer.replaceChildren();
+			stamps.forEach((stamp, index) => {
+				const heading = window.document.createElement('div');
+				heading.className = 'markdown-preview-section';
+				heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
+				const note = window.document.createElement('div');
+				note.className = 'markdown-preview-section';
+				note.innerHTML = `<div class="el-p"><p><code>INPUT[textArea:${keys[index]}]</code></p></div>`;
+				sizer.append(heading, note);
+			});
+			preview.dataset.rvNoteFile = '';
+			decorateVisitControls(preview, () => null, () => {});
+			rehoistVisitNotes(preview);
+		};
+		const mount = (path: string, keys: readonly string[], front: Map<string, string>): void => {
+			setActiveVisitNote(path);
+			preview.dataset.rvNoteFile = path;
+			mountRawVisitNotes(preview, (key) => front.get(key) ?? '', () => {}, keys, path);
+		};
+		const aStamps = ['Mon, 9:00am — Sep 1, 2026', 'Tue, 10:00am — Sep 2, 2026', 'Wed, 11:00am — Sep 3, 2026'] as const;
+		const aKeys = ['sVisit1Notes', 'sVisit2Notes', 'sVisit3Notes'] as const;
+		try {
+			paint(aStamps, aKeys);
+			const front = new Map(aKeys.map((key) => [key, '']));
+			mount('A.md', aKeys, front);
+			mount('A.md', aKeys, front);
+			preview.querySelectorAll('textarea.rv-native-notes-area').forEach((node) => node.remove());
+			mount('A.md', aKeys, front);
+			assert.notEqual(window.document.activeElement?.tagName, 'TEXTAREA');
+			const typed = preview.querySelector('textarea.rv-native-notes-area');
+			assert.ok(typed instanceof window.HTMLTextAreaElement);
+			typed.focus();
+			typed.value = 'from a';
+			typed.setSelectionRange(2, 2);
+			typed.dispatchEvent(new window.Event('input', { bubbles: true }));
+			clearVisitNoteCaches();
+			setActiveVisitNote('B.md');
+			const bStamps = ['Thu, 2:10pm — Sep 17, 2026', 'Fri, 3:10pm — Sep 18, 2026'] as const;
+			const bKeys = ['sVisit1Notes', 'sVisit2Notes'] as const;
+			paint(bStamps, bKeys);
+			assert.equal(readingDomIsStale(preview, bStamps.map((stamp) => `##### ${stamp}`).join('\n')), false);
+			assert.equal(readingDomIsStale(preview, aStamps.map((stamp) => `##### ${stamp}`).join('\n')), true);
+			const raw = preview.querySelector('h5');
+			assert.ok(raw instanceof window.HTMLElement);
+			raw.textContent = bStamps[0];
+			raw.classList.add('rv-visit-stamp');
+			raw.dataset.rvNoteFile = 'B.md';
+			preview.dataset.rvNoteFile = 'B.md';
+			const stray = window.document.createElement('div');
+			stray.className = 'rv-visit-note-box';
+			raw.insertAdjacentElement('afterend', stray);
+			assert.equal(visitLayoutMissing(preview), true);
+			mount('B.md', bKeys, new Map(bKeys.map((key) => [key, 'b'])));
+			assert.notEqual(window.document.activeElement?.tagName, 'TEXTAREA');
+			assert.equal(sizer.querySelectorAll('h5.rv-visit-stamp').length, bStamps.length);
+			const held = preview.querySelector('textarea.rv-native-notes-area');
+			assert.ok(held instanceof window.HTMLTextAreaElement);
+			held.focus();
+			held.value = 'keep';
+			held.setSelectionRange(1, 1);
+			held.dispatchEvent(new window.Event('input', { bubbles: true }));
+			held.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
+			const focusedKey = held.dataset.rvNoteKey;
+			const headings = Array.from(preview.querySelectorAll('h5'));
+			const other = headings[1];
+			assert.ok(other instanceof window.HTMLElement);
+			other.classList.remove('rv-visit-stamp');
+			other.querySelectorAll('.rv-stamp-row, .rv-stamp-source, .rv-visit-more').forEach((node) => node.remove());
+			other.textContent = bStamps[1];
+			decorateVisitControls(preview, () => null, () => {});
+			rehoistVisitNotes(preview);
+			assert.equal(other.classList.contains('rv-visit-stamp'), true);
+			assert.equal(preview.querySelectorAll('h5.rv-visit-stamp').length, bStamps.length);
+			assert.equal(window.document.activeElement, held);
+			assert.equal(held.selectionStart, 1);
+			held.remove();
+			mount('B.md', bKeys, new Map([['sVisit1Notes', 'keep'], ['sVisit2Notes', 'b']]));
+			const restored = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')).find((node) => node.dataset.rvNoteKey === focusedKey);
+			assert.ok(restored instanceof window.HTMLTextAreaElement);
+			assert.equal(window.document.activeElement, restored);
+			assert.equal(restored.selectionStart, 1);
+			assert.equal(restored.selectionEnd, 1);
+			const untouched = window.document.createElement('textarea');
+			untouched.className = 'rv-native-notes-area';
+			preview.appendChild(untouched);
+			holdVisitNote(untouched, 2500, false);
+			untouched.blur();
+			restoreHeldNote();
+			assert.notEqual(window.document.activeElement, untouched);
+		} finally {
+			preview.remove();
+			clearVisitNoteCaches();
 		}
 	});
 

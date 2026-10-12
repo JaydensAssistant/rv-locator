@@ -819,6 +819,8 @@ function isVisitTextArea(node: EventTarget | null | undefined): node is HTMLText
 
 let heldNote: HTMLTextAreaElement | null = null;
 let heldNoteUntil = 0;
+/** A click or keystroke. A mount's programmatic focus is not one of these. */
+let heldTyped = false;
 
 /**
  * Obsidian puts focus on the note title after a new file opens. That is not
@@ -833,11 +835,20 @@ export function isFocusThief(node: EventTarget | null | undefined): boolean {
 }
 
 /** Keep a visit note focused. A shorter later hold does not cut a longer one short. */
-export function holdVisitNote(area: HTMLTextAreaElement, ms = 900): void {
+export function holdVisitNote(area: HTMLTextAreaElement, ms = 900, typed = false): void {
 	const until = Date.now() + ms;
-	if (heldNote === area && heldNoteUntil >= until) return;
+	if (heldNote === area && heldNoteUntil >= until) {
+		if (typed) heldTyped = true;
+		return;
+	}
 	heldNote = area;
 	heldNoteUntil = until;
+	heldTyped = typed;
+}
+
+/** True while this textarea is held because the user typed or moved the caret. */
+export function visitNoteHoldTyped(area: HTMLTextAreaElement): boolean {
+	return heldTyped && heldNote === area && area.isConnected && Date.now() < heldNoteUntil;
 }
 
 export function releaseVisitNote(next: EventTarget | null): void {
@@ -850,6 +861,7 @@ export function releaseVisitNote(next: EventTarget | null): void {
 export function dropHeldVisitNote(): void {
 	heldNote = null;
 	heldNoteUntil = 0;
+	heldTyped = false;
 }
 
 function noteOwnedHere(root: HTMLElement, area: HTMLTextAreaElement): boolean {
@@ -868,7 +880,7 @@ export function visitNoteBusy(root: HTMLElement): boolean {
 /** Put the caret back when a repaint left it on the document body. */
 export function restoreHeldNote(): void {
 	const area = heldNote;
-	if (!area || !area.isConnected || Date.now() >= heldNoteUntil) return;
+	if (!heldTyped || !area || !area.isConnected || Date.now() >= heldNoteUntil) return;
 	const doc = area.ownerDocument;
 	const active = doc.activeElement;
 	if (active === area) return;
@@ -1006,7 +1018,7 @@ export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: n
 	const found = root.querySelector('textarea');
 	const area = matched ?? (isVisitTextArea(found) ? found : null);
 	if (!area) return null;
-	holdVisitNote(area, 8000);
+	holdVisitNote(area, 8000, true);
 	try {
 		area.focus({ preventScroll: true });
 	} catch {

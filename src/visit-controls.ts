@@ -3,7 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter } from './dates';
 import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
-import { layoutVisitNotes, mountHeadingChevron, visitNoteBusy, type VisitLayoutOptions } from './visit-display';
+import { layoutVisitNotes, mountHeadingChevron, visitStampsInMarkdown, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
@@ -124,8 +124,6 @@ export function decorateVisitControls(
 	coveredFor?: CoveredLookup,
 ): void {
 	const surface = coveredSearchRoot(root);
-	const busy = visitNoteBusy(surface) || visitNoteBusy(root);
-	if (busy && !visitLayoutMissing(root) && !visitLayoutMissing(surface)) return;
 	tagVisitNotesHeading(root);
 	const ownLine = sectionLine();
 	const localStamps = stampHeadings(root);
@@ -550,8 +548,14 @@ function findItemStrip(heading: HTMLElement): HTMLElement | null {
 }
 
 /** The strip sits at the top of the tinted note box. The note text is inside that same box. */
+function activeNoteIn(node: HTMLElement): boolean {
+	const active = node.ownerDocument?.activeElement;
+	return active instanceof HTMLElement && active.tagName === 'TEXTAREA' && node.contains(active);
+}
+
 function ensureNoteBox(heading: HTMLElement, strip: HTMLElement): void {
 	let box = strip.parentElement;
+	if (box instanceof HTMLElement && box.classList.contains('rv-visit-note-box') && activeNoteIn(box)) return;
 	if (!(box instanceof HTMLElement) || !box.classList.contains('rv-visit-note-box')) {
 		const created = heading.ownerDocument.createElement('div');
 		created.className = 'rv-visit-note-box';
@@ -676,6 +680,21 @@ function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): voi
  * A Reading view rebuild drops `.rv-visit-stamp` and the note box.
  * That pass still has to run while the textarea is focused, or the boxes stay gone.
  */
+/**
+ * The stamp line still sitting in the heading. A reshaped heading keeps that
+ * line in `.rv-stamp-source`, so this is empty once the row has been built.
+ * Matching `data-rv-note-file` does not count: a file switch writes the new
+ * path onto the previous note's headings before their text is replaced.
+ */
+function rawStampLine(node: HTMLElement): string {
+	const visible = textWithout(node, '.rv-stamp-source, .rv-stamp-row, .rv-stamp-ago, .rv-visit-extra, .rv-visit-more, .heading-collapse-indicator, .collapse-indicator')
+		.replace(/^#{1,6}\s+/, '')
+		.trim();
+	if (stampDateTime(visible)) return visible;
+	const attr = (node.getAttribute('data-heading') ?? '').replace(/\s+/g, ' ').trim();
+	return stampDateTime(attr) ? attr : '';
+}
+
 export function visitLayoutMissing(root: HTMLElement): boolean {
 	if (typeof root.querySelectorAll !== 'function') return false;
 	const host = root.closest?.('.markdown-preview-view, .markdown-reading-view');
@@ -686,13 +705,32 @@ export function visitLayoutMissing(root: HTMLElement): boolean {
 	for (const node of Array.from(headings)) {
 		if (!(node instanceof HTMLElement)) continue;
 		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) continue;
-		const raw = (node.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/^#{1,6}\s+/, '');
-		const decorated = node.classList.contains('rv-visit-stamp');
-		if (!decorated && !stampDateTime(raw)) continue;
+		const reshaped = node.querySelector(':scope > .rv-stamp-row') instanceof HTMLElement;
+		if (rawStampLine(node) && !reshaped) return true;
+		if (!reshaped && !node.classList.contains('rv-visit-stamp')) continue;
+		if (!reshaped) return true;
 		if (expected && (node.dataset.rvNoteFile || '') !== expected) return true;
-		if (!decorated || !noteBoxNear(node)) return true;
+		if (!noteBoxNear(node)) return true;
 	}
 	return false;
+}
+
+/** The preview still shows another note's visit headings. */
+export function readingDomIsStale(root: HTMLElement, markdown: string): boolean {
+	if (typeof root.querySelectorAll !== 'function') return false;
+	const dom: string[] = [];
+	root.querySelectorAll('h3, h5').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
+		const source = headingSource(node).replace(/\s+/g, ' ').trim();
+		const line = rawStampLine(node) || (stampDateTime(source) ? source : '');
+		if (line) dom.push(line);
+	});
+	if (dom.length === 0) return false;
+	const file = visitStampsInMarkdown(markdown).map((stamp) => stamp.text.replace(/\s+/g, ' ').trim());
+	if (file.length === 0) return true;
+	const known = new Set(file);
+	return !dom.some((text) => known.has(text));
 }
 
 /**
@@ -733,7 +771,6 @@ function noteBoxNear(heading: HTMLElement): boolean {
  */
 export function rehoistVisitNotes(root: HTMLElement): void {
 	const surface = coveredSearchRoot(root);
-	if (visitNoteBusy(surface) && !visitLayoutMissing(surface)) return;
 	for (const heading of stampHeadings(surface)) {
 		const strip = findItemStrip(heading);
 		if (strip) ensureNoteBox(heading, strip);
