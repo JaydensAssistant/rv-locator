@@ -630,8 +630,29 @@ function noteSeq(note: HTMLElement): string {
 
 function captureVisitKey(box: HTMLElement, note: HTMLElement): void {
 	if (box.dataset.rvVisitKey) return;
-	const key = /INPUT\[textArea:(sVisit\d+Notes)\]/.exec(note.textContent ?? '')?.[1] ?? '';
-	if (key) box.dataset.rvVisitKey = key;
+	const keys: string[] = [];
+	const collect = (text: string): void => {
+		const pattern = /INPUT\[textArea:(sVisit\d+Notes)\]/g;
+		let match = pattern.exec(text);
+		while (match) {
+			if (match[1] && !keys.includes(match[1])) keys.push(match[1]);
+			match = pattern.exec(text);
+		}
+	};
+	const scan = (node: HTMLElement): void => {
+		let own = '';
+		for (const child of Array.from(node.childNodes)) {
+			if (child.nodeType === 3) own += child.textContent ?? '';
+		}
+		const direct = keys.length;
+		collect(own);
+		if (keys.length === direct) collect(node.textContent ?? '');
+	};
+	if (note.matches('code')) scan(note);
+	note.querySelectorAll('code').forEach((node) => {
+		if (node instanceof HTMLElement && node.closest('.rv-visit-note-box') == null) scan(node);
+	});
+	if (keys.length === 1 && keys[0]) box.dataset.rvVisitKey = keys[0];
 }
 
 function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): void {

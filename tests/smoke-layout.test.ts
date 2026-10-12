@@ -1290,7 +1290,7 @@ describe('smoke layout', () => {
 		assert.doesNotMatch(css, /display:\s*contents/);
 		assert.doesNotMatch(controls, /parentElement\?\.querySelector\(':scope > \.rv-visit-note-box/);
 		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view';
+		preview.className = 'markdown-preview-view markdown-reading-view';
 		const sizer = window.document.createElement('div');
 		sizer.className = 'markdown-preview-sizer markdown-preview-section';
 		const visits = [
@@ -1298,18 +1298,17 @@ describe('smoke layout', () => {
 			['Sat, 8:00am — Oct 4, 2026', 'sVisit4Notes', 'middle'],
 			['Fri, 7:00pm — Sep 26, 2026', 'sVisit3Notes', 'oldest'],
 		] as const;
-		for (let index = 0; index < 13; index += 1) {
-			const pad = window.document.createElement('div');
-			pad.className = 'el-p';
-			pad.textContent = `pad ${index}`;
-			sizer.appendChild(pad);
-		}
+		const section = (html: string): HTMLElement => {
+			const block = window.document.createElement('div');
+			block.className = 'markdown-preview-section';
+			block.innerHTML = html;
+			return block;
+		};
 		for (const [stamp, key] of visits) {
-			const heading = window.document.createElement('h5');
-			heading.textContent = stamp;
-			const note = window.document.createElement('p');
-			note.textContent = `INPUT[textArea:${key}]`;
-			sizer.append(heading, note);
+			sizer.append(
+				section(`<div class="el-h5"><h5>${stamp}</h5></div>`),
+				section(`<div class="el-p"><p><code>INPUT[textArea:${key}]</code></p></div>`),
+			);
 		}
 		preview.appendChild(sizer);
 		window.document.body.appendChild(preview);
@@ -1326,24 +1325,65 @@ describe('smoke layout', () => {
 		assert.equal(boxes[1]?.textContent?.includes('sVisit4Notes'), true);
 		assert.equal(boxes[1]?.textContent?.includes('sVisit5Notes'), false);
 		assert.equal(boxes[2]?.textContent?.includes('sVisit3Notes'), true);
+		// Meta Bind replaces the declaration after the first paint and leaves no bind attribute.
+		preview.querySelectorAll('code').forEach((code) => {
+			code.textContent = '';
+			const wrap = window.document.createElement('div');
+			wrap.className = 'mb-input-wrapper mb-input-type-textArea';
+			const meta = window.document.createElement('textarea');
+			meta.className = 'mb-input-textarea';
+			wrap.appendChild(meta);
+			code.appendChild(wrap);
+		});
+		const leak = window.document.createElement('span');
+		leak.textContent = 'INPUT[textArea:sVisit5Notes]';
+		sizer.prepend(leak);
+		// A reading rebuild drops the captured key. Meta Bind has already removed the declaration.
+		boxes.forEach((box) => box.removeAttribute('data-rv-visit-key'));
+		const front = new Map(visits.map((row) => [row[1], row[2]]));
 		const writes: Array<[string, string]> = [];
-		mountRawVisitNotes(preview, (key) => {
-			const visit = visits.find((row) => row[1] === key);
-			return visit ? visit[2] : '';
-		}, (key, value) => {
-			writes.push([key, value]);
-		}, visits.map((row) => row[1]));
+		const mount = (root: HTMLElement): void => {
+			mountRawVisitNotes(root, (key) => front.get(key) ?? '', (key, value) => {
+				writes.push([key, value]);
+				front.set(key, value);
+			}, visits.map((row) => row[1]));
+		};
+		sizer.querySelectorAll(':scope > .markdown-preview-section').forEach((node) => {
+			if (node instanceof window.HTMLElement) mount(node);
+		});
+		mount(preview);
 		const areas = boxes.map((box) => box.querySelector('textarea.rv-native-notes-area'));
 		assert.equal(areas.length, 3);
-		const keys = areas.map((area) => area?.closest('[data-rv-native-notes]')?.getAttribute('data-rv-native-notes'));
+		assert.equal(preview.querySelectorAll('.rv-visit-note-box').length, 3);
+		const keys = areas.map((area) => area?.getAttribute('data-rv-native-notes'));
 		assert.deepEqual(keys, ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
+		assert.deepEqual(areas.map((area) => area?.getAttribute('data-rv-note-key')), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
 		assert.deepEqual(areas.map((area) => (area as HTMLTextAreaElement).value), ['newest', 'middle', 'oldest']);
 		const second = areas[1] as HTMLTextAreaElement;
+		second.focus();
 		second.value = 'middle typed';
+		second.setSelectionRange(7, 7);
 		second.dispatchEvent(new window.Event('input', { bubbles: true }));
+		const third = areas[2] as HTMLTextAreaElement;
+		third.focus();
+		third.value = 'box3 typed';
+		third.setSelectionRange(4, 4);
+		third.dispatchEvent(new window.Event('input', { bubbles: true }));
+		mount(preview);
+		const restored = boxes[2]?.querySelector('textarea.rv-native-notes-area');
+		assert.ok(restored instanceof window.HTMLTextAreaElement);
+		assert.equal(preview.ownerDocument.activeElement, restored);
+		assert.equal(restored.selectionStart, 4);
+		assert.equal(restored.selectionEnd, 4);
+		assert.equal(restored.value, 'box3 typed');
 		return new Promise<void>((resolve) => {
 			setTimeout(() => {
-				assert.deepEqual(writes, [['sVisit4Notes', 'middle typed']]);
+				assert.deepEqual(writes, [
+					['sVisit4Notes', 'middle typed'],
+					['sVisit3Notes', 'box3 typed'],
+				]);
+				assert.equal(front.get('sVisit5Notes'), 'newest');
+				preview.remove();
 				resolve();
 			}, 450);
 		});

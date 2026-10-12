@@ -670,8 +670,9 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!file) return;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const keys = visitNoteKeys(this.noteBodies.get(path) ?? '');
+		const wide = surface.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view, .cm-editor');
 		mountRawVisitNotes(
-			surface,
+			wide instanceof HTMLElement ? wide : surface,
 			(key) => {
 				const value = frontmatter ? (frontmatter as Record<string, unknown>)[key] : '';
 				return typeof value === 'string' ? value : value == null ? '' : String(value);
