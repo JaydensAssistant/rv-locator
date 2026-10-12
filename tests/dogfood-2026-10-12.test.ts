@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { buildMapPins } from '../src/map-pins';
+import { buildMapPins, groupPinStacks, pinUrgencyZ } from '../src/map-pins';
 import { SNOOZE_SLATE, snoozeCardCaption } from '../src/snooze';
 import { mountStudyPanel } from '../src/study-panel';
 import { DEFAULT_SETTINGS } from '../src/types';
@@ -142,7 +142,10 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(began?.textContent ?? '', /Started at/);
 		assert.match(began?.textContent ?? '', /Outro/);
 		assert.ok(parent.querySelector('.rv-study-ticks'));
-		assert.ok((parent.querySelectorAll('.rv-study-tick').length) > 2);
+		const tickNodes = [...parent.querySelectorAll('.rv-study-tick')];
+		assert.ok(tickNodes.length > 2);
+		assert.equal((tickNodes[0] as HTMLElement).style.getPropertyValue('--stop'), '0');
+		assert.equal((tickNodes[tickNodes.length - 1] as HTMLElement).style.getPropertyValue('--stop'), '1');
 		const slider = parent.querySelector('input.rv-study-slider');
 		assert.ok(slider instanceof window.HTMLInputElement);
 		slider.value = slider.max || '4';
@@ -150,6 +153,25 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.equal(parent.querySelector('.rv-study-label')?.textContent, before);
 		assert.match(parent.querySelector('.rv-study-began')?.textContent ?? '', /Outro/);
 		assert.doesNotMatch(parent.querySelector('.rv-study-label')?.textContent ?? '', new RegExp(`\\b${slider.value}\\b`));
+		const finished = window.document.createElement('div');
+		window.document.body.appendChild(finished);
+		mountStudyPanel(finished, { customLessons: [], lessons: [] }, {
+			publications: '',
+			media: '',
+			lesson: '01 How Can the Bible Help You?',
+			lessonFrom: 'Intro',
+			lessonTo: 'Outro',
+			extraLesson: '',
+			extraFrom: '',
+			extraTo: '',
+		}, () => {});
+		const partway = finished.querySelector('button[aria-label="Partway"]');
+		assert.ok(partway instanceof window.HTMLElement);
+		partway.click();
+		const nextSlider = finished.querySelector('input.rv-study-slider');
+		assert.ok(nextSlider instanceof window.HTMLInputElement);
+		assert.equal(nextSlider.value, '1');
+		assert.notEqual(nextSlider.value, nextSlider.max);
 	});
 
 	it('mounts a native notes box only when Meta Bind left the raw field', () => {
@@ -185,5 +207,51 @@ describe('2026-10-12 dogfood round 2', () => {
 				resolve();
 			}, 450);
 		});
+	});
+
+	it('leaves the raw field alone when Meta Bind already has that key', () => {
+		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+		const { window } = dom;
+		(globalThis as typeof globalThis & { HTMLElement: typeof window.HTMLElement }).HTMLElement = window.HTMLElement;
+		const root = window.document.createElement('div');
+		const raw = window.document.createElement('p');
+		raw.textContent = 'INPUT[textArea:sVisit5Notes]';
+		const bound = window.document.createElement('div');
+		bound.className = 'mb-input-wrapper';
+		bound.setAttribute('data-mb-bind', 'sVisit5Notes');
+		bound.appendChild(window.document.createElement('textarea'));
+		root.append(raw, bound);
+		window.document.body.appendChild(root);
+		mountRawVisitNotes(root, () => 'nope', () => {});
+		assert.equal(raw.querySelector('textarea'), null);
+		assert.match(raw.textContent ?? '', /sVisit5Notes/);
+		assert.equal(root.querySelectorAll('textarea').length, 1);
+	});
+
+	it('puts a snoozed pin under a red cluster', () => {
+		assert.ok(pinUrgencyZ(1, false, true) < pinUrgencyZ(0.2, false));
+		assert.equal(pinUrgencyZ(1, true, true), 0);
+		const [group] = groupPinStacks([
+			{ path: 'snooze', x: 0, y: 0, urgency: 9, priority: 9, snoozed: true },
+			{ path: 'red', x: 2, y: 0, urgency: 1, priority: 1 },
+		]);
+		assert.equal(group?.[0]?.path, 'red');
+		const map = source('src/map-view.ts');
+		assert.match(map, /pinUrgencyZ\(pin\.urgency, selected, snoozed\)/);
+	});
+
+	it('joins the empty note header, centers the hub, and fits the narrow controls', () => {
+		assert.match(css, /body\.rv-hide-note-status \.status-bar \{\s*display:\s*none/);
+		assert.match(css, /\.cm-line\.rv-mb-hidden \{[^}]*display:\s*none/);
+		assert.match(css, /\.rv-dashboard p\.rv-hub-owned \.rv-hub-chip \{[^}]*justify-content:\s*center/);
+		assert.match(css, /\.rv-dashboard \.rv-visit-note-box > \.rv-item-strip\.is-ghost \{[^}]*border:\s*0/);
+		assert.match(css, /\.rv-study-tick::before \{[^}]*height:\s*6px/);
+		assert.match(css, /var\(--rv-thumb, 16px\) \/ 2/);
+		assert.match(css, /button\.rv-study-change,\s*button\.rv-study-skip[\s\S]*min-height:\s*32px/);
+		assert.match(css, /\.rv-study-modes button \{[^}]*min-width:\s*0 !important/);
+		assert.match(css, /\.setting-item\.rv-gender-choice \{[^}]*flex-direction:\s*row !important/);
+		assert.match(source('src/main.ts'), /rv-hide-note-status/);
+		assert.match(source('src/suggest-field.ts'), /if \(!gestured\) return/);
+		assert.match(source('src/visit-live-preview.ts'), /noteWritePending\(\)/);
 	});
 });

@@ -3,6 +3,7 @@ import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, typ
 import { coveredCampaignFor, stampDateTime } from './schedule';
 import { visitStampLine } from './visit-display';
 import { decorateVisitControls, type VisitTarget } from './visit-controls';
+import { noteWritePending } from './visit-notes-field';
 
 export interface VisitPreviewSettings {
 	collapseOlder: boolean;
@@ -86,6 +87,46 @@ function stopsVisitCard(line: string): boolean {
 	return /^>\s*\S/.test(line.trim());
 }
 
+const HIDDEN_BUTTON_IDS = new Set(['rv-log-home', 'rv-log-miss', 'rv-log-past', 'rv-log-housemate', 'rv-archive']);
+
+let liveHostHook: ((root: HTMLElement) => void) | null = null;
+
+/** Mounts the native notes textarea once the visit widget exists. */
+export function onLiveVisitHost(hook: ((root: HTMLElement) => void) | null): void {
+	liveHostHook = hook;
+}
+
+/**
+ * Lines of a hoisted `meta-bind-button` fence. Live Preview shows that
+ * fence as raw code when the cursor sits on it. The fence is hidden even
+ * then; the visible buttons come from the `BUTTON[...]` line.
+ */
+export function hiddenButtonFenceLines(markdown: string): number[] {
+	const lines = docLines(markdown);
+	const starts: number[] = [];
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (!line || !/^```meta-bind-button[\t ]*$/.test(line.text.trim())) continue;
+		let end = index + 1;
+		const inner: string[] = [];
+		while (end < lines.length && !/^```[\t ]*$/.test((lines[end]?.text ?? '').trim())) {
+			inner.push(lines[end]?.text ?? '');
+			end += 1;
+		}
+		const id = inner.map((item) => /^id:\s*(\S+)\s*$/.exec(item.trim())?.[1]).find((value) => value != null) ?? '';
+		const hidden = inner.some((item) => /^hidden:\s*true\s*$/.test(item.trim()));
+		if (hidden || HIDDEN_BUTTON_IDS.has(id)) {
+			const last = Math.min(end, lines.length - 1);
+			for (let cursor = index; cursor <= last; cursor += 1) {
+				const at = lines[cursor];
+				if (at) starts.push(at.from);
+			}
+		}
+		index = end;
+	}
+	return starts;
+}
+
 /** Stamp plus the note lines under it. The next heading or callout is not included. */
 export function planVisitCardRanges(markdown: string): { from: number; to: number }[] {
 	const lines = docLines(markdown);
@@ -162,6 +203,7 @@ class VisitCardWidget extends WidgetType {
 		} catch {
 			// createEl is Obsidian's. The heading and note are already in the widget.
 		}
+		liveHostHook?.(wrap);
 		return wrap;
 	}
 
@@ -289,6 +331,14 @@ export function buildVisitDecorations(
 	}
 	const cursor = selection ?? null;
 	const lines = docLines(doc);
+	for (const from of hiddenButtonFenceLines(doc)) {
+		pieces.push({
+			from,
+			to: from,
+			kind: 4,
+			deco: Decoration.line({ class: 'rv-mb-hidden' }),
+		});
+	}
 	const seenStamps = new Map<number, number>();
 	for (const range of planVisitCardRanges(doc)) {
 		if (cursor && cursor.from < range.to && cursor.to > range.from) continue;
@@ -340,6 +390,7 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 			const refresh = transaction.effects.some((effect) => (
 				effect.is(refreshVisitPreviewEffect) || effect.is(setOlderVisitsOpen) || effect.is(setLivePreview)
 			));
+			if (!refresh && transaction.docChanged && noteWritePending()) return value.map(transaction.changes);
 			if (!transaction.docChanged && !refresh) return value;
 			return decorate(transaction.state);
 		},
@@ -351,6 +402,7 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 		constructor(view: EditorView) {
 			queueMicrotask(() => {
 				syncLivePreview(view);
+				mountLiveVisitHosts(view.dom);
 				paint?.(view.dom);
 			});
 			const parent = view.dom.parentElement;
@@ -364,9 +416,11 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 		}
 
 		update(update: ViewUpdate): void {
-			if (!paint) return;
 			if (!update.docChanged && !update.viewportChanged && !update.geometryChanged) return;
-			queueMicrotask(() => paint(update.view.dom));
+			queueMicrotask(() => {
+				mountLiveVisitHosts(update.view.dom);
+				paint?.(update.view.dom);
+			});
 		}
 
 		destroy(): void {
@@ -374,6 +428,13 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 		}
 	});
 	return [olderOpenField, livePreviewField, decorations, liveWatch];
+}
+
+function mountLiveVisitHosts(dom: HTMLElement): void {
+	if (!liveHostHook) return;
+	dom.querySelectorAll('.rv-lp-visit').forEach((node) => {
+		if (node instanceof HTMLElement) liveHostHook?.(node);
+	});
 }
 
 function syncLivePreview(view: EditorView): void {

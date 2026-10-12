@@ -171,8 +171,15 @@ export function mountAlwaysChevron(
 		if (panel.hidden) paint();
 		else place();
 	};
+	let gestured = false;
+	const armGesture = (): void => {
+		gestured = true;
+	};
+	input.addEventListener('pointerdown', armGesture);
+	input.addEventListener('keydown', armGesture);
 	input.addEventListener('focus', (event) => {
 		if (typeof FocusEvent !== 'undefined' && event instanceof FocusEvent && !event.isTrusted) return;
+		if (!gestured) return;
 		openFromUser();
 	});
 	input.addEventListener('click', () => {

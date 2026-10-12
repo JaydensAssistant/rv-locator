@@ -263,9 +263,11 @@ export function popupClearOfChrome(
 
 /**
  * Pins stack by urgency only. A hotter band paints above a cooler one.
+ * A snoozed pin stays at the bottom, including inside a red cluster.
  * The number stays under the map controls (z-index 30).
  */
-export function pinUrgencyZ(urgency: number | null, selected = false): number {
+export function pinUrgencyZ(urgency: number | null, selected = false, snoozed = false): number {
+	if (snoozed) return 0;
 	const heat = urgency == null || !Number.isFinite(urgency) ? 0 : Math.max(0, Math.round(urgency * 10));
 	const layer = Math.min(20, 1 + heat);
 	return selected ? Math.min(24, layer + 4) : layer;
@@ -288,9 +290,14 @@ export interface StackMember {
 	y: number;
 	urgency: number | null;
 	priority: number;
+	/** A snoozed pin sorts under every awake pin in the same cluster. */
+	snoozed?: boolean;
 }
 
 function hotter(a: StackMember, b: StackMember): number {
+	const leftSnooze = a.snoozed === true ? 1 : 0;
+	const rightSnooze = b.snoozed === true ? 1 : 0;
+	if (leftSnooze !== rightSnooze) return leftSnooze - rightSnooze;
 	const left = a.urgency ?? -1;
 	const right = b.urgency ?? -1;
 	if (left !== right) return right - left;

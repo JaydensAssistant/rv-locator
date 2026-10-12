@@ -31,7 +31,7 @@ import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { armVisitNoteFocus, concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy, watchVisitNoteFocus } from './visit-display';
-import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
+import { dispatchVisitPreviewRefresh, onLiveVisitHost, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
@@ -275,12 +275,17 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
 		this.registerView(MAP_VIEW_TYPE, (leaf) => new RvMapView(leaf, this));
+		onLiveVisitHost((root) => {
+			const path = (root.isConnected ? this.pathForSurface(root) : '') || this.app.workspace.getActiveFile()?.path || '';
+			if (path) this.mountNativeVisitNotes(root, path);
+		});
 		this.registerEditorExtension(visitPreviewExtension(() => ({
 			collapseOlder: this.settings.collapseOlderVisits,
 			limit: this.settings.visibleVisitCount,
 		}), (dom) => {
 			const path = this.pathForSurface(dom) || this.app.workspace.getActiveFile()?.path || '';
 			if (!path) return;
+			this.mountNativeVisitNotes(dom, path);
 			applyLiveUrgency(dom, path, this.noteChromeHost(), true);
 		}));
 
@@ -1100,7 +1105,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
-		document.body.classList.remove('rv-hide-backlinks');
+		document.body.classList.remove('rv-hide-backlinks', 'rv-hide-note-status');
 		this.stopVisitFocus?.();
 		this.stopVisitFocus = null;
 		this.noteMapResize?.disconnect();
@@ -1956,6 +1961,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const box = content.getBoundingClientRect();
 			const width = box.width > 0 ? box.width : content.clientWidth;
 			content.classList.toggle('is-note-map-side', width >= HUB_STACK_BELOW_PX);
+			this.syncNoteMapStatus(content);
 		};
 		apply();
 		this.noteMapResize?.disconnect();
@@ -2031,6 +2037,20 @@ export default class RVLocatorPlugin extends Plugin {
 		return active?.containerEl ?? null;
 	}
 
+	/** A stacked in-note map sits on the status bar. Hide that bar the way the hub does. */
+	private syncNoteMapStatus(content: HTMLElement | null): void {
+		const body = content?.ownerDocument.body ?? document.body;
+		if (!content || !this.noteMapOpen || !content.classList.contains('is-note-map')) {
+			body.classList.remove('rv-hide-note-status');
+			return;
+		}
+		const box = content.getBoundingClientRect();
+		const width = box.width > 0 ? box.width : content.clientWidth;
+		const windowWidth = content.ownerDocument.defaultView?.innerWidth ?? 0;
+		const stacked = width > 0 ? width < HUB_STACK_BELOW_PX : windowWidth > 0 && windowWidth < HUB_STACK_BELOW_PX;
+		body.classList.toggle('rv-hide-note-status', stacked);
+	}
+
 	private clearNoteMap(content: HTMLElement | null): void {
 		const hosts = content ? [content] : [];
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
@@ -2042,6 +2062,7 @@ export default class RVLocatorPlugin extends Plugin {
 			host.querySelector(':scope > .rv-note-map-handle')?.remove();
 			host.querySelector(':scope > .rv-note-map')?.remove();
 		}
+		this.syncNoteMapStatus(null);
 	}
 
 	hubMapIsFullscreen(): boolean {

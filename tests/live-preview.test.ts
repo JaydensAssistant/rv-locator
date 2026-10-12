@@ -5,11 +5,13 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { layoutVisitNotes } from '../src/visit-display';
 import {
+	onLiveVisitHost,
 	planLivePreviewVisits,
 	refreshVisitPreviewEffect,
 	setOlderVisitsOpen,
 	visitPreviewExtension,
 } from '../src/visit-live-preview';
+import { mountRawVisitNotes } from '../src/visit-notes-field';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
 const { window } = dom;
@@ -148,6 +150,62 @@ describe('live preview older visits', () => {
 		assert.match(view.dom.querySelector('.is-campaign')?.textContent ?? '', /Convention/);
 		assert.ok(view.dom.querySelector('.cm-line.rv-lp-card-source'));
 		assert.equal(view.state.doc.toString(), doc);
+		view.destroy();
+	});
+
+	it('hides the first meta-bind button fence when the cursor is at the start', async () => {
+		const doc = [
+			'```meta-bind-button',
+			'id: rv-log-past',
+			'hidden: true',
+			'```',
+			'',
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+		].join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+		assert.equal(view.state.selection.main.from, 0);
+		assert.ok(view.dom.querySelector('.cm-line.rv-mb-hidden'));
+		assert.equal(view.state.doc.toString(), doc);
+		view.destroy();
+	});
+
+	it('mounts the native notes textarea inside the live preview card', async () => {
+		const doc = [
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+		].join('\n');
+		onLiveVisitHost((root) => {
+			mountRawVisitNotes(root, (key) => (key === 'sVisit1Notes' ? 'from the hub' : ''), () => {});
+		});
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+		const area = view.dom.querySelector('textarea.rv-native-notes-area');
+		assert.ok(area instanceof window.HTMLTextAreaElement);
+		assert.equal(area.value, 'from the hub');
+		assert.equal(view.dom.querySelector('.rv-lp-visit')?.textContent?.includes('INPUT[textArea'), false);
+		onLiveVisitHost(null);
 		view.destroy();
 	});
 });

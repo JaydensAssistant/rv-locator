@@ -3,7 +3,7 @@ import { domInstanceOf } from './dom';
 export const NOTES_MIN_LINES = 1;
 export const NOTES_MAX_LINES = 5;
 
-const NOTES_SELECTOR = '.rv-dashboard textarea';
+const NOTES_SELECTOR = '.rv-dashboard textarea, textarea.rv-native-notes-area';
 
 export interface NotesMeasure {
 	/** `scrollHeight` with the box at its smallest, padding included. */
@@ -30,7 +30,9 @@ export function notesBoxHeight(measure: NotesMeasure): { height: number; scroll:
 }
 
 export function isNotesBox(target: EventTarget | null): target is HTMLTextAreaElement {
-	return domInstanceOf(target, HTMLTextAreaElement) && target.closest('.rv-dashboard') != null;
+	return domInstanceOf(target, HTMLTextAreaElement) && (
+		target.classList.contains('rv-native-notes-area') || target.closest('.rv-dashboard') != null
+	);
 }
 
 /** Fit one notes box to its text. The scroll position of the note is kept. */

@@ -6808,9 +6808,12 @@ button.rv-study-change,
 button.rv-study-skip,
 .rv-study-change,
 .rv-study-skip {
+	display: inline-flex !important;
+	align-items: center !important;
+	box-sizing: border-box !important;
 	height: auto !important;
-	min-height: 0 !important;
-	padding: 0 4px !important;
+	min-height: 32px !important;
+	padding: 0 6px !important;
 	border: 0 !important;
 	border-radius: 0 !important;
 	background: transparent !important;
@@ -6843,4 +6846,210 @@ button.rv-study-skip,
 .modal .setting-item.rv-gender-choice {
 	padding-top: 2px !important;
 	padding-bottom: 2px !important;
+}
+
+/* Smoke follow-up: one note squircle, slider stops, and the narrow layouts. */
+body.rv-hide-note-status .status-bar {
+	display: none !important;
+}
+
+.cm-line.rv-mb-hidden {
+	display: none !important;
+	height: 0 !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+}
+
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip,
+.markdown-rendered p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned .rv-hub-chip {
+	justify-content: center !important;
+	text-align: center !important;
+}
+
+.rv-dashboard p.rv-hub-owned .rv-hub-chip > .rv-hub-chip-label,
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip > .rv-hub-chip-label,
+.markdown-rendered p.rv-hub-owned .rv-hub-chip > .rv-hub-chip-label {
+	flex: 0 1 auto !important;
+	width: auto;
+	max-width: 100%;
+	text-align: center !important;
+}
+
+.rv-lp-visit .rv-visit-note-box > .rv-item-strip.is-ghost,
+.rv-dashboard .rv-visit-note-box > .rv-item-strip.is-ghost {
+	height: 8px !important;
+	min-height: 8px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+	border-bottom: 0 !important;
+	background: transparent !important;
+	box-shadow: none !important;
+}
+
+.rv-lp-visit .rv-visit-note-box {
+	margin: 0 0 0.75em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+	overflow: hidden;
+	background: var(--background-primary);
+	box-shadow: none;
+}
+
+.rv-dashboard .rv-visit-note-box .mb-input,
+.rv-dashboard .rv-visit-note-box .mb-input-wrapper,
+.rv-dashboard .rv-visit-note-box .mb-input-text,
+.rv-lp-visit .mb-input,
+.rv-lp-visit .mb-input-wrapper,
+.rv-dashboard .rv-visit-note-box .mb-input-wrapper > *,
+.rv-lp-visit .mb-input-wrapper > * {
+	border: 0 !important;
+	outline: none !important;
+	background: transparent !important;
+	background-color: transparent !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+}
+
+textarea.rv-native-notes-area {
+	border: 0 !important;
+	outline: none !important;
+	background: transparent !important;
+	background-color: transparent !important;
+	box-shadow: none !important;
+	border-radius: 0 !important;
+	resize: none;
+	box-sizing: border-box;
+	padding: 8px;
+	line-height: 1.45;
+}
+
+.rv-study-stop,
+.rv-study-change-modal {
+	--rv-thumb: 16px;
+}
+
+input.rv-study-slider[type="range"] {
+	--rv-thumb: 16px;
+	appearance: none;
+	-webkit-appearance: none;
+	width: 100%;
+	height: 16px;
+	margin: 8px 0 0;
+	padding: 0;
+	background: transparent;
+	box-sizing: border-box;
+}
+
+input.rv-study-slider[type="range"]::-webkit-slider-runnable-track {
+	height: 4px;
+	background: var(--background-modifier-border);
+	border-radius: 999px;
+}
+
+input.rv-study-slider[type="range"]::-webkit-slider-thumb {
+	-webkit-appearance: none;
+	width: var(--rv-thumb);
+	height: var(--rv-thumb);
+	margin-top: -6px;
+	border: 0;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+}
+
+input.rv-study-slider[type="range"]::-moz-range-track {
+	height: 4px;
+	background: var(--background-modifier-border);
+	border: 0;
+	border-radius: 999px;
+}
+
+input.rv-study-slider[type="range"]::-moz-range-thumb {
+	width: var(--rv-thumb);
+	height: var(--rv-thumb);
+	border: 0;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+}
+
+.rv-study-ticks {
+	position: relative;
+	display: block;
+	height: 2.6em;
+	margin-top: 2px;
+	overflow: visible;
+}
+
+.rv-study-tick {
+	position: absolute;
+	top: 0;
+	left: calc((var(--rv-thumb, 16px) / 2) + (100% - var(--rv-thumb, 16px)) * var(--stop, 0));
+	flex: none;
+	width: max-content;
+	max-width: 4.8em;
+	transform: translateX(-50%);
+	text-align: center;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rv-study-tick::before {
+	content: "";
+	display: block;
+	width: 1px;
+	height: 6px;
+	margin: 0 auto 2px;
+	background: var(--text-faint);
+}
+
+.rv-study-panel,
+.rv-study-modes {
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.rv-study-modes {
+	flex-wrap: nowrap;
+}
+
+.rv-study-modes button {
+	flex: 1 1 0 !important;
+	min-width: 0 !important;
+	max-width: 100%;
+	padding-left: 4px !important;
+	padding-right: 4px !important;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+.rv-study-mode-icon {
+	flex: 0 0 auto;
+}
+
+.rv-study-mode-text {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.modal.rv-locator-modal .setting-item.rv-gender-choice {
+	flex-direction: row !important;
+	flex-wrap: nowrap !important;
+	align-items: center !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-gender-choice .setting-item-info {
+	width: auto !important;
+	flex: 0 1 auto !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-gender-choice .setting-item-control {
+	width: auto !important;
+	flex: 0 0 auto !important;
+	margin-left: 12px;
 }

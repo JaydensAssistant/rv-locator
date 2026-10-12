@@ -112,13 +112,7 @@ export function mountStudyPanel(
 		if ('value' in slider) (slider as HTMLInputElement).value = String(stopIndex);
 		const ticks = stop.createDiv('rv-study-ticks');
 		const paintTicks = (): void => {
-			const clearer = ticks as HTMLElement & { empty?: () => void };
-			if (typeof clearer.empty === 'function') clearer.empty();
-			else ticks.replaceChildren();
-			parts.forEach((part, index) => {
-				const tick = ticks.createSpan({ cls: 'rv-study-tick', text: part });
-				if (index === stopIndex) tick.classList.add('is-current');
-			});
+			paintStopTicks(ticks, parts, stopIndex);
 		};
 		paintTicks();
 		slider.addEventListener('input', (event) => {
@@ -195,9 +189,35 @@ function initialMode(share: VisitShare, options: StudyPanelOptions): StudyMode {
 
 function stopIndexFor(share: VisitShare, options: StudyPanelOptions, mode: StudyMode): number {
 	const parts = partsForMode(share, options, mode);
+	if (parts.length === 0) return 0;
+	if (mode === 'partway') {
+		const startName = (share.lessonFrom || parts[0] || '').trim().toLowerCase();
+		const startAt = Math.max(0, parts.findIndex((part) => part.toLowerCase() === startName));
+		const after = Math.min(parts.length - 1, startAt + 1);
+		const wanted = (share.lessonTo ?? '').trim().toLowerCase();
+		const last = (parts[parts.length - 1] ?? '').trim().toLowerCase();
+		if (!wanted || wanted === last || wanted === startName) return after;
+		const index = parts.findIndex((part) => part.toLowerCase() === wanted);
+		return index >= 0 ? index : after;
+	}
 	const wanted = (mode === 'next' ? share.extraTo : share.lessonTo)?.trim().toLowerCase() ?? '';
 	const index = parts.findIndex((part) => part.toLowerCase() === wanted);
 	return index >= 0 ? index : 0;
+}
+
+/** Tick marks and labels sit on the slider stops, not in equal flex cells. */
+function paintStopTicks(ticks: HTMLElement, parts: readonly string[], current: number): void {
+	const clearer = ticks as HTMLElement & { empty?: () => void; replaceChildren?: () => void };
+	if (typeof clearer.empty === 'function') clearer.empty();
+	else if (typeof clearer.replaceChildren === 'function') clearer.replaceChildren();
+	const denom = Math.max(1, parts.length - 1);
+	parts.forEach((part, index) => {
+		const tick = ticks.createSpan({ cls: 'rv-study-tick', text: part });
+		const ratio = parts.length <= 1 ? '0' : String(index / denom);
+		const styled = tick as { style?: { setProperty?: (name: string, value: string) => void } };
+		if (typeof styled.style?.setProperty === 'function') styled.style.setProperty('--stop', ratio);
+		if (index === current) tick.classList.add('is-current');
+	});
 }
 
 function partsForMode(share: VisitShare, options: StudyPanelOptions, mode: StudyMode): readonly string[] {
@@ -276,11 +296,7 @@ function openChange(
 		slider.setAttribute('max', String(max));
 		slider.setAttribute('value', String(startIndex));
 		if ('value' in slider) (slider as HTMLInputElement).value = String(startIndex);
-		ticks.replaceChildren();
-		live.forEach((part, index) => {
-			const tick = ticks.createSpan({ cls: 'rv-study-tick', text: part });
-			if (index === startIndex) tick.classList.add('is-current');
-		});
+		paintStopTicks(ticks, live, startIndex);
 		const current = live[startIndex] ?? '';
 		startLabel.textContent = current ? `Start at ${current}` : 'Start at';
 	};

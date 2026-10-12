@@ -797,6 +797,7 @@ export class RvMapView extends ItemView {
 			y: item.point.y,
 			urgency: item.pin.urgency,
 			priority: item.pin.priority,
+			snoozed: item.pin.snoozed === true,
 		}));
 		const groups = groupPinStacks(members);
 		for (const group of groups) {
@@ -852,7 +853,7 @@ export class RvMapView extends ItemView {
 		button.dataset.rvPath = pin.path;
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
-		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected));
+		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected, snoozed));
 		if (this.flashPath === pin.path && Date.now() < this.flashUntil) button.addClass('rv-pin-flash');
 		button.addEventListener('pointerdown', (event) => {
 			if (event.button > 0) return;
