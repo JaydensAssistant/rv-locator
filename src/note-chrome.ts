@@ -183,21 +183,11 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 /** Address, hub, item icons, campaign, and badge strokes follow the accent after a visit. */
 function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 	const colorOf = [
-		'.rv-address-link',
-		'.rv-address-input',
-		'.rv-item',
-		'.rv-fit',
-		'.rv-fit-stem',
 		'.rv-item-icon',
+		'.rv-label-icon',
 		'.rv-stamp-kind',
-		'.rv-hub-chip',
-		'.rv-hub-chip-label',
 		'.rv-dash-campaign',
 		'.rv-locator-campaign-mark',
-		'.rv-label-text',
-		'.mb-button.rv-visit-btn',
-		'.mb-button.rv-visit-btn button',
-		'.mb-button-inner',
 	].join(', ');
 	start.querySelectorAll(colorOf).forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
@@ -805,6 +795,7 @@ function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChrom
 		link.className = 'rv-map-button';
 		link.setAttribute('href', '#');
 		link.setAttribute('aria-label', 'Map');
+		link.setAttribute('rel', 'noopener');
 		setIcon(link, 'earth');
 		link.addEventListener('click', (event) => {
 			event.preventDefault();

@@ -42,6 +42,7 @@ import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
+import { mountRawVisitNotes } from './visit-notes-field';
 import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
@@ -318,7 +319,7 @@ export default class RVLocatorPlugin extends Plugin {
 					const live = this.markdownSurface(path);
 					if (live) fitNotesBoxes(live);
 					else if (element.isConnected) fitNotesBoxes(element);
-					this.refreshVisitCards(path, element, delay === lastDelay);
+					this.refreshVisitCards(path, element, delay === lastDelay, delay >= 250);
 				}, delay);
 			}
 		});
@@ -613,7 +614,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private redecorateVisits(path: string): void {
 		if (this.unloaded) return;
-		this.refreshVisitCards(path);
+		this.refreshVisitCards(path, undefined, false, true);
 	}
 
 	/**
@@ -622,7 +623,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * the live preview surface so the note box, campaign chip, and counter ink
 	 * catch a paragraph that arrives later or a heading that was recycled.
 	 */
-	private refreshVisitCards(path: string, fallback?: HTMLElement, chrome = false): void {
+	private refreshVisitCards(path: string, fallback?: HTMLElement, chrome = false, notesFallback = false): void {
 		if (this.unloaded || !path) return;
 		const surface = this.markdownSurface(path) ?? (fallback?.isConnected ? fallback : null);
 		if (!surface) return;
@@ -644,7 +645,31 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		applyLiveUrgency(surface, path, this.noteChromeHost(), true);
 		if (chrome && !notesBusy) this.decorateOpenNote(surface, path);
+		if (notesFallback || chrome) this.mountNativeVisitNotes(surface, path);
 		this.bindVisitSurface(surface, path);
+	}
+
+	/**
+	 * Meta Bind sometimes leaves `INPUT[textArea:sVisitNNotes]` as raw text
+	 * when a note is opened from the hub. A native box reads and writes that
+	 * same key. A textarea Meta Bind already built is left alone.
+	 */
+	private mountNativeVisitNotes(surface: HTMLElement, path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!file) return;
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+		mountRawVisitNotes(
+			surface,
+			(key) => {
+				const value = frontmatter ? (frontmatter as Record<string, unknown>)[key] : '';
+				return typeof value === 'string' ? value : value == null ? '' : String(value);
+			},
+			(key, value) => {
+				void this.app.fileManager.processFrontMatter(file, (data) => {
+					data[key] = value;
+				});
+			},
+		);
 	}
 
 	private markdownSurface(path: string): HTMLElement | null {
@@ -685,7 +710,7 @@ export default class RVLocatorPlugin extends Plugin {
 				const livePath = this.pathForSurface(surface) || path;
 				this.visitSurfaceLock += 1;
 				try {
-					this.refreshVisitCards(livePath, surface);
+					this.refreshVisitCards(livePath, surface, false, true);
 				} finally {
 					this.visitSurfaceLock -= 1;
 					if (this.visitSurfaceDirty) {
@@ -1075,6 +1100,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
+		document.body.classList.remove('rv-hide-backlinks');
 		this.stopVisitFocus?.();
 		this.stopVisitFocus = null;
 		this.noteMapResize?.disconnect();
@@ -1851,6 +1877,37 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private noteMapHandle: { destroy(): void; invalidateSize(): void } | null = null;
+	private noteMapRatio = 0.42;
+
+	/** The grip is a grid track beside the map, so both move as one size. */
+	private bindNoteMapHandle(content: HTMLElement, handle: HTMLElement): void {
+		if (handle.dataset.rvBound === '1') return;
+		handle.dataset.rvBound = '1';
+		if (!content.style.getPropertyValue('--rv-note-map')) {
+			content.style.setProperty('--rv-note-map', `${Math.round(this.noteMapRatio * 100)}%`);
+		}
+		handle.addEventListener('pointerdown', (event) => {
+			if (event.button !== 0) return;
+			event.preventDefault();
+			const startX = event.clientX;
+			const startY = event.clientY;
+			const start = this.noteMapRatio;
+			const box = content.getBoundingClientRect();
+			const side = content.classList.contains('is-note-map-side');
+			const span = Math.max(1, side ? box.width : box.height);
+			const move = (ev: PointerEvent): void => {
+				const delta = side ? (startX - ev.clientX) / span : (startY - ev.clientY) / span;
+				this.noteMapRatio = Math.min(0.72, Math.max(0.18, start + delta));
+				content.style.setProperty('--rv-note-map', `${Math.round(this.noteMapRatio * 100)}%`);
+			};
+			const stop = (): void => {
+				handle.ownerDocument.removeEventListener('pointermove', move);
+				handle.ownerDocument.removeEventListener('pointerup', stop);
+			};
+			handle.ownerDocument.addEventListener('pointermove', move);
+			handle.ownerDocument.addEventListener('pointerup', stop);
+		});
+	}
 
 	/**
 	 * Map beside the open note, in that note's leaf. The leaf's own width
@@ -1876,6 +1933,7 @@ export default class RVLocatorPlugin extends Plugin {
 			handle.setAttribute('aria-orientation', 'horizontal');
 			handle.setAttribute('aria-label', 'Resize map');
 		}
+		if (handle instanceof HTMLElement) this.bindNoteMapHandle(content, handle);
 		let map = content.querySelector(':scope > .rv-note-map');
 		if (!(map instanceof HTMLElement) || !map.isConnected) {
 			this.noteMapHandle?.destroy();
@@ -2189,6 +2247,7 @@ export default class RVLocatorPlugin extends Plugin {
 				ideality,
 				gender: sanitizeGender(readProperty(frontmatter, 'Gender')),
 				status,
+				snoozed: this.snoozeActiveFor(file.path),
 				card: {
 					address: readAddress(frontmatter, this.settings.addressProperty) ?? '',
 					city: cityText,

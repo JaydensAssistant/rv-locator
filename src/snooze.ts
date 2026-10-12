@@ -3,6 +3,15 @@ export const URGENCY_SNOOZE_PROPERTY = 'Urgency Snooze';
 
 export type SnoozeChoice = 'today' | '7' | '14';
 
+/** Slate used for a snoozed card, badge, and map pin. Not the green urgency band. */
+export const SNOOZE_SLATE = '#6b7a99';
+
+/** Tiny card caption. A blank reason reads as "snoozed". A reason is the label alone. */
+export function snoozeCardCaption(label: string): string {
+	const text = label.trim();
+	return text || 'snoozed';
+}
+
 export function snoozeDeadline(choice: SnoozeChoice, now: Date): Date {
 	if (choice === 'today') {
 		return new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);

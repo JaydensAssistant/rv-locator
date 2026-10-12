@@ -99,10 +99,28 @@ export function mountStudyPanel(
 			stop.createEl('p', { cls: 'rv-study-next-head', text: formatLessonLine(nextTitle, '') || 'Next lesson' });
 		}
 		const copy = partwayCopy(parts, stopIndex);
+		if (mode === 'partway') {
+			const began = share.lessonFrom || parts[0] || '';
+			stop.createEl('p', {
+				cls: 'rv-study-began',
+				text: began ? `Started at ${formatLessonLine(share.lesson, began)}` : 'Started at',
+			});
+		}
 		stop.createEl('p', { cls: 'rv-study-done', text: copy.done });
 		const slider = stop.createEl('input', { attr: { type: 'range', min: '0', max: String(Math.max(0, parts.length - 1)), value: String(stopIndex) } });
 		slider.classList.add('rv-study-slider');
 		if ('value' in slider) (slider as HTMLInputElement).value = String(stopIndex);
+		const ticks = stop.createDiv('rv-study-ticks');
+		const paintTicks = (): void => {
+			const clearer = ticks as HTMLElement & { empty?: () => void };
+			if (typeof clearer.empty === 'function') clearer.empty();
+			else ticks.replaceChildren();
+			parts.forEach((part, index) => {
+				const tick = ticks.createSpan({ cls: 'rv-study-tick', text: part });
+				if (index === stopIndex) tick.classList.add('is-current');
+			});
+		};
+		paintTicks();
 		slider.addEventListener('input', (event) => {
 			const raw = (event as { target?: { value?: string } } | undefined)?.target?.value ?? (slider as HTMLInputElement).value;
 			stopIndex = Number(raw) || 0;
@@ -112,6 +130,8 @@ export function mountStudyPanel(
 			const next = stop.querySelector('.rv-study-next');
 			if (done) done.textContent = live.done;
 			if (next) next.textContent = live.next;
+			paintTicks();
+			if (mode === 'partway') return;
 			const heading = host.querySelector('.rv-study-label');
 			if (heading) heading.textContent = studyLine(share, options, mode, stopIndex);
 		});
@@ -186,10 +206,9 @@ function partsForMode(share: VisitShare, options: StudyPanelOptions, mode: Study
 	return lessonPartOptions(lessonByTitle(title, names));
 }
 
-function displayPart(share: VisitShare, options: StudyPanelOptions, mode: StudyMode, stopIndex: number): string {
-	if (mode === 'finished') return share.lessonFrom || 'Intro';
-	const parts = partsForMode(share, options, mode === 'next' ? 'partway' : mode);
-	if (mode === 'partway') return parts[stopIndex] ?? share.lessonTo;
+function displayPart(share: VisitShare, options: StudyPanelOptions, mode: StudyMode, _stopIndex: number): string {
+	if (mode === 'finished' || mode === 'partway') return share.lessonFrom || 'Intro';
+	const parts = partsForMode(share, options, 'partway');
 	return share.lessonFrom || parts[0] || '';
 }
 

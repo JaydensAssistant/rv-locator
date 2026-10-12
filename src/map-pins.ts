@@ -1,5 +1,6 @@
 import { DISTANCE_COLUMN_ID, IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './constants';
 import { interpolatePalette, type MapShadeMode } from './map-shade';
+import { SNOOZE_SLATE } from './snooze';
 import { urgencyAccentColor, urgencyMark, urgencyScore, insidePriorityFloor } from './scoring';
 import { sortRowsBy, type Sortable } from './sort';
 import { statusIcon, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
@@ -9,8 +10,10 @@ import type { LatLon, PriorityDays } from './types';
 export const COOLDOWN_PIN_ICON = 'hourglass';
 /** Ghost pin when the current daypart is Avoid. Cooldown wins if both apply. */
 export const AVOID_PIN_ICON = 'ban';
+/** Snoozed pin. Slate moon, not the green urgency mark. */
+export const SNOOZE_PIN_ICON = 'moon';
 
-export type PinStateIcon = typeof COOLDOWN_PIN_ICON | typeof AVOID_PIN_ICON;
+export type PinStateIcon = typeof COOLDOWN_PIN_ICON | typeof AVOID_PIN_ICON | typeof SNOOZE_PIN_ICON;
 
 /** Cooldown wins when the pin is both cooling down and in Avoid. */
 export function pinStateIcon(cooldown: boolean, avoid: boolean): PinStateIcon | null {
@@ -31,6 +34,8 @@ export interface MapPinSource {
 	inactive: boolean;
 	/** Current daypart is Avoid, before the cooldown-wins rule. */
 	avoid?: boolean;
+	/** Active snooze. The pin is slate with a moon, not the urgency mark. */
+	snoozed?: boolean;
 	/** 0–1 heat used when the map is not shaded by urgency bands. */
 	shadeHeat?: number;
 	gender?: RvGender | null;
@@ -69,8 +74,10 @@ export interface MapPin {
 	glyph: string;
 	/** Inside the priority floor: same size, ghost fill, dotted urgency ring. */
 	fresh: boolean;
-	/** Ghost icon. Null keeps the urgency mark. Cooldown's hourglass wins over Avoid's ban. */
+	/** Ghost icon. Null keeps the urgency mark. Cooldown's hourglass wins over Avoid's ban. A snooze is the moon. */
 	stateIcon: PinStateIcon | null;
+	/** Snooze paint. The moon is not a dashed ghost. */
+	snoozed: boolean;
 	/** Status icon when the hub is filtered by status. Null keeps the glyph. */
 	shadeIcon: string | null;
 	/** Gender mark when the hub is filtered to men or women. */
@@ -141,6 +148,7 @@ export function buildMapPins(
 		const fresh = row.days != null && insidePriorityFloor(row.days, row.priority, floors);
 		const genderMark = row.gender === 'Woman' ? '♀' : '♂';
 		const status = row.status ?? (row.inactive ? 'Inactive' : 'Active');
+		const snoozed = row.snoozed === true;
 		pins.push({
 			path: row.path,
 			name: row.name,
@@ -149,10 +157,11 @@ export function buildMapPins(
 			priority: row.priority,
 			urgency,
 			days: row.days,
-			color: urgencyAccentColor(urgency, row.priority, colors),
+			color: snoozed ? SNOOZE_SLATE : urgencyAccentColor(urgency, row.priority, colors),
 			glyph: mark.glyphs,
 			fresh,
-			stateIcon: pinStateIcon(fresh, row.avoid === true),
+			stateIcon: snoozed ? SNOOZE_PIN_ICON : pinStateIcon(fresh, row.avoid === true),
+			snoozed,
 			shadeIcon: null,
 			markText: null,
 			rank: pins.length,

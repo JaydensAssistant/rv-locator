@@ -74,6 +74,31 @@ Left for a decision, not done silently: digest-table shape still rewrites notes 
 - The Attempt Log can mark a daypart Try or Avoid. Return suggestion lines are bullets, one bucket per line.
 - Extras sync is pinned to tag `v1.3.5`. This build does not create that git tag.
 
+### 2026-10-12 dogfood round 2
+
+Jayden's words:
+
+1. Make the snooze button and color show up on map pins
+2. Map pins with bangs have a box around them in the urgency color, for some reason
+3. The map still appears to be flashing light mode sometimes
+4. The snooze reason text box subtext shouldn't say hospital stay, it should just say optional
+5. The word "snooze" and the label are meant to be super tiny text, just like the day/day part text for the on card return suggester when an RV isn't snoozed. It also shouldn't replace the visit counter next to the met with publisher on the card. How about this, when there is no label, make it say snoozed. When there is a label, just have the label next to the day counter
+6. The snooze icon (the moon) that replaces the urgency badge should take on the slate color instead of remaining green (for 0 urgency)
+7. Still apply the scaling and formatting I just said
+8. At small scales, icons can look out of center from their badges
+9. When I press the sort button, they don't expand to fill the whole bottom, unlike the static buttons [image 1 = sort pills row, image 2 = static button row]
+10. As you can see, on desktop, when it is narrow, the backlink text overlaps with it. Make that disappear [images 1-2: the '1 backlink' status text overlaps the bottom ribbon]
+11. There's no reason for this to take up so much vertical space [image 3: Man / Woman toggle row]
+12. The change and didn't study buttons in the new rv and log rv don't look like the mockup. They were meant to be tiny bits of text, unassuming, not full buttons. I also think we shouldn't pin them to certain locations and instead just put them directly to the right  the lesson name and part.
+13. When selecting partyway when logging a study, the lesson and lesson part label changes to wherever you move the slider. That doesn't make sense, because the slider determines where you ended, not where you began. The where you began text should always stay the same.
+14. There is also no indication that the lesson 1 outro is where you started. There should be some text that says that
+15. The slider in the study selector doesn't have any of the tick marks or labels that the mockup had which vastly increased usability. Fix that
+16. Maybe it doesn't perform like this with mobile emulation on, but on desktop, the RV dashboard loos all messed up. The button icons are the wrong color, the literature, media, and study text is the urgency color when its not supposed to be (only the icon). The hub and address labels are the urgency color when they are meant to be neutral. The earth button is completely broken. There is no box around address. The hub text isn't centered in its box. The day counter pill on visit note log subheadings is on the right and the ellipse is right next to the text. This is the opposite of how it was meant to be. The pill should be directly to the right of the subheading text and the ellipse should be pinned to the right. The note text box is disjoined from its heading with literature and lesson information. On the mobile emulation, it was still a text box within a bigger box, not matching the original mockup. [image 4: desktop dashboard]
+17. The in note map doesn't have any of the other map pins
+18. When rescaling the map, the grip moves at a different rate than the map, sometimes overlapping heavily and other times being far removed from it. [image 5]
+19. Opening a note from the hub sometimes makes it bug out like this, where the metabind things don't open. [image 6: raw INPUT[textArea:sVisitNNotes] shown]
+20. Maybe we could solve a lot of these issues if we just wrote a custom solution for the metabind text areas. Maybe they could be formatted right and wouldn't bug like this.
+
 ## 1.3.4
 
 `main.js` SHA-256: `28fe4ee5e9b9f11854e1825e24a9e38af3bfbe0fd9b60c83bacc47e28f0b5cbb`

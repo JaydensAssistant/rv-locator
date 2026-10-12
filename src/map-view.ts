@@ -1,6 +1,7 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { mountUrgencyGlyph, pinBadgeStroke } from './glancable-view';
+import { SNOOZE_SLATE } from './snooze';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
@@ -247,6 +248,7 @@ export class RvMapView extends ItemView {
 
 	private pinsInRenderedOrder(): MapPin[] {
 		const pins = this.host.listMapPins();
+		if (this.contentEl?.classList.contains('rv-note-map')) return pins;
 		const order = this.renderedPaths;
 		if (!order) return pins;
 		return rankPinsFromRenderedList(pins, order);
@@ -815,9 +817,10 @@ export class RvMapView extends ItemView {
 		count: string | null,
 	): void {
 		const selected = this.selectedPath === pin.path;
-		const ghost = pin.stateIcon != null;
+		const snoozed = pin.snoozed === true || pin.stateIcon === 'moon';
+		const ghost = pin.stateIcon != null && !snoozed;
 		const button = layer.createEl('button', {
-			cls: `rv-map-pin is-drop${ghost ? ' is-fresh' : ''}${selected ? ' is-selected' : ''}`,
+			cls: `rv-map-pin is-drop${ghost ? ' is-fresh' : ''}${snoozed ? ' is-snoozed' : ''}${selected ? ' is-selected' : ''}`,
 			attr: { type: 'button', 'aria-label': pin.name },
 		});
 		button.style.setProperty('--pin-color', pin.color);
@@ -1015,10 +1018,20 @@ export class RvMapView extends ItemView {
 		});
 		mountUrgencyGlyph(urgency, marks.glyphs);
 		if (pin.stateIcon) {
-			urgency.addClass('is-ghost');
+			const snoozedPin = pin.snoozed === true || pin.stateIcon === 'moon';
+			if (!snoozedPin) urgency.addClass('is-ghost');
 			urgency.empty();
 			setIcon(urgency, pin.stateIcon);
 			pinBadgeStroke(urgency);
+			if (snoozedPin) {
+				urgency.style.setProperty('color', SNOOZE_SLATE, 'important');
+				urgency.style.setProperty('border-color', SNOOZE_SLATE, 'important');
+				urgency.querySelectorAll('svg').forEach((node) => {
+					if (!(node instanceof SVGElement)) return;
+					node.style.setProperty('color', SNOOZE_SLATE, 'important');
+					node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
+				});
+			}
 		}
 		urgency.addEventListener('click', (event) => {
 			event.preventDefault();

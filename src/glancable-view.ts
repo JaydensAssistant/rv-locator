@@ -16,6 +16,7 @@ import { paintUrgencyInk } from './color-math';
 import { urgencyColorsFor } from './urgency-palette';
 import { cardPersonTitle } from './note-name';
 import { cardReturnLead } from './schedule';
+import { SNOOZE_SLATE, snoozeCardCaption } from './snooze';
 import { calendarDaysSince, formatGlanceableCounter } from './dates';
 import { readProperty } from './frontmatter';
 import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceQuery } from './glance-search';
@@ -58,6 +59,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	override onunload(): void {
+		this.root.ownerDocument.body.classList.remove('rv-hide-backlinks');
 		this.clearBasesChrome();
 		super.onunload();
 	}
@@ -437,7 +439,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const snoozed = this.plugin.snoozeActiveFor(row.path);
 		if (snoozed) {
 			card.addClass('is-snoozed');
-			card.style.setProperty('--rv-urgency-accent', '#6b7a99');
+			card.style.setProperty('--rv-urgency-accent', SNOOZE_SLATE);
+			paintUrgencyInk(card, SNOOZE_SLATE);
 		}
 		const foot = card.createDiv('rv-locator-card-foot');
 		foot.setAttr('data-line', glancableLineId(5));
@@ -452,30 +455,20 @@ export class NearbyGlancableView extends NearbyBasesView {
 			? (study ? studyRatio(note, this.plugin.settings.studyRatio) : visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits')))
 			: null;
 		const overrideLabel = this.plugin.settings.showCardReturnStatus ? this.plugin.cardOverrideLabel(row.path) : null;
-		if (snoozed) {
-			const line = foot.createSpan('rv-locator-snooze-line');
-			line.createSpan({ cls: 'rv-snooze-kicker', text: 'Snoozed' });
-			const reason = this.plugin.snoozeLabelFor(row.path);
-			if (reason) line.createSpan({ cls: 'rv-snooze-reason', text: reason });
-			const left = line.createSpan({
-				cls: 'rv-snooze-left',
-				text: `${this.plugin.snoozeDaysLeftFor(row.path)}d left`,
-			});
-			left.style.color = '#6b7a99';
-		} else if (overrideLabel) {
+		if (overrideLabel && !snoozed) {
 			foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-override-label',
 				text: overrideLabel,
 				attr: { 'aria-label': `Return override ${overrideLabel}` },
 			});
-		} else if (!snoozed && ratio && !this.plugin.settings.showCardReturnStatus) {
+		} else if (ratio && !this.plugin.settings.showCardReturnStatus) {
 			const ratioEl = foot.createSpan({
 				cls: 'rv-locator-slot rv-locator-visits',
 				attr: { 'aria-label': ratio.title },
 			});
 			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
 		}
-		if (!snoozed && !overrideLabel && ratio && this.plugin.settings.showCardReturnStatus) {
+		if ((!overrideLabel || snoozed) && ratio && this.plugin.settings.showCardReturnStatus) {
 			const line = foot.createSpan('rv-locator-return-inline');
 			line.createSpan({
 				cls: 'rv-locator-return-visits',
@@ -494,6 +487,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 				event.preventDefault();
 				event.stopPropagation();
 				void this.plugin.suggestReturnFor(row.path, row.name);
+			});
+		}
+		if (snoozed) {
+			const reason = this.plugin.snoozeLabelFor(row.path);
+			const line = foot.createSpan('rv-locator-snooze-line');
+			line.createSpan({ cls: 'rv-snooze-tiny', text: snoozeCardCaption(reason) });
+			line.createSpan({
+				cls: 'rv-snooze-tiny rv-snooze-days',
+				text: `${this.plugin.snoozeDaysLeftFor(row.path)}d`,
 			});
 		}
 		const overrideEl = foot.querySelector('.rv-locator-override-label');
@@ -562,10 +564,19 @@ export class NearbyGlancableView extends NearbyBasesView {
 		mountUrgencyGlyph(urgencyButton, marks.glyphs);
 		const ghost = this.plugin.ghostIconForCard(row.path);
 		if (ghost) {
-			urgencyButton.addClass('is-ghost');
+			if (ghost !== 'moon') urgencyButton.addClass('is-ghost');
 			urgencyButton.empty();
 			setIcon(urgencyButton, ghost);
 			pinBadgeStroke(urgencyButton);
+			if (ghost === 'moon') {
+				urgencyButton.style.setProperty('color', SNOOZE_SLATE, 'important');
+				urgencyButton.style.setProperty('border-color', SNOOZE_SLATE, 'important');
+				urgencyButton.querySelectorAll('svg').forEach((node) => {
+					if (!(node instanceof SVGElement)) return;
+					node.style.setProperty('color', SNOOZE_SLATE, 'important');
+					node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
+				});
+			}
 		}
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
@@ -689,6 +700,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		this.sizeEmbedFrame();
 		this.hubMapApi?.invalidateSize();
+		const view = this.root.ownerDocument.defaultView;
+		const width = view?.innerWidth ?? 0;
+		const leaf = this.root.clientWidth || width;
+		const narrowWindow = width > 0 && width < 1100;
+		const narrowLeaf = leaf > 0 && leaf < 1100 && (width === 0 || leaf > width * 0.7);
+		this.root.ownerDocument.body.classList.toggle('rv-hide-backlinks', this.stackedLayout || narrowWindow || narrowLeaf);
 	}
 
 	/**
@@ -1042,6 +1059,12 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 		} else {
 			node.style.setProperty('fill', 'currentColor');
 		}
+	}
+	if (host.classList.contains('rv-pin-head')) {
+		host.style.removeProperty('border-style');
+		host.style.removeProperty('border-width');
+		host.style.removeProperty('border-color');
+		return;
 	}
 	pinBadgeStroke(host);
 }
