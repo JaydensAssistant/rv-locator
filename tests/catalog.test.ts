@@ -20,6 +20,8 @@ import {
 	renameCustom,
 	emptyShare,
 	renameLabelInMarkdown,
+	shareFromNewRvDraft,
+	shareTitles,
 	splitTitleSuffix,
 	type LessonSpec,
 } from '../src/catalog';
@@ -135,6 +137,41 @@ describe('lesson sections', () => {
 		assert.equal(lessonPartOptions({ title: 'Section four review', review: true, reviewSection: 4 }).length, 12);
 		assert.equal(lessonPartOptions({ title: 'Unmarked review', review: true })[0], '1');
 		assert.equal(lessonPartOptions({ title: 'Unmarked review', review: true }).length, 10);
+	});
+});
+
+describe('New RV share draft', () => {
+	it('does not throw when a New RV draft has no publications', () => {
+		const draft = {
+			name: 'Ada',
+			address: '1 Distant Road',
+			priority: 1,
+			publications: undefined,
+			publicationList: undefined,
+			media: undefined,
+			mediaList: undefined,
+			lesson: undefined,
+			lessonFrom: undefined,
+			lessonTo: undefined,
+			extraLesson: undefined,
+			notes: undefined,
+			companion: undefined,
+		};
+		assert.equal(shareFromNewRvDraft(draft), null);
+		assert.deepEqual(shareTitles(undefined), []);
+		assert.deepEqual(shareTitles(undefined, [' Tract ', '']), ['Tract']);
+		const written = shareFromNewRvDraft({
+			publications: ' Tract ',
+			media: undefined,
+			lesson: undefined,
+			notes: undefined,
+			companion: ' Sam ',
+		});
+		assert.equal(written?.publications, 'Tract');
+		assert.deepEqual(written?.publicationList, ['Tract']);
+		assert.equal(written?.media, '');
+		assert.equal(written?.lesson, '');
+		assert.equal(written?.companion, 'Sam');
 	});
 });
 

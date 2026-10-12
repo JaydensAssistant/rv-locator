@@ -19,7 +19,7 @@ import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
-import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareTitles, studyPrefill, type VisitShare } from './catalog';
+import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, rehoistVisitNotes, VisitButtonLongPress, type VisitTarget } from './visit-controls';
@@ -1042,23 +1042,10 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async writeNewRvShare(file: TFile, identity: NewRvIdentity): Promise<void> {
-		const publications = shareTitles(identity.publications, identity.publicationList);
-		const media = shareTitles(identity.media, identity.mediaList);
-		const share: VisitShare = {
-			...emptyShare(),
-			publications: publications[0] ?? '',
-			media: media[0] ?? '',
-			publicationList: publications,
-			mediaList: media,
-			lesson: identity.lesson ?? '',
-			lessonFrom: identity.lessonFrom ?? '',
-			lessonTo: identity.lessonTo ?? '',
-			extraLesson: identity.extraLesson ?? '',
-			extraFrom: identity.extraFrom ?? '',
-			extraTo: identity.extraTo ?? '',
-		};
-		const lesson = share.lesson.trim() || (share.extraLesson ?? '').trim();
-		if (publications.length === 0 && media.length === 0 && !lesson) return;
+		const share = shareFromNewRvDraft(identity);
+		if (!share) return;
+		const publications = share.publicationList ?? [];
+		const media = share.mediaList ?? [];
 		const now = new Date();
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;

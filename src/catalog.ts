@@ -203,12 +203,61 @@ export function emptyShare(): VisitShare {
 	};
 }
 
+function draftText(value: unknown): string {
+	return typeof value === 'string' ? value.trim() : '';
+}
+
 /** Several titles when the logger added more than one. A single field still counts. */
-export function shareTitles(single: string, list?: readonly string[]): string[] {
-	const many = (list ?? []).map((item) => item.trim()).filter(Boolean);
+export function shareTitles(single: unknown, list?: readonly unknown[] | null): string[] {
+	const source = Array.isArray(list) ? list : [];
+	const many = source.map((item) => draftText(item)).filter(Boolean);
 	if (many.length > 0) return many;
-	const one = single.trim();
+	const one = draftText(single);
 	return one ? [one] : [];
+}
+
+/**
+ * Literature from a New RV draft. Missing publications, media, lesson, notes,
+ * and companion are blank. Nothing is written when literature is empty.
+ * Companion and notes do not by themselves create a share write.
+ */
+export function shareFromNewRvDraft(draft: {
+	publications?: unknown;
+	publicationList?: unknown;
+	media?: unknown;
+	mediaList?: unknown;
+	lesson?: unknown;
+	lessonFrom?: unknown;
+	lessonTo?: unknown;
+	extraLesson?: unknown;
+	extraFrom?: unknown;
+	extraTo?: unknown;
+	companion?: unknown;
+	notes?: unknown;
+} | null | undefined): VisitShare | null {
+	if (!draft) return null;
+	const publications = shareTitles(draft.publications, Array.isArray(draft.publicationList) ? draft.publicationList : undefined);
+	const media = shareTitles(draft.media, Array.isArray(draft.mediaList) ? draft.mediaList : undefined);
+	const lesson = draftText(draft.lesson);
+	const extraLesson = draftText(draft.extraLesson);
+	// The template already stores notes. Reading a missing value must not throw.
+	void draftText(draft.notes);
+	const companion = draftText(draft.companion);
+	if (publications.length === 0 && media.length === 0 && !lesson && !extraLesson) return null;
+	return {
+		...emptyShare(),
+		publications: publications[0] ?? '',
+		media: media[0] ?? '',
+		publicationList: publications,
+		mediaList: media,
+		lesson,
+		lessonFrom: draftText(draft.lessonFrom),
+		lessonTo: draftText(draft.lessonTo),
+		extraLesson,
+		extraFrom: draftText(draft.extraFrom),
+		extraTo: draftText(draft.extraTo),
+		companion,
+	};
 }
 
 export function lessonByTitle(title: string, custom: readonly string[] = []): LessonSpec | null {
