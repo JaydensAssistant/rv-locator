@@ -7,7 +7,8 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateVisitControls, refitItemStrip, rehoistVisitNotes } from '../src/visit-controls';
+import { decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { mountRawVisitNotes } from '../src/visit-notes-field';
 import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
@@ -1280,6 +1281,72 @@ describe('smoke layout', () => {
 		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));
 		assert.match(arm, /templater-prompt-input/);
 		assert.doesNotMatch(arm, /setTimeout/);
+	});
+
+	it('binds each reading-view box to its own visit key', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		const controls = readFileSync('src/visit-controls.ts', 'utf8');
+		assert.match(css, /\.rv-visit-note-box code\.mb-input \{[^}]*font-size:\s*0/);
+		assert.doesNotMatch(css, /display:\s*contents/);
+		assert.doesNotMatch(controls, /parentElement\?\.querySelector\(':scope > \.rv-visit-note-box/);
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer markdown-preview-section';
+		const visits = [
+			['Sun, 9:05am — Oct 11, 2026', 'sVisit5Notes', 'newest'],
+			['Sat, 8:00am — Oct 4, 2026', 'sVisit4Notes', 'middle'],
+			['Fri, 7:00pm — Sep 26, 2026', 'sVisit3Notes', 'oldest'],
+		] as const;
+		for (let index = 0; index < 13; index += 1) {
+			const pad = window.document.createElement('div');
+			pad.className = 'el-p';
+			pad.textContent = `pad ${index}`;
+			sizer.appendChild(pad);
+		}
+		for (const [stamp, key] of visits) {
+			const heading = window.document.createElement('h5');
+			heading.textContent = stamp;
+			const note = window.document.createElement('p');
+			note.textContent = `INPUT[textArea:${key}]`;
+			sizer.append(heading, note);
+		}
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		assert.equal(visitLayoutMissing(preview), true);
+		decorateVisitControls(preview, () => null, () => {});
+		rehoistVisitNotes(preview);
+		assert.equal(visitLayoutMissing(preview), false);
+		const boxes = Array.from(preview.querySelectorAll('.rv-visit-note-box'));
+		assert.equal(boxes.length, 3);
+		const seqs = boxes.map((box) => box.querySelector('[data-rv-seq]')?.getAttribute('data-rv-seq') ?? '');
+		assert.equal(new Set(seqs).size, 3);
+		assert.equal(seqs[0] === seqs[1] && seqs[1] === seqs[2], false);
+		assert.equal(boxes[0]?.textContent?.includes('sVisit5Notes'), true);
+		assert.equal(boxes[1]?.textContent?.includes('sVisit4Notes'), true);
+		assert.equal(boxes[1]?.textContent?.includes('sVisit5Notes'), false);
+		assert.equal(boxes[2]?.textContent?.includes('sVisit3Notes'), true);
+		const writes: Array<[string, string]> = [];
+		mountRawVisitNotes(preview, (key) => {
+			const visit = visits.find((row) => row[1] === key);
+			return visit ? visit[2] : '';
+		}, (key, value) => {
+			writes.push([key, value]);
+		}, visits.map((row) => row[1]));
+		const areas = boxes.map((box) => box.querySelector('textarea.rv-native-notes-area'));
+		assert.equal(areas.length, 3);
+		const keys = areas.map((area) => area?.closest('[data-rv-native-notes]')?.getAttribute('data-rv-native-notes'));
+		assert.deepEqual(keys, ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
+		assert.deepEqual(areas.map((area) => (area as HTMLTextAreaElement).value), ['newest', 'middle', 'oldest']);
+		const second = areas[1] as HTMLTextAreaElement;
+		second.value = 'middle typed';
+		second.dispatchEvent(new window.Event('input', { bubbles: true }));
+		return new Promise<void>((resolve) => {
+			setTimeout(() => {
+				assert.deepEqual(writes, [['sVisit4Notes', 'middle typed']]);
+				resolve();
+			}, 450);
+		});
 	});
 
 });

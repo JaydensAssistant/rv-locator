@@ -194,6 +194,51 @@ function syncNative(area: HTMLTextAreaElement, key: string, readValue: (key: str
 	restoreCaret(area, key);
 }
 
+/** The key captured from this visit's own note block. Never a search of the rest of the note. */
+function ownedKey(host: HTMLElement): string {
+	const box = host.classList.contains('rv-visit-note-box') ? host : host.closest('.rv-visit-note-box');
+	if (!isElement(box)) return '';
+	const key = box.dataset.rvVisitKey ?? '';
+	return NOTE_KEY.test(key) ? key : '';
+}
+
+/**
+ * Boxes in stamp order. The box is that heading's next sibling, not the first
+ * box querySelector would return from the shared preview parent.
+ */
+function boxesAfterStamps(root: HTMLElement): HTMLElement[] {
+	const boxes: HTMLElement[] = [];
+	if (typeof root.querySelectorAll !== 'function') return boxes;
+	root.querySelectorAll('h3.rv-visit-stamp, h5.rv-visit-stamp').forEach((node) => {
+		if (!isElement(node)) return;
+		const wrapped = node.closest('.el-h1, .el-h2, .el-h3, .el-h4, .el-h5, .el-h6, .cm-line');
+		const hosts = wrapped && wrapped !== node ? [node, wrapped] : [node];
+		for (const host of hosts) {
+			const next = host.nextElementSibling;
+			if (!isElement(next) || !next.classList.contains('rv-visit-note-box')) continue;
+			if (!boxes.includes(next)) boxes.push(next);
+			break;
+		}
+	});
+	return boxes;
+}
+
+/** Pair each box that has no key yet with the next unused `sVisitNNotes` key, in visit order. */
+function assignVisitSequence(root: HTMLElement, ordered: readonly string[]): void {
+	const boxes = boxesAfterStamps(root);
+	const used = new Set(boxes.map((box) => box.dataset.rvVisitKey ?? '').filter((key) => NOTE_KEY.test(key)));
+	let cursor = 0;
+	for (const box of boxes) {
+		if (NOTE_KEY.test(box.dataset.rvVisitKey ?? '')) continue;
+		while (cursor < ordered.length && used.has(ordered[cursor] ?? '')) cursor += 1;
+		const key = ordered[cursor] ?? '';
+		cursor += 1;
+		if (!NOTE_KEY.test(key)) continue;
+		box.dataset.rvVisitKey = key;
+		used.add(key);
+	}
+}
+
 function wireNative(
 	root: ParentNode,
 	host: HTMLElement,
@@ -201,7 +246,9 @@ function wireNative(
 	readValue: (key: string) => string,
 	writeValue: (key: string, value: string) => void,
 ): void {
-	if (hiddenSource(host)) return;
+	const bound = ownedKey(host) || key;
+	if (!bound || hiddenSource(host)) return;
+	key = bound;
 	const existing = findNative(host, key);
 	if (isTextArea(existing) && existing.isConnected) {
 		host.dataset.rvNativeNotes = key;
@@ -270,6 +317,7 @@ export function mountRawVisitNotes(
 	writeValue: (key: string, value: string) => void,
 	orderedKeys: readonly string[] = [],
 ): void {
+	assignVisitSequence(root, orderedKeys);
 	const claimed: Array<{ key: string; host: HTMLElement }> = [];
 	root.querySelectorAll('textarea').forEach((node) => {
 		if (!isTextArea(node) || !isMetaBindArea(node)) return;
@@ -277,6 +325,10 @@ export function mountRawVisitNotes(
 		const host = silenceMetaBind(root, node);
 		if (host) claimed.push({ key, host });
 	});
+	for (const item of claimed) {
+		const scoped = ownedKey(item.host);
+		if (scoped) item.key = scoped;
+	}
 	assignKeys(claimed, orderedKeys);
 	const blocks = root.querySelectorAll('p, .el-p, code, span');
 	blocks.forEach((node) => {
@@ -285,9 +337,10 @@ export function mountRawVisitNotes(
 		if (hiddenSource(node)) return;
 		if (node.classList.contains('rv-native-notes') || node.closest('.rv-native-notes')) {
 			const area = node.querySelector('textarea.rv-native-notes-area');
-			const key = (node.closest('[data-rv-native-notes]') as HTMLElement | null)?.dataset?.rvNativeNotes
-				?? node.dataset.rvNativeNotes
-				?? '';
+			const key = ownedKey(node)
+				|| (node.closest('[data-rv-native-notes]') as HTMLElement | null)?.dataset?.rvNativeNotes
+				|| node.dataset.rvNativeNotes
+				|| '';
 			if (isTextArea(area) && area.isConnected && key) syncNative(area, key, readValue);
 			else if (isTextArea(area) && area.isConnected) fitNativeNotes(area);
 			return;

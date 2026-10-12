@@ -529,6 +529,11 @@ function blockHost(heading: HTMLElement): HTMLElement {
 	return heading;
 }
 
+/**
+ * The strip that belongs to this heading. Only the heading's own next sibling,
+ * or the next sibling of its `.el-h*` / line wrapper. A query of the shared
+ * preview parent would hand every visit the first box.
+ */
 function findItemStrip(heading: HTMLElement): HTMLElement | null {
 	const hosts = [heading, blockHost(heading)];
 	for (const host of hosts) {
@@ -539,8 +544,7 @@ function findItemStrip(heading: HTMLElement): HTMLElement | null {
 		const strip = next.querySelector(':scope > .rv-item-strip');
 		if (strip instanceof HTMLElement) return strip;
 	}
-	const nested = heading.parentElement?.querySelector(':scope > .rv-visit-note-box > .rv-item-strip, :scope > .rv-item-strip');
-	return nested instanceof HTMLElement ? nested : null;
+	return null;
 }
 
 /** The strip sits at the top of the tinted note box. The note text is inside that same box. */
@@ -609,28 +613,29 @@ function nextBlock(node: HTMLElement): HTMLElement | null {
 	return null;
 }
 
+let nextNoteSeq = 0;
+
+/**
+ * Order notes inside one box. A child index in the shared preview parent is
+ * not a visit identity: each note is at the same slot when it is moved, so
+ * every box cached one sequence.
+ */
 function noteSeq(note: HTMLElement): string {
 	if (note.dataset.rvSeq) return note.dataset.rvSeq;
-	const parts: string[] = [];
-	let node: HTMLElement | null = note;
-	while (node) {
-		const parent: HTMLElement | null = node.parentElement;
-		if (!parent) break;
-		parts.push(String(Math.max(0, Array.from(parent.children).indexOf(node))).padStart(4, '0'));
-		if (
-			parent.classList.contains('markdown-preview-sizer')
-			|| parent.classList.contains('markdown-preview-view')
-			|| parent.classList.contains('cm-content')
-			|| parent.classList.contains('cm-editor')
-		) break;
-		node = parent;
-	}
-	const seq = parts.reverse().join('.');
+	nextNoteSeq += 1;
+	const seq = String(nextNoteSeq).padStart(4, '0');
 	note.dataset.rvSeq = seq;
 	return seq;
 }
 
+function captureVisitKey(box: HTMLElement, note: HTMLElement): void {
+	if (box.dataset.rvVisitKey) return;
+	const key = /INPUT\[textArea:(sVisit\d+Notes)\]/.exec(note.textContent ?? '')?.[1] ?? '';
+	if (key) box.dataset.rvVisitKey = key;
+}
+
 function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): void {
+	captureVisitKey(box, note);
 	const seq = noteSeq(note);
 	let before: Element | null = null;
 	for (const child of Array.from(box.children)) {
@@ -669,7 +674,6 @@ function noteBoxNear(heading: HTMLElement): boolean {
 		const next = host.nextElementSibling;
 		if (!(next instanceof HTMLElement)) continue;
 		if (next.classList.contains('rv-visit-note-box')) return true;
-		if (next.querySelector('.rv-visit-note-box')) return true;
 	}
 	return false;
 }
@@ -713,7 +717,7 @@ function previousVisitHeading(block: HTMLElement): HTMLElement | null {
 		while (prev instanceof HTMLElement) {
 			const heading = stampInside(prev);
 			if (heading) return heading;
-			if (!isVisitNoteBlock(prev) && !prev.classList.contains('rv-visit-note-box') && !prev.querySelector('.rv-visit-note-box')) return null;
+			if (!isVisitNoteBlock(prev) && !prev.classList.contains('rv-visit-note-box')) return null;
 			prev = prev.previousElementSibling;
 		}
 		const parent: HTMLElement | null = cursor.parentElement instanceof HTMLElement ? cursor.parentElement : null;
@@ -749,6 +753,7 @@ function isVisitNoteBlock(node: HTMLElement): boolean {
 		if (stampDateTime(text)) return false;
 		return true;
 	}
+	if (node.querySelector('h1, h2, h3, h4, h5, h6')) return false;
 	if (node.querySelector('textarea, ul, ol')) return true;
 	return node.matches('p, div, .el-p, .el-ul, .el-ol, .el-blockquote, blockquote, ul, ol, li, textarea');
 }
