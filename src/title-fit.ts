@@ -269,7 +269,8 @@ export function fitEndEllipsis(el: HTMLElement, full: string): void {
 		el.textContent = source;
 		const width = slotWidth(el);
 		if (!source || width <= 8) return;
-		if (el.scrollWidth <= width + 1) return;
+		const wrapped = el.scrollHeight > el.clientHeight + 4;
+		if (el.scrollWidth <= width + 1 && !wrapped) return;
 		let lo = 1;
 		let hi = source.length - 1;
 		let best = '…';

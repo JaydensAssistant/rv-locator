@@ -10,7 +10,6 @@ export class CampaignModal extends Modal {
 	private start = localDay();
 	private end = '';
 	private saved = false;
-	private confirming = false;
 	private endFooter: HTMLElement | null = null;
 
 	constructor(
@@ -70,34 +69,24 @@ export class CampaignModal extends Modal {
 		iconizeModal(contentEl);
 	}
 
-	/** One solid End button. The first click swaps that same footer for Keep | Remove. */
+	/**
+	 * The ribbon campaign modal asks with Keep | Remove.
+	 * Keep leaves the campaign. Remove is the solid button on the right.
+	 */
 	private paintEndFooter(): void {
 		const footer = this.endFooter ?? this.contentEl.createDiv('rv-modal-actions is-footer');
 		this.endFooter = footer;
 		footer.empty();
-		const end = footer.createEl('button', { text: 'End campaign', attr: { type: 'button' } });
-		end.addClass('mod-warning');
-		end.addEventListener('click', () => this.askRemove());
-	}
-
-	/** The first click asks. The campaign stays until they confirm. */
-	private askRemove(): void {
-		if (this.confirming) return;
-		this.confirming = true;
-		const footer = this.endFooter;
-		if (!footer) return;
-		footer.empty();
 		const keep = footer.createEl('button', { text: 'Keep', attr: { type: 'button' } });
 		const remove = footer.createEl('button', { text: 'Remove', attr: { type: 'button' } });
 		remove.addClass('mod-cta');
+		keep.addEventListener('click', () => {
+			this.close();
+		});
 		remove.addEventListener('click', () => {
 			this.saved = true;
 			this.onSave(null);
 			this.close();
-		});
-		keep.addEventListener('click', () => {
-			this.confirming = false;
-			this.paintEndFooter();
 		});
 	}
 

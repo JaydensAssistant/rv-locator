@@ -29,7 +29,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy } from './visit-display';
+import { concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteBusy, watchVisitNoteFocus } from './visit-display';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
@@ -434,9 +434,26 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Map earth, archive label, Quick Facts, and the shared Hub row. Meta Bind may remount, so this runs again. */
 	private decorateOpenNote(element: HTMLElement, path: string): void {
 		decorateMapLink(element, () => { void this.openMapSoon(path); });
+		this.bindAddressMapClick(element, path);
 		decorateArchiveButton(element, this.pathIsInactive(path));
 		decorateNoteChrome(element, path, this.noteChromeHost());
 		this.layoutOpenVisits(element, path);
+		applyLiveUrgency(element, path, this.noteChromeHost(), true);
+	}
+
+	/** Address text is a link Obsidian may handle before the bubble listener. Capture it. */
+	private bindAddressMapClick(element: HTMLElement, path: string): void {
+		if (element.dataset.rvMapClicks === path) return;
+		element.dataset.rvMapClicks = path;
+		element.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!(target instanceof Element)) return;
+			if (target.closest('a.rv-map-button, input, button, .rv-label-icon')) return;
+			if (!target.closest('a.rv-address-link, .rv-address-field')) return;
+			event.preventDefault();
+			event.stopPropagation();
+			void this.openMapSoon(path);
+		}, true);
 	}
 
 	/**
@@ -523,6 +540,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.scheduleNotesFit();
 		this.maybeSessionLocationNotice();
 		this.maskFilenameStamps();
+		if (this.noteMapOpen) this.syncNoteMap();
 		if (!file) return;
 		this.rememberNoteText(file);
 		this.primeOpenUrgency(file);
@@ -773,14 +791,15 @@ export default class RVLocatorPlugin extends Plugin {
 	 * finished after it was opened.
 	 */
 	private openInReadingView(file: TFile, force: boolean): void {
-		void force;
 		if (this.unloaded) return;
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) continue;
 			this.readingViewFor.set(leaf, file.path);
-			if (!this.settings.openRvInReadingView || this.isTemplateNote(file)) continue;
-			if (!isRvDashboardNote(this.app.metadataCache.getFileCache(file)?.frontmatter)) continue;
+			if (!force) {
+				if (!this.settings.openRvInReadingView || this.isTemplateNote(file)) continue;
+				if (!isRvDashboardNote(this.app.metadataCache.getFileCache(file)?.frontmatter)) continue;
+			}
 			if (view.getMode() === 'preview') continue;
 			const state = leaf.getViewState();
 			void leaf.setViewState({ ...state, state: { ...state.state, mode: 'preview' } });
@@ -956,6 +975,8 @@ export default class RVLocatorPlugin extends Plugin {
 				if (draft) await this.writeNewRvShare(created, draft);
 				await this.refreshAttemptDigest(created);
 				if (sourcePath) await this.linkHousehold(sourcePath, created);
+				this.openInReadingView(created, true);
+				void this.focusVisitNotes(created, 'sVisit1Notes');
 			}
 		} catch (error) {
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
@@ -1678,6 +1699,7 @@ export default class RVLocatorPlugin extends Plugin {
 	async noteVisitLogged(file: TFile, outcome?: VisitOutcome): Promise<void> {
 		if (outcome === 'home' || outcome === 'miss') await this.consumeCoverage(file.path, outcome);
 		await this.enqueueDigestRewrite(file);
+		this.scheduleOpenNoteRepaint();
 		await this.maybeNudgePriority(file, outcome);
 		if (outcome === 'home') await this.focusVisitNotes(file, null);
 	}
@@ -1743,6 +1765,8 @@ export default class RVLocatorPlugin extends Plugin {
 	/** In-view map. Fullscreen stays on the map that was toggled. */
 	hubMapFullscreen = false;
 	hubMapOpen = false;
+	/** Map panel mounted beside the open note. The hub icon does not set this. */
+	noteMapOpen = false;
 	private hubFullscreenSync: (() => void) | null = null;
 	/** Hub column is narrower than the stacked-map breakpoint. Width 0 does not set this. */
 	hubPaneNarrow = false;
@@ -1753,13 +1777,16 @@ export default class RVLocatorPlugin extends Plugin {
 	private hubScrollers = new Set<(path: string | null) => void>();
 
 	/**
-	 * Earth on a note opens the map leaf beside that note.
-	 * The hub map icon only toggles the embedded map. It does not open a leaf.
+	 * Earth on a note opens the map beside that note, inside the same leaf.
+	 * A workspace split replaces the note on the phone (the note width goes to 0).
+	 * The hub map icon only toggles the embedded map.
 	 */
 	hideSplitMap(): void {
 		this.hubMapOpen = false;
+		this.noteMapOpen = false;
 		this.setHubMapFullscreen(false);
 		this.applyLayoutClasses();
+		this.syncNoteMap();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -1767,46 +1794,78 @@ export default class RVLocatorPlugin extends Plugin {
 		if (path) {
 			this.mapFocusPath = path;
 			this.hubMapOpen = true;
-			void this.revealGlancable();
+			this.noteMapOpen = true;
 		} else {
 			this.hubMapOpen = !this.hubMapOpen;
 		}
 		if (!this.hubMapOpen) this.setHubMapFullscreen(false);
 		this.applyLayoutClasses();
+		if (path || !this.noteMapOpen) this.syncNoteMap();
 		for (const callback of this.viewRefreshers) callback();
 		if (path && this.hubMapOpen) this.focusMapPin(path, true);
 	}
 
+	private noteMapHandle: { destroy(): void; invalidateSize(): void } | null = null;
+
 	/**
-	 * Open the registered map beside the note. The glancable id is a Bases view,
-	 * not a workspace leaf, so it cannot be shown with setViewState. A new leaf
-	 * keeps the map up when another note opens in the note's leaf.
+	 * Map beside the open note, in that note's leaf. Phone stacks it under the
+	 * note with the same grip as the hub. Opening another note keeps the panel
+	 * because it lives on the leaf, not in the note body.
 	 */
-	private async revealGlancable(): Promise<void> {
-		const workspace = this.app.workspace;
-		const maps = workspace.getLeavesOfType(MAP_VIEW_TYPE);
-		const open = maps[0];
-		if (open) {
-			workspace.revealLeaf(open);
-			this.wakeMapLeaf(open);
+	private syncNoteMap(): void {
+		const content = this.noteMapHost();
+		if (!this.noteMapOpen || !content) {
+			this.noteMapHandle?.destroy();
+			this.noteMapHandle = null;
+			this.clearNoteMap(content);
 			return;
 		}
-		const previous = workspace.activeLeaf ?? null;
-		const leaf = workspace.getLeaf('split', 'vertical');
-		await leaf.setViewState({ type: MAP_VIEW_TYPE, active: true });
-		this.wakeMapLeaf(leaf);
-		if (previous && previous !== leaf) workspace.setActiveLeaf(previous, { focus: false });
-	}
-
-	/** A hidden tab lays the map stage out at 0×0. Reveal it, then let the canvas read the real size. */
-	private wakeMapLeaf(leaf: WorkspaceLeaf): void {
-		const view = leaf.view;
-		if (!(view instanceof RvMapView)) return;
+		content.classList.add('is-note-map');
+		let handle = content.querySelector(':scope > .rv-note-map-handle');
+		if (!(handle instanceof HTMLElement)) {
+			handle = content.createDiv('rv-note-map-handle');
+			handle.setAttribute('role', 'separator');
+			handle.setAttribute('aria-orientation', 'horizontal');
+			handle.setAttribute('aria-label', 'Resize map');
+		}
+		let map = content.querySelector(':scope > .rv-note-map');
+		if (!(map instanceof HTMLElement) || !map.isConnected) {
+			this.noteMapHandle?.destroy();
+			this.noteMapHandle = null;
+			map = content.createDiv('rv-note-map');
+		}
+		if (!(map instanceof HTMLElement)) return;
+		if (!this.noteMapHandle) this.noteMapHandle = this.mountHubMap(map);
 		for (const delay of [0, 250]) {
 			window.setTimeout(() => {
-				if (this.unloaded) return;
-				view.invalidateSize();
+				if (this.unloaded || !this.noteMapOpen) return;
+				this.noteMapHandle?.invalidateSize();
 			}, delay);
+		}
+	}
+
+	private noteMapHost(): HTMLElement | null {
+		const wanted = this.mapFocusPath;
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) continue;
+			if (wanted && view.file?.path !== wanted) continue;
+			return view.containerEl;
+		}
+		const active = this.app.workspace.getActiveViewOfType(MarkdownView);
+		return active?.containerEl ?? null;
+	}
+
+	private clearNoteMap(content: HTMLElement | null): void {
+		const hosts = content ? [content] : [];
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (view instanceof MarkdownView) hosts.push(view.containerEl);
+		}
+		for (const host of hosts) {
+			host.classList.remove('is-note-map');
+			host.querySelector(':scope > .rv-note-map-handle')?.remove();
+			host.querySelector(':scope > .rv-note-map')?.remove();
 		}
 	}
 
@@ -2862,18 +2921,23 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.afterVisitWrite(file, visit.home ? 'home' : 'miss', notesProperty);
 	}
 
-	/** Digest, open the new notes box, then the priority nudge. */
-	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
-		await this.enqueueDigestRewrite(file);
+	/** The card menu, the note badge, and rvLog.js all land here after the write. */
+	private scheduleOpenNoteRepaint(): void {
 		this.refreshOpenNoteChrome();
 		this.repaintOpenUrgency();
-		for (const delay of [0, 50, 200, 600]) {
+		for (const delay of [0, 50, 200, 600, 1200]) {
 			window.setTimeout(() => {
 				if (this.unloaded) return;
 				this.repaintOpenUrgency();
 				this.refreshOpenNoteChrome();
 			}, delay);
 		}
+	}
+
+	/** Digest, open the new notes box, then the priority nudge. */
+	private async afterVisitWrite(file: TFile, outcome: VisitOutcome, notesProperty: string | null): Promise<void> {
+		await this.enqueueDigestRewrite(file);
+		this.scheduleOpenNoteRepaint();
 		for (const callback of this.viewRefreshers) {
 			try {
 				callback();
@@ -3128,17 +3192,23 @@ export default class RVLocatorPlugin extends Plugin {
 	 */
 	private async focusVisitNotes(file: TFile, property: string | null): Promise<void> {
 		if (this.unloaded) return;
-		const data = await this.app.vault.read(file);
+		let data = '';
+		try {
+			data = await this.app.vault.read(file);
+		} catch {
+			data = '';
+		}
 		const info = getFrontMatterInfo(data);
 		const lines = data.split('\n');
 		const name = property ?? highestNotesProperty(data.slice(info.contentStart));
-		if (!name) return;
-		const fieldAt = lines.findIndex((line) => line.includes(`INPUT[textArea:${name}]`));
-		if (fieldAt < 1) return;
-		const heading = /^(?:###|#####)\s+(.+?)\s*$/.exec((lines[fieldAt - 1] ?? '').replace(/\r$/, ''));
+		const fieldAt = name ? lines.findIndex((line) => line.includes(`INPUT[textArea:${name}]`)) : -1;
+		const heading = fieldAt > 0
+			? /^(?:###|#####)\s+(.+?)\s*$/.exec((lines[fieldAt - 1] ?? '').replace(/\r$/, ''))
+			: null;
 		const stamp = heading ? stripStampAge(heading[1] ?? '') : '';
-		if (!stamp) return;
-		const ordinal = lines.slice(0, fieldAt - 1).filter((line) => line.includes(stamp) && /^#{3,5}\s/.test(line)).length;
+		const ordinal = stamp
+			? lines.slice(0, fieldAt - 1).filter((line) => line.includes(stamp) && /^#{3,5}\s/.test(line)).length
+			: 0;
 
 		let leaf = this.app.workspace.getLeavesOfType('markdown')
 			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
@@ -3150,6 +3220,9 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
+		this.openInReadingView(file, true);
+		watchVisitNoteFocus(view.containerEl, 12000);
+		if (!name || fieldAt < 1) return;
 
 		let steady = 0;
 		let placed: HTMLTextAreaElement | null = null;

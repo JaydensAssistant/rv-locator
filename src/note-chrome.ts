@@ -52,12 +52,12 @@ const URGENCY_READY_SELECTOR = '.workspace-leaf-content, .markdown-preview-view,
 export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteChromeHost): void {
 	const data = host.frontmatter(path);
 	if (!data) return;
-	applyLiveUrgency(root, path, host);
 	decorateNoteTitle(root, data);
 	decorateDashboardHeading(root, path, data, host);
 	decorateQuickFacts(root, path, data, host);
 	decorateHubRow(root, path, data, host);
 	decorateSlotOverride(root, path, data, host);
+	applyLiveUrgency(root, path, host, true);
 }
 
 /** Status icon to the left of the note title. Render only; the file is not written. */
@@ -180,14 +180,34 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	paintUrgencyDetails(start, accent);
 }
 
-/** Address, item icons, and badge strokes follow the accent even when a child kept an old inline color. */
+/** Address, hub, item icons, campaign, and badge strokes follow the accent after a visit. */
 function paintUrgencyDetails(start: HTMLElement, accent: string): void {
-	const colorOf = '.rv-address-link, .rv-address-input, .rv-item-icon, .rv-stamp-kind, .rv-hub-chip';
+	const colorOf = [
+		'.rv-address-link',
+		'.rv-address-input',
+		'.rv-item-icon',
+		'.rv-stamp-kind',
+		'.rv-hub-chip',
+		'.rv-hub-chip-label',
+		'.rv-dash-campaign',
+		'.rv-locator-campaign-mark',
+		'.rv-label-text',
+		'.mb-button.rv-visit-btn',
+		'.mb-button.rv-visit-btn button',
+	].join(', ');
 	start.querySelectorAll(colorOf).forEach((node) => {
-		if (node instanceof HTMLElement) node.style.setProperty('color', accent, 'important');
+		if (!(node instanceof HTMLElement)) return;
+		node.style.setProperty('color', accent, 'important');
+		node.querySelectorAll('svg').forEach((svg) => {
+			if (!(svg instanceof SVGElement)) return;
+			svg.style.setProperty('color', accent, 'important');
+			svg.style.setProperty('stroke', accent, 'important');
+		});
 	});
 	start.querySelectorAll('.rv-locator-urgency').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
+		node.style.setProperty('border-width', '2px', 'important');
+		node.style.setProperty('border-style', 'solid', 'important');
 		node.style.setProperty('border-color', accent, 'important');
 		node.style.setProperty('color', accent, 'important');
 	});
@@ -587,9 +607,14 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 	for (const paragraph of paragraphs) {
 		if (!(paragraph instanceof HTMLElement)) continue;
 		const hubLabel = labeledStrong(paragraph, 'hub');
-		if (!hubLabel) continue;
-		hubLabel.textContent = 'Hub:';
+		const addressLabel = labeledStrong(paragraph, 'address');
+		if (!hubLabel && !addressLabel) continue;
 		paragraph.addClass('rv-hub-owned');
+		if (!hubLabel) {
+			decorateAddress(paragraph, path, data, host);
+			continue;
+		}
+		hubLabel.textContent = 'Hub:';
 		const address = labeledStrong(paragraph, 'address');
 		let line = paragraph.querySelector(':scope > .rv-hub-line');
 		if (!(line instanceof HTMLElement)) {
@@ -703,6 +728,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 		line.className = 'rv-address-line';
 		paragraph.appendChild(line);
 	}
+	if (!(line instanceof HTMLElement)) return;
 	let field = line.querySelector(':scope > .rv-address-field');
 	if (!(field instanceof HTMLElement)) {
 		field = doc.createElement('span');
@@ -715,6 +741,16 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (input) field.append(input);
 	if (link instanceof HTMLElement) field.append(link);
 	if (earth instanceof HTMLElement) line.append(earth);
+	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
+	line.style.setProperty('display', 'flex', 'important');
+	line.style.setProperty('flex-flow', 'row nowrap', 'important');
+	line.style.setProperty('align-items', 'center', 'important');
+	line.style.setProperty('width', '100%', 'important');
+	line.style.setProperty('min-width', '0', 'important');
+	field.style.setProperty('flex', '1 1 0px', 'important');
+	field.style.setProperty('width', '0', 'important');
+	field.style.setProperty('min-width', '0', 'important');
+	field.style.setProperty('overflow', 'hidden', 'important');
 }
 
 function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
@@ -784,6 +820,16 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	}
 	link.classList.toggle('is-on', host.mapOpen());
 	link.classList.remove('rv-address-hidden');
+	link.dataset.rvMapOpen = '1';
+	link.onclick = (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		host.openMap(path);
+	};
+	link.style.setProperty('display', 'block', 'important');
+	link.style.setProperty('white-space', 'nowrap', 'important');
+	link.style.setProperty('overflow', 'hidden', 'important');
+	link.style.setProperty('text-overflow', 'ellipsis', 'important');
 	const text = input.value.trim();
 	link.classList.toggle('is-empty', !text);
 	if (text) fitEndEllipsis(link, text);

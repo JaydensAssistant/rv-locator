@@ -2024,16 +2024,19 @@ describe('household hubs and card return status', () => {
 
 	it('asks before removing a campaign', () => {
 		const saved: Array<unknown> = [];
-		const modal = new CampaignModal({} as never, {
+		const record = {
 			name: 'Spring',
 			start: '2026-10-01',
 			end: '',
 			covered: [],
-		}, (next) => { saved.push(next); });
-		modal.onOpen();
-		clickLabeled(modal.contentEl as unknown as Clickable, 'End campaign');
+		};
+		const keep = new CampaignModal({} as never, record, (next) => { saved.push(next); });
+		keep.onOpen();
+		clickLabeled(keep.contentEl as unknown as Clickable, 'Keep');
 		assert.deepEqual(saved, []);
-		clickLabeled(modal.contentEl as unknown as Clickable, 'Remove');
+		const remove = new CampaignModal({} as never, record, (next) => { saved.push(next); });
+		remove.onOpen();
+		clickLabeled(remove.contentEl as unknown as Clickable, 'Remove');
 		assert.deepEqual(saved, [null]);
 	});
 

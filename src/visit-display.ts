@@ -883,6 +883,52 @@ export function notesBoxAfterStamp(root: HTMLElement, stamp: string, ordinal: nu
 	return null;
 }
 
+/**
+ * New RV from the ribbon focuses the note title and renders the Meta Bind
+ * textarea later. Keep pulling the caret into the first visit note until it
+ * exists, and again whenever the title takes it back.
+ */
+export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
+	const stopAt = Date.now() + ms;
+	const doc = root.ownerDocument;
+	const pull = (): void => {
+		if (!root.isConnected || Date.now() > stopAt) return;
+		const preview = root.querySelector('.markdown-preview-view, .markdown-reading-view');
+		let area = root.querySelector('textarea');
+		if (!isVisitTextArea(area) && preview instanceof HTMLElement) {
+			const heading = Array.from(preview.querySelectorAll('h3, h4, h5')).find((node) => /(?:visit|recent) notes/i.test(node.textContent ?? ''));
+			if (heading instanceof HTMLElement && typeof heading.scrollIntoView === 'function') {
+				heading.scrollIntoView({ block: 'center' });
+			}
+			area = root.querySelector('textarea');
+		}
+		if (!isVisitTextArea(area)) return;
+		holdVisitNote(area, Math.max(900, stopAt - Date.now()));
+		const active = doc.activeElement;
+		if (active !== area && isFocusThief(active)) {
+			try {
+				area.focus({ preventScroll: true });
+			} catch {
+				area.focus();
+			}
+		}
+	};
+	const onFocus = (): void => {
+		if (Date.now() > stopAt || !root.isConnected) {
+			doc.removeEventListener('focusin', onFocus, true);
+			return;
+		}
+		pull();
+	};
+	doc.addEventListener('focusin', onFocus, true);
+	const tick = (): void => {
+		if (!root.isConnected || Date.now() > stopAt) return;
+		pull();
+		window.setTimeout(tick, 250);
+	};
+	tick();
+}
+
 /** Focus the stamp's notes box, or the first visit textarea when the stamp has not painted yet. */
 export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
 	const matched = stamp ? notesBoxAfterStamp(root, stamp, ordinal) : null;

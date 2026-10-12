@@ -301,6 +301,7 @@ function openChange(
 	const cancel = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 	const done = actions.createEl('button', { text: 'Done', attr: { type: 'button' } });
 	done.classList.add('mod-cta');
+	done.textContent = 'Done';
 	cancel.addEventListener('click', (event) => {
 		event?.preventDefault?.();
 		panel.remove();
@@ -314,5 +315,4 @@ function openChange(
 		panel.remove();
 		onDone();
 	});
-	setIcon(done, 'check');
 }

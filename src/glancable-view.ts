@@ -706,7 +706,24 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const view = this.root.ownerDocument.defaultView;
 		const viewport = view?.visualViewport?.height ?? view?.innerHeight ?? 0;
 		const chrome = embedChromePx(this.root.ownerDocument);
-		const cap = stackedEmbedCap(viewport, chrome);
+		const rect = typeof embed.getBoundingClientRect === 'function' ? embed.getBoundingClientRect() : null;
+		const top = rect ? rect.top : 0;
+		const fromFrame = top > 1 ? Math.round(viewport - Math.max(0, top)) : stackedEmbedCap(viewport, chrome);
+		const cap = Math.max(160, fromFrame);
+		const preview = embed.closest('.markdown-preview-view, .cm-scroller');
+		if (preview instanceof HTMLElement) {
+			preview.style.setProperty('scrollbar-gutter', 'auto', 'important');
+			preview.style.setProperty('padding-right', '0', 'important');
+			preview.style.setProperty('overflow', 'hidden', 'important');
+		}
+		embed.style.setProperty('width', '100%', 'important');
+		embed.style.setProperty('scrollbar-gutter', 'auto', 'important');
+		if (embed.dataset.rvCapScroll !== '1') {
+			embed.dataset.rvCapScroll = '1';
+			const scroller = embed.closest('.markdown-preview-view, .cm-scroller, .view-content');
+			scroller?.addEventListener('scroll', () => { this.sizeEmbedFrame(); }, { passive: true });
+			view?.requestAnimationFrame?.(() => { this.sizeEmbedFrame(); });
+		}
 		embed.classList.add('is-embed-capped');
 		embed.style.setProperty('--rv-embed-cap', `${cap}px`);
 		embed.style.height = `${cap}px`;
@@ -875,6 +892,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  */
 export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	const shapes = urgencyBangShapes(glyphs);
+	if (host instanceof HTMLElement) {
+		host.style.setProperty('border-width', '2px', 'important');
+		host.style.setProperty('border-style', 'solid', 'important');
+	}
 	if (shapes.length === 0) return;
 	const svg = makeSvg(host, 'svg', {
 		viewBox: '0 0 28 28',
@@ -896,7 +917,9 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 		if (shape.attr.fill === 'none') {
 			node.style.setProperty('fill', 'none');
 			node.style.setProperty('stroke', 'currentColor');
-			node.style.setProperty('stroke-width', 'calc(var(--rv-control-size, 28px) * 0.08)');
+			node.setAttribute('vector-effect', 'non-scaling-stroke');
+			node.style.setProperty('vector-effect', 'non-scaling-stroke');
+			node.style.setProperty('stroke-width', '2px', 'important');
 		} else {
 			node.style.setProperty('fill', 'currentColor');
 		}

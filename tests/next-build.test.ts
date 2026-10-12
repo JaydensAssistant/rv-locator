@@ -65,9 +65,10 @@ describe('next build helpers', () => {
 		assert.match(css, /\.rv-locator-sort-pills \{[^}]*flex-wrap:\s*nowrap/);
 		assert.match(main, /cardPersonTitle\(file\?\.basename \?\? path, true\)/);
 		assert.match(main, /allowBroad: false/);
-		assert.match(main, /revealGlancable/);
-		assert.match(main, /setViewState\(\{ type: MAP_VIEW_TYPE, active: true \}\)/);
-		assert.match(main, /getLeaf\('split', 'vertical'\)/);
+		assert.match(main, /syncNoteMap/);
+		assert.match(main, /is-note-map/);
+		assert.match(main, /mountHubMap/);
+		assert.doesNotMatch(main, /getLeaf\('split'/);
 		assert.doesNotMatch(main, /type: GLANCABLE_VIEW_TYPE/);
 		assert.match(readFileSync('src/glancable-view.ts', 'utf8'), /searchReplacesBar/);
 		assert.match(readFileSync('src/visit-controls.ts', 'utf8'), /\.rv-stamp-when/);

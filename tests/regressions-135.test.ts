@@ -645,8 +645,9 @@ describe('hub pin scroll and narrow stack', () => {
 		assert.doesNotMatch(glance, /insertBefore\(map, this\.scrollEl\)/);
 		assert.match(glance, /hubMapIsFullscreen\(\)/);
 		assert.match(main, /hubMapOpen = !this\.hubMapOpen/);
-		assert.match(main, /getLeaf\('split', 'vertical'\)/);
-		assert.doesNotMatch(main, /getLeaf\('split'\)/);
+		assert.match(main, /noteMapOpen = true/);
+		assert.match(main, /syncNoteMap/);
+		assert.doesNotMatch(main, /getLeaf\('split'/);
 		const map = readFileSync('src/map-view.ts', 'utf8');
 		assert.match(map, /fullscreenScope === 'hub'/);
 		assert.match(map, /setHubMapFullscreen\?\.\(on\)/);
