@@ -6205,11 +6205,9 @@ button.rv-locator-urgency.is-ghost {
 	max-width: none !important;
 	min-width: 0 !important;
 	box-sizing: border-box;
-	white-space: normal !important;
-	overflow-wrap: anywhere !important;
-	word-break: break-word !important;
-	overflow: hidden;
-	text-overflow: clip;
+	white-space: nowrap !important;
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
 	line-height: 1.25;
 	max-height: none;
 }
@@ -6222,11 +6220,9 @@ a.rv-address-link[hidden] {
 .rv-address-field > a.rv-address-link,
 p.rv-hub-owned a.rv-address-link {
 	display: block !important;
-	white-space: normal !important;
-	word-break: break-word !important;
-	overflow-wrap: anywhere !important;
+	white-space: nowrap !important;
 	overflow: hidden !important;
-	text-overflow: clip !important;
+	text-overflow: ellipsis !important;
 	line-height: 1.25;
 	max-height: none;
 }
@@ -6459,9 +6455,9 @@ button.rv-study-toggle {
 }
 
 /*
-  Address row inside the readable-line-width callout. The link used to be
-  --rv-dash-plus (about 2.1em) with nowrap ellipsis, which painted "1 Dist…".
-  The field takes the rest of the callout. A long address wraps to a second line.
+  Address row inside the readable-line-width callout. The link stays on one
+  line in the 1fr column and ellipsizes. Quick Facts labels are not ellipsized.
+  Long-press edit shows the full address in the input.
 */
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
 	--callout-padding: 4px;
@@ -6496,11 +6492,11 @@ button.rv-study-toggle {
 	min-height: 0 !important;
 	max-height: none !important;
 	box-sizing: border-box;
-	white-space: normal !important;
-	overflow: visible !important;
-	overflow-wrap: anywhere !important;
-	word-break: break-word !important;
-	text-overflow: clip !important;
+	white-space: nowrap !important;
+	overflow: hidden !important;
+	overflow-wrap: normal !important;
+	word-break: normal !important;
+	text-overflow: ellipsis !important;
 	line-height: 1.25 !important;
 }
 
@@ -6540,6 +6536,13 @@ button.rv-study-toggle {
 	min-width: 0 !important;
 	max-width: none !important;
 	position: static !important;
+	overflow: hidden !important;
+}
+
+.rv-address-line input.rv-address-input:not([hidden]) {
+	white-space: nowrap !important;
+	overflow-x: auto !important;
+	text-overflow: clip !important;
 }
 
 /*

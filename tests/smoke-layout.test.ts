@@ -1249,8 +1249,16 @@ describe('smoke layout', () => {
 	it('wraps the address in the callout and stacks the note map from the leaf width', () => {
 		const css = readFileSync('styles.css', 'utf8');
 		assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\) 28px !important/);
-		assert.match(css, /a\.rv-address-link[\s\S]*white-space: normal !important/);
-		assert.match(css, /text-overflow: clip !important/);
+		assert.match(css, /a\.rv-address-link:not\(\[hidden\]\) \{[^}]*white-space: nowrap !important/);
+		assert.match(css, /a\.rv-address-link:not\(\[hidden\]\) \{[^}]*overflow: hidden !important/);
+		assert.match(css, /a\.rv-address-link:not\(\[hidden\]\) \{[^}]*text-overflow: ellipsis !important/);
+		assert.doesNotMatch(css, /\.rv-qf-label \{[^}]*text-overflow:\s*ellipsis/);
+		const chrome = readFileSync('src/note-chrome.ts', 'utf8');
+		const show = chrome.slice(chrome.indexOf('function showAddressLink'), chrome.indexOf('function labeledStrong'));
+		assert.match(show, /white-space', 'nowrap'/);
+		assert.match(show, /overflow', 'hidden'/);
+		assert.match(show, /text-overflow', 'ellipsis'/);
+		assert.doesNotMatch(show, /white-space', 'normal'/);
 		assert.match(css, /grid-column: 3 !important;[\s\S]{0,800}min-height: 28px !important/);
 		assert.match(css, /max-height: 28px !important/);
 		assert.match(css, /\.rv-fit-stem[\s\S]*color: var\(--rv-urgency-accent, var\(--text-normal\)\) !important/);

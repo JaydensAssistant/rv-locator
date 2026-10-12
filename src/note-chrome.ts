@@ -776,7 +776,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	field.style.setProperty('max-width', 'none', 'important');
 	field.style.setProperty('flex', '1 1 auto', 'important');
 	field.style.setProperty('position', 'static', 'important');
-	field.style.removeProperty('overflow');
+	field.style.setProperty('overflow', 'hidden', 'important');
 	if (earth instanceof HTMLElement) {
 		earth.style.setProperty('grid-column', '3', 'important');
 		earth.style.setProperty('grid-row', '1', 'important');
@@ -893,11 +893,11 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	link.style.setProperty('max-width', '100%', 'important');
 	link.style.setProperty('min-width', '0', 'important');
 	link.style.setProperty('position', 'static', 'important');
-	link.style.setProperty('white-space', 'normal', 'important');
-	link.style.setProperty('overflow-wrap', 'anywhere', 'important');
-	link.style.setProperty('word-break', 'break-word', 'important');
-	link.style.setProperty('overflow', 'visible', 'important');
-	link.style.setProperty('text-overflow', 'clip', 'important');
+	link.style.setProperty('white-space', 'nowrap', 'important');
+	link.style.setProperty('overflow-wrap', 'normal', 'important');
+	link.style.setProperty('word-break', 'normal', 'important');
+	link.style.setProperty('overflow', 'hidden', 'important');
+	link.style.setProperty('text-overflow', 'ellipsis', 'important');
 	link.style.setProperty('line-height', '1.25', 'important');
 	link.style.removeProperty('max-height');
 	link.style.setProperty('max-height', 'none', 'important');
