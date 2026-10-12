@@ -7,7 +7,7 @@ import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
-import { mountUrgencyGlyph } from './glancable-view';
+import { mountUrgencyGlyph, pinBadgeStroke } from './glancable-view';
 import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
@@ -185,6 +185,9 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 	const colorOf = [
 		'.rv-address-link',
 		'.rv-address-input',
+		'.rv-item',
+		'.rv-fit',
+		'.rv-fit-stem',
 		'.rv-item-icon',
 		'.rv-stamp-kind',
 		'.rv-hub-chip',
@@ -194,6 +197,7 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 		'.rv-label-text',
 		'.mb-button.rv-visit-btn',
 		'.mb-button.rv-visit-btn button',
+		'.mb-button-inner',
 	].join(', ');
 	start.querySelectorAll(colorOf).forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
@@ -204,10 +208,9 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 			svg.style.setProperty('stroke', accent, 'important');
 		});
 	});
-	start.querySelectorAll('.rv-locator-urgency').forEach((node) => {
+	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
-		node.style.setProperty('border-width', '2px', 'important');
-		node.style.setProperty('border-style', 'solid', 'important');
+		pinBadgeStroke(node);
 		node.style.setProperty('border-color', accent, 'important');
 		node.style.setProperty('color', accent, 'important');
 	});
@@ -291,6 +294,7 @@ function paintFactsTitle(
 			button.addClass('is-ghost');
 			button.empty();
 			setIcon(button, ghost);
+			pinBadgeStroke(button);
 		}
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
@@ -742,15 +746,21 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (link instanceof HTMLElement) field.append(link);
 	if (earth instanceof HTMLElement) line.append(earth);
 	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
-	line.style.setProperty('display', 'flex', 'important');
-	line.style.setProperty('flex-flow', 'row nowrap', 'important');
+	line.style.setProperty('display', 'grid', 'important');
+	line.style.setProperty('grid-template-columns', 'max-content minmax(0, 1fr) 28px', 'important');
+	line.style.setProperty('grid-column', '1 / -1', 'important');
+	line.style.setProperty('column-gap', '4px', 'important');
 	line.style.setProperty('align-items', 'center', 'important');
 	line.style.setProperty('width', '100%', 'important');
+	line.style.setProperty('max-width', '100%', 'important');
 	line.style.setProperty('min-width', '0', 'important');
-	field.style.setProperty('flex', '1 1 0px', 'important');
-	field.style.setProperty('width', '0', 'important');
+	line.style.setProperty('box-sizing', 'border-box', 'important');
+	address.style.setProperty('margin', '0', 'important');
+	field.style.setProperty('grid-column', '2', 'important');
+	field.style.setProperty('width', '100%', 'important');
 	field.style.setProperty('min-width', '0', 'important');
-	field.style.setProperty('overflow', 'hidden', 'important');
+	field.style.setProperty('max-width', '100%', 'important');
+	field.style.removeProperty('overflow');
 }
 
 function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
@@ -827,13 +837,17 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 		host.openMap(path);
 	};
 	link.style.setProperty('display', 'block', 'important');
-	link.style.setProperty('white-space', 'nowrap', 'important');
-	link.style.setProperty('overflow', 'hidden', 'important');
-	link.style.setProperty('text-overflow', 'ellipsis', 'important');
+	link.style.setProperty('white-space', 'normal', 'important');
+	link.style.setProperty('overflow-wrap', 'anywhere', 'important');
+	link.style.setProperty('word-break', 'break-word', 'important');
+	link.style.setProperty('overflow', 'visible', 'important');
+	link.style.setProperty('text-overflow', 'clip', 'important');
+	link.style.setProperty('line-height', '1.25', 'important');
+	link.style.removeProperty('max-height');
+	link.style.setProperty('max-height', 'none', 'important');
 	const text = input.value.trim();
 	link.classList.toggle('is-empty', !text);
-	if (text) fitEndEllipsis(link, text);
-	else link.textContent = 'Add an address';
+	link.textContent = text || 'Add an address';
 	const editing = paragraph.ownerDocument.activeElement === input;
 	link.hidden = editing || text.length === 0;
 	input.hidden = !editing && text.length > 0;

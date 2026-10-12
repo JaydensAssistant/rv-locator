@@ -8,7 +8,8 @@ import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateVisitControls, refitItemStrip, rehoistVisitNotes } from '../src/visit-controls';
-import { placeVisitNoteFocus, restoreHeldNote } from '../src/visit-display';
+import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote } from '../src/visit-display';
+import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
 import type { MapPin } from '../src/map-pins';
@@ -645,7 +646,8 @@ describe('smoke layout', () => {
 		assert.match(newRv, /templateFile: Templates\/RV Log Miss\.md/);
 		assert.equal(newRv.includes('99 RV Log'), false);
 		const chrome = readFileSync('src/note-chrome.ts', 'utf8');
-		assert.match(chrome, /fitEndEllipsis\(link, text\)/);
+		assert.match(chrome, /link\.textContent = text/);
+		assert.doesNotMatch(chrome, /fitEndEllipsis\(link, text\)/);
 		assert.match(chrome, /fitEndEllipsis\(label, full\)/);
 		assert.doesNotMatch(chrome, /fitMiddleEllipsis/);
 		const modals = readFileSync('src/visit-modals.ts', 'utf8') + readFileSync('src/modals.ts', 'utf8') + readFileSync('src/new-rv-modal.ts', 'utf8');
@@ -1178,6 +1180,55 @@ describe('smoke layout', () => {
 		assert.ok(pop);
 		assert.match(pop?.textContent ?? '', /Enjoy Life Forever|Why Study the Bible|How Can the Bible/);
 		pop?.remove();
+	});
+
+	it('corrects a zoomed badge stroke back to 2px and keeps ghosts dashed', () => {
+		assert.equal(correctedStrokePx(2), '2px');
+		assert.equal(correctedStrokePx(1.01587), '3.938px');
+		const button = window.document.createElement('button');
+		button.className = 'rv-locator-urgency is-ghost';
+		window.document.body.appendChild(button);
+		pinBadgeStroke(button);
+		assert.equal(button.style.getPropertyValue('border-style'), 'dashed');
+		assert.equal(button.style.getPropertyPriority('border-width'), 'important');
+		assert.equal(button.style.getPropertyValue('border-width'), '2px');
+		button.remove();
+	});
+
+	it('focuses the visit textarea after the Templater prompt closes', async () => {
+		hostGlobals.MutationObserver = window.MutationObserver;
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const prompt = window.document.createElement('input');
+		prompt.className = 'templater-prompt-input';
+		window.document.body.appendChild(prompt);
+		const stop = armVisitNoteFocus(root);
+		const area = window.document.createElement('textarea');
+		root.appendChild(area);
+		await new Promise((resolve) => window.setTimeout(resolve, 0));
+		assert.notEqual(window.document.activeElement, area);
+		prompt.remove();
+		await new Promise((resolve) => window.setTimeout(resolve, 20));
+		assert.equal(window.document.activeElement, area);
+		stop();
+		root.remove();
+	});
+
+	it('wraps the address in the callout and stacks the note map from the leaf width', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\) 28px !important/);
+		assert.match(css, /a\.rv-address-link[\s\S]*white-space: normal !important/);
+		assert.match(css, /text-overflow: clip !important/);
+		assert.match(css, /\.rv-fit-stem[\s\S]*color: var\(--rv-urgency-accent, var\(--text-normal\)\) !important/);
+		assert.match(css, /\.is-note-map-side/);
+		assert.doesNotMatch(css, /body\.is-phone \.workspace-leaf-content\.is-note-map/);
+		const main = readFileSync('src/main.ts', 'utf8');
+		assert.match(main, /frontmatterFromMarkdown\(data\)/);
+		assert.match(main, /is-note-map-side/);
+		const visit = readFileSync('src/visit-display.ts', 'utf8');
+		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));
+		assert.match(arm, /templater-prompt-input/);
+		assert.doesNotMatch(arm, /setTimeout/);
 	});
 
 });

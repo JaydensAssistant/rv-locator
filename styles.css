@@ -5039,7 +5039,6 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li,
 
 body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
 body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input {
 	box-sizing: border-box;
 	height: 40px;
@@ -5386,6 +5385,12 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+}
+
+.rv-dashboard .rv-item,
+.rv-dashboard .rv-fit,
+.rv-dashboard .rv-fit-stem {
+	color: var(--rv-urgency-accent, var(--text-normal));
 }
 
 .rv-dash-status,
@@ -5795,39 +5800,50 @@ body.rv-center-visit-notes .rv-older-heading {
 	box-shadow: -8px 0 18px rgba(0, 0, 0, 0.16);
 }
 
-/* Earth and the address link mount the map in the note's own leaf. */
+/* Earth and the address link mount the map in the note's own leaf.
+   Stacked until the leaf itself is wide enough. Body is-phone is not set
+   when the tester only emulates the viewport width. */
 .workspace-leaf-content.is-note-map {
-	display: flex;
-	flex-flow: row wrap;
-	align-items: stretch;
+	display: grid !important;
+	grid-template-columns: minmax(0, 1fr);
+	grid-template-rows: auto minmax(0, 1fr) 14px minmax(120px, 42%);
 	height: 100%;
 	min-height: 0;
+	width: 100%;
 	overflow: hidden;
 }
 
 .workspace-leaf-content.is-note-map > .view-header {
-	flex: 1 0 100%;
-	order: 0;
+	grid-column: 1;
+	grid-row: 1;
+	width: 100%;
+	flex: 0 0 auto;
 }
 
 .workspace-leaf-content.is-note-map > .view-content {
-	order: 1;
-	flex: 1 1 0;
+	grid-column: 1;
+	grid-row: 2;
+	position: relative !important;
+	inset: auto !important;
+	width: auto !important;
+	height: auto !important;
+	max-width: 100%;
+	max-height: none;
 	min-width: 0;
 	min-height: 0;
-	width: auto;
-	max-width: none;
+	flex: unset !important;
 	overflow: auto;
 }
 
 .workspace-leaf-content.is-note-map > .rv-note-map-handle {
-	order: 2;
-	flex: 0 0 14px;
+	grid-column: 1;
+	grid-row: 3;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	width: 14px;
-	align-self: stretch;
+	width: 100%;
+	height: 14px;
+	min-width: 0;
 	position: relative;
 	z-index: 4;
 }
@@ -5835,59 +5851,72 @@ body.rv-center-visit-notes .rv-older-heading {
 .workspace-leaf-content.is-note-map > .rv-note-map-handle::before {
 	content: '';
 	display: block;
-	width: 4px;
-	height: 28px;
+	width: 28px;
+	height: 4px;
 	border-radius: 4px;
 	background: var(--text-faint);
 	box-shadow: none;
 }
 
 .workspace-leaf-content.is-note-map > .rv-note-map {
-	order: 3;
-	flex: 0 0 42%;
-	min-width: 160px;
-	min-height: 160px;
+	grid-column: 1;
+	grid-row: 4;
+	width: 100% !important;
+	height: auto !important;
+	min-width: 0;
+	min-height: 0;
 	display: flex;
 	flex-direction: column;
 	overflow: hidden;
-	box-shadow: -8px 0 18px rgba(0, 0, 0, 0.16);
+	box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.16);
 }
 
 .workspace-leaf-content.is-note-map > .rv-note-map .rv-map,
 .workspace-leaf-content.is-note-map > .rv-note-map .rv-map-stage,
 .workspace-leaf-content.is-note-map > .rv-note-map .rv-map-settle,
 .workspace-leaf-content.is-note-map > .rv-note-map .rv-map-pins {
+	position: relative;
 	flex: 1 1 auto;
 	min-height: 0;
 	height: 100%;
+	width: 100%;
 	overflow: hidden;
 }
 
-body.is-phone .workspace-leaf-content.is-note-map,
-body.is-mobile .workspace-leaf-content.is-note-map {
-	flex-direction: column;
-	flex-wrap: nowrap;
+.workspace-leaf-content.is-note-map.is-note-map-side {
+	grid-template-columns: minmax(0, 3fr) 14px minmax(0, 2fr);
+	grid-template-rows: auto minmax(0, 1fr);
 }
 
-body.is-phone .workspace-leaf-content.is-note-map > .rv-note-map,
-body.is-mobile .workspace-leaf-content.is-note-map > .rv-note-map {
-	flex: 0 0 42%;
-	width: 100%;
-	min-width: 0;
-	box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.16);
+.workspace-leaf-content.is-note-map.is-note-map-side > .view-header {
+	grid-column: 1 / -1;
+	grid-row: 1;
 }
 
-body.is-phone .workspace-leaf-content.is-note-map > .rv-note-map-handle,
-body.is-mobile .workspace-leaf-content.is-note-map > .rv-note-map-handle {
-	flex: 0 0 14px;
-	width: 100%;
-	height: 14px;
+.workspace-leaf-content.is-note-map.is-note-map-side > .view-content {
+	grid-column: 1;
+	grid-row: 2;
+	width: auto !important;
+	max-width: none;
 }
 
-body.is-phone .workspace-leaf-content.is-note-map > .rv-note-map-handle::before,
-body.is-mobile .workspace-leaf-content.is-note-map > .rv-note-map-handle::before {
-	width: 28px;
-	height: 4px;
+.workspace-leaf-content.is-note-map.is-note-map-side > .rv-note-map-handle {
+	grid-column: 2;
+	grid-row: 2;
+	width: 14px;
+	height: auto;
+}
+
+.workspace-leaf-content.is-note-map.is-note-map-side > .rv-note-map-handle::before {
+	width: 4px;
+	height: 28px;
+}
+
+.workspace-leaf-content.is-note-map.is-note-map-side > .rv-note-map {
+	grid-column: 3;
+	grid-row: 2;
+	width: auto !important;
+	box-shadow: -8px 0 18px rgba(0, 0, 0, 0.16);
 }
 
 .theme-dark .rv-hub-map,
@@ -6107,13 +6136,9 @@ button.rv-locator-urgency.is-ghost {
 }
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line,
-.markdown-preview-view p.rv-hub-owned > .rv-address-line,
 .markdown-rendered p.rv-hub-owned > .rv-hub-line,
-.markdown-rendered p.rv-hub-owned > .rv-address-line,
 .rv-dashboard p.rv-hub-owned > .rv-hub-line,
-.rv-dashboard p.rv-hub-owned > .rv-address-line,
-.el-p > p.rv-hub-owned > .rv-hub-line,
-.el-p > p.rv-hub-owned > .rv-address-line {
+.el-p > p.rv-hub-owned > .rv-hub-line {
 	display: flex !important;
 	flex-flow: row nowrap;
 	align-items: center;
@@ -6152,13 +6177,10 @@ button.rv-locator-urgency.is-ghost {
 
 .markdown-preview-view p.rv-hub-owned .rv-hub-chip,
 .markdown-preview-view p.rv-hub-owned input.rv-address-input:not([hidden]),
-.markdown-preview-view p.rv-hub-owned a.rv-address-link:not([hidden]),
 .markdown-rendered p.rv-hub-owned .rv-hub-chip,
 .markdown-rendered p.rv-hub-owned input.rv-address-input:not([hidden]),
-.markdown-rendered p.rv-hub-owned a.rv-address-link:not([hidden]),
 .rv-dashboard p.rv-hub-owned .rv-hub-chip,
-.rv-dashboard p.rv-hub-owned input.rv-address-input:not([hidden]),
-.rv-dashboard p.rv-hub-owned a.rv-address-link:not([hidden]) {
+.rv-dashboard p.rv-hub-owned input.rv-address-input:not([hidden]) {
 	display: block !important;
 	width: 100% !important;
 	max-width: none !important;
@@ -6169,6 +6191,23 @@ button.rv-locator-urgency.is-ghost {
 	text-overflow: ellipsis;
 }
 
+.markdown-preview-view p.rv-hub-owned a.rv-address-link:not([hidden]),
+.markdown-rendered p.rv-hub-owned a.rv-address-link:not([hidden]),
+.rv-dashboard p.rv-hub-owned a.rv-address-link:not([hidden]) {
+	display: block !important;
+	width: 100% !important;
+	max-width: none !important;
+	min-width: 0 !important;
+	box-sizing: border-box;
+	white-space: normal !important;
+	overflow-wrap: anywhere !important;
+	word-break: break-word !important;
+	overflow: hidden;
+	text-overflow: clip;
+	line-height: 1.25;
+	max-height: none;
+}
+
 input.rv-address-input[hidden],
 a.rv-address-link[hidden] {
 	display: none !important;
@@ -6177,13 +6216,30 @@ a.rv-address-link[hidden] {
 .rv-address-field > a.rv-address-link,
 p.rv-hub-owned a.rv-address-link {
 	display: block !important;
-	white-space: nowrap !important;
-	word-break: normal !important;
-	overflow-wrap: normal !important;
+	white-space: normal !important;
+	word-break: break-word !important;
+	overflow-wrap: anywhere !important;
 	overflow: hidden !important;
-	text-overflow: ellipsis !important;
+	text-overflow: clip !important;
 	line-height: 1.25;
-	max-height: 2em;
+	max-height: none;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line,
+.markdown-rendered p.rv-hub-owned > .rv-address-line {
+	grid-column: 1 / -1;
+	width: 100%;
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+	gap: 4px;
+	column-gap: 4px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
+	padding-left: 4px;
+	padding-right: 4px;
 }
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
@@ -6394,4 +6450,77 @@ button.rv-study-toggle {
 	min-height: 32px;
 	padding: 6px 10px;
 	box-sizing: border-box;
+}
+
+/*
+  Address row inside the readable-line-width callout. The link used to be
+  --rv-dash-plus (about 2.1em) with nowrap ellipsis, which painted "1 Dist…".
+  The field takes the rest of the callout. A long address wraps to a second line.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
+	--callout-padding: 4px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line,
+.markdown-rendered p.rv-hub-owned > .rv-address-line {
+	display: grid !important;
+	grid-template-columns: max-content minmax(0, 1fr) 28px !important;
+	grid-column: 1 / -1;
+	column-gap: 4px !important;
+	gap: 4px !important;
+	align-items: center;
+	width: 100% !important;
+	max-width: 100% !important;
+	min-width: 0 !important;
+	box-sizing: border-box;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line > .rv-address-field,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line input.rv-address-input,
+.markdown-preview-view p.rv-hub-owned .rv-address-line a.rv-address-link,
+.markdown-rendered p.rv-hub-owned .rv-address-line a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link {
+	display: block !important;
+	grid-column: auto;
+	width: 100% !important;
+	max-width: none !important;
+	min-width: 0 !important;
+	height: auto !important;
+	min-height: 0 !important;
+	max-height: none !important;
+	box-sizing: border-box;
+	white-space: normal !important;
+	overflow: visible !important;
+	overflow-wrap: anywhere !important;
+	word-break: break-word !important;
+	text-overflow: clip !important;
+	line-height: 1.25 !important;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line > a.rv-map-button,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > a.rv-map-button,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > a.rv-map-button {
+	flex: 0 0 28px !important;
+	width: 28px !important;
+	min-width: 28px !important;
+	max-width: 28px !important;
+	height: 28px !important;
+	justify-self: center;
+}
+
+.markdown-preview-view .rv-item,
+.markdown-rendered .rv-item,
+.rv-dashboard .rv-item,
+.markdown-preview-view .rv-fit,
+.markdown-rendered .rv-fit,
+.rv-dashboard .rv-fit,
+.markdown-preview-view .rv-fit-stem,
+.markdown-rendered .rv-fit-stem,
+.rv-dashboard .rv-fit-stem,
+.markdown-preview-view .rv-item-icon,
+.markdown-rendered .rv-item-icon,
+.rv-dashboard .rv-item-icon {
+	color: var(--rv-urgency-accent, var(--text-normal)) !important;
 }

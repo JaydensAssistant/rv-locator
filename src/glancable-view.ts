@@ -565,6 +565,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			urgencyButton.addClass('is-ghost');
 			urgencyButton.empty();
 			setIcon(urgencyButton, ghost);
+			pinBadgeStroke(urgencyButton);
 		}
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
@@ -890,13 +891,118 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
  * Band 0's inner ring stays a stroke.
  */
+/**
+ * Product of ancestor (and own) CSS `zoom` and transform scale.
+ * Chrome's used border-width is the specified width times that product,
+ * so a declared 2px paints at 1.01587px when an ancestor is zoomed by ~0.508.
+ */
+export function paintedScale(el: Element): number {
+	const zoomed = el as Element & { currentCSSZoom?: number };
+	if (typeof zoomed.currentCSSZoom === 'number' && zoomed.currentCSSZoom > 0) {
+		return zoomed.currentCSSZoom * ancestorTransformScale(el);
+	}
+	let scale = 1;
+	const view = el.ownerDocument.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return 1;
+	let node: Element | null = el;
+	while (node) {
+		try {
+			const cs = view.getComputedStyle(node);
+			const zoom = Number.parseFloat(cs.getPropertyValue('zoom') || (cs as CSSStyleDeclaration & { zoom?: string }).zoom || '');
+			if (Number.isFinite(zoom) && zoom > 0) scale *= zoom;
+			scale *= matrixScale(cs.transform);
+		} catch {
+			/* jsdom may omit zoom. */
+		}
+		node = node.parentElement;
+	}
+	return scale > 0 ? scale : 1;
+}
+
+function ancestorTransformScale(el: Element): number {
+	let scale = 1;
+	const view = el.ownerDocument.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return 1;
+	let node: Element | null = el;
+	while (node) {
+		try {
+			scale *= matrixScale(view.getComputedStyle(node).transform);
+		} catch {
+			/* ignore */
+		}
+		node = node.parentElement;
+	}
+	return scale > 0 ? scale : 1;
+}
+
+function matrixScale(transform: string): number {
+	if (!transform || transform === 'none') return 1;
+	const match = /matrix\(\s*([-\d.eE]+)[,\s]+([-\d.eE]+)/.exec(transform);
+	if (!match) return 1;
+	const sx = Math.hypot(Number(match[1]), Number(match[2]));
+	return Number.isFinite(sx) && sx > 0 ? sx : 1;
+}
+
+/**
+ * Specified width whose used value is 2px.
+ * A used width of 1.01587px means the declared 2px was scaled by ~0.508,
+ * so the next specified width is 4/used.
+ */
+export function correctedStrokePx(usedPx: number): string {
+	if (!Number.isFinite(usedPx) || usedPx <= 0.01 || Math.abs(usedPx - 2) <= 0.05) return '2px';
+	const next = 4 / usedPx;
+	if (!Number.isFinite(next) || next <= 0) return '2px';
+	return `${Math.round(next * 1000) / 1000}px`;
+}
+
+/** Keep the used badge ring at 2 CSS px. Ghosts stay dashed. */
+export function pinBadgeStroke(host: HTMLElement): void {
+	const px = badgeStrokePx(host);
+	applyBadgeStroke(host, px);
+	const view = host.ownerDocument.defaultView;
+	if (!view || host.dataset.rvStrokeFrame === '1') return;
+	host.dataset.rvStrokeFrame = '1';
+	const again = (): void => {
+		host.dataset.rvStrokeFrame = '';
+		if (!host.isConnected) return;
+		applyBadgeStroke(host, badgeStrokePx(host));
+	};
+	if (typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(again);
+}
+
+function badgeStrokePx(host: HTMLElement): string {
+	const scale = paintedScale(host);
+	// Ancestor zoom/transform scales the used border. A declared 2px is used as
+	// 2×scale (1.01587px at zoom ≈ 0.508). Specify 2/scale so the used width is 2px.
+	if (Number.isFinite(scale) && scale > 0 && Math.abs(scale - 1) > 0.02) {
+		return `${Math.round((2 / scale) * 1000) / 1000}px`;
+	}
+	const view = host.ownerDocument.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function' || !host.isConnected) return '2px';
+	host.style.setProperty('border-width', '2px', 'important');
+	const used = Number.parseFloat(view.getComputedStyle(host).borderTopWidth);
+	return correctedStrokePx(used);
+}
+
+function applyBadgeStroke(host: HTMLElement, px: string): void {
+	const ghost = host.classList.contains('is-ghost');
+	host.style.setProperty('border-style', ghost ? 'dashed' : 'solid', 'important');
+	host.style.setProperty('border-width', px, 'important');
+	host.querySelectorAll('circle.is-ring').forEach((node) => {
+		if (!(node instanceof Element) || !('style' in node)) return;
+		const ring = node as Element & { style: CSSStyleDeclaration };
+		ring.style.setProperty('stroke-width', px, 'important');
+		ring.setAttribute('vector-effect', 'non-scaling-stroke');
+		ring.style.setProperty('vector-effect', 'non-scaling-stroke');
+	});
+}
+
 export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	const shapes = urgencyBangShapes(glyphs);
-	if (host instanceof HTMLElement) {
-		host.style.setProperty('border-width', '2px', 'important');
-		host.style.setProperty('border-style', 'solid', 'important');
+	if (shapes.length === 0) {
+		pinBadgeStroke(host);
+		return;
 	}
-	if (shapes.length === 0) return;
 	const svg = makeSvg(host, 'svg', {
 		viewBox: '0 0 28 28',
 		width: '28',
@@ -924,6 +1030,7 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 			node.style.setProperty('fill', 'currentColor');
 		}
 	}
+	pinBadgeStroke(host);
 }
 
 function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle', attr: Record<string, string>, cls?: string): SVGElement {

@@ -929,6 +929,48 @@ export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
 	tick();
 }
 
+/**
+ * Focus the first visit textarea after Templater finishes, including the
+ * Householder name prompt. Nothing is on a clock: the prompt blocks focus,
+ * and a textarea that appears on the file's first render is focused whenever
+ * the title (or the body) takes the caret. The watcher stays until the caller
+ * stops it, so a later preview remount can still find the new textarea.
+ */
+export function armVisitNoteFocus(root: HTMLElement): () => void {
+	let stop = false;
+	const doc = root.ownerDocument;
+	const promptOpen = (): boolean => doc.querySelector('input.templater-prompt-input') != null;
+	const visitArea = (): HTMLTextAreaElement | null => {
+		const found = root.querySelector('textarea');
+		if (!isVisitTextArea(found) || !found.isConnected) return null;
+		return found;
+	};
+	const focusArea = (): boolean => {
+		if (stop || !root.isConnected || promptOpen()) return false;
+		const area = visitArea();
+		if (!area) return false;
+		const active = doc.activeElement;
+		if (active === area) return true;
+		if (active && !isFocusThief(active)) return false;
+		placeVisitNoteFocus(root, '', 0);
+		return doc.activeElement === area || doc.activeElement === visitArea();
+	};
+	const observer = new MutationObserver(() => { focusArea(); });
+	observer.observe(root, { childList: true, subtree: true });
+	const docObserver = new MutationObserver(() => { focusArea(); });
+	const watch = doc.documentElement ?? doc.body;
+	if (watch) docObserver.observe(watch, { childList: true, subtree: true });
+	const onFocus = (): void => { focusArea(); };
+	doc.addEventListener('focusin', onFocus, true);
+	focusArea();
+	return () => {
+		stop = true;
+		observer.disconnect();
+		docObserver.disconnect();
+		doc.removeEventListener('focusin', onFocus, true);
+	};
+}
+
 /** Focus the stamp's notes box, or the first visit textarea when the stamp has not painted yet. */
 export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: number): HTMLTextAreaElement | null {
 	const matched = stamp ? notesBoxAfterStamp(root, stamp, ordinal) : null;

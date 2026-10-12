@@ -1,6 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
-import { mountUrgencyGlyph } from './glancable-view';
+import { mountUrgencyGlyph, pinBadgeStroke } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
@@ -1018,6 +1018,7 @@ export class RvMapView extends ItemView {
 			urgency.addClass('is-ghost');
 			urgency.empty();
 			setIcon(urgency, pin.stateIcon);
+			pinBadgeStroke(urgency);
 		}
 		urgency.addEventListener('click', (event) => {
 			event.preventDefault();
