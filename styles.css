@@ -2973,9 +2973,22 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	pointer-events: none;
 }
 
+.rv-locator-modal button.rv-suggest-chevron,
+button.rv-suggest-chevron {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-muted);
+}
+
+.rv-locator-modal button.rv-suggest-chevron > svg,
 .rv-suggest-chevron svg {
-	width: 1em;
-	height: 1em;
+	display: block;
+	width: 16px;
+	height: 16px;
+	flex: 0 0 auto;
+	stroke: currentColor;
+	fill: none;
 }
 
 .rv-suggest-panel {

@@ -1,5 +1,27 @@
-import { setIcon } from 'obsidian';
 import { mountClosedTitle } from './title-fit';
+
+const CHEVRON_DOWN = 'm6 9 6 6 6-6';
+
+/** Lucide chevron-down, drawn here so the modal button is not an empty square. */
+function paintChevron(button: HTMLElement): void {
+	const doc = button.ownerDocument;
+	const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+	svg.setAttribute('class', 'svg-icon lucide-chevron-down');
+	svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+	svg.setAttribute('width', '16');
+	svg.setAttribute('height', '16');
+	svg.setAttribute('viewBox', '0 0 24 24');
+	svg.setAttribute('fill', 'none');
+	svg.setAttribute('stroke', 'currentColor');
+	svg.setAttribute('stroke-width', '2');
+	svg.setAttribute('stroke-linecap', 'round');
+	svg.setAttribute('stroke-linejoin', 'round');
+	svg.setAttribute('aria-hidden', 'true');
+	const path = doc.createElementNS('http://www.w3.org/2000/svg', 'path');
+	path.setAttribute('d', CHEVRON_DOWN);
+	svg.appendChild(path);
+	button.replaceChildren(svg);
+}
 
 /** Placeholder row while an address lookup is in flight. Not a choice. */
 export const SUGGEST_PENDING = '\u0000pending';
@@ -62,7 +84,7 @@ export function mountAlwaysChevron(
 	button.type = 'button';
 	button.className = 'rv-suggest-chevron';
 	button.setAttribute('aria-label', 'Show suggestions');
-	setIcon(button, 'chevron-down');
+	paintChevron(button);
 	input.insertAdjacentElement('afterend', button);
 	const panel = input.ownerDocument.createElement('div');
 	panel.className = 'rv-suggest-panel';

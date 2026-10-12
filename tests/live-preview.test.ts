@@ -212,4 +212,72 @@ describe('live preview older visits', () => {
 		onLiveVisitHost(null);
 		view.destroy();
 	});
+
+	it('leaves a moved live-preview caret alone until the card is actually rebuilt', async () => {
+		const doc = [
+			'> [!note]- Attempt Log',
+			'> - Sun, 9:05am — Oct 11, 2026 — success with Mom',
+			'',
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+		].join('\n');
+		const read = (key: string): string => (key === 'sVisit1Notes' ? 'from the hub' : '');
+		onLiveVisitHost((root) => {
+			mountRawVisitNotes(root, read, () => {});
+		});
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+		const area = view.dom.querySelector('textarea.rv-native-notes-area');
+		assert.ok(area instanceof window.HTMLTextAreaElement);
+		const typed = 'from the hub';
+		area.focus();
+		area.value = typed;
+		area.setSelectionRange(4, 4);
+		area.dispatchEvent(new window.Event('input', { bubbles: true }));
+		area.setSelectionRange(2, 2);
+		area.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
+		const card = area.closest('.rv-lp-visit');
+		assert.ok(card instanceof window.HTMLElement);
+		mountRawVisitNotes(card, read, () => {});
+		const same = card.querySelector('textarea.rv-native-notes-area');
+		assert.equal(same, area);
+		assert.equal(area.selectionStart, 2);
+		assert.equal(area.selectionEnd, 2);
+		const needle = '`INPUT[textArea:sVisit1Notes]`';
+		const at = view.state.doc.toString().lastIndexOf(needle);
+		assert.ok(at >= 0);
+		view.dispatch({
+			changes: { from: at + needle.length, to: at + needle.length, insert: ' ' },
+			selection: { anchor: 0 },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const skipped = view.dom.querySelector('textarea.rv-native-notes-area');
+		assert.equal(skipped, area);
+		assert.equal(area.selectionStart, 2);
+		assert.equal(area.selectionEnd, 2);
+		view.dispatch({
+			effects: refreshVisitPreviewEffect.of(null),
+			selection: { anchor: 0 },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const rebuilt = view.dom.querySelector('textarea.rv-native-notes-area');
+		assert.ok(rebuilt instanceof window.HTMLTextAreaElement);
+		assert.notEqual(rebuilt, area);
+		assert.equal(rebuilt.value, typed);
+		assert.equal(rebuilt.selectionStart, 2);
+		assert.equal(rebuilt.selectionEnd, 2);
+		assert.notEqual(rebuilt.selectionStart, rebuilt.value.length);
+		onLiveVisitHost(null);
+		view.destroy();
+	});
 });

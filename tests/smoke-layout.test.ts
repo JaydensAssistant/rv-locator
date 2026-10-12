@@ -9,6 +9,7 @@ import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
 import { mountRawVisitNotes } from '../src/visit-notes-field';
+import { mountAlwaysChevron } from '../src/suggest-field';
 import { armVisitNoteFocus, placeVisitNoteFocus, restoreHeldNote } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
@@ -1369,13 +1370,25 @@ describe('smoke layout', () => {
 		third.value = 'box3 typed';
 		third.setSelectionRange(4, 4);
 		third.dispatchEvent(new window.Event('input', { bubbles: true }));
+		// A click inside the debounce window moves the caret after the save was scheduled.
+		third.setSelectionRange(2, 2);
+		third.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
+		mount(preview);
+		const held = boxes[2]?.querySelector('textarea.rv-native-notes-area');
+		assert.equal(held, third);
+		assert.equal(third.selectionStart, 2);
+		assert.equal(third.selectionEnd, 2);
+		assert.equal(third.value, 'box3 typed');
+		third.remove();
 		mount(preview);
 		const restored = boxes[2]?.querySelector('textarea.rv-native-notes-area');
 		assert.ok(restored instanceof window.HTMLTextAreaElement);
+		assert.notEqual(restored, third);
 		assert.equal(preview.ownerDocument.activeElement, restored);
-		assert.equal(restored.selectionStart, 4);
-		assert.equal(restored.selectionEnd, 4);
+		assert.equal(restored.selectionStart, 2);
+		assert.equal(restored.selectionEnd, 2);
 		assert.equal(restored.value, 'box3 typed');
+		assert.notEqual(restored.selectionStart, restored.value.length);
 		return new Promise<void>((resolve) => {
 			setTimeout(() => {
 				assert.deepEqual(writes, [
@@ -1383,10 +1396,36 @@ describe('smoke layout', () => {
 					['sVisit3Notes', 'box3 typed'],
 				]);
 				assert.equal(front.get('sVisit5Notes'), 'newest');
+				assert.equal(restored.selectionStart, 2);
+				assert.equal(restored.selectionEnd, 2);
 				preview.remove();
 				resolve();
 			}, 450);
 		});
+	});
+
+	it('draws a centered chevron on the companion and literature dropdown', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		const suggest = readFileSync('src/suggest-field.ts', 'utf8');
+		assert.equal(suggest.includes('setIcon'), false);
+		assert.match(suggest, /m6 9 6 6 6-6/);
+		assert.match(css, /\.rv-locator-modal button\.rv-suggest-chevron > svg,\s*\.rv-suggest-chevron svg \{\s*display:\s*block;\s*width:\s*16px;\s*height:\s*16px;/);
+		assert.match(css, /\.rv-locator-modal button\.rv-suggest-chevron,\s*button\.rv-suggest-chevron \{\s*display:\s*inline-flex;\s*align-items:\s*center;\s*justify-content:\s*center;/);
+		const frame = window.document.createElement('div');
+		frame.className = 'rv-locator-modal';
+		const input = window.document.createElement('input');
+		frame.appendChild(input);
+		window.document.body.appendChild(frame);
+		mountAlwaysChevron(input, () => ['Mom'], () => {});
+		const button = frame.querySelector('button.rv-suggest-chevron');
+		assert.ok(button instanceof window.HTMLButtonElement);
+		assert.equal(button.getAttribute('aria-label'), 'Show suggestions');
+		assert.equal(button.querySelector('path')?.getAttribute('d'), 'm6 9 6 6 6-6');
+		const svg = button.querySelector('svg');
+		assert.equal(svg?.getAttribute('width'), '16');
+		assert.equal(svg?.getAttribute('height'), '16');
+		assert.equal(button.childElementCount, 1);
+		frame.remove();
 	});
 
 });
