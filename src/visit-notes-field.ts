@@ -507,12 +507,14 @@ function wireNative(
 		const holder = already.parentElement;
 		pinKey(already, isElement(holder) ? holder : host, key, path);
 		syncNative(already, path, key, readValue);
+		restoreReusedCaret(already, path, key);
 		return;
 	}
 	const existing = dropForeignArea(findNative(host, key, path), path);
 	if (isTextArea(existing)) {
 		pinKey(existing, host, key, path);
 		syncNative(existing, path, key, readValue);
+		restoreReusedCaret(existing, path, key);
 		return;
 	}
 	if (findNative(root, key, path) || foreignWriter(host)) return;
@@ -524,11 +526,18 @@ function wireNative(
 	area.value = desiredValue(path, key, readValue);
 	area.setAttribute('aria-label', 'Visit notes');
 	watchCaretMoves(area);
+	const keepInBox = (evt: Event): void => {
+		evt.stopPropagation();
+	};
+	area.addEventListener('mousedown', keepInBox);
+	area.addEventListener('pointerdown', keepInBox);
+	area.addEventListener('keydown', keepInBox);
 	area.addEventListener('focus', (evt) => {
 		if (!evt.isTrusted && liveDraft(path, key)?.typed !== true) return;
 		holdVisitNote(area, 2500, true);
 	});
-	area.addEventListener('input', () => {
+	area.addEventListener('input', (evt) => {
+		evt.stopPropagation();
 		const writePath = area.dataset.rvNoteFile || '';
 		const writeKey = area.dataset.rvNoteKey || key;
 		if (writePath !== path) return;
@@ -536,7 +545,7 @@ function wireNative(
 		const typed = area.value;
 		rememberDraft(area, writePath, writeKey);
 		markOwnNoteWrite(writePath);
-		holdVisitNote(area, 2500);
+		holdVisitNote(area, 2500, true);
 		scheduleNoteWrite(area, writePath, writeKey, typed, writeValue);
 		fitNativeNotes(area);
 	});
@@ -546,6 +555,16 @@ function wireNative(
 	suppressCaret = true;
 	area.value = saved?.value ?? readValue(key);
 	suppressCaret = false;
+	placeRebuiltCaret(area, path, key);
+}
+
+/**
+ * Obsidian's reading rebuild detaches the same textarea and leaves focus on the body.
+ * Put the caret back only for the key the user was typing. A fresh open has no typed draft.
+ */
+function restoreReusedCaret(area: HTMLTextAreaElement, path: string, key: string): void {
+	if (area.ownerDocument.activeElement === area) return;
+	if (editingElsewhere(area.ownerDocument.activeElement)) return;
 	placeRebuiltCaret(area, path, key);
 }
 

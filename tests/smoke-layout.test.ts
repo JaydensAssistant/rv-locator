@@ -7,7 +7,7 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, readingRefreshBlocked, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, readingRefreshBlocked, readingSurfacesForPath, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
 import { armVisitNoteFocus, holdVisitNote, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
@@ -1806,6 +1806,112 @@ describe('smoke layout', () => {
 			assert.equal(readingRefreshBlocked(preview, dale.map((stamp) => `##### ${stamp}`).join('\n'), 'Dale.md', started + 400), false);
 		} finally {
 			preview.remove();
+		}
+	});
+
+	it('frames the visible tab when two leaves show the same note, and still frames every leaf', () => {
+		const leaf = (file: string, stamp: string): { path: string; preview: HTMLElement } => {
+			const preview = window.document.createElement('div');
+			preview.className = 'markdown-preview-view markdown-reading-view';
+			const sizer = window.document.createElement('div');
+			sizer.className = 'markdown-preview-sizer';
+			const heading = window.document.createElement('div');
+			heading.className = 'markdown-preview-section';
+			heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
+			const note = window.document.createElement('div');
+			note.className = 'markdown-preview-section';
+			note.innerHTML = '<div class="el-p"><p><code>INPUT[textArea:sVisit1Notes]</code></p></div>';
+			sizer.append(heading, note);
+			preview.appendChild(sizer);
+			window.document.body.appendChild(preview);
+			return { path: file, preview };
+		};
+		const frame = (preview: HTMLElement): void => {
+			decorateVisitControls(preview, () => null, () => {});
+			rehoistVisitNotes(preview);
+		};
+		const back = leaf('Pat.md', 'Thu, 2:10pm — Sep 17, 2026');
+		const front = leaf('Pat.md', 'Thu, 2:10pm — Sep 17, 2026');
+		const other = leaf('Dale.md', 'Fri, 3:10pm — Sep 18, 2026');
+		try {
+			const section = front.preview.querySelector('.markdown-preview-section');
+			assert.ok(section instanceof window.HTMLElement);
+			const visible = readingSurfacesForPath([back, front, other], 'Pat.md', section);
+			assert.deepEqual(visible, [front.preview]);
+			frame(visible[0] ?? front.preview);
+			assert.equal(front.preview.querySelectorAll('.rv-visit-note-box').length, 1);
+			assert.equal(back.preview.querySelectorAll('.rv-visit-note-box').length, 0);
+			const every = readingSurfacesForPath([back, front, other], 'Pat.md');
+			assert.deepEqual(every, [back.preview, front.preview]);
+			for (const preview of every) frame(preview);
+			assert.equal(back.preview.querySelectorAll('.rv-visit-note-box').length, 1);
+			assert.equal(front.preview.querySelectorAll('.rv-visit-note-box').length, 1);
+			assert.equal(other.preview.querySelectorAll('.rv-visit-note-box').length, 0);
+			const main = readFileSync('src/main.ts', 'utf8');
+			assert.match(main, /readingSurfacesForPath\(this\.readingLeaves\(\), path, fallback\)/);
+		} finally {
+			back.preview.remove();
+			front.preview.remove();
+			other.preview.remove();
+		}
+	});
+
+	it('puts the caret back on a reused textarea after the preview blurs it, and a click stays in the box', () => {
+		clearVisitNoteCaches();
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view cm-editor';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		const heading = window.document.createElement('div');
+		heading.className = 'markdown-preview-section';
+		heading.innerHTML = '<div class="el-h5"><h5>Thu, 2:10pm — Sep 17, 2026</h5></div>';
+		const note = window.document.createElement('div');
+		note.className = 'markdown-preview-section';
+		note.innerHTML = '<div class="el-p"><p><code>INPUT[textArea:sVisit1Notes]</code></p></div>';
+		sizer.append(heading, note);
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		const reached: string[] = [];
+		for (const type of ['mousedown', 'pointerdown', 'keydown', 'input'] as const) {
+			preview.addEventListener(type, () => reached.push(type));
+		}
+		const mount = (): void => {
+			decorateVisitControls(preview, () => null, () => {});
+			rehoistVisitNotes(preview);
+			setActiveVisitNote('Pat.md');
+			mountRawVisitNotes(preview, () => 'pat', () => {}, ['sVisit1Notes'], 'Pat.md');
+		};
+		try {
+			mount();
+			const area = preview.querySelector('textarea.rv-native-notes-area');
+			assert.ok(area instanceof window.HTMLTextAreaElement);
+			assert.notEqual(window.document.activeElement, area);
+			area.focus();
+			area.value = 'pat note';
+			area.setSelectionRange(3, 3);
+			area.dispatchEvent(new window.Event('input', { bubbles: true }));
+			area.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
+			area.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
+			area.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+			area.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key: 'n' }));
+			assert.deepEqual(reached, []);
+			area.blur();
+			assert.notEqual(window.document.activeElement, area);
+			mount();
+			const reused = preview.querySelector('textarea.rv-native-notes-area');
+			assert.equal(reused, area);
+			assert.equal(window.document.activeElement, area);
+			assert.equal(area.selectionStart, 3);
+			assert.equal(area.selectionEnd, 3);
+			clearVisitNoteCaches();
+			area.blur();
+			mount();
+			const fresh = preview.querySelector('textarea.rv-native-notes-area');
+			assert.ok(fresh instanceof window.HTMLTextAreaElement);
+			assert.notEqual(window.document.activeElement, fresh);
+		} finally {
+			preview.remove();
+			clearVisitNoteCaches();
 		}
 	});
 

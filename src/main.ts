@@ -22,7 +22,7 @@ import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickMod
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
-import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, readingRefreshBlocked, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, readingRefreshBlocked, readingSurfacesForPath, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -325,7 +325,8 @@ export default class RVLocatorPlugin extends Plugin {
 				window.setTimeout(() => {
 					if (this.unloaded) return;
 					const shown = (element.isConnected ? this.pathForSurface(element) : '') || path;
-					const live = this.markdownSurface(shown);
+					const own = element.isConnected ? element.closest('.markdown-preview-view, .markdown-reading-view') : null;
+					const live = own instanceof HTMLElement ? own : this.markdownSurface(shown);
 					if (live) fitNotesBoxes(live);
 					else if (element.isConnected) fitNotesBoxes(element);
 					this.refreshVisitCards(shown, element.isConnected ? element : undefined, delay === lastDelay, delay >= 250);
@@ -623,9 +624,7 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const delay of NOTES_FIT_DELAYS_MS) {
 			window.setTimeout(() => {
 				if (this.unloaded) return;
-				const surface = this.markdownSurface(path);
-				if (!surface) return;
-				this.refreshVisitCards(path, surface, false, true);
+				this.refreshVisitCards(path, undefined, false, true);
 			}, delay);
 		}
 	}
@@ -664,11 +663,14 @@ export default class RVLocatorPlugin extends Plugin {
 	 */
 	private refreshVisitCards(path: string, fallback?: HTMLElement, chrome = false, notesFallback = false): void {
 		if (this.unloaded || !path) return;
-		const hinted = this.markdownSurface(path) ?? (fallback?.isConnected ? fallback : null);
-		if (!hinted) return;
-		const shown = this.pathForSurface(hinted) || path;
-		const surface = this.markdownSurface(shown) ?? hinted;
-		if (!surface) return;
+		const surfaces = readingSurfacesForPath(this.readingLeaves(), path, fallback);
+		if (surfaces.length === 0 && fallback?.isConnected) surfaces.push(fallback);
+		for (const surface of surfaces) this.refreshVisitSurface(path, surface, chrome, notesFallback);
+	}
+
+	private refreshVisitSurface(path: string, surface: HTMLElement, chrome: boolean, notesFallback: boolean): void {
+		const shown = this.pathForSurface(surface) || path;
+		if (shown !== path) return;
 		const body = this.noteBodies.get(shown) ?? '';
 		if (readingRefreshBlocked(surface, body, shown)) return;
 		surface.dataset.rvNoteFile = shown;
@@ -738,14 +740,19 @@ export default class RVLocatorPlugin extends Plugin {
 		releaseClosedVisitNotes(open);
 	}
 
-	private markdownSurface(path: string): HTMLElement | null {
+	private readingLeaves(): { path: string; preview: HTMLElement }[] {
+		const leaves: { path: string; preview: HTMLElement }[] = [];
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
-			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
+			if (!(view instanceof MarkdownView) || !view.file) continue;
 			const preview = view.containerEl.querySelector('.markdown-preview-view, .markdown-reading-view');
-			if (preview instanceof HTMLElement) return preview;
+			if (preview instanceof HTMLElement) leaves.push({ path: view.file.path, preview });
 		}
-		return null;
+		return leaves;
+	}
+
+	private markdownSurface(path: string): HTMLElement | null {
+		return this.readingLeaves().find((leaf) => leaf.path === path)?.preview ?? null;
 	}
 
 	private pathForSurface(surface: HTMLElement): string {

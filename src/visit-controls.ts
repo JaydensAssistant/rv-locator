@@ -754,6 +754,23 @@ export function readingDomIsStale(root: HTMLElement, markdown: string): boolean 
 const READING_STALE_BLOCK_MS = 400;
 
 /**
+ * The preview to decorate for `path`.
+ * A passed section from the visible tab wins over the first leaf that has the file.
+ * With no passed element, every leaf showing `path` is decorated.
+ */
+export function readingSurfacesForPath(
+	leaves: ReadonlyArray<{ path: string; preview: HTMLElement }>,
+	path: string,
+	passed?: HTMLElement | null,
+): HTMLElement[] {
+	if (passed?.isConnected) {
+		const owner = leaves.find((leaf) => leaf.preview === passed || leaf.preview.contains(passed) || passed.contains(leaf.preview));
+		if (owner?.path === path) return [owner.preview];
+	}
+	return leaves.filter((leaf) => leaf.path === path && leaf.preview.isConnected).map((leaf) => leaf.preview);
+}
+
+/**
  * True only while the preview still shows a different note.
  * A matching file proceeds immediately. A mismatch stops blocking after one bounded wait.
  */
