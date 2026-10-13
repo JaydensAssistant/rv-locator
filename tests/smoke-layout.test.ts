@@ -287,7 +287,10 @@ describe('smoke layout', () => {
 		decorateVisitControls(empty, () => null, () => {});
 		const ghost = empty.querySelector('.rv-item-strip');
 		assert.equal(ghost?.classList.contains('is-ghost'), true);
-		assert.equal(ghost?.childElementCount, 0);
+		assert.equal(ghost?.querySelectorAll('.rv-item.is-placeholder').length, 3);
+		assert.match(ghost?.textContent ?? '', /Literature/);
+		assert.match(ghost?.textContent ?? '', /Video/);
+		assert.match(ghost?.textContent ?? '', /Study/);
 		assert.equal(empty.querySelector('p')?.textContent, 'Nobody answered.');
 		assert.equal(empty.querySelector('.rv-visit-note-box'), null);
 
@@ -305,8 +308,9 @@ describe('smoke layout', () => {
 		assert.match(css, /\.theme-dark textarea\.rv-native-notes-area/);
 		assert.match(css, /h5\.rv-visit-stamp[\s\S]*margin-bottom:\s*0/);
 		assert.match(css, /padding:\s*0 12px/);
-		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
-		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*0/);
+		assert.doesNotMatch(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*flex !important/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*24px !important/);
 	});
 
 	it('keeps an empty visit strip in the tree and collapses it', () => {
@@ -317,7 +321,7 @@ describe('smoke layout', () => {
 		assert.equal(strip?.classList.contains('is-ghost'), true);
 		assert.equal(strip?.previousElementSibling?.tagName, 'H5');
 		assert.equal(root.querySelector('.rv-visit-note-box'), null);
-		assert.equal(strip?.childElementCount, 0);
+		assert.equal(strip?.querySelectorAll('.is-placeholder').length, 3);
 	});
 
 	it('measures a visit strip from the parent content width, not the padded preview', () => {
@@ -1188,6 +1192,30 @@ describe('smoke layout', () => {
 		assert.ok(pop);
 		assert.match(pop?.textContent ?? '', /Enjoy Life Forever|Why Study the Bible|How Can the Bible/);
 		pop?.remove();
+	});
+
+	it('keeps every strip icon when the titles do not fit', () => {
+		const root = visitRoot(LONG, 'Talked.', 'Log');
+		decorateVisitControls(root, () => null, () => {});
+		const strip = root.querySelector('.rv-item-strip');
+		assert.ok(strip instanceof window.HTMLElement);
+		const chips = () => Array.from(strip.querySelectorAll(':scope > .rv-item:not(.rv-item-more)'));
+		Object.defineProperty(strip, 'clientWidth', { configurable: true, get: () => 100 });
+		Object.defineProperty(strip, 'scrollWidth', {
+			configurable: true,
+			get: () => {
+				const visible = chips().filter((chip) => !chip.hasAttribute('hidden'));
+				const textShown = visible.some((chip) => !chip.classList.contains('is-icon-only'));
+				return textShown ? 400 : visible.length * 16;
+			},
+		});
+		refitItemStrip(strip);
+		assert.equal(strip.querySelector('.rv-item-more'), null);
+		assert.equal(chips().length, 4);
+		for (const chip of chips()) {
+			assert.equal(chip.hasAttribute('hidden'), false);
+			assert.equal(chip.classList.contains('is-icon-only'), true);
+		}
 	});
 
 	it('corrects a zoomed badge stroke back to 2px and keeps ghosts dashed', () => {

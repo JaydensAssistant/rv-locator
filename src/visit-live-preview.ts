@@ -1,7 +1,7 @@
 import { Prec, RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { coveredCampaignFor, stampDateTime } from './schedule';
-import { paintLiveVisitHeading, publisherForVisit, visitHasStripItems } from './visit-controls';
+import { paintLiveVisitHeading, publisherForVisit } from './visit-controls';
 import { mountHeadingChevron, visitStampLine } from './visit-display';
 import { attachVisitNoteArea } from './visit-notes-field';
 import { visitNoteValue } from './visit-notes-store';
@@ -271,7 +271,9 @@ export function collapseVisitGapLines(root: ParentNode): void {
 			&& node.querySelector('.rv-lp-stamp, .rv-lp-notes, .rv-visit-notes-heading, textarea, .cm-widget') == null;
 		const previous = node.previousElementSibling;
 		const afterNote = previous instanceof HTMLElement && (
-			previous.classList.contains('rv-lp-notes') || previous.querySelector('.rv-lp-notes, textarea.rv-native-notes-area') != null
+			previous.classList.contains('rv-lp-notes')
+			|| previous.classList.contains('rv-lp-notes-heading')
+			|| previous.querySelector('.rv-lp-notes, textarea.rv-native-notes-area, .rv-visit-notes-heading') != null
 		);
 		node.classList.toggle('rv-lp-gap', empty && afterNote);
 	});
@@ -595,7 +597,8 @@ export function buildVisitDecorations(
 			if (when) seenStamps.set(when.getTime(), newestIndex + 1);
 			const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
 			const raw = line.text.replace(/^(?:###|#####)\s+/, '').trim();
-			lastStrip = visitHasStripItems(raw, covered);
+			// A stamp always paints a strip, including the muted ghost on an empty visit.
+			lastStrip = when != null;
 			// A widget built while the line is display:none stays an empty
 			// contenteditable span after the fold opens. Mount it only once
 			// the line is visible, so the tile, time, pill, and strip are drawn.

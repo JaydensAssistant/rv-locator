@@ -427,8 +427,11 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 		}
 		match = piece.exec(source);
 	}
-	if (items.length === 0) strip.classList.add('is-ghost');
-	else strip.classList.remove('is-ghost');
+	if (items.length === 0) {
+		paintGhostPlaceholders(strip);
+		return;
+	}
+	strip.classList.remove('is-ghost');
 	const campaign = items.filter((item) => item.campaign);
 	const rest = items.filter((item) => !item.campaign);
 	for (const item of [...campaign, ...rest]) paintStripChip(strip, item);
@@ -454,10 +457,36 @@ export function fillItemStrip(strip: HTMLElement, source: string, covered: strin
 		}
 		match = piece.exec(source);
 	}
-	if (items.length === 0) strip.classList.add('is-ghost');
-	else strip.classList.remove('is-ghost');
+	if (items.length === 0) {
+		paintGhostPlaceholders(strip);
+		return;
+	}
+	strip.classList.remove('is-ghost');
 	for (const item of [...items.filter((item) => item.campaign), ...items.filter((item) => !item.campaign)]) {
 		paintStripChip(strip, item);
+	}
+}
+
+/** Muted stand-ins for literature, video, and study when a visit shared nothing. */
+function paintGhostPlaceholders(strip: HTMLElement): void {
+	strip.classList.add('is-ghost');
+	const doc = strip.ownerDocument;
+	const slots = [
+		{ icon: 'book-open', label: 'Literature' },
+		{ icon: 'clapperboard', label: 'Video' },
+		{ icon: 'book-marked', label: 'Study' },
+	];
+	for (const slot of slots) {
+		const chip = doc.createElement('span');
+		chip.className = 'rv-item is-placeholder';
+		const icon = doc.createElement('span');
+		icon.className = 'rv-item-icon';
+		setIcon(icon, slot.icon);
+		const text = doc.createElement('span');
+		text.className = 'rv-ghost-label';
+		text.textContent = slot.label;
+		chip.append(icon, text);
+		strip.appendChild(chip);
 	}
 }
 
@@ -513,14 +542,26 @@ export function stripContentBudget(strip: HTMLElement): number {
 }
 
 /** One row. Campaign stays. Extra chips become a +n button once the row is wider than its box. */
+function setChipIconOnly(chip: HTMLElement, iconOnly: boolean): void {
+	chip.classList.toggle('is-icon-only', iconOnly);
+	const text = chip.querySelector(':scope > .rv-fit, :scope > .rv-ghost-label');
+	if (text instanceof HTMLElement) {
+		if (iconOnly) text.style.setProperty('display', 'none', 'important');
+		else text.style.removeProperty('display');
+	}
+}
+
 function collapseStripOverflow(strip: HTMLElement): void {
 	const parked = strip.querySelector(':scope > .rv-item-overflow');
 	if (parked) parked.remove();
 	strip.querySelector(':scope > .rv-item-more')?.remove();
 	const chips = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.is-campaign):not(.rv-item-more)'))
 		.filter((node): node is HTMLElement => node instanceof HTMLElement);
+	const shown = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.rv-item-more)'))
+		.filter((node): node is HTMLElement => node instanceof HTMLElement);
 	for (const chip of chips) showStripChip(chip);
-	if (strip.classList.contains('is-ghost') || chips.length === 0) {
+	for (const chip of shown) setChipIconOnly(chip, false);
+	if (shown.length === 0) {
 		strip.style.removeProperty('max-width');
 		strip.style.removeProperty('width');
 		return;
@@ -532,8 +573,22 @@ function collapseStripOverflow(strip: HTMLElement): void {
 		strip.style.setProperty('width', `${budget}px`, 'important');
 	}
 	const limit = budget > 0 ? budget : strip.clientWidth;
-	const hidden: HTMLElement[] = [];
 	const fits = (): boolean => strip.scrollWidth <= limit + 1;
+	const restoreText = (list: HTMLElement[]): void => {
+		for (const chip of list) {
+			if (chip.hidden) continue;
+			setChipIconOnly(chip, false);
+			if (!fits()) setChipIconOnly(chip, true);
+		}
+	};
+	if (fits()) return;
+	// Icons for every item come before any title is dropped into +n.
+	for (const chip of shown) setChipIconOnly(chip, true);
+	if (fits()) {
+		restoreText(shown);
+		return;
+	}
+	const hidden: HTMLElement[] = [];
 	while (!fits()) {
 		const visible = chips.filter((chip) => !chip.hidden);
 		const last = visible[visible.length - 1];
@@ -561,6 +616,7 @@ function collapseStripOverflow(strip: HTMLElement): void {
 		hidden.unshift(last);
 		more.textContent = `+${hidden.length}`;
 	}
+	restoreText(shown);
 }
 
 function hideStripChip(chip: HTMLElement): void {

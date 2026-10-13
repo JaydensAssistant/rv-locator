@@ -114,8 +114,22 @@ export function attachVisitNoteArea(area: HTMLTextAreaElement, path: string, key
 	area.addEventListener('input', onInput);
 	area.addEventListener('focus', onFocus);
 	area.addEventListener('blur', onBlur);
+	let lastWidth = -1;
+	const onResize = (): void => {
+		const width = area.clientWidth;
+		if (width === lastWidth) return;
+		lastWidth = width;
+		fitArea(area);
+	};
+	let resize: ResizeObserver | null = null;
+	if (typeof ResizeObserver === 'function') {
+		resize = new ResizeObserver(() => onResize());
+		resize.observe(area);
+	}
 	fitArea(area);
+	lastWidth = area.clientWidth;
 	return () => {
+		resize?.disconnect();
 		unsubscribeVisitNote(id);
 		area.removeEventListener('input', onInput);
 		area.removeEventListener('focus', onFocus);

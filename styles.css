@@ -2799,6 +2799,11 @@ h3.rv-visit-notes-heading {
 	cursor: pointer;
 }
 
+/* The editor line is already an h3, so another em would size Recent Notes twice. */
+.cm-line.rv-lp-notes-heading h3.rv-visit-notes-heading {
+	font-size: 1em;
+}
+
 h3.rv-visit-notes-heading > .collapse-indicator,
 h3.rv-visit-notes-heading > .collapse-indicator > svg {
 	display: inline-flex;
@@ -4624,13 +4629,8 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-item-strip.is-ghost {
-	display: none;
-	min-height: 0;
-	height: 0;
-	padding: 0;
-	margin: 0;
-	border: 0;
-	background: none;
+	display: flex;
+	color: var(--text-faint);
 }
 
 .rv-item {
@@ -4800,13 +4800,19 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 :is(h3, h5).rv-visit-stamp,
 .markdown-rendered :is(h3, h5).rv-visit-stamp,
-.markdown-preview-view :is(h3, h5).rv-visit-stamp {
+.markdown-preview-view :is(h3, h5).rv-visit-stamp,
+.rv-lp-stamp .rv-visit-stamp {
 	display: block;
 	overflow: visible;
 	white-space: normal;
 	max-width: 100%;
 	font-size: 14px;
 	font-weight: 400;
+	color: var(--text-muted);
+}
+
+.cm-s-obsidian .rv-lp-stamp .rv-stamp-when,
+.rv-lp-stamp .rv-stamp-when {
 	color: var(--text-muted);
 }
 
@@ -4900,13 +4906,10 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-item-strip.is-ghost {
-	display: none;
-	height: 0;
-	min-height: 0;
-	padding: 0;
-	margin: 0;
-	border: 0;
-	background: none;
+	display: flex;
+	height: 24px;
+	min-height: 24px;
+	color: var(--text-faint);
 }
 
 .rv-item,
@@ -6924,14 +6927,27 @@ body.rv-hide-note-status .status-bar {
 .rv-lp-visit .rv-visit-note-box > .rv-item-strip.is-ghost,
 .rv-dashboard .rv-visit-note-box > .rv-item-strip.is-ghost,
 .rv-item-strip.is-ghost {
-	display: none !important;
-	height: 0 !important;
-	min-height: 0 !important;
+	display: flex !important;
+	visibility: visible !important;
+	box-sizing: border-box;
+	align-items: center;
+	justify-content: center;
+	gap: 6px;
+	width: 100%;
+	height: 24px !important;
+	min-height: 24px !important;
+	max-height: 24px !important;
 	margin: 0 !important;
-	padding: 0 !important;
-	border: 0 !important;
-	border-bottom: 0 !important;
-	background: none !important;
+	padding: 0 8px !important;
+	overflow: hidden;
+	font-size: 11px;
+	font-weight: 400;
+	line-height: normal;
+	color: var(--text-faint);
+	border: 1px solid var(--background-modifier-border) !important;
+	border-radius: 6px 6px 0 0;
+	corner-shape: squircle;
+	background: color-mix(in srgb, var(--text-normal, #888) 6%, transparent) !important;
 	box-shadow: none !important;
 }
 
@@ -7358,17 +7374,17 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	border-bottom-color: color-mix(in srgb, var(--text-normal, #fff) 16%, transparent);
 }
 
-.el-h5:has(> .rv-item-strip:not(.is-ghost)) + .el-p textarea.rv-native-notes-area,
-.markdown-preview-section:has(.rv-item-strip:not(.is-ghost)) + .markdown-preview-section textarea.rv-native-notes-area,
-.cm-line:has(.rv-item-strip:not(.is-ghost)) + .rv-lp-notes textarea.rv-native-notes-area,
-.cm-line:has(.rv-item-strip:not(.is-ghost)) + .cm-line textarea.rv-native-notes-area,
+.el-h5:has(> .rv-item-strip) + .el-p textarea.rv-native-notes-area,
+.markdown-preview-section:has(.rv-item-strip) + .markdown-preview-section textarea.rv-native-notes-area,
+.cm-line:has(.rv-item-strip) + .rv-lp-notes textarea.rv-native-notes-area,
+.cm-line:has(.rv-item-strip) + .cm-line textarea.rv-native-notes-area,
 .rv-note-under-strip textarea.rv-native-notes-area {
 	border-top: 0 !important;
 	border-radius: 0 0 6px 6px;
 	corner-shape: squircle;
 }
 
-.cm-line.rv-lp-visit-heading {
+.cm-s-obsidian .cm-line.rv-lp-visit-heading {
 	margin-top: 0;
 	margin-bottom: 0 !important;
 	padding-top: 24px;
@@ -7378,6 +7394,15 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	min-height: 0 !important;
 	line-height: 0 !important;
 	background: none;
+}
+
+/* Reading leaves 33px under Recent Notes. Later visit headings stay at 24px. */
+.cm-s-obsidian .cm-line.rv-lp-notes-heading ~ .cm-line.rv-lp-visit-heading {
+	padding-top: 33px;
+}
+
+.cm-s-obsidian .cm-line.rv-lp-visit-heading ~ .cm-line.rv-lp-visit-heading {
+	padding-top: 24px;
 }
 
 .cm-line.rv-lp-visit-heading .rv-lp-stamp {
@@ -7534,7 +7559,41 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	width: 100%;
 	margin: 0 !important;
 	padding: 0;
-	font-size: var(--h3-size, 1.125em);
+	font-size: 1em;
 	font-weight: var(--h3-weight, 600);
 	line-height: var(--h3-line-height, 1.3);
+}
+
+.theme-light .rv-item-strip.is-ghost {
+	background: color-mix(in srgb, var(--background-primary, #fff) 97%, #000) !important;
+	border-color: color-mix(in srgb, var(--background-modifier-border, #e3e3e3) 85%, #fff) !important;
+	border-bottom-color: var(--background-modifier-border) !important;
+}
+
+.theme-dark .rv-item-strip.is-ghost {
+	background: color-mix(in srgb, var(--background-primary, #1c1c1c) 96%, var(--text-normal, #fff)) !important;
+	border-color: color-mix(in srgb, var(--text-normal, #fff) 14%, transparent) !important;
+	border-bottom-color: color-mix(in srgb, var(--text-normal, #fff) 16%, transparent) !important;
+}
+
+.rv-item-strip.is-ghost .rv-item,
+.rv-item-strip.is-ghost .rv-fit,
+.rv-item-strip.is-ghost .rv-ghost-label,
+.markdown-preview-view .rv-item-strip.is-ghost .rv-fit,
+.markdown-rendered .rv-item-strip.is-ghost .rv-fit {
+	color: var(--text-faint) !important;
+	font-weight: 400;
+	opacity: 0.72;
+}
+
+.rv-item-strip.is-ghost .rv-item-icon,
+.markdown-preview-view .rv-item-strip.is-ghost .rv-item-icon,
+.markdown-rendered .rv-item-strip.is-ghost .rv-item-icon,
+.rv-dashboard .rv-item-strip.is-ghost .rv-item-icon {
+	color: var(--text-faint) !important;
+	opacity: 0.72;
+}
+
+.rv-item.is-icon-only > .rv-fit {
+	display: none !important;
 }
