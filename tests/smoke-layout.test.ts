@@ -7,7 +7,7 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, stripContentBudget, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountVisitNotesInSection, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
 import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
@@ -305,10 +305,11 @@ describe('smoke layout', () => {
 		assert.match(css, /\.theme-dark textarea\.rv-native-notes-area/);
 		assert.match(css, /h5\.rv-visit-stamp[\s\S]*margin-bottom:\s*0/);
 		assert.match(css, /padding:\s*0 12px/);
-		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*5px/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*0/);
 	});
 
-	it('keeps a 5px ghost strip inside the note box when a visit has no items', () => {
+	it('keeps an empty visit strip in the tree and collapses it', () => {
 		const root = visitRoot('Tue, 6:15pm — Aug 12, 2026', null, 'Attempt Log');
 		decorateVisitControls(root, () => null, () => {});
 		assert.equal(root.querySelector('.rv-stamp-when')?.textContent, 'Tue, 6:15pm');
@@ -317,6 +318,21 @@ describe('smoke layout', () => {
 		assert.equal(strip?.previousElementSibling?.tagName, 'H5');
 		assert.equal(root.querySelector('.rv-visit-note-box'), null);
 		assert.equal(strip?.childElementCount, 0);
+	});
+
+	it('measures a visit strip from the parent content width, not the padded preview', () => {
+		const parent = window.document.createElement('div');
+		parent.style.paddingLeft = '24px';
+		parent.style.paddingRight = '24px';
+		const strip = window.document.createElement('div');
+		strip.className = 'rv-item-strip';
+		parent.appendChild(strip);
+		window.document.body.appendChild(parent);
+		Object.defineProperty(parent, 'clientWidth', { configurable: true, get: () => 408 });
+		assert.equal(stripContentBudget(strip), 360);
+		strip.classList.add('is-ghost');
+		assert.equal(stripContentBudget(strip), 0);
+		parent.remove();
 	});
 
 	it('commits an address edit once when change and blur both fire', () => {

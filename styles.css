@@ -4624,9 +4624,13 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-item-strip.is-ghost {
-	min-height: 5px;
-	height: 5px;
+	display: none;
+	min-height: 0;
+	height: 0;
 	padding: 0;
+	margin: 0;
+	border: 0;
+	background: none;
 }
 
 .rv-item {
@@ -4896,10 +4900,13 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-item-strip.is-ghost {
-	height: 5px;
-	min-height: 5px;
+	display: none;
+	height: 0;
+	min-height: 0;
 	padding: 0;
-	border-bottom: 0;
+	margin: 0;
+	border: 0;
+	background: none;
 }
 
 .rv-item,
@@ -6914,14 +6921,16 @@ body.rv-hide-note-status .status-bar {
 }
 
 .rv-lp-visit .rv-visit-note-box > .rv-item-strip.is-ghost,
-.rv-dashboard .rv-visit-note-box > .rv-item-strip.is-ghost {
-	height: 8px !important;
-	min-height: 8px !important;
+.rv-dashboard .rv-visit-note-box > .rv-item-strip.is-ghost,
+.rv-item-strip.is-ghost {
+	display: none !important;
+	height: 0 !important;
+	min-height: 0 !important;
 	margin: 0 !important;
 	padding: 0 !important;
 	border: 0 !important;
 	border-bottom: 0 !important;
-	background: transparent !important;
+	background: none !important;
 	box-shadow: none !important;
 }
 
@@ -6958,23 +6967,45 @@ textarea.rv-native-notes-area {
 	resize: none;
 	box-sizing: border-box;
 	margin: 0;
-	padding: 0 12px;
+	padding: 8px 12px;
+	font-size: 13px;
 	line-height: 1.45;
-	border-radius: 0 0 12px 12px;
+	border-radius: 12px;
+	corner-shape: squircle;
 }
 
-.theme-light textarea.rv-native-notes-area,
-.theme-light .rv-visit-notes-host,
-.theme-light .el-h5:has(h5.rv-visit-stamp) {
+.theme-light textarea.rv-native-notes-area {
 	background: color-mix(in srgb, var(--background-primary, #fff) 95%, #000);
 	background-color: color-mix(in srgb, var(--background-primary, #fff) 95%, #000);
 }
 
-.theme-dark textarea.rv-native-notes-area,
+.theme-light .rv-item-strip:not(.is-ghost) {
+	background: color-mix(in srgb, var(--background-primary, #fff) 90%, #000);
+	background-color: color-mix(in srgb, var(--background-primary, #fff) 90%, #000);
+	border: 0;
+	border-bottom: 0;
+}
+
+.theme-dark textarea.rv-native-notes-area {
+	background: color-mix(in srgb, var(--background-primary, #262626) 82%, #000);
+	background-color: color-mix(in srgb, var(--background-primary, #262626) 82%, #000);
+}
+
+.theme-dark .rv-item-strip:not(.is-ghost) {
+	background: color-mix(in srgb, var(--background-primary, #262626) 70%, #fff);
+	background-color: color-mix(in srgb, var(--background-primary, #262626) 70%, #fff);
+	border: 0;
+	border-bottom: 0;
+}
+
+.theme-light .el-h5:has(h5.rv-visit-stamp),
+.theme-dark .el-h5:has(h5.rv-visit-stamp),
+.theme-light .rv-visit-notes-host,
 .theme-dark .rv-visit-notes-host,
-.theme-dark .el-h5:has(h5.rv-visit-stamp) {
-	background: color-mix(in srgb, var(--background-primary, #262626) 70%, #000);
-	background-color: color-mix(in srgb, var(--background-primary, #262626) 70%, #000);
+.theme-light .cm-line.rv-lp-visit-heading,
+.theme-dark .cm-line.rv-lp-visit-heading {
+	background: none;
+	background-color: transparent;
 }
 
 .markdown-preview-view .rv-visit-note-box :is(p, .el-p, .markdown-preview-section),
@@ -7205,7 +7236,13 @@ h5.rv-visit-stamp,
 .markdown-rendered h5.rv-visit-stamp,
 .markdown-rendered .el-h5:has(> h5.rv-visit-stamp),
 .markdown-rendered .markdown-preview-section:has(> h5.rv-visit-stamp) {
-	margin-top: var(--p-spacing, 1em);
+	margin-top: 24px;
+	margin-bottom: 0;
+}
+
+.markdown-rendered h5.rv-visit-stamp,
+.rv-lp-stamp .rv-visit-stamp {
+	margin-bottom: 8px;
 }
 
 .markdown-preview-section:has(.rv-visit-notes-host),
@@ -7247,14 +7284,82 @@ p:has(.rv-visit-notes-host) {
 }
 
 .rv-visit-notes-host textarea.rv-native-notes-area {
-	font-size: var(--font-text-size, 16px);
+	font-size: 13px;
 	line-height: 1.45;
 }
 
 .el-h5:has(> h5.rv-visit-stamp),
 .markdown-preview-section:has(h5.rv-visit-stamp),
 .cm-line.rv-lp-visit-heading {
+	border-radius: 0;
+	background: none;
+}
+
+/* Option B: the heading floats, centered, with no bar. The ⋯ sits in the row. */
+.rv-visit-stamp .rv-stamp-row {
+	width: max-content;
+	max-width: 100%;
+	margin-inline: auto;
+	justify-content: center;
+}
+
+.rv-visit-stamp .rv-stamp-row > .rv-visit-more,
+body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
+	margin-left: 0;
+}
+
+.rv-item-strip:not(.is-ghost) {
+	justify-content: center;
+	border: 0;
+	border-bottom: 0;
 	border-radius: 12px 12px 0 0;
+	corner-shape: squircle;
+	margin: 0;
+}
+
+.el-h5:has(> .rv-item-strip:not(.is-ghost)) + .el-p textarea.rv-native-notes-area,
+.markdown-preview-section:has(.rv-item-strip:not(.is-ghost)) + .markdown-preview-section textarea.rv-native-notes-area,
+.cm-line:has(.rv-item-strip:not(.is-ghost)) + .rv-lp-notes textarea.rv-native-notes-area,
+.cm-line:has(.rv-item-strip:not(.is-ghost)) + .cm-line textarea.rv-native-notes-area,
+.rv-note-under-strip textarea.rv-native-notes-area {
+	border-radius: 0 0 12px 12px;
+	corner-shape: squircle;
+}
+
+.cm-line.rv-lp-visit-heading {
+	margin-top: 0;
+	margin-bottom: 0;
+	padding-top: 24px;
+	padding-bottom: 0;
+	background: none;
+}
+
+.cm-line.rv-lp-visit-heading .rv-lp-stamp {
+	display: block;
+	width: 100%;
+}
+
+.rv-lp-notes + .cm-line:not(.rv-lp-visit-heading):has(> br:only-child) {
+	height: 0;
+	min-height: 0;
+	padding: 0;
+	margin: 0;
+	overflow: hidden;
+	line-height: 0;
+}
+
+.rv-lp-notes.rv-older-hidden,
+.rv-mb-locked,
+.rv-older-hidden.rv-mb-locked,
+.rv-mb-locked textarea,
+.rv-older-hidden textarea:not(.rv-native-notes-area) {
+	display: none !important;
+	visibility: hidden !important;
+	pointer-events: none !important;
+	height: 0 !important;
+	max-height: 0 !important;
+	overflow: hidden !important;
+	opacity: 0 !important;
 }
 
 .rv-older-collapsed .rv-older-section {

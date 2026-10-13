@@ -319,7 +319,7 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(css, /body\.rv-hide-note-status \.status-bar \{\s*display:\s*none/);
 		assert.match(css, /\.cm-line\.rv-mb-hidden \{[^}]*display:\s*none/);
 		assert.match(css, /\.rv-dashboard p\.rv-hub-owned \.rv-hub-chip \{[^}]*justify-content:\s*center/);
-		assert.match(css, /\.rv-dashboard \.rv-visit-note-box > \.rv-item-strip\.is-ghost \{[^}]*border:\s*0/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
 		assert.match(css, /\.rv-study-tick::before \{[^}]*height:\s*6px/);
 		assert.match(css, /var\(--rv-thumb, 16px\) \/ 2/);
 		assert.match(css, /button\.rv-study-change,\s*button\.rv-study-skip[\s\S]*min-height:\s*32px/);

@@ -375,6 +375,33 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 	paintItemStrip(heading, source, covered);
 }
 
+/**
+ * The same stamp row Reading view paints: calendar tile, time, "with X",
+ * day pill, and the ⋯ beside that row. The item strip, when there is one,
+ * is inserted after the heading.
+ */
+export function paintLiveVisitHeading(
+	heading: HTMLElement,
+	source: string,
+	covered: string,
+	publisher: string,
+	onMenu?: (evt: MouseEvent) => void,
+): void {
+	heading.classList.add('rv-visit-stamp');
+	heading.textContent = source;
+	if (publisher) heading.dataset.rvCompanion = publisher;
+	const when = stampDateTime(source);
+	if (!when) return;
+	if (onMenu) moreButton(heading, 'Visit options', onMenu);
+	reshapeVisitHeading(heading, when, covered);
+}
+
+/** True when the strip would show a campaign, literature, media, or lesson chip. */
+export function visitHasStripItems(source: string, covered: string): boolean {
+	if (covered.trim()) return true;
+	return /·\s+(?:«(?:book|film|lesson)»|(?:Left|Shared|Also))\s+«[^»]+»/.test(source);
+}
+
 function paintItemStrip(heading: HTMLElement, source: string, covered: string): void {
 	const doc = heading.ownerDocument;
 	let strip = findItemStrip(heading);
@@ -463,27 +490,26 @@ function stripChipTitle(chip: HTMLElement): string {
 	return (full || chip.textContent || '').replace(/\s+/g, ' ').trim();
 }
 
-/** The narrowest clipping ancestor. A flex strip can grow past the box that hides it. */
-function clipWidth(strip: HTMLElement): number {
-	let budget = strip.clientWidth;
-	const view = strip.ownerDocument.defaultView;
-	let node: HTMLElement | null = strip.parentElement;
-	while (node && node !== strip.ownerDocument.body && node !== strip.ownerDocument.documentElement) {
-		const width = node.clientWidth;
-		if (width > 0 && width < budget) {
-			const style = view?.getComputedStyle(node);
-			const overflow = `${style?.overflowX ?? ''} ${style?.overflow ?? ''}`;
-			const clips = /hidden|clip|auto|scroll/.test(overflow);
-			const frame = node.classList.contains('markdown-preview-view')
-				|| node.classList.contains('workspace-leaf-content')
-				|| node.classList.contains('callout-content')
-				|| node.classList.contains('rv-visit-note-box');
-			if (clips || frame) budget = width;
-		}
-		if (node.classList.contains('workspace-leaf-content') || node.classList.contains('markdown-preview-view')) break;
-		node = node.parentElement;
+function contentWidth(node: HTMLElement): number {
+	const width = node.clientWidth;
+	if (width <= 0) return 0;
+	const style = node.ownerDocument.defaultView?.getComputedStyle(node);
+	const pad = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) : 0;
+	return Math.max(0, width - pad);
+}
+
+/**
+ * The strip's parent content box. The preview view's clientWidth includes
+ * its side padding, which made a 360px column lay out a 408px strip.
+ */
+export function stripContentBudget(strip: HTMLElement): number {
+	if (strip.classList.contains('is-ghost')) return 0;
+	const parent = strip.parentElement;
+	if (parent) {
+		const inner = contentWidth(parent);
+		if (inner > 0) return inner;
 	}
-	return budget;
+	return contentWidth(strip);
 }
 
 /** One row. Campaign stays. Extra chips become a +n button once the row is wider than its box. */
@@ -494,8 +520,13 @@ function collapseStripOverflow(strip: HTMLElement): void {
 	const chips = Array.from(strip.querySelectorAll(':scope > .rv-item:not(.is-campaign):not(.rv-item-more)'))
 		.filter((node): node is HTMLElement => node instanceof HTMLElement);
 	for (const chip of chips) showStripChip(chip);
+	if (strip.classList.contains('is-ghost') || chips.length === 0) {
+		strip.style.removeProperty('max-width');
+		strip.style.removeProperty('width');
+		return;
+	}
 	if (strip.clientWidth <= 0) return;
-	const budget = clipWidth(strip);
+	const budget = stripContentBudget(strip);
 	if (budget > 0) {
 		strip.style.setProperty('max-width', `${budget}px`, 'important');
 		strip.style.setProperty('width', `${budget}px`, 'important');
