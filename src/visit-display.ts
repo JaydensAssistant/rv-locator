@@ -201,13 +201,11 @@ function insertOlderChrome(preview: HTMLElement, parent: HTMLElement, first: HTM
 	heading.addEventListener('click', (event) => {
 		event.preventDefault();
 		if ('stopPropagation' in event && typeof event.stopPropagation === 'function') event.stopPropagation();
-		const preview = heading.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered, .markdown-source-view');
-		const root = preview instanceof HTMLElement ? preview : parent;
-		const open = root.dataset.rvOlderOpen === '1';
-		root.dataset.rvOlderOpen = open ? '0' : '1';
-		const nowCollapsed = root.dataset.rvOlderOpen !== '1';
+		const open = preview.dataset.rvOlderOpen === '1';
+		preview.dataset.rvOlderOpen = open ? '0' : '1';
+		const nowCollapsed = preview.dataset.rvOlderOpen !== '1';
 		setClass(heading, 'is-open', !nowCollapsed);
-		root.querySelectorAll('.rv-older-visit').forEach((node) => {
+		preview.querySelectorAll('.rv-older-visit').forEach((node) => {
 			if (node instanceof HTMLElement) setClass(node, 'rv-older-hidden', nowCollapsed);
 		});
 	});

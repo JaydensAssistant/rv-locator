@@ -10,7 +10,7 @@ import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, readingRefreshBlocked, readingSurfacesForPath, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
-import { armVisitNoteFocus, holdVisitNote, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
+import { armVisitNoteFocus, holdVisitNote, layoutVisitNotes, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
@@ -1917,6 +1917,51 @@ describe('smoke layout', () => {
 		} finally {
 			preview.remove();
 			clearVisitNoteCaches();
+		}
+	});
+
+	it('keeps Older Visits open on the reading surface after a real click', () => {
+		const stamps = [
+			'Mon, 9am — Sep 1, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+		];
+		const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
+		const reading = window.document.createElement('div');
+		reading.className = 'markdown-reading-view';
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		for (const stamp of stamps) {
+			const heading = window.document.createElement('h3');
+			heading.className = 'rv-visit-stamp';
+			heading.textContent = stamp;
+			const note = window.document.createElement('p');
+			note.textContent = 'notes';
+			sizer.append(heading, note);
+		}
+		preview.appendChild(sizer);
+		reading.appendChild(preview);
+		window.document.body.appendChild(reading);
+		const options = { newestFirst: true, collapseOlder: true, limit: 3 };
+		try {
+			layoutVisitNotes(reading, markdown, options);
+			const fold = reading.querySelector('h3.rv-older-visits');
+			assert.ok(fold instanceof window.HTMLElement);
+			const older = Array.from(sizer.querySelectorAll('h3.rv-visit-stamp')).find((node) => (node.textContent ?? '').includes('Thu'));
+			assert.ok(older instanceof window.HTMLElement);
+			assert.equal(older.classList.contains('rv-older-hidden'), true);
+			fold.click();
+			assert.equal(reading.dataset.rvOlderOpen, '1');
+			assert.notEqual(preview.dataset.rvOlderOpen, '1');
+			assert.equal(older.classList.contains('rv-older-hidden'), false);
+			layoutVisitNotes(reading, markdown, options);
+			assert.equal(reading.dataset.rvOlderOpen, '1');
+			assert.equal(older.classList.contains('rv-older-hidden'), false);
+		} finally {
+			reading.remove();
 		}
 	});
 
