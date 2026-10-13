@@ -72,76 +72,88 @@ export function urgencyMark(urgency: number | null, priority: number | null): Ur
 }
 
 export interface UrgencyBangShape {
-	kind: 'rect' | 'circle';
+	kind: 'rect' | 'circle' | 'line';
 	attr: Record<string, string>;
 }
 
 /**
- * Marks in a 28×28 viewBox. The ink touches the viewBox, so sizing the SVG to
- * `--rv-badge-ink` of the circle sizes the ink, not the empty padding.
- * One, two, or three marks stay the same size. Band 0 is an inner ring.
- * Priority 0 is a dash. Stem width matches the shared line-icon stroke.
+ * Marks in a 28×28 viewBox. Paths sit inside the box by the stroke radius, so a
+ * non-scaling 2px stroke paints to the edge at a 28px badge. Sizing the SVG to
+ * `--rv-badge-ink` times the glyph's optical factor sizes that paint.
+ * One, two, or three bangs stay the same size. Band 0 is an inner ring.
+ * Priority 0 is a dash. Stroke weight is CSS, not these coordinates.
+ *
+ * Insets match the default optical factors in `BADGE_OPTICAL` (ink 0.53, stroke 2px):
+ * bang 0.9 → 2.1, dash 0.94 → 2.01, ring 1.06 → 1.78. Center gap 8.4 keeps a
+ * visible gap between 2px bang stems at that bang size.
  */
 export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
 	const box = 28;
-	const stroke = 2.8;
 	if (glyphs === '—' || glyphs === '-') {
+		const inset = 2.01;
 		return [{
-			kind: 'rect',
+			kind: 'line',
 			attr: {
 				class: 'is-dash',
-				x: '0',
-				y: num((box - stroke) / 2),
-				width: num(box),
-				height: num(stroke),
-				rx: '1.4',
-				fill: 'currentColor',
+				x1: num(inset),
+				y1: num(box / 2),
+				x2: num(box - inset),
+				y2: num(box / 2),
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-linecap': 'round',
 			},
 		}];
 	}
 	if (glyphs === '○') {
+		const inset = 1.78;
 		return [{
 			kind: 'circle',
 			attr: {
 				class: 'is-ring',
 				cx: num(box / 2),
 				cy: num(box / 2),
-				r: num((box - stroke) / 2),
+				r: num(box / 2 - inset),
 				fill: 'none',
 				stroke: 'currentColor',
-				'stroke-width': num(stroke),
 			},
 		}];
 	}
 	const count = glyphs === '!' ? 1 : glyphs === '!!' ? 2 : glyphs === '!!!' ? 3 : 0;
 	if (count === 0) return [];
-	const gap = 2.4;
-	const group = count * stroke + (count - 1) * gap;
+	const centerGap = 8.4;
+	const inset = 2.1;
+	const group = (count - 1) * centerGap;
 	const left = (box - group) / 2;
-	const dotR = stroke / 2;
-	const dotCy = box - dotR;
-	const stemHeight = dotCy - dotR - 1.2;
+	const dotY = box - inset;
+	const stemEnd = dotY - inset - 2.52 - inset;
 	const shapes: UrgencyBangShape[] = [];
 	for (let index = 0; index < count; index += 1) {
-		const x = left + index * (stroke + gap);
+		const x = left + index * centerGap;
 		shapes.push({
-			kind: 'rect',
+			kind: 'line',
 			attr: {
-				x: num(x),
-				y: '0',
-				width: num(stroke),
-				height: num(stemHeight),
-				rx: '1.4',
-				fill: 'currentColor',
+				class: 'is-stem',
+				x1: num(x),
+				y1: num(inset),
+				x2: num(x),
+				y2: num(stemEnd),
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-linecap': 'round',
 			},
 		});
 		shapes.push({
-			kind: 'circle',
+			kind: 'line',
 			attr: {
-				cx: num(x + stroke / 2),
-				cy: num(dotCy),
-				r: num(dotR),
-				fill: 'currentColor',
+				class: 'is-dot',
+				x1: num(x),
+				y1: num(dotY - 0.01),
+				x2: num(x),
+				y2: num(dotY),
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-linecap': 'round',
 			},
 		});
 	}

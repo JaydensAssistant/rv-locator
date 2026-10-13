@@ -816,13 +816,14 @@ describe('dayparts and return suggester', () => {
 
 	it('draws heavy bangs and a band 0 inner ring', () => {
 		const triple = urgencyGlyphMarkup('!!!');
-		assert.equal(triple.split('<rect ').length - 1, 3);
-		assert.equal(triple.includes('width="2.8"'), true);
-		assert.equal(triple.includes('height="24"'), true);
-		assert.equal(triple.includes('fill="currentColor"'), true);
-		assert.equal(triple.includes('width="1.7"'), false);
+		assert.equal(triple.split('<line ').length - 1, 6);
+		assert.equal(triple.includes('class="is-stem"'), true);
+		assert.equal(triple.includes('class="is-dot"'), true);
+		assert.equal(triple.includes('stroke-linecap="round"'), true);
+		assert.equal(triple.includes('width="2.8"'), false);
 		assert.equal(triple.includes('!'), false);
-		assert.equal(urgencyBangShapes('!!!').filter((shape) => shape.kind === 'rect').length, 3);
+		assert.equal(urgencyBangShapes('!!!').filter((shape) => shape.attr.class === 'is-stem').length, 3);
+		assert.equal(urgencyBangShapes('!!!').filter((shape) => shape.attr.class === 'is-dot').length, 3);
 		const ring = urgencyBangShapes('○');
 		assert.equal(ring.length, 1);
 		assert.equal(ring[0]?.kind, 'circle');
@@ -830,13 +831,16 @@ describe('dayparts and return suggester', () => {
 		assert.equal(ring[0]?.attr.stroke, 'currentColor');
 		assert.equal(ring[0]?.attr.class, 'is-ring');
 		assert.equal(urgencyGlyphMarkup('○').includes('class="is-ring"'), true);
-		assert.equal(urgencyGlyphMarkup('!!').split('<rect ').length - 1, 2);
-		assert.equal(urgencyGlyphMarkup('!').split('<rect ').length - 1, 1);
+		assert.equal(urgencyGlyphMarkup('!!').split('class="is-stem"').length - 1, 2);
+		assert.equal(urgencyGlyphMarkup('!').split('class="is-stem"').length - 1, 1);
 		assert.equal(urgencyGlyphMarkup(''), '');
 		assert.equal(urgencyMark(3, 5).glyphs, '!!!');
 		assert.equal(urgencyMark(0.2, 4).glyphs, '○');
 		assert.equal(urgencyMark(0.2, 4).band, 0);
 		assert.equal(urgencyMark(4, 0).glyphs, '—');
+		const dash = urgencyBangShapes('—');
+		assert.equal(dash[0]?.kind, 'line');
+		assert.equal(dash[0]?.attr.class, 'is-dash');
 	});
 
 	it('moves a raised Try threshold into Unsure and keeps the Avoid baseline', () => {

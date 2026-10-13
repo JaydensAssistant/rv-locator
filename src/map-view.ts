@@ -1,6 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
-import { mountUrgencyGlyph, pinBadgeStroke } from './glancable-view';
+import { mountUrgencyGlyph, pinBadgeStroke, tagBadgeIcon } from './glancable-view';
 import { SNOOZE_SLATE } from './snooze';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
@@ -1022,6 +1022,7 @@ export class RvMapView extends ItemView {
 			const snoozedPin = pin.snoozed === true || pin.stateIcon === 'moon';
 			if (!snoozedPin) urgency.addClass('is-ghost');
 			urgency.empty();
+			tagBadgeIcon(urgency, pin.stateIcon);
 			setIcon(urgency, pin.stateIcon);
 			pinBadgeStroke(urgency);
 			if (snoozedPin) {
@@ -1049,6 +1050,7 @@ export class RvMapView extends ItemView {
 			cls: 'rv-locator-map-pin',
 			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
+		tagBadgeIcon(route, 'route');
 		setIcon(route, 'route');
 		pinBadgeStroke(route);
 		route.addEventListener('click', (event) => {

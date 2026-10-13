@@ -11,6 +11,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
+import { badgeLineOpticalKey, urgencyOpticalKey } from './badge-glyph';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import { paintUrgencyInk } from './color-math';
 import { urgencyColorsFor } from './urgency-palette';
@@ -564,6 +565,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		mountUrgencyGlyph(urgencyButton, marks.glyphs);
 		if (this.plugin.ghostIconForCard(row.path) === 'moon') {
 			urgencyButton.empty();
+			tagBadgeIcon(urgencyButton, 'moon');
 			setIcon(urgencyButton, 'moon');
 			pinBadgeStroke(urgencyButton);
 			urgencyButton.style.setProperty('color', SNOOZE_SLATE, 'important');
@@ -671,6 +673,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			cls: 'rv-locator-map-pin',
 			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
+		tagBadgeIcon(button, 'route');
 		setIcon(button, 'route');
 		pinBadgeStroke(button);
 		button.addEventListener('click', (event) => {
@@ -901,10 +904,9 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  * Bands 0–3. Built with createElementNS in the button's own document
  * (Obsidian's createSvg when that helper is on the node). DOMParser markup
  * never becomes a painted child here: a parsed SVG can fail to import, and a
- * viewBox-only svg inside this flex button can resolve to 0×0. Filled marks
- * set fill to currentColor inline so an app or theme rule of
- * `svg { fill: none }` (the map pin is a stroke icon) cannot blank the bars.
- * Band 0's inner ring stays a stroke.
+ * viewBox-only svg inside this flex button can resolve to 0×0. Stems, dots,
+ * the ring, and the dash are 2px strokes. Inline stroke and currentColor keep
+ * a theme rule of `svg { fill: none }` from blanking them.
  */
 const STROKE_TARGET_PX = 2;
 
@@ -1016,13 +1018,21 @@ function applyBadgeStroke(host: HTMLElement, px: string): void {
 	const ghost = host.classList.contains('is-ghost');
 	host.style.setProperty('border-style', ghost ? 'dashed' : 'solid', 'important');
 	host.style.setProperty('border-width', px, 'important');
-	host.querySelectorAll('circle.is-ring').forEach((node) => {
+	host.querySelectorAll('line, circle.is-ring').forEach((node) => {
 		if (!(node instanceof Element) || !('style' in node)) return;
-		const ring = node as Element & { style: CSSStyleDeclaration };
-		ring.style.setProperty('stroke-width', px, 'important');
-		ring.setAttribute('vector-effect', 'non-scaling-stroke');
-		ring.style.setProperty('vector-effect', 'non-scaling-stroke');
+		const mark = node as Element & { style: CSSStyleDeclaration };
+		mark.style.setProperty('stroke-width', px, 'important');
+		mark.setAttribute('vector-effect', 'non-scaling-stroke');
+		mark.style.setProperty('vector-effect', 'non-scaling-stroke');
+		mark.style.setProperty('stroke-linecap', 'round');
 	});
+}
+
+/** Line-icon badges opt into their optical factor. Pin heads do not. */
+export function tagBadgeIcon(host: HTMLElement, icon: string): void {
+	const key = badgeLineOpticalKey(icon);
+	if (key) host.dataset.rvGlyph = key;
+	else delete host.dataset.rvGlyph;
 }
 
 export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
@@ -1035,26 +1045,31 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 		viewBox: '0 0 28 28',
 		width: '28',
 		height: '28',
-		fill: 'currentColor',
+		fill: 'none',
 		'aria-hidden': 'true',
 		focusable: 'false',
 	}, 'rv-urgency-glyph');
+	const opticalKey = urgencyOpticalKey(glyphs);
+	svg.dataset.rvGlyph = opticalKey;
 	svg.style.display = 'block';
 	svg.style.flex = '0 0 auto';
-	const ink = host.classList.contains('rv-pin-head') ? '0.7' : 'var(--rv-badge-ink, 0.53)';
+	const ink = host.classList.contains('rv-pin-head')
+		? '0.7'
+		: `var(--rv-badge-ink, 0.53) * var(--rv-opt-${opticalKey}, 1)`;
 	svg.style.width = `calc(var(--rv-control-size, 28px) * ${ink})`;
 	svg.style.height = `calc(var(--rv-control-size, 28px) * ${ink})`;
 	svg.style.overflow = 'visible';
 	svg.style.color = 'inherit';
-	svg.style.setProperty('fill', 'currentColor');
+	svg.style.setProperty('fill', 'none');
 	for (const shape of shapes) {
 		const node = makeSvg(svg, shape.kind, shape.attr);
-		if (shape.attr.fill === 'none') {
-			node.style.setProperty('fill', 'none');
-			node.style.setProperty('stroke', 'currentColor');
+		if (shape.attr.fill === 'none' || shape.kind === 'line') {
+			node.style.setProperty('fill', 'none', 'important');
+			node.style.setProperty('stroke', 'currentColor', 'important');
 			node.setAttribute('vector-effect', 'non-scaling-stroke');
 			node.style.setProperty('vector-effect', 'non-scaling-stroke');
 			node.style.setProperty('stroke-width', '2px', 'important');
+			node.style.setProperty('stroke-linecap', 'round');
 		} else {
 			node.style.setProperty('fill', 'currentColor');
 		}
@@ -1068,9 +1083,9 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	pinBadgeStroke(host);
 }
 
-function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle', attr: Record<string, string>, cls?: string): SVGElement {
+function makeSvg(parent: Element, tag: 'svg' | 'rect' | 'circle' | 'line', attr: Record<string, string>, cls?: string): SVGElement {
 	const creator = parent as Element & {
-		createSvg?: (name: 'svg' | 'rect' | 'circle', info?: { cls?: string; attr?: Record<string, string> }) => SVGElement;
+		createSvg?: (name: 'svg' | 'rect' | 'circle' | 'line', info?: { cls?: string; attr?: Record<string, string> }) => SVGElement;
 	};
 	if (typeof creator.createSvg === 'function') {
 		return creator.createSvg(tag, { cls, attr });

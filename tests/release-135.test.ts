@@ -23,7 +23,8 @@ import { createDoc, type DomEl } from './visit-dom';
 describe('1.3.5 dogfood helpers', () => {
 	it('draws a dash for an archived priority and cycles the campaign list', () => {
 		assert.equal(urgencyMark(3, 0).glyphs, '—');
-		assert.equal(urgencyBangShapes('—')[0]?.kind, 'rect');
+		assert.equal(urgencyBangShapes('—')[0]?.kind, 'line');
+		assert.equal(urgencyBangShapes('—')[0]?.attr.class, 'is-dash');
 		assert.equal(nextCampaignListFilter('all'), 'uncovered');
 		assert.equal(nextCampaignListFilter('uncovered'), 'covered');
 		assert.equal(nextCampaignListFilter('covered'), 'all');

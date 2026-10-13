@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { BADGE_INK, DIGIT_CAP_INK, LINE_ICON_INK, urgencyInkFraction } from '../src/badge-glyph';
+import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, badgeLineOpticalKey, urgencyInkFraction, urgencyOpticalKey } from '../src/badge-glyph';
 import { navigatingToFile, withReadingPreview } from '../src/reading-open';
 
 function source(file: string): string {
@@ -14,17 +14,36 @@ describe('2026-10-13 feedback', () => {
 		assert.ok(Math.abs(LINE_ICON_INK - 20 / 24) < 0.0001);
 		assert.equal(DIGIT_CAP_INK, 0.72);
 		for (const glyphs of ['!', '!!', '!!!', '○', '—']) {
-			assert.ok(Math.abs(urgencyInkFraction(glyphs) - 1) < 0.02, glyphs);
+			assert.ok(urgencyInkFraction(glyphs) > 0.8, glyphs);
 		}
 		const css = source('styles.css');
 		assert.match(css, /--rv-badge-ink:\s*0\.53/);
 		assert.match(css, /--rv-badge-stroke:\s*2px/);
 		assert.match(css, /font-weight:\s*500 !important/);
+		for (const [key, value] of Object.entries(BADGE_OPTICAL)) {
+			assert.match(css, new RegExp(`--rv-opt-${key}:\\s*${value}(;|\\s)`));
+		}
+		assert.ok(BADGE_OPTICAL.digit < 1 && BADGE_OPTICAL.bang < 1 && BADGE_OPTICAL.dash < 1);
+		assert.ok(BADGE_OPTICAL.ring > 1 && BADGE_OPTICAL.route > 1 && BADGE_OPTICAL.moon > 1);
+		assert.ok(BADGE_OPTICAL.hourglass > 1 && BADGE_OPTICAL.ban > 1);
+		assert.equal(urgencyOpticalKey('!'), 'bang');
+		assert.equal(urgencyOpticalKey('○'), 'ring');
+		assert.equal(urgencyOpticalKey('—'), 'dash');
+		assert.equal(badgeLineOpticalKey('route'), 'route');
+		assert.equal(badgeLineOpticalKey('book'), null);
 		const glance = source('src/glancable-view.ts');
 		assert.match(glance, /var\(--rv-badge-ink, 0\.53\)/);
 		assert.match(glance, /pinBadgeStroke\(pill\)/);
+		assert.match(glance, /tagBadgeIcon\(urgencyButton, 'moon'\)/);
+		assert.match(glance, /tagBadgeIcon\(button, 'route'\)/);
 		assert.match(source('src/note-chrome.ts'), /pinBadgeStroke\(pill\)/);
+		assert.match(source('src/note-chrome.ts'), /tagBadgeIcon\(button, ghost\)/);
+		assert.match(source('src/note-chrome.ts'), /tagBadgeIcon\(route, 'route'\)/);
 		assert.match(source('src/map-view.ts'), /pinBadgeStroke\(priority\)/);
+		assert.match(source('src/map-view.ts'), /tagBadgeIcon\(urgency, pin\.stateIcon\)/);
+		assert.match(source('src/map-view.ts'), /tagBadgeIcon\(route, 'route'\)/);
+		assert.match(css, /stroke-width:\s*var\(--rv-badge-stroke\) !important/);
+		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-digit-ink\) \* var\(--rv-opt-digit\)\) !important/);
 	});
 
 	it('keeps the sort row open until the close button', () => {

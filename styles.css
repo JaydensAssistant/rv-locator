@@ -3199,6 +3199,14 @@ button.rv-suggest-chevron {
 	stroke: none;
 }
 
+.rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph line {
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 2px;
+	stroke-linecap: round;
+	vector-effect: non-scaling-stroke;
+}
+
 .rv-map .rv-map-pins > button.rv-map-pin .rv-urgency-glyph circle.is-ring {
 	fill: none;
 	stroke: currentColor;
@@ -7799,15 +7807,53 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 }
 
 /*
-  One badge glyph. Ink, not the font box or the SVG viewBox padding, is
-  --rv-badge-ink of the circle. Line icons share --rv-badge-stroke.
-  Digits use a medium weight sized from the cap height.
+  One badge glyph. Equal ink (--rv-badge-ink) is the starting size.
+  --rv-opt-* is the optical correction, one factor per glyph type.
+  Dense marks (digits, bangs, the dash) sit under 1. Open line icons sit over 1.
+  Every stroke is --rv-badge-stroke and does not scale with the glyph.
+  Digits stay a medium weight, sized from the cap height.
 */
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card, .rv-locator-attempt-log) {
 	--rv-badge-ink: 0.53;
 	--rv-line-ink: 0.8333;
 	--rv-digit-ink: 0.72;
 	--rv-badge-stroke: 2px;
+	--rv-opt-digit: 0.92;
+	--rv-opt-bang: 0.9;
+	--rv-opt-ring: 1.06;
+	--rv-opt-dash: 0.94;
+	--rv-opt-route: 1.08;
+	--rv-opt-moon: 1.08;
+	--rv-opt-hourglass: 1.1;
+	--rv-opt-ban: 1.06;
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-urgency-glyph[data-rv-glyph="bang"] {
+	--rv-opt-icon: var(--rv-opt-bang);
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-urgency-glyph[data-rv-glyph="ring"] {
+	--rv-opt-icon: var(--rv-opt-ring);
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-urgency-glyph[data-rv-glyph="dash"] {
+	--rv-opt-icon: var(--rv-opt-dash);
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="route"] {
+	--rv-opt-icon: var(--rv-opt-route);
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="moon"] {
+	--rv-opt-icon: var(--rv-opt-moon);
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="hourglass"] {
+	--rv-opt-icon: var(--rv-opt-hourglass);
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="ban"] {
+	--rv-opt-icon: var(--rv-opt-ban);
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-priority-pill, .rv-locator-map-pin) {
@@ -7820,21 +7866,29 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph,
 .rv-map-card .rv-locator-urgency .rv-urgency-glyph {
-	width: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink)) !important;
-	height: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink)) !important;
+	width: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) * var(--rv-opt-icon, 1)) !important;
+	height: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) * var(--rv-opt-icon, 1)) !important;
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-urgency-glyph :is(line, circle.is-ring) {
+	fill: none !important;
+	stroke: currentColor !important;
+	stroke-width: var(--rv-badge-stroke) !important;
+	stroke-linecap: round;
+	vector-effect: non-scaling-stroke;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg,
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency > svg:not(.rv-urgency-glyph),
 button.rv-locator-urgency > svg:not(.rv-urgency-glyph),
 button.rv-locator-map-pin > svg:not(.rv-urgency-glyph) {
-	width: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-line-ink)) !important;
-	height: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-line-ink)) !important;
+	width: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-line-ink) * var(--rv-opt-icon, 1)) !important;
+	height: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-line-ink) * var(--rv-opt-icon, 1)) !important;
 	stroke-width: var(--rv-badge-stroke) !important;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
-	font-size: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-digit-ink)) !important;
+	font-size: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-digit-ink) * var(--rv-opt-digit)) !important;
 	font-weight: 500 !important;
 	line-height: 1 !important;
 }

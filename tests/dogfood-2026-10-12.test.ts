@@ -410,9 +410,9 @@ describe('2026-10-12 dogfood round 2', () => {
 
 	it('locks the 2026-10-13 dogfood layout', () => {
 		assert.match(css, /--rv-badge-ink:\s*0\.53/);
-		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-digit-ink\)\) !important/);
+		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-digit-ink\) \* var\(--rv-opt-digit\)\) !important/);
 		assert.match(css, /font-weight:\s*500 !important/);
-		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-line-ink\)\) !important/);
+		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-line-ink\) \* var\(--rv-opt-icon, 1\)\) !important/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*width:\s*max-content/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*background:\s*var\(--background-secondary\) !important/);
 		assert.match(css, /\.rv-nh-toast \.rv-toast-text \{[^}]*display:\s*block/);

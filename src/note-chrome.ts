@@ -7,7 +7,7 @@ import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
-import { mountUrgencyGlyph, pinBadgeStroke } from './glancable-view';
+import { mountUrgencyGlyph, pinBadgeStroke, tagBadgeIcon } from './glancable-view';
 import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
@@ -312,6 +312,7 @@ function paintFactsTitle(
 		if (ghost) {
 			if (ghost !== 'moon') button.addClass('is-ghost');
 			button.empty();
+			tagBadgeIcon(button, ghost);
 			setIcon(button, ghost);
 			pinBadgeStroke(button);
 			if (ghost === 'moon') {
@@ -348,6 +349,7 @@ function paintFactsTitle(
 			cls: 'rv-locator-map-pin',
 			attr: { type: 'button', 'aria-label': 'Directions' },
 		});
+		tagBadgeIcon(route, 'route');
 		setIcon(route, 'route');
 		pinBadgeStroke(route);
 		route.addEventListener('click', (event) => {
