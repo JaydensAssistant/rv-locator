@@ -192,6 +192,15 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.ok(nextSlider instanceof window.HTMLInputElement);
 		assert.equal(nextSlider.value, '1');
 		assert.notEqual(nextSlider.value, nextSlider.max);
+		const skip = parent.querySelector('.rv-study-skip');
+		assert.equal(skip?.textContent, "Didn't study");
+		assert.ok(skip instanceof window.HTMLElement);
+		skip.click();
+		assert.equal(parent.querySelector('.rv-study-skip')?.textContent, 'Did study');
+		const back = parent.querySelector('.rv-study-skip');
+		assert.ok(back instanceof window.HTMLElement);
+		back.click();
+		assert.equal(parent.querySelector('.rv-study-skip')?.textContent, "Didn't study");
 	});
 
 	it('mounts a native notes box only when Meta Bind left the raw field', () => {
@@ -318,7 +327,7 @@ describe('2026-10-12 dogfood round 2', () => {
 	it('joins the empty note header, centers the hub, and fits the narrow controls', () => {
 		assert.match(css, /body\.rv-hide-note-status \.status-bar \{\s*display:\s*none/);
 		assert.match(css, /\.cm-line\.rv-mb-hidden \{[^}]*display:\s*none/);
-		assert.match(css, /\.rv-dashboard p\.rv-hub-owned \.rv-hub-chip \{[^}]*justify-content:\s*center/);
+		assert.match(css, /\.rv-dashboard p\.rv-hub-owned \.rv-hub-chip \{[^}]*justify-content:\s*flex-start/);
 		assert.doesNotMatch(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
 		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*flex !important/);
 		assert.match(css, /\.rv-study-tick::before \{[^}]*height:\s*6px/);
@@ -398,5 +407,24 @@ describe('2026-10-12 dogfood round 2', () => {
 		const chrome = source('src/note-chrome.ts');
 		assert.match(chrome, /=== 'moon' \? SNOOZE_SLATE/);
 		assert.match(chrome, /if \(ghost !== 'moon'\) button\.addClass\('is-ghost'\)/);
+	});
+
+	it('locks the 2026-10-13 dogfood layout', () => {
+		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.72\)/);
+		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.48\) !important/);
+		assert.match(css, /\.rv-nh-toast \{[^}]*width:\s*max-content/);
+		assert.match(css, /h3\.rv-older-visits,\s*\.rv-older-visits-widget \.rv-older-visits \{[^}]*justify-content:\s*center/);
+		assert.match(css, /\.rv-visit-stamp \.rv-stamp-row > \.rv-visit-more[^}]*right:\s*0/);
+		assert.match(css, /--callout-padding:\s*8px !important/);
+		assert.match(css, /font-weight:\s*var\(--bold-weight, 600\)/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-sort-scroll\.is-hidden \{[^}]*display:\s*none !important/);
+		assert.match(css, /height:\s*40px !important/);
+		assert.match(source('src/override-modal.ts'), /daypartSettingLabel/);
+		assert.match(source('src/override-modal.ts'), /rv-slot-when/);
+		assert.match(source('src/override-modal.ts'), /setClass\('rv-modal-actions'\)/);
+		assert.doesNotMatch(source('src/attempt-digest.ts'), /daypartSettingLabel/);
+		assert.doesNotMatch(source('src/visit-modals.ts'), /daypartSettingLabel/);
+		assert.match(source('src/visit-modals.ts'), /rv-when-row/);
+		assert.match(source('src/study-panel.ts'), /skipped \? 'Did study' : "Didn't study"/);
 	});
 });

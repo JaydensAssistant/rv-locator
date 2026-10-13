@@ -40,7 +40,11 @@ export function mountStudyPanel(
 		const label = line.createSpan({ cls: 'rv-study-label', text: skipped ? 'No study' : studyLine(share, options, mode, stopIndex) });
 		label.setAttribute('aria-label', label.textContent ?? '');
 		const change = line.createEl('button', { cls: 'rv-study-change', text: 'Change', attr: { type: 'button' } });
-		const skip = line.createEl('button', { cls: 'rv-study-skip', text: "Didn't study", attr: { type: 'button' } });
+		const skip = line.createEl('button', {
+			cls: 'rv-study-skip',
+			text: skipped ? 'Did study' : "Didn't study",
+			attr: { type: 'button' },
+		});
 		skip.classList.toggle('is-on', skipped);
 		change.addEventListener('click', (event) => {
 			event?.preventDefault?.();

@@ -843,8 +843,8 @@
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg {
-	width: 100%;
-	height: 100%;
+	width: calc(var(--rv-control-size, 28px) * 0.48);
+	height: calc(var(--rv-control-size, 28px) * 0.48);
 	stroke-width: 2px !important;
 	stroke-linecap: round;
 	stroke-linejoin: round;
@@ -937,7 +937,7 @@
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
 	padding: 0;
-	font-size: calc(var(--rv-control-size, 28px) * 0.46);
+	font-size: calc(var(--rv-control-size, 28px) * 0.72);
 	font-weight: 700;
 }
 
@@ -3291,8 +3291,8 @@ button.rv-suggest-chevron {
 }
 
 .rv-map-card .rv-locator-map-pin svg {
-	width: 100% !important;
-	height: 100% !important;
+	width: calc(38px * 0.48) !important;
+	height: calc(38px * 0.48) !important;
 }
 
 .rv-map-card .rv-locator-card {
@@ -5019,7 +5019,7 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li,
 
 .rv-nh-toast .rv-toast-text {
 	display: flex;
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-width: 0;
 	gap: 0.3em;
 }
@@ -5091,7 +5091,12 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li,
 
 body.rv-wide-hubs .markdown-preview-view .rv-dashboard a.internal-link.rv-hub-chip,
 body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input {
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip,
+.markdown-rendered p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+.rv-dashboard p.rv-hub-owned .rv-address-field,
+.rv-dashboard p.rv-hub-owned a.rv-address-link {
 	box-sizing: border-box;
 	height: 40px;
 	min-height: 40px;
@@ -6274,8 +6279,8 @@ p.rv-hub-owned a.rv-address-link {
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
-	padding-left: 4px;
-	padding-right: 4px;
+	padding-left: 8px;
+	padding-right: 8px;
 }
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
@@ -6509,7 +6514,7 @@ button.rv-study-toggle {
   Long-press edit shows the full address in the input.
 */
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
-	--callout-padding: 4px;
+	--callout-padding: 8px;
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line,
@@ -6595,20 +6600,19 @@ button.rv-study-toggle {
 }
 
 /*
-  The quote callout's own padding was 4px, but .callout-content still used
-  --rv-dash-pad (12px). Together that is 16px on each side. Zero the content
-  padding and keep 4px on the callout, including when rv-dashboard is the
-  markdown view class rather than a wrapper.
+  The quote callout's own padding is equal on the left and right. Content
+  padding stays 0 so the callout padding is the inner inset. 8px is a little
+  more than the 4px that read as too tight.
 */
 .markdown-preview-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
 .markdown-reading-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
 .markdown-source-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
 .markdown-rendered.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions),
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
-	--callout-padding: 4px !important;
+	--callout-padding: 8px !important;
 	--rv-dash-pad: 0px;
 	--rv-pair-label: 56px;
-	padding: 4px !important;
+	padding: 8px !important;
 }
 
 .markdown-preview-view.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content,
@@ -6930,17 +6934,17 @@ body.rv-hide-note-status .status-bar {
 .markdown-preview-view p.rv-hub-owned .rv-hub-chip,
 .markdown-rendered p.rv-hub-owned .rv-hub-chip,
 .rv-dashboard p.rv-hub-owned .rv-hub-chip {
-	justify-content: center !important;
-	text-align: center !important;
+	justify-content: flex-start !important;
+	text-align: start !important;
 }
 
 .rv-dashboard p.rv-hub-owned .rv-hub-chip > .rv-hub-chip-label,
 .markdown-preview-view p.rv-hub-owned .rv-hub-chip > .rv-hub-chip-label,
 .markdown-rendered p.rv-hub-owned .rv-hub-chip > .rv-hub-chip-label {
-	flex: 0 1 auto !important;
+	flex: 1 1 auto !important;
 	width: auto;
 	max-width: 100%;
-	text-align: center !important;
+	text-align: start !important;
 }
 
 .rv-lp-visit .rv-visit-note-box > .rv-item-strip.is-ghost,
@@ -7597,4 +7601,149 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .rv-item.is-icon-only > .rv-fit {
 	display: none !important;
+}
+
+/* 2026-10-13 dogfood. Later than the blocks above so these used values win. */
+button.rv-locator-map-pin > svg,
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg {
+	width: calc(var(--rv-control-size, 28px) * 0.48) !important;
+	height: calc(var(--rv-control-size, 28px) * 0.48) !important;
+}
+
+.rv-map-card .rv-locator-map-pin svg {
+	width: calc(38px * 0.48) !important;
+	height: calc(38px * 0.48) !important;
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
+	font-size: calc(var(--rv-control-size, 28px) * 0.72);
+	line-height: 1;
+}
+
+.rv-nh-toast {
+	left: 12px;
+	right: auto;
+	width: max-content;
+	max-width: calc(100% - 24px);
+	display: inline-flex;
+}
+
+.rv-dashboard .callout[data-callout="rv"] > .callout-title .callout-title-inner,
+.callout.rv-locator-attempt-log > .callout-title,
+.callout.rv-locator-attempt-log > .callout-title .callout-title-inner {
+	font-size: var(--callout-title-size, var(--font-ui-small));
+	font-weight: var(--bold-weight, 600);
+}
+
+.rv-older-visits-widget,
+.el-h3.rv-older-visits-wrap,
+.cm-line .rv-older-visits-widget {
+	width: 100%;
+	box-sizing: border-box;
+	text-align: center;
+}
+
+h3.rv-older-visits,
+.rv-older-visits-widget .rv-older-visits {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 0.35em;
+	width: 100%;
+	box-sizing: border-box;
+	text-align: center;
+}
+
+.rv-visit-stamp .rv-stamp-row {
+	display: flex;
+	position: relative;
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+	padding-left: 28px;
+	padding-right: 28px;
+	justify-content: center;
+}
+
+.rv-visit-stamp .rv-stamp-row > .rv-visit-more,
+body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
+	position: absolute;
+	right: 0;
+	top: 50%;
+	margin-left: 0;
+	transform: translateY(-50%);
+}
+
+.rv-locator-glancable .rv-locator-sort-scroll.is-hidden {
+	display: none !important;
+}
+
+.rv-locator-glancable.is-search-open .rv-locator-sort-scroll {
+	display: none !important;
+}
+
+.modal.rv-locator-modal .rv-slot-when {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: flex-end;
+	gap: 8px;
+	width: 100%;
+}
+
+.modal.rv-locator-modal .rv-slot-when > .setting-item {
+	flex: 1 1 8rem;
+	width: auto !important;
+	min-width: 7rem;
+	margin: 0;
+}
+
+.modal.rv-locator-modal .rv-slot-when > .setting-item:last-child {
+	flex: 2 1 12rem;
+}
+
+.modal.rv-locator-modal .setting-item.rv-modal-actions .setting-item-control {
+	flex-direction: row !important;
+	justify-content: stretch;
+}
+
+.modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control {
+	display: flex !important;
+	flex-direction: row !important;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 6px;
+	width: 100% !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control > input[type="date"] {
+	flex: 1 1 9.5rem;
+	width: auto !important;
+	min-width: 9rem;
+	max-width: none !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control > select {
+	flex: 0 1 4.5rem;
+	width: auto !important;
+	min-width: 3.4rem;
+}
+
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip,
+.markdown-rendered p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned input.rv-address-input,
+.rv-dashboard p.rv-hub-owned .rv-address-field,
+.rv-dashboard p.rv-hub-owned a.rv-address-link {
+	box-sizing: border-box !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	max-height: 40px !important;
+}
+
+.rv-dashboard p.rv-hub-owned .rv-address-field > a.rv-address-link {
+	height: auto !important;
+	min-height: 0 !important;
+	max-height: none !important;
 }

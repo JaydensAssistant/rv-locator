@@ -230,8 +230,8 @@ function isVoiceQuoteLine(line: string): boolean {
 	return isSuggesterText(line.replace(/^(?:>\s*)+/, '').trim());
 }
 
-function isReturnSuggestionsLine(line: string): boolean {
-	return RETURN_SUGGESTIONS.test(line);
+export function isReturnSuggestionsLine(line: string): boolean {
+	return RETURN_SUGGESTIONS.test(line.trim());
 }
 
 function suggestionsRegionStart(lines: readonly string[], logIndex: number): number {

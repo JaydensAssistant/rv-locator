@@ -82,25 +82,22 @@ export class VisitEditModal extends Modal {
 				});
 			});
 
-		new Setting(contentEl)
-			.setName('Day')
-			.addText((text) => {
-				text.inputEl.type = 'date';
-				text.inputEl.max = dateInputValue(new Date());
-				text.setValue(this.dateText);
-				text.onChange((value) => {
-					this.dateText = value;
-					this.syncCompanion();
-				});
-			});
-
 		const face = clockFace(this.hour);
 		let hour12 = face.hour12;
 		let meridiem = face.meridiem;
 		const syncHour = (): void => {
 			this.hour = hour24FromFace(hour12, meridiem);
 		};
-		const time = new Setting(contentEl).setName('Time').setClass('rv-time-row');
+		const time = new Setting(contentEl).setName('Day').setClass('rv-when-row');
+		time.addText((text) => {
+			text.inputEl.type = 'date';
+			text.inputEl.max = dateInputValue(new Date());
+			text.setValue(this.dateText);
+			text.onChange((value) => {
+				this.dateText = value;
+				this.syncCompanion();
+			});
+		});
 		time.addDropdown((dropdown) => {
 			dropdown.selectEl.setAttribute('aria-label', 'Hour');
 			for (let hour = 1; hour <= 12; hour += 1) dropdown.addOption(String(hour), String(hour));

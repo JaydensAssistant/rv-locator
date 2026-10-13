@@ -1,6 +1,6 @@
 import { Modal, Notice, Setting, type App } from 'obsidian';
 import { iconizeModal } from './modal-chrome';
-import { DAYPARTS, type Daypart } from './schedule';
+import { DAYPARTS, daypartSettingLabel, type Daypart } from './schedule';
 import {
 	formatSlotOverride,
 	removeSlotOverride,
@@ -43,17 +43,18 @@ export class SlotOverrideModal extends Modal {
 			cls: 'rv-locator-modal-copy',
 			text: 'Try or Avoid for this day and daypart.',
 		});
-		new Setting(contentEl)
+		const when = contentEl.createDiv('rv-slot-when');
+		new Setting(when)
 			.setName('Day')
 			.addDropdown((dropdown) => {
 				WEEKDAYS.forEach((label, index) => dropdown.addOption(String(index), label));
 				dropdown.setValue(String(this.weekday));
 				dropdown.onChange((value) => { this.weekday = Number(value); });
 			});
-		new Setting(contentEl)
+		new Setting(when)
 			.setName('Daypart')
 			.addDropdown((dropdown) => {
-				for (const daypart of DAYPARTS) dropdown.addOption(daypart, daypart);
+				for (const daypart of DAYPARTS) dropdown.addOption(daypart, daypartSettingLabel(daypart));
 				dropdown.setValue(this.daypart);
 				dropdown.onChange((value) => { this.daypart = value === 'morning' || value === 'afternoon' ? value : 'evening'; });
 			});
@@ -66,6 +67,7 @@ export class SlotOverrideModal extends Modal {
 				text.onChange((value) => { this.reason = value; });
 			});
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Try');
 				button.setCta();

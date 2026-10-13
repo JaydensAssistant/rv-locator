@@ -1,5 +1,6 @@
 import { Prec, RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
+import { isReturnSuggestionsLine } from './attempt-digest';
 import { coveredCampaignFor, stampDateTime } from './schedule';
 import { paintLiveVisitHeading, publisherForVisit } from './visit-controls';
 import { mountHeadingChevron, visitStampLine } from './visit-display';
@@ -80,6 +81,7 @@ function sectionEnd(lines: readonly DocLine[], start: number, nextStamp: number 
 function stopsVisitSection(line: string): boolean {
 	const trimmed = line.trim();
 	if (/^(?:-{3,}|\*{3,}|_{3,})\s*$/.test(trimmed)) return true;
+	if (isReturnSuggestionsLine(trimmed)) return true;
 	return /^#{1,6}\s+/.test(trimmed) && visitStampLine(trimmed) == null;
 }
 

@@ -1,3 +1,4 @@
+import { isReturnSuggestionsLine } from './attempt-digest';
 import { stripStampAge } from './dates';
 import { stampDateTime } from './schedule';
 
@@ -48,10 +49,12 @@ export function visitLineSpans(markdown: string, limit: number, collapse: boolea
 	}
 	const cap = collapse ? Math.max(0, Math.floor(limit)) : stamps.length;
 	const firstLine = stamps.length > cap ? stamps[cap] ?? -1 : -1;
+	const suggestionsAt = lines.findIndex((line) => isReturnSuggestionsLine(line));
+	const limitEnd = suggestionsAt >= 0 ? suggestionsAt : lines.length;
 	return stamps.map((line, index) => ({
 		index,
 		line,
-		end: stamps[index + 1] ?? lines.length,
+		end: Math.min(stamps[index + 1] ?? limitEnd, limitEnd),
 		older: index >= cap,
 		firstOlder: line === firstLine,
 	}));
@@ -230,6 +233,14 @@ function blockOf(heading: HTMLElement, boundary: HTMLElement): HTMLElement {
 	return node;
 }
 
+/** A section that holds Return Suggestions stays outside the older-visit fold. */
+function containsReturnSuggestions(node: HTMLElement): boolean {
+	if (node.classList.contains('rv-locator-return-suggestions')) return true;
+	if (node.querySelector('.rv-locator-return-suggestions') instanceof HTMLElement) return true;
+	const title = node.querySelector('.callout-title');
+	return (title?.textContent ?? '').includes('Return Suggestions');
+}
+
 /**
  * Full-preview pass used when a test or a refresh already has every stamp.
  * Classes and one header only. Nodes Obsidian created stay where they are.
@@ -252,7 +263,7 @@ export function markPreviewOlderVisits(
 			if (cursor.querySelector('h3.rv-visit-stamp, h5.rv-visit-stamp, h3.rv-older-visits')) break;
 			cursor.classList.remove('rv-older-section', 'rv-older-first');
 			const next = cursor.nextElementSibling;
-			if (cursor.classList.contains('rv-older-visits-wrap') || cursor.classList.contains('rv-older-rule') || cursor.classList.contains('callout') || cursor.tagName === 'HR') break;
+			if (containsReturnSuggestions(cursor) || cursor.classList.contains('rv-older-visits-wrap') || cursor.classList.contains('rv-older-rule') || cursor.classList.contains('callout') || cursor.tagName === 'HR') break;
 			cursor = next;
 		}
 	}
@@ -264,6 +275,7 @@ export function markPreviewOlderVisits(
 		let cursor = block.nextElementSibling;
 		while (cursor instanceof HTMLElement) {
 			if (blocks.includes(cursor) || isStampHeading(cursor)) break;
+			if (containsReturnSuggestions(cursor)) break;
 			if (cursor.classList.contains('callout') || cursor.classList.contains('rv-notes-fold-stop') || cursor.classList.contains('rv-older-visits-wrap') || cursor.classList.contains('rv-older-rule')) break;
 			if (cursor.tagName === 'HR' && !cursor.classList.contains('rv-older-rule')) break;
 			cursor.classList.toggle('rv-older-section', older);

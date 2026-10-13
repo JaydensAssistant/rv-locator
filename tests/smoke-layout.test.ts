@@ -806,7 +806,7 @@ describe('smoke layout', () => {
 		const flexText = css.match(/\.rv-nh-toast \.rv-toast-text \{[^}]*display:\s*flex;[^}]*\}/);
 		assert.ok(flexText);
 		assert.match(flexText[0], /gap:\s*0\.3em/);
-		assert.match(flexText[0], /flex:\s*1 1 auto/);
+		assert.match(flexText[0], /flex:\s*0 1 auto/);
 		assert.match(flexText[0], /min-width:\s*0/);
 		const main = readFileSync('src/main.ts', 'utf8');
 		assert.equal(main.includes('` logged ·'), false);
@@ -1308,7 +1308,7 @@ describe('smoke layout', () => {
 		assert.match(activate, /await this\.openInReadingView/);
 		assert.match(main, /source: false/);
 		assert.match(css, /--rv-pair-label: 56px/);
-		assert.match(css, /padding: 4px !important/);
+		assert.match(css, /padding: 8px !important/);
 		assert.match(css, /> \.callout-content \{[^}]*padding: 0 !important/);
 		assert.match(css, /input\.rv-address-input\[hidden\],\s*a\.rv-address-link\[hidden\] \{\s*display: none !important;/);
 		const visit = readFileSync('src/visit-display.ts', 'utf8');

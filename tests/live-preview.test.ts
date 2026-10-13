@@ -5,7 +5,7 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { decorateVisitControls } from '../src/visit-controls';
 import { layoutVisitNotes } from '../src/visit-display';
-import { clearOlderVisitsState } from '../src/visit-older';
+import { clearOlderVisitsState, markPreviewOlderVisits, visitLineSpans } from '../src/visit-older';
 import {
 	collapseVisitGapLines,
 	lockHiddenMetaBindFields,
@@ -77,6 +77,50 @@ describe('live preview older visits', () => {
 			'##### Fri, 5pm — Sep 5, 2026',
 		]);
 		assert.equal(note.includes('Older Visits'), false);
+	});
+
+	it('keeps Return Suggestions outside the collapsed older visits', () => {
+		const withSuggestions = `${note}\n\n> [!example] Return Suggestions\n> Try Friday evening\n`;
+		const plan = planLivePreviewVisits(withSuggestions, { collapseOlder: true, limit: 3 });
+		const hidden = plan.hiddenLines.map((from) => {
+			const end = withSuggestions.indexOf('\n', from);
+			return withSuggestions.slice(from, end === -1 ? undefined : end);
+		});
+		assert.equal(hidden.some((line) => line.includes('Return Suggestions')), false);
+		assert.equal(hidden.some((line) => line.includes('Try Friday')), false);
+		assert.equal(hidden.some((line) => line.startsWith('##### Thu')), true);
+		const lines = withSuggestions.split('\n');
+		const suggesterAt = lines.findIndex((line) => line.includes('Return Suggestions'));
+		const spans = visitLineSpans(withSuggestions, 3, true);
+		const last = spans[spans.length - 1];
+		assert.ok(last);
+		assert.equal(last.older, true);
+		assert.ok(last.end <= suggesterAt);
+
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		for (const stamp of stamps) {
+			const section = window.document.createElement('div');
+			section.className = 'markdown-preview-section';
+			const heading = window.document.createElement('h5');
+			heading.textContent = stamp;
+			section.appendChild(heading);
+			preview.appendChild(section);
+		}
+		const suggester = window.document.createElement('div');
+		suggester.className = 'markdown-preview-section';
+		const callout = window.document.createElement('div');
+		callout.className = 'callout rv-locator-return-suggestions';
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		title.textContent = 'Return Suggestions';
+		callout.appendChild(title);
+		suggester.appendChild(callout);
+		preview.appendChild(suggester);
+		markPreviewOlderVisits(preview, { limit: 3, collapseOlder: true }, 'note.md');
+		assert.equal(suggester.classList.contains('rv-older-section'), false);
+		assert.equal(callout.classList.contains('rv-older-section'), false);
+		assert.ok(preview.querySelector('h3.rv-older-visits'));
 	});
 
 	it('keeps the document byte-identical when the live preview pass runs repeatedly', async () => {
