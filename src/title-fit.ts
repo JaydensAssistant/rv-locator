@@ -254,10 +254,7 @@ function closedSpan(input: HTMLElement, cls: string, text: string): HTMLElement 
  * A box that already fits is left whole. Catalog titles use {@link fitMiddleEllipsis}.
  */
 function slotWidth(el: HTMLElement): number {
-	let width = el.clientWidth;
-	const row = el.closest('.rv-hub-row');
-	if (row instanceof HTMLElement && row.clientWidth > width) width = row.clientWidth;
-	return width;
+	return el.clientWidth;
 }
 
 export function fitEndEllipsis(el: HTMLElement, full: string): void {

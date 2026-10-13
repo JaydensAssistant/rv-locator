@@ -414,7 +414,10 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.48\) !important/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*width:\s*max-content/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*background:\s*var\(--background-secondary\) !important/);
-		assert.match(css, /-webkit-line-clamp:\s*2/);
+		assert.match(css, /\.rv-nh-toast \.rv-toast-text \{[^}]*display:\s*block/);
+		assert.match(css, /\.rv-nh-toast \.rv-toast-name \{[^}]*-webkit-line-clamp:\s*unset/);
+		assert.match(css, /\.rv-dashboard p\.rv-hub-owned \.rv-hub-chip,[\s\S]*border:\s*1px solid var\(--background-modifier-border\) !important/);
+		assert.doesNotMatch(source('src/title-fit.ts').slice(source('src/title-fit.ts').indexOf('function slotWidth')), /row\.clientWidth/);
 		assert.match(css, /\.rv-slot-when \{[^}]*align-items:\s*flex-start/);
 		assert.match(css, /\.rv-when-row \.setting-item-control \{[^}]*flex-wrap:\s*nowrap !important/);
 		assert.match(source('src/note-chrome.ts'), /minmax\(0, 1fr\) 40px/);

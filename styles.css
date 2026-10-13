@@ -6060,15 +6060,13 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line input.rv-address-input,
 .theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line a.rv-address-link,
-.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line .rv-hub-row,
-.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line .rv-hub-chip {
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line .rv-hub-row {
 	border: 0;
 	border-radius: 0;
 	background: transparent;
 	box-shadow: none;
 }
 
-.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
 .theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line > a.rv-map-button {
 	border: 0;
 	border-left: 1px solid var(--background-modifier-border);
@@ -7636,19 +7634,46 @@ button.rv-locator-map-pin > svg,
 }
 
 .rv-nh-toast .rv-toast-text {
+	display: block;
+	flex: 1 1 auto;
+	min-width: 0;
 	white-space: normal;
 	overflow: visible;
 	text-overflow: clip;
-	align-items: center;
 }
 
+.rv-nh-toast .rv-toast-lead,
 .rv-nh-toast .rv-toast-name {
+	display: inline;
+	-webkit-line-clamp: unset;
+	line-clamp: none;
+	overflow: visible;
 	white-space: normal;
-	overflow: hidden;
-	display: -webkit-box;
-	-webkit-box-orient: vertical;
-	-webkit-line-clamp: 2;
-	line-clamp: 2;
+}
+
+.rv-nh-toast .rv-toast-lead {
+	margin-right: 0.3em;
+}
+
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line,
+.theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line,
+.rv-dashboard p.rv-hub-owned > .rv-address-line {
+	border: 0 !important;
+	background: transparent !important;
+	box-shadow: none !important;
+}
+
+.rv-dashboard p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned .rv-address-field,
+.rv-dashboard p.rv-hub-owned .rv-hub-add,
+.rv-dashboard p.rv-hub-owned a.rv-map-button {
+	box-sizing: border-box !important;
+	border: 1px solid var(--background-modifier-border) !important;
+	border-radius: 4px !important;
+	background: var(--background-primary) !important;
+	background-image: none !important;
+	box-shadow: none !important;
 }
 
 .rv-dashboard .callout[data-callout="rv"] > .callout-title .callout-title-inner,
