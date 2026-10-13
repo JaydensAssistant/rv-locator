@@ -478,8 +478,10 @@ export function visitPreviewExtension(
 	const decorate = (state: EditorState): DecorationSet => {
 		if (!state.field(livePreviewField)) return Decoration.none;
 		const path = state.field(notePathField);
-		const open = path ? olderVisitsOpen(path) : state.field(olderOpenField);
-		return buildVisitDecorations(state.doc.toString(), read(), open, path);
+		// An empty path is the gap between notes. Building widgets then fills
+		// them from whatever was last cached under ''.
+		if (!path) return Decoration.none;
+		return buildVisitDecorations(state.doc.toString(), read(), olderVisitsOpen(path), path);
 	};
 	const decorations = StateField.define<DecorationSet>({
 		create: decorate,
@@ -551,6 +553,7 @@ export function visitPreviewExtension(
 
 	function syncNotePath(view: EditorView): void {
 		const path = pathOf?.(view) ?? '';
+		if (!path) return;
 		if (view.state.field(notePathField, false) === path) return;
 		view.dispatch({ effects: setNotePath.of(path) });
 	}

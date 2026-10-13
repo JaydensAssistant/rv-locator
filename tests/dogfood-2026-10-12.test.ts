@@ -7,6 +7,7 @@ import { buildMapPins, groupPinStacks, pinUrgencyZ } from '../src/map-pins';
 import { SNOOZE_SLATE, snoozeCardCaption } from '../src/snooze';
 import { mountStudyPanel } from '../src/study-panel';
 import { DEFAULT_SETTINGS } from '../src/types';
+import type { App } from 'obsidian';
 import { clearVisitNoteCaches, mountVisitNotesInSection, rawVisitNoteKey } from '../src/visit-notes-field';
 import { bindVisitNoteFlush } from '../src/visit-notes-store';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
@@ -14,6 +15,22 @@ import { visitLayoutMissing } from '../src/visit-controls';
 
 function source(name: string): string {
 	return readFileSync(path.join(process.cwd(), name), 'utf8');
+}
+
+function notesApp(byPath: Record<string, Record<string, string>>): App {
+	return {
+		vault: {
+			getFileByPath(filePath: string) {
+				return Object.prototype.hasOwnProperty.call(byPath, filePath) ? { path: filePath } : null;
+			},
+		},
+		metadataCache: {
+			getFileCache(file: { path: string }) {
+				const frontmatter = byPath[file.path];
+				return frontmatter ? { frontmatter } : null;
+			},
+		},
+	} as unknown as App;
 }
 
 const css = source('styles.css');
@@ -204,9 +221,8 @@ describe('2026-10-12 dogfood round 2', () => {
 		window.document.body.appendChild(root);
 		mountVisitNotesInSection(root, {
 			sourcePath: 'Dale.md',
-			frontmatter: { sVisit5Notes: 'kept' },
 			addChild(child) { child.load(); },
-		});
+		}, notesApp({ 'Dale.md': { sVisit5Notes: 'kept' } }));
 		const mounted = raw.querySelector('textarea');
 		assert.ok(mounted instanceof window.HTMLTextAreaElement);
 		assert.equal(mounted.value, 'kept');
@@ -251,10 +267,10 @@ describe('2026-10-12 dogfood round 2', () => {
 		window.document.body.appendChild(root);
 		const ctx = {
 			sourcePath: 'Dale.md',
-			frontmatter: { sVisit5Notes: 'Third' },
 			addChild(child: { load: () => void }) { child.load(); },
 		};
-		mountVisitNotesInSection(root, ctx);
+		const app = notesApp({ 'Dale.md': { sVisit5Notes: 'Third' } });
+		mountVisitNotesInSection(root, ctx, app);
 		const mounted = raw.querySelector('textarea.rv-native-notes-area');
 		assert.ok(mounted instanceof window.HTMLTextAreaElement);
 		assert.equal(root.querySelectorAll('textarea.rv-native-notes-area').length, 1);
@@ -265,7 +281,7 @@ describe('2026-10-12 dogfood round 2', () => {
 			mounted.setSelectionRange(mounted.value.length, mounted.value.length);
 			mounted.dispatchEvent(new window.Event('input', { bubbles: true }));
 		}
-		mountVisitNotesInSection(root, ctx);
+		mountVisitNotesInSection(root, ctx, app);
 		assert.equal(raw.querySelector('textarea.rv-native-notes-area'), mounted);
 		assert.equal(mounted.selectionStart, typed.length);
 		const again = window.document.createElement('div');
@@ -273,7 +289,7 @@ describe('2026-10-12 dogfood round 2', () => {
 		paragraph.textContent = 'INPUT[textArea:sVisit5Notes]';
 		again.appendChild(paragraph);
 		window.document.body.appendChild(again);
-		mountVisitNotesInSection(again, ctx);
+		mountVisitNotesInSection(again, ctx, app);
 		const restored = again.querySelector('textarea.rv-native-notes-area');
 		assert.ok(restored instanceof window.HTMLTextAreaElement);
 		assert.notEqual(restored, mounted);

@@ -4,9 +4,10 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
+import type { App } from 'obsidian';
 import { refreshVisitPreviewEffect, visitPreviewExtension } from '../src/visit-live-preview';
 import { clearVisitNoteCaches, mountVisitNotesInSection } from '../src/visit-notes-field';
-import { applyExternalVisitNotes, bindVisitNoteFlush, flushVisitNotes, visitNoteValue } from '../src/visit-notes-store';
+import { applyExternalVisitNotes, bindVisitNoteFlush, flushVisitNotes, setVisitNoteFocus, visitNoteValue } from '../src/visit-notes-store';
 import { classifyVisitSection, clearOlderVisitsState, olderVisitsOpen } from '../src/visit-older';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
@@ -38,18 +39,27 @@ const DALE_NOTE = [
 	'`INPUT[textArea:sVisit1Notes]`',
 ].join('\n');
 
-interface NoteCtx {
-	sourcePath: string;
-	frontmatter: Record<string, string>;
-	addChild(child: { load: () => void }): void;
+function notesApp(byPath: Record<string, Record<string, string>>): App {
+	return {
+		vault: {
+			getFileByPath(path: string) {
+				return Object.prototype.hasOwnProperty.call(byPath, path) ? { path } : null;
+			},
+		},
+		metadataCache: {
+			getFileCache(file: { path: string }) {
+				const frontmatter = byPath[file.path];
+				return frontmatter ? { frontmatter } : null;
+			},
+		},
+	} as unknown as App;
 }
 
-function ctx(path: string, frontmatter: Record<string, string> = {}): NoteCtx {
-	return {
+function mountNotes(element: HTMLElement, path: string, frontmatter: Record<string, string> = {}): void {
+	mountVisitNotesInSection(element, {
 		sourcePath: path,
-		frontmatter,
 		addChild(child) { child.load(); },
-	};
+	}, notesApp({ [path]: frontmatter }));
 }
 
 function section(key: string, stamp: string): HTMLElement {
@@ -94,8 +104,8 @@ describe('visit notes rewrite', () => {
 		left.appendChild(leftSection);
 		right.appendChild(rightSection);
 		const frontmatter = { sVisit2Notes: 'shared' };
-		mountVisitNotesInSection(leftSection, ctx(DALE, frontmatter));
-		mountVisitNotesInSection(rightSection, ctx(DALE, frontmatter));
+		mountNotes(leftSection, DALE, frontmatter);
+		mountNotes(rightSection, DALE, frontmatter);
 		const author = areaIn(left, 'sVisit2Notes');
 		const other = areaIn(right, 'sVisit2Notes');
 		assert.equal(author.value, 'shared');
@@ -106,7 +116,7 @@ describe('visit notes rewrite', () => {
 		assert.equal(author, areaIn(left, 'sVisit2Notes'));
 		assert.equal(author.selectionStart, 'shared plus'.length);
 		assert.equal(other.value, 'shared plus');
-		mountVisitNotesInSection(leftSection, ctx(DALE, frontmatter));
+		mountNotes(leftSection, DALE, frontmatter);
 		assert.equal(areaIn(left, 'sVisit2Notes'), author);
 		await new Promise((resolve) => setTimeout(resolve, 400));
 		assert.deepEqual(writes, ['shared plus']);
@@ -117,14 +127,14 @@ describe('visit notes rewrite', () => {
 		clearVisitNoteCaches();
 		const ada = section('sVisit1Notes', OLDER);
 		const dale = section('sVisit2Notes', NEWEST);
-		mountVisitNotesInSection(ada, ctx('RVs/Ada.md', { sVisit1Notes: 'ada note' }));
-		mountVisitNotesInSection(dale, ctx(DALE, { sVisit2Notes: 'dale note' }));
+		mountNotes(ada, 'RVs/Ada.md', { sVisit1Notes: 'ada note' });
+		mountNotes(dale, DALE, { sVisit2Notes: 'dale note' });
 		typeInto(areaIn(ada, 'sVisit1Notes'), 'ada typed');
 		typeInto(areaIn(dale, 'sVisit2Notes'), 'dale typed');
 		assert.equal(visitNoteValue('RVs/Ada.md', 'sVisit1Notes'), 'ada typed');
 		assert.equal(visitNoteValue(DALE, 'sVisit2Notes'), 'dale typed');
 		const returned = section('sVisit1Notes', OLDER);
-		mountVisitNotesInSection(returned, ctx('RVs/Ada.md', {}));
+		mountNotes(returned, 'RVs/Ada.md', {});
 		assert.equal(areaIn(returned, 'sVisit1Notes').value, 'ada typed');
 		clearVisitNoteCaches();
 	});
@@ -165,8 +175,8 @@ describe('visit notes rewrite', () => {
 		preview.append(newest, older);
 		classifyVisitSection(newest, DALE, DALE_NOTE, 0, 1, { limit: 1, collapseOlder: true });
 		classifyVisitSection(older, DALE, DALE_NOTE, 2, 3, { limit: 1, collapseOlder: true });
-		mountVisitNotesInSection(newest, ctx(DALE, { sVisit2Notes: 'newest box', sVisit1Notes: '' }));
-		mountVisitNotesInSection(older, ctx(DALE, { sVisit2Notes: 'newest box', sVisit1Notes: '' }));
+		mountNotes(newest, DALE, { sVisit2Notes: 'newest box', sVisit1Notes: '' });
+		mountNotes(older, DALE, { sVisit2Notes: 'newest box', sVisit1Notes: '' });
 		assert.equal(areaIn(newest, 'sVisit2Notes').value, 'newest box');
 		assert.equal(areaIn(older, 'sVisit1Notes').value, '');
 		assert.equal(newest.classList.contains('rv-older-section'), false);
@@ -189,11 +199,11 @@ describe('visit notes rewrite', () => {
 	it('leaves the same textarea in place for undo after a save, in Reading and Live Preview', async () => {
 		clearVisitNoteCaches();
 		const reading = section('sVisit2Notes', NEWEST);
-		mountVisitNotesInSection(reading, ctx(DALE, { sVisit2Notes: 'before' }));
+		mountNotes(reading, DALE, { sVisit2Notes: 'before' });
 		const readingArea = areaIn(reading, 'sVisit2Notes');
 		typeInto(readingArea, 'before saved');
 		flushVisitNotes(DALE);
-		mountVisitNotesInSection(reading, ctx(DALE, { sVisit2Notes: 'before saved' }));
+		mountNotes(reading, DALE, { sVisit2Notes: 'before saved' });
 		assert.equal(areaIn(reading, 'sVisit2Notes'), readingArea);
 		const undo = new window.InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'historyUndo' });
 		readingArea.dispatchEvent(undo);
@@ -234,7 +244,7 @@ describe('visit notes rewrite', () => {
 			if (batch.sVisit1Notes != null) writes.push(batch.sVisit1Notes);
 		});
 		const block = section('sVisit1Notes', OLDER);
-		mountVisitNotesInSection(block, ctx(DALE, { sVisit1Notes: '' }));
+		mountNotes(block, DALE, { sVisit1Notes: '' });
 		const area = areaIn(block, 'sVisit1Notes');
 		const paste = new window.Event('paste', { bubbles: true, cancelable: true });
 		area.dispatchEvent(paste);
@@ -249,11 +259,11 @@ describe('visit notes rewrite', () => {
 		clearVisitNoteCaches();
 		applyExternalVisitNotes(DALE, { sVisit2Notes: 'on disk' });
 		const block = section('sVisit2Notes', NEWEST);
-		mountVisitNotesInSection(block, ctx(DALE, { sVisit2Notes: 'on disk' }));
+		mountNotes(block, DALE, { sVisit2Notes: 'on disk' });
 		assert.equal(areaIn(block, 'sVisit2Notes').value, 'on disk');
 		clearVisitNoteCaches();
 		const again = section('sVisit2Notes', NEWEST);
-		mountVisitNotesInSection(again, ctx(DALE, { sVisit2Notes: 'on disk' }));
+		mountNotes(again, DALE, { sVisit2Notes: 'on disk' });
 		assert.equal(areaIn(again, 'sVisit2Notes').value, 'on disk');
 		clearVisitNoteCaches();
 	});
@@ -261,7 +271,7 @@ describe('visit notes rewrite', () => {
 	it('ignores an external change while the box is quiet or focused, then applies it on blur', async () => {
 		clearVisitNoteCaches();
 		const block = section('sVisit2Notes', NEWEST);
-		mountVisitNotesInSection(block, ctx(DALE, { sVisit2Notes: 'start' }));
+		mountNotes(block, DALE, { sVisit2Notes: 'start' });
 		const area = areaIn(block, 'sVisit2Notes');
 		window.document.body.appendChild(block);
 		typeInto(area, 'typing');
@@ -281,12 +291,12 @@ describe('visit notes rewrite', () => {
 	it('keeps the reading textarea through an IME composition', () => {
 		clearVisitNoteCaches();
 		const block = section('sVisit2Notes', NEWEST);
-		mountVisitNotesInSection(block, ctx(DALE, { sVisit2Notes: '' }));
+		mountNotes(block, DALE, { sVisit2Notes: '' });
 		const area = areaIn(block, 'sVisit2Notes');
 		area.dispatchEvent(new window.CompositionEvent('compositionstart', { bubbles: true }));
 		area.value = '日';
 		area.dispatchEvent(new window.InputEvent('input', { bubbles: true, inputType: 'insertCompositionText' }));
-		mountVisitNotesInSection(block, ctx(DALE, { sVisit2Notes: '' }));
+		mountNotes(block, DALE, { sVisit2Notes: '' });
 		assert.equal(areaIn(block, 'sVisit2Notes'), area);
 		assert.equal(area.value, '日');
 		area.dispatchEvent(new window.CompositionEvent('compositionend', { bubbles: true, data: '日本語' }));
@@ -323,6 +333,102 @@ describe('visit notes rewrite', () => {
 		assert.ok(strip instanceof window.HTMLElement);
 		assert.equal(strip.classList.contains('is-ghost'), true);
 		view.destroy();
+		clearVisitNoteCaches();
+	});
+
+	it('clears another note\'s keys when the open file has a different set', () => {
+		clearVisitNoteCaches();
+		applyExternalVisitNotes('Lisa.md', {
+			sVisit1Notes: 'lisa',
+			sVisit2Notes: 'pat two',
+			sVisit3Notes: 'pat three',
+		});
+		const lisa = section('sVisit1Notes', NEWEST);
+		mountVisitNotesInSection(lisa, {
+			sourcePath: 'Lisa.md',
+			addChild(child) { child.load(); },
+		}, notesApp({
+			'Lisa.md': { sVisit1Notes: 'lisa only' },
+			'Pat.md': { sVisit1Notes: 'p1', sVisit2Notes: 'p2', sVisit3Notes: 'p3' },
+		}));
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit1Notes'), 'lisa only');
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit2Notes'), '');
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit3Notes'), '');
+		assert.equal(areaIn(lisa, 'sVisit1Notes').value, 'lisa only');
+		assert.equal((lisa.textContent ?? '').includes('INPUT[textArea'), false);
+		const pat = window.document.createElement('div');
+		pat.append(
+			section('sVisit1Notes', NEWEST),
+			section('sVisit2Notes', OLDER),
+			section('sVisit3Notes', 'Mon, 9am — Sep 1, 2026'),
+		);
+		mountVisitNotesInSection(pat, {
+			sourcePath: 'Pat.md',
+			addChild(child) { child.load(); },
+		}, notesApp({
+			'Lisa.md': { sVisit1Notes: 'lisa only' },
+			'Pat.md': { sVisit1Notes: 'p1', sVisit2Notes: 'p2', sVisit3Notes: 'p3' },
+		}));
+		assert.equal(areaIn(pat, 'sVisit1Notes').value, 'p1');
+		assert.equal(areaIn(pat, 'sVisit2Notes').value, 'p2');
+		assert.equal(areaIn(pat, 'sVisit3Notes').value, 'p3');
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit2Notes'), '');
+		clearVisitNoteCaches();
+	});
+
+	it('clears a cached key the file no longer has, unless the box is focused or the write is quiet', () => {
+		clearVisitNoteCaches();
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'keep', sVisit2Notes: 'stale' });
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'keep' });
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit1Notes'), 'keep');
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit2Notes'), '');
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'keep', sVisit2Notes: 'stale again' });
+		setVisitNoteFocus('Lisa.md', 'sVisit2Notes', true);
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'keep' });
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit2Notes'), 'stale again');
+		setVisitNoteFocus('Lisa.md', 'sVisit2Notes', false);
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit2Notes'), '');
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'quiet', sVisit2Notes: 'still here' });
+		const block = section('sVisit1Notes', NEWEST);
+		mountNotes(block, 'Lisa.md', { sVisit1Notes: 'quiet', sVisit2Notes: 'still here' });
+		typeInto(areaIn(block, 'sVisit1Notes'), 'typing');
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'typing' });
+		assert.equal(visitNoteValue('Lisa.md', 'sVisit2Notes'), 'still here');
+		clearVisitNoteCaches();
+	});
+
+	it('does not build Live Preview widgets while the note path is empty', async () => {
+		clearVisitNoteCaches();
+		applyExternalVisitNotes('Pat.md', { sVisit1Notes: 'pat secret' });
+		applyExternalVisitNotes('Lisa.md', { sVisit1Notes: 'lisa' });
+		const doc = [
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+		].join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const early = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(early.dom.querySelector('textarea'), null);
+		early.destroy();
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'Lisa.md'),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(areaIn(view.dom, 'sVisit1Notes').value, 'lisa');
+		view.destroy();
+		parent.remove();
 		clearVisitNoteCaches();
 	});
 

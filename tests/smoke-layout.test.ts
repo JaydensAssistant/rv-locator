@@ -1305,16 +1305,19 @@ describe('smoke layout', () => {
 		const children: { load: () => void }[] = [];
 		const ctx = {
 			sourcePath: 'Dale.md',
-			frontmatter: front,
 			addChild(child: { load: () => void }) {
 				children.push(child);
 				child.load();
 			},
 		};
+		const app = {
+			vault: { getFileByPath: () => ({ path: 'Dale.md' }) },
+			metadataCache: { getFileCache: () => ({ frontmatter: front }) },
+		} as never;
 		for (const section of Array.from(preview.querySelectorAll('.markdown-preview-section'))) {
-			if (section instanceof window.HTMLElement) mountVisitNotesInSection(section, ctx);
+			if (section instanceof window.HTMLElement) mountVisitNotesInSection(section, ctx, app);
 		}
-		mountVisitNotesInSection(preview, ctx);
+		mountVisitNotesInSection(preview, ctx, app);
 		const areas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area'));
 		assert.equal(areas.length, 3);
 		assert.deepEqual(areas.map((area) => (area as HTMLTextAreaElement).dataset.rvNotesKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
@@ -1322,7 +1325,7 @@ describe('smoke layout', () => {
 		const first = areas[0] as HTMLTextAreaElement;
 		first.focus();
 		first.setSelectionRange(2, 2);
-		mountVisitNotesInSection(preview, ctx);
+		mountVisitNotesInSection(preview, ctx, app);
 		assert.equal(preview.querySelectorAll('textarea.rv-native-notes-area').length, 3);
 		assert.equal(preview.querySelector('textarea.rv-native-notes-area'), first);
 		assert.equal(first.selectionStart, 2);

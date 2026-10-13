@@ -1,4 +1,4 @@
-import { MarkdownRenderChild, type MarkdownPostProcessorContext } from 'obsidian';
+import { MarkdownRenderChild, type App, type MarkdownPostProcessorContext } from 'obsidian';
 import { NOTES_MAX_LINES, NOTES_MIN_LINES, fitNotesBox } from './notes-autosize';
 import {
 	applyExternalVisitNotes,
@@ -142,6 +142,7 @@ export class VisitNotesField extends MarkdownRenderChild {
 		const host = this.containerEl;
 		host.classList.add('mb-none', 'rv-visit-notes-host');
 		host.dataset.rvNotesKey = this.key;
+		stripInputText(host, this.key);
 		const found = host.querySelector('textarea');
 		if (found instanceof HTMLElement && host.dataset.rvNotesLive === this.key) return;
 		const area = found instanceof HTMLElement && found.tagName === 'TEXTAREA'
@@ -187,17 +188,39 @@ function declarationHosts(root: HTMLElement): { host: HTMLElement; key: string }
 	return found;
 }
 
+/** Drop the raw `INPUT[textArea:…]` text Obsidian put in the code element. */
+function stripInputText(host: HTMLElement, key: string): void {
+	const needle = `INPUT[textArea:${key}]`;
+	const roots: HTMLElement[] = [host];
+	if (host.tagName !== 'CODE') {
+		host.querySelectorAll('code').forEach((node) => {
+			if (node instanceof HTMLElement) roots.push(node);
+		});
+	}
+	for (const root of roots) {
+		for (const node of Array.from(root.childNodes)) {
+			if (node.nodeType !== Node.TEXT_NODE) continue;
+			if (!(node.textContent ?? '').includes(needle)) continue;
+			node.remove();
+		}
+	}
+}
+
 /**
  * Mount a field on each INPUT declaration in this section.
+ * Frontmatter comes from the file at `ctx.sourcePath`, never from `ctx.frontmatter`.
  * A section Obsidian reused already has the field, and is left alone.
  */
 export function mountVisitNotesInSection(
 	element: HTMLElement,
-	ctx: Pick<MarkdownPostProcessorContext, 'sourcePath' | 'addChild' | 'frontmatter'>,
+	ctx: Pick<MarkdownPostProcessorContext, 'sourcePath' | 'addChild'>,
+	app: App,
 ): void {
 	const path = ctx.sourcePath;
-	if (ctx.frontmatter && typeof ctx.frontmatter === 'object') {
-		applyExternalVisitNotes(path, noteValuesFromFrontmatter(ctx.frontmatter as Record<string, unknown>));
+	const file = app.vault.getFileByPath(path);
+	if (file) {
+		const front = app.metadataCache.getFileCache(file)?.frontmatter;
+		applyExternalVisitNotes(path, noteValuesFromFrontmatter(front ?? null));
 	}
 	for (const { host, key } of declarationHosts(element)) {
 		if (host.dataset.rvNotesLive === key && host.querySelector('textarea.rv-native-notes-area')) continue;

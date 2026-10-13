@@ -81,7 +81,7 @@ describe('live preview older visits', () => {
 			parent,
 			state: EditorState.create({
 				doc: note,
-				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 3 })),
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 3 }), () => 'note.md'),
 			}),
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -139,7 +139,7 @@ describe('live preview older visits', () => {
 			parent,
 			state: EditorState.create({
 				doc,
-				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'Dale.md'),
 			}),
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -173,7 +173,7 @@ describe('live preview older visits', () => {
 			parent,
 			state: EditorState.create({
 				doc,
-				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'Dale.md'),
 			}),
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -193,7 +193,7 @@ describe('live preview older visits', () => {
 			'`INPUT[textArea:sVisit1Notes]`',
 		].join('\n');
 		clearVisitNoteCaches();
-		applyExternalVisitNotes('', { sVisit1Notes: 'from the hub' });
+		applyExternalVisitNotes('Dale.md', { sVisit1Notes: 'from the hub' });
 		const parent = window.document.createElement('div');
 		parent.className = 'markdown-source-view is-live-preview';
 		window.document.body.appendChild(parent);
@@ -201,7 +201,7 @@ describe('live preview older visits', () => {
 			parent,
 			state: EditorState.create({
 				doc,
-				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'Dale.md'),
 			}),
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -226,7 +226,7 @@ describe('live preview older visits', () => {
 			'`INPUT[textArea:sVisit1Notes]`',
 		].join('\n');
 		clearVisitNoteCaches();
-		applyExternalVisitNotes('', { sVisit1Notes: 'from the hub' });
+		applyExternalVisitNotes('Dale.md', { sVisit1Notes: 'from the hub' });
 		const parent = window.document.createElement('div');
 		parent.className = 'markdown-source-view is-live-preview';
 		window.document.body.appendChild(parent);
@@ -234,7 +234,7 @@ describe('live preview older visits', () => {
 			parent,
 			state: EditorState.create({
 				doc,
-				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 })),
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'Dale.md'),
 			}),
 		});
 		await new Promise((resolve) => setTimeout(resolve, 0));
@@ -283,9 +283,11 @@ describe('live preview older visits', () => {
 		try {
 			mountVisitNotesInSection(section, {
 				sourcePath: 'Dale.md',
-				frontmatter: { sVisit1Notes: 'thu', sVisit2Notes: 'sun' },
 				addChild(child) { child.load(); },
-			});
+			}, {
+				vault: { getFileByPath: () => ({ path: 'Dale.md' }) },
+				metadataCache: { getFileCache: () => ({ frontmatter: { sVisit1Notes: 'thu', sVisit2Notes: 'sun' } }) },
+			} as never);
 			const area = paragraph.querySelector('textarea.rv-native-notes-area');
 			assert.ok(area instanceof window.HTMLTextAreaElement);
 			assert.equal(area.dataset.rvNotesKey, 'sVisit1Notes');

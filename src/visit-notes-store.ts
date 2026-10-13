@@ -143,19 +143,27 @@ export function setVisitNoteFocus(path: string, key: string, focused: boolean): 
 /**
  * Frontmatter that did not come from this box.
  * Dropped during the quiet window. A focused key waits until blur.
+ * A cached key the file no longer has becomes empty, under those same guards.
  */
 export function applyExternalVisitNotes(path: string, values: Readonly<Record<string, string>>): void {
 	const file = ensure(path);
 	if (Date.now() < file.quietUntil) return;
-	for (const [key, value] of Object.entries(values)) {
+	const seen = new Set<string>();
+	const applyOne = (key: string, value: string): void => {
+		seen.add(key);
 		if (file.focused.has(key)) {
 			file.pendingExternal.set(key, value);
-			continue;
+			return;
 		}
 		file.pendingExternal.delete(key);
-		if (file.values.get(key) === value) continue;
+		if (file.values.get(key) === value) return;
 		file.values.set(key, value);
 		notify(path, key, value, null);
+	};
+	for (const [key, value] of Object.entries(values)) applyOne(key, value);
+	for (const key of [...file.values.keys()]) {
+		if (seen.has(key)) continue;
+		applyOne(key, '');
 	}
 }
 

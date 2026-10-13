@@ -335,7 +335,7 @@ export default class RVLocatorPlugin extends Plugin {
 					collapseOlder: this.settings.collapseOlderVisits,
 				});
 			}
-			mountVisitNotesInSection(element, context);
+			mountVisitNotesInSection(element, context, this.app);
 			const file = this.app.vault.getFileByPath(path);
 			if (file && !this.noteBodies.has(path)) this.rememberNoteText(file);
 			this.bindVisitSurface(element, path);
