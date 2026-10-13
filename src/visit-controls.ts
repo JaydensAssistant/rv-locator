@@ -428,7 +428,7 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 		match = piece.exec(source);
 	}
 	if (items.length === 0) {
-		paintGhostPlaceholders(strip);
+		strip.classList.add('is-ghost');
 		return;
 	}
 	strip.classList.remove('is-ghost');
@@ -458,35 +458,12 @@ export function fillItemStrip(strip: HTMLElement, source: string, covered: strin
 		match = piece.exec(source);
 	}
 	if (items.length === 0) {
-		paintGhostPlaceholders(strip);
+		strip.classList.add('is-ghost');
 		return;
 	}
 	strip.classList.remove('is-ghost');
 	for (const item of [...items.filter((item) => item.campaign), ...items.filter((item) => !item.campaign)]) {
 		paintStripChip(strip, item);
-	}
-}
-
-/** Muted stand-ins for literature, video, and study when a visit shared nothing. */
-function paintGhostPlaceholders(strip: HTMLElement): void {
-	strip.classList.add('is-ghost');
-	const doc = strip.ownerDocument;
-	const slots = [
-		{ icon: 'book-open', label: 'Literature' },
-		{ icon: 'clapperboard', label: 'Video' },
-		{ icon: 'book-marked', label: 'Study' },
-	];
-	for (const slot of slots) {
-		const chip = doc.createElement('span');
-		chip.className = 'rv-item is-placeholder';
-		const icon = doc.createElement('span');
-		icon.className = 'rv-item-icon';
-		setIcon(icon, slot.icon);
-		const text = doc.createElement('span');
-		text.className = 'rv-ghost-label';
-		text.textContent = slot.label;
-		chip.append(icon, text);
-		strip.appendChild(chip);
 	}
 }
 
@@ -544,7 +521,7 @@ export function stripContentBudget(strip: HTMLElement): number {
 /** One row. Campaign stays. Extra chips become a +n button once the row is wider than its box. */
 function setChipIconOnly(chip: HTMLElement, iconOnly: boolean): void {
 	chip.classList.toggle('is-icon-only', iconOnly);
-	const text = chip.querySelector(':scope > .rv-fit, :scope > .rv-ghost-label');
+	const text = chip.querySelector(':scope > .rv-fit');
 	if (text instanceof HTMLElement) {
 		if (iconOnly) text.style.setProperty('display', 'none', 'important');
 		else text.style.removeProperty('display');

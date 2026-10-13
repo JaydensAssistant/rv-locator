@@ -475,8 +475,8 @@ describe('live preview older visits', () => {
 			const ghosts = view.dom.querySelectorAll('.rv-item-strip.is-ghost');
 			assert.equal(ghosts.length, 2);
 			for (const ghost of Array.from(ghosts)) {
-				assert.equal(ghost.querySelectorAll('.rv-item.is-placeholder').length, 3);
-				assert.ok(ghost.querySelector('.rv-item-icon'));
+				assert.equal(ghost.childElementCount, 0);
+				assert.equal(ghost.querySelector('.rv-item-icon'), null);
 			}
 			assert.equal(view.dom.querySelectorAll('.rv-note-under-strip').length, 3);
 			const line = view.state.doc.line(4);
@@ -503,7 +503,7 @@ describe('live preview older visits', () => {
 		const ghost = root.querySelector('.rv-item-strip');
 		assert.ok(ghost instanceof window.HTMLElement);
 		assert.equal(ghost.classList.contains('is-ghost'), true);
-		assert.equal(ghost.querySelectorAll('.rv-item.is-placeholder').length, 3);
+		assert.equal(ghost.childElementCount, 0);
 		assert.equal(ghost.previousElementSibling, heading);
 	});
 

@@ -287,10 +287,8 @@ describe('smoke layout', () => {
 		decorateVisitControls(empty, () => null, () => {});
 		const ghost = empty.querySelector('.rv-item-strip');
 		assert.equal(ghost?.classList.contains('is-ghost'), true);
-		assert.equal(ghost?.querySelectorAll('.rv-item.is-placeholder').length, 3);
-		assert.match(ghost?.textContent ?? '', /Literature/);
-		assert.match(ghost?.textContent ?? '', /Video/);
-		assert.match(ghost?.textContent ?? '', /Study/);
+		assert.equal(ghost?.childElementCount, 0);
+		assert.doesNotMatch(ghost?.textContent ?? '', /Literature|Video|Study/);
 		assert.equal(empty.querySelector('p')?.textContent, 'Nobody answered.');
 		assert.equal(empty.querySelector('.rv-visit-note-box'), null);
 
@@ -310,7 +308,8 @@ describe('smoke layout', () => {
 		assert.match(css, /padding:\s*0 12px/);
 		assert.doesNotMatch(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
 		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*flex !important/);
-		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*24px !important/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*8px !important/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*padding:\s*0 !important/);
 	});
 
 	it('keeps an empty visit strip in the tree and collapses it', () => {
@@ -321,7 +320,7 @@ describe('smoke layout', () => {
 		assert.equal(strip?.classList.contains('is-ghost'), true);
 		assert.equal(strip?.previousElementSibling?.tagName, 'H5');
 		assert.equal(root.querySelector('.rv-visit-note-box'), null);
-		assert.equal(strip?.querySelectorAll('.is-placeholder').length, 3);
+		assert.equal(strip?.childElementCount, 0);
 	});
 
 	it('measures a visit strip from the parent content width, not the padded preview', () => {

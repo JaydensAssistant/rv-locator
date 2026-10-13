@@ -511,7 +511,12 @@ describe('visit notes rewrite', () => {
 		assert.match(css, /\.cm-line\.rv-lp-notes-heading h3\.rv-visit-notes-heading \{[^}]*font-size:\s*1em/);
 		assert.match(css, /\.rv-lp-stamp \.rv-visit-stamp \{[^}]*color:\s*var\(--text-muted\)/);
 		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*flex !important/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*8px !important/);
+		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*padding:\s*0 !important/);
+		assert.match(css, /\.theme-dark \.rv-item-strip\.is-ghost[\s\S]*88%, var\(--text-normal, #fff\)/);
+		assert.match(css, /\.markdown-source-view \.cm-line\.rv-lp-notes-heading \{[^}]*padding-top:\s*16px !important/);
 		assert.doesNotMatch(css, /\.rv-item-strip\.is-ghost \{[^}]*display:\s*none/);
+		assert.doesNotMatch(readFileSync('src/visit-controls.ts', 'utf8'), /paintGhostPlaceholders/);
 		assert.match(css, /\.rv-item-strip:not\(\.is-ghost\) \{[^}]*font-size:\s*11px[^}]*font-weight:\s*400/);
 		assert.match(readFileSync('src/visit-notes-field.ts', 'utf8'), /new ResizeObserver\(\(\) => onResize\(\)\)/);
 		assert.match(readFileSync('src/visit-controls.ts', 'utf8'), /setChipIconOnly\(chip, true\)/);
