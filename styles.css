@@ -1990,6 +1990,10 @@ body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > 
 	overflow-y: auto;
 }
 
+.rv-dashboard textarea.rv-native-notes-area {
+	min-height: 0;
+}
+
 /* Edit or delete one visit: an ellipsis after each stamp and each Attempt Log line. */
 .rv-visit-more {
 	display: inline-flex;
@@ -6961,15 +6965,13 @@ textarea.rv-native-notes-area {
 
 .theme-light textarea.rv-native-notes-area,
 .theme-light .rv-visit-notes-host,
-.theme-light .markdown-preview-section:has(h5.rv-visit-stamp),
 .theme-light .el-h5:has(h5.rv-visit-stamp) {
-	background: #fff;
-	background-color: #fff;
+	background: color-mix(in srgb, var(--background-primary, #fff) 95%, #000);
+	background-color: color-mix(in srgb, var(--background-primary, #fff) 95%, #000);
 }
 
 .theme-dark textarea.rv-native-notes-area,
 .theme-dark .rv-visit-notes-host,
-.theme-dark .markdown-preview-section:has(h5.rv-visit-stamp),
 .theme-dark .el-h5:has(h5.rv-visit-stamp) {
 	background: color-mix(in srgb, var(--background-primary, #262626) 70%, #000);
 	background-color: color-mix(in srgb, var(--background-primary, #262626) 70%, #000);
@@ -7200,14 +7202,40 @@ h5.rv-visit-stamp,
 	margin-bottom: 0;
 }
 
+.markdown-rendered h5.rv-visit-stamp,
+.markdown-rendered .el-h5:has(> h5.rv-visit-stamp),
+.markdown-rendered .markdown-preview-section:has(> h5.rv-visit-stamp) {
+	margin-top: var(--p-spacing, 1em);
+}
+
 .markdown-preview-section:has(.rv-visit-notes-host),
 .markdown-preview-section:has(.rv-visit-notes-host) > p,
 .el-p:has(.rv-visit-notes-host),
 .el-p:has(.rv-visit-notes-host) > p,
 p:has(.rv-visit-notes-host) {
-	margin: 0;
-	margin-block: 0;
+	margin-top: 0;
+	margin-bottom: 0;
 	padding: 0;
+}
+
+/* A blank line between visits is an empty paragraph. It is not a second gap. */
+.markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(> .el-p > p > br:only-child),
+.markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(> p > br:only-child) {
+	height: 0;
+	min-height: 0;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+	border: 0;
+}
+
+.markdown-rendered code.rv-visit-notes-host {
+	font-size: inherit;
+	font-family: inherit;
+	padding: 0;
+	background: none;
+	border: 0;
+	display: block;
 }
 
 .rv-visit-notes-host {

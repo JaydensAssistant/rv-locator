@@ -446,7 +446,11 @@ describe('visit notes rewrite', () => {
 		assert.doesNotMatch(live, /onLiveVisitHost|VisitCardWidget|ignoreEvent\(/);
 		const css = readFileSync('styles.css', 'utf8');
 		assert.match(css, /textarea\.rv-native-notes-area \{[^}]*padding:\s*0 12px/);
-		assert.match(css, /\.theme-light textarea\.rv-native-notes-area[\s\S]*background:\s*#fff/);
+		assert.match(css, /\.theme-light textarea\.rv-native-notes-area[\s\S]*color-mix\(in srgb, var\(--background-primary, #fff\) 95%, #000\)/);
+		assert.doesNotMatch(css, /\.theme-light \.markdown-preview-section:has\(h5\.rv-visit-stamp\)/);
+		assert.match(css, /\.markdown-rendered code\.rv-visit-notes-host \{[^}]*font-size:\s*inherit/);
+		assert.match(css, /\.rv-dashboard textarea\.rv-native-notes-area \{[^}]*min-height:\s*0/);
+		assert.match(css, /margin-top:\s*var\(--p-spacing, 1em\)/);
 		assert.match(css, /\.theme-dark textarea\.rv-native-notes-area[\s\S]*color-mix\(in srgb, var\(--background-primary/);
 		assert.match(css, /h5\.rv-visit-stamp,[\s\S]*margin-bottom:\s*0/);
 	});
