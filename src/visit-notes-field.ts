@@ -348,8 +348,9 @@ function declaredKeys(text: string): string[] {
 
 /**
  * The one `sVisitNNotes` declaration that belongs to this box.
- * Several declarations means this node holds more than one visit, so the
- * caller uses the visit index instead of the first INPUT in that text.
+ * Live Preview stores it as paragraph text, not a code node. Several
+ * declarations means this node holds more than one visit, so the caller
+ * uses the visit index instead of the next heading's INPUT.
  */
 function fieldKey(box: HTMLElement): string {
 	const keys: string[] = [];
@@ -361,7 +362,13 @@ function fieldKey(box: HTMLElement): string {
 		const key = fromCode[0] ?? '';
 		if (key && !keys.includes(key)) keys.push(key);
 	});
-	return keys.length === 1 ? (keys[0] ?? '') : '';
+	if (keys.length === 1) return keys[0] ?? '';
+	if (keys.length > 1) return '';
+	const written = declaredKeys(box.textContent ?? '');
+	if (written.length === 1) return written[0] ?? '';
+	const pinned = pinnedArea(box);
+	const pinnedKey = pinned?.dataset.rvNoteKey || pinned?.dataset.rvNativeNotes || '';
+	return NOTE_KEY.test(pinnedKey) ? pinnedKey : '';
 }
 
 function pinnedArea(box: HTMLElement): HTMLTextAreaElement | null {

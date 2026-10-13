@@ -11,7 +11,7 @@ import {
 	setOlderVisitsOpen,
 	visitPreviewExtension,
 } from '../src/visit-live-preview';
-import { mountRawVisitNotes } from '../src/visit-notes-field';
+import { clearVisitNoteCaches, mountRawVisitNotes } from '../src/visit-notes-field';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
 const { window } = dom;
@@ -281,5 +281,89 @@ describe('live preview older visits', () => {
 		assert.notEqual(rebuilt.selectionStart, rebuilt.value.length);
 		onLiveVisitHost(null);
 		view.destroy();
+	});
+
+	it('binds a visit box to its own key when the tagged heading was not recognised', () => {
+		clearVisitNoteCaches();
+		const editor = window.document.createElement('div');
+		editor.className = 'cm-editor';
+		const missed = window.document.createElement('h5');
+		missed.textContent = 'Sun, 5:23pm — Jun 28, 2026 · «book» «Tract» · «film» «Video»';
+		const missedNote = window.document.createElement('p');
+		missedNote.textContent = '`INPUT[textArea:sVisit2Notes]`';
+		const heading = window.document.createElement('h5');
+		heading.className = 'rv-visit-stamp';
+		heading.textContent = 'Thu, 2:10pm — Jul 2, 2026';
+		const box = window.document.createElement('div');
+		box.className = 'rv-visit-note-box';
+		const paragraph = window.document.createElement('p');
+		paragraph.textContent = '`INPUT[textArea:sVisit1Notes]`';
+		box.appendChild(paragraph);
+		editor.append(missed, missedNote, heading, box);
+		window.document.body.appendChild(editor);
+		try {
+			mountRawVisitNotes(editor, () => 'thu', () => {}, ['sVisit2Notes', 'sVisit1Notes'], 'Dale.md');
+			const area = box.querySelector('textarea.rv-native-notes-area');
+			assert.ok(area instanceof window.HTMLTextAreaElement);
+			assert.equal(area.dataset.rvNoteKey, 'sVisit1Notes');
+			assert.equal(area.value, 'thu');
+		} finally {
+			editor.remove();
+			clearVisitNoteCaches();
+		}
+	});
+
+	it('frames a tagged older visit and pairs each box with its own key', async () => {
+		const sun = 'Sun, 5:23pm — Jun 28, 2026 · «book» «Enjoy Life Forever» · «film» «Why Study the Bible»';
+		const doc = [
+			'##### Wed, 3pm — Sep 3, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			`##### ${sun}`,
+			'`INPUT[textArea:sVisit2Notes]`',
+			'',
+			'##### Thu, 2:10pm — Jul 2, 2026',
+			'`INPUT[textArea:sVisit3Notes]`',
+		].join('\n');
+		const keys = ['sVisit1Notes', 'sVisit2Notes', 'sVisit3Notes'];
+		clearVisitNoteCaches();
+		onLiveVisitHost((root) => {
+			mountRawVisitNotes(root, (key) => (key === 'sVisit3Notes' ? 'thu' : key), () => {}, keys, 'Dale.md');
+		});
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 1 })),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			view.dispatch({ effects: setOlderVisitsOpen.of(true) });
+			view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const cards = Array.from(view.dom.querySelectorAll('.rv-lp-visit'));
+			assert.equal(cards.length, 3);
+			assert.match(cards[1]?.textContent ?? '', /«book»/);
+			assert.match(cards[2]?.textContent ?? '', /Thu, 2:10pm/);
+			const bound = Array.from(view.dom.querySelectorAll('textarea.rv-native-notes-area')).map((node) => (
+				node instanceof window.HTMLTextAreaElement ? node.dataset.rvNoteKey : ''
+			));
+			assert.deepEqual(bound, keys);
+			const thu = view.dom.querySelector('textarea.rv-native-notes-area[data-rv-note-key="sVisit3Notes"]');
+			assert.ok(thu instanceof window.HTMLTextAreaElement);
+			assert.equal(thu.value, 'thu');
+			const raw = Array.from(view.dom.querySelectorAll('.cm-line:not(.rv-lp-card-source)')).map((node) => node.textContent ?? '');
+			assert.equal(raw.some((line) => line.includes('«book»')), false);
+			assert.equal(view.state.doc.toString(), doc);
+		} finally {
+			onLiveVisitHost(null);
+			view.destroy();
+			parent.remove();
+			clearVisitNoteCaches();
+		}
 	});
 });

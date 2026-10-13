@@ -326,7 +326,6 @@ export function buildVisitDecorations(
 	const pieces: { from: number; to: number; deco: Decoration; kind: number }[] = [];
 	const blocked: number[] = [];
 	if (plan.widgetAt != null) {
-		blocked.push(plan.widgetAt);
 		pieces.push({
 			from: plan.widgetAt,
 			to: plan.widgetAt,
