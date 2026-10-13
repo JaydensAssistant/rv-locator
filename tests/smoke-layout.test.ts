@@ -7,10 +7,10 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, readingRefreshBlocked, readingSurfacesForPath, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
-import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
+import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { clearVisitNoteCaches, mountVisitNotesInSection, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
-import { armVisitNoteFocus, holdVisitNote, layoutVisitNotes, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
+import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
@@ -165,9 +165,9 @@ describe('smoke layout', () => {
 		assert.match(visible.querySelector('.rv-stamp-when')?.textContent ?? '', /Mon, 10:40am/);
 		assert.match(visible.querySelector('.rv-stamp-count')?.textContent ?? '', /^\d+d$/);
 		assert.equal(heading?.querySelectorAll('.rv-stamp-row').length, 1);
-		const box = heading?.nextElementSibling;
-		assert.equal(box?.classList.contains('rv-visit-note-box'), true);
-		const strip = box?.querySelector('.rv-item-strip');
+		const strip = heading?.nextElementSibling;
+		assert.equal(strip?.classList.contains('rv-item-strip'), true);
+		assert.equal(root.querySelector('.rv-visit-note-box'), null);
 		assert.equal(strip?.classList.contains('is-ghost'), false);
 		const chips = strip?.querySelectorAll('.rv-item') ?? [];
 		assert.equal(chips.length, 4);
@@ -175,7 +175,7 @@ describe('smoke layout', () => {
 		const types = strip?.querySelectorAll('.rv-type') ?? [];
 		assert.ok(types.length >= 1);
 		for (const type of Array.from(types)) assert.match(type.textContent ?? '', /^ (Video|Study)$/);
-		assert.equal(box?.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
+		assert.equal(strip?.nextElementSibling?.textContent, 'Showed the video and started lesson 1.');
 		assert.equal(root.querySelectorAll('.rv-item-strip').length, 1);
 		assert.equal(root.querySelector('.callout[data-callout="note"]')?.classList.contains('rv-locator-attempt-log'), true);
 		assert.ok(root.querySelector('.rv-log-covered'));
@@ -201,17 +201,16 @@ describe('smoke layout', () => {
 		log.innerHTML = `<div class="callout-title"><div class="callout-title-inner">Log</div></div><div class="callout-content"><ul><li>Mon, 10:40am — Oct 6, 2025 — success — covered Convention</li></ul></div>`;
 		preview.append(headingHost, note);
 		decorateVisitControls(headingHost, () => 1, () => {});
-		assert.equal(headingHost.nextElementSibling?.querySelector('.rv-item.is-campaign') ?? null, null);
+		assert.equal(headingHost.nextElementSibling, note);
 		preview.append(log);
 		decorateVisitControls(log, () => 1, () => {});
-		const box = headingHost.nextElementSibling;
-		assert.equal(box?.classList.contains('rv-visit-note-box'), true);
-		assert.equal(box?.contains(note), true);
-		assert.equal(box?.querySelector('.el-p p')?.textContent, 'Showed the video and started lesson 1.');
-		const first = box?.querySelector('.rv-item-strip .rv-item');
+		assert.equal(note.parentElement, preview);
+		assert.equal(headingHost.contains(note), false);
+		assert.equal(note.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
+		const first = headingHost.querySelector('.rv-item-strip .rv-item');
 		assert.equal(first?.classList.contains('is-campaign'), true);
 		assert.match(first?.textContent ?? '', /Convention/);
-		assert.equal(box?.contains(log), false);
+		assert.equal(headingHost.contains(log), false);
 	});
 
 	it('pulls a live-preview note line into the same box as the strip', () => {
@@ -230,10 +229,9 @@ describe('smoke layout', () => {
 		editor.append(line, note, log);
 		decorateVisitControls(line, () => 1, () => {});
 		decorateVisitControls(log, () => 1, () => {});
-		const box = line.nextElementSibling;
-		assert.equal(box?.classList.contains('rv-visit-note-box'), true);
-		assert.equal(box?.contains(note), true);
-		assert.match(box?.querySelector('.rv-item.is-campaign')?.textContent ?? '', /Convention/);
+		assert.equal(line.nextElementSibling, note);
+		assert.equal(note.parentElement, editor);
+		assert.match(line.querySelector('.rv-item.is-campaign')?.textContent ?? '', /Convention/);
 	});
 
 	it('reparents a scroller when its previous stage is disconnected', () => {
@@ -275,24 +273,23 @@ describe('smoke layout', () => {
 	it('drops the padded visit card and keeps the item strip or the ghost header', () => {
 		const filled = visitRoot(LONG, 'Showed the video and started lesson 1.', 'Log');
 		decorateVisitControls(filled, () => 1, () => {});
-		const filledBox = filled.querySelector('.rv-visit-note-box');
-		const filledStrip = filledBox?.querySelector(':scope > .rv-item-strip');
-		assert.ok(filledBox);
+		const filledStrip = filled.querySelector('.rv-item-strip');
+		assert.equal(filled.querySelector('.rv-visit-note-box'), null);
 		assert.equal(filledStrip?.classList.contains('is-ghost'), false);
 		const titles = Array.from(filledStrip?.querySelectorAll('.rv-item') ?? []).map((node) => node.textContent ?? '');
 		assert.ok(titles.some((text) => /Enjoy Life Forever/.test(text)));
 		assert.ok(titles.some((text) => /Why Study the Bible/.test(text)));
 		assert.ok(titles.some((text) => /How Can the Bible Help You/.test(text)));
-		assert.equal(filledBox?.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
+		assert.equal(filled.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
+		assert.equal(filled.querySelector('h5')?.nextElementSibling, filledStrip);
 
 		const empty = visitRoot('Tue, 6:15pm — Aug 12, 2026', 'Nobody answered.', 'Log');
 		decorateVisitControls(empty, () => null, () => {});
-		const emptyBox = empty.querySelector('.rv-visit-note-box');
-		const ghost = emptyBox?.querySelector(':scope > .rv-item-strip');
-		assert.ok(emptyBox);
+		const ghost = empty.querySelector('.rv-item-strip');
 		assert.equal(ghost?.classList.contains('is-ghost'), true);
 		assert.equal(ghost?.childElementCount, 0);
-		assert.equal(emptyBox?.querySelector('p')?.textContent, 'Nobody answered.');
+		assert.equal(empty.querySelector('p')?.textContent, 'Nobody answered.');
+		assert.equal(empty.querySelector('.rv-visit-note-box'), null);
 
 		const css = readFileSync('styles.css', 'utf8');
 		const boxRule = css.match(/\.rv-visit-note-box \{([^}]*)\}/)?.[1] ?? '';
@@ -304,8 +301,10 @@ describe('smoke layout', () => {
 		assert.match(noteRule, /padding:\s*0/);
 		assert.doesNotMatch(noteRule, /padding:\s*7px/);
 		assert.equal(css.includes('.rv-visit-note-box textarea'), false);
-		assert.match(css, /\.theme-light \.rv-visit-note-box/);
-		assert.match(css, /\.theme-dark \.rv-visit-note-box/);
+		assert.match(css, /\.theme-light textarea\.rv-native-notes-area/);
+		assert.match(css, /\.theme-dark textarea\.rv-native-notes-area/);
+		assert.match(css, /h5\.rv-visit-stamp[\s\S]*margin-bottom:\s*0/);
+		assert.match(css, /padding:\s*0 12px/);
 		assert.match(css, /\.rv-item-strip\.is-ghost \{[^}]*height:\s*5px/);
 	});
 
@@ -315,7 +314,8 @@ describe('smoke layout', () => {
 		assert.equal(root.querySelector('.rv-stamp-when')?.textContent, 'Tue, 6:15pm');
 		const strip = root.querySelector('.rv-item-strip');
 		assert.equal(strip?.classList.contains('is-ghost'), true);
-		assert.equal(strip?.parentElement?.classList.contains('rv-visit-note-box'), true);
+		assert.equal(strip?.previousElementSibling?.tagName, 'H5');
+		assert.equal(root.querySelector('.rv-visit-note-box'), null);
 		assert.equal(strip?.childElementCount, 0);
 	});
 
@@ -366,22 +366,20 @@ describe('smoke layout', () => {
 		decorateVisitControls(first, () => 3, () => {});
 		decorateVisitControls(headingSection, () => 2, () => {});
 		decorateVisitControls(list, () => 5, () => {});
-		const box = headingSection.querySelector('.rv-visit-note-box');
-		assert.ok(box);
-		assert.equal(box?.contains(first), true);
-		assert.equal(box?.contains(second), true);
-		assert.equal(box?.contains(list), true);
-		const paragraphs = box?.querySelectorAll('p') ?? [];
-		assert.equal(paragraphs[0]?.textContent, 'Showed the video and started lesson 1.');
-		assert.equal(paragraphs[1]?.textContent, 'Tuesday evenings work best for her.');
-		assert.equal(box?.querySelector('li')?.textContent, 'Keep going');
+		assert.equal(headingSection.querySelector('.rv-visit-note-box'), null);
+		assert.equal(first.parentElement, sizer);
+		assert.equal(second.parentElement, sizer);
+		assert.equal(list.parentElement, sizer);
+		assert.equal(first.querySelector('p')?.textContent, 'Showed the video and started lesson 1.');
+		assert.equal(second.querySelector('p')?.textContent, 'Tuesday evenings work best for her.');
+		assert.equal(list.querySelector('li')?.textContent, 'Keep going');
 		const fresh = window.document.createElement('div');
 		fresh.className = 'markdown-preview-section';
 		fresh.innerHTML = '<div class="el-p"><p>Showed the video and started lesson 1.</p></div>';
 		sizer.append(fresh);
 		decorateVisitControls(fresh, () => 6, () => {});
-		assert.equal(box?.contains(fresh), true);
-		assert.equal(box?.querySelector('.callout'), null);
+		assert.equal(fresh.parentElement, sizer);
+		assert.equal(headingSection.querySelector('.callout'), null);
 	});
 
 	it('hoists sibling paragraphs in the real preview sizer, including a paragraph that renders later', () => {
@@ -406,22 +404,18 @@ describe('smoke layout', () => {
 		list.innerHTML = '<ul><li>Keep going</li></ul>';
 		sizer.append(late, more, list);
 		rehoistVisitNotes(preview);
-		const box = preview.querySelector('.rv-visit-note-box');
-		assert.ok(box);
-		assert.equal(box?.contains(late), true);
-		assert.equal(box?.contains(more), true);
-		assert.equal(box?.contains(list), true);
-		assert.equal(box?.querySelector('.is-campaign')?.textContent?.includes('Convention'), true);
-		assert.ok((box?.getBoundingClientRect().height ?? 0) >= 0);
-		box?.remove();
+		assert.equal(preview.querySelector('.rv-visit-note-box'), null);
+		assert.equal(late.parentElement, sizer);
+		assert.equal(more.parentElement, sizer);
+		assert.equal(list.parentElement, sizer);
+		assert.equal(preview.querySelector('.is-campaign')?.textContent?.includes('Convention'), true);
 		const fresh = window.document.createElement('div');
 		fresh.className = 'el-p';
 		fresh.innerHTML = '<p>Showed the video and started lesson 1.</p>';
 		sizer.append(fresh);
 		decorateVisitControls(preview, () => null, () => {}, () => 'Convention');
-		const again = preview.querySelector('.rv-visit-note-box');
-		assert.equal(again?.contains(fresh), true);
-		assert.ok(again?.querySelector('.is-campaign'));
+		assert.equal(fresh.parentElement, sizer);
+		assert.ok(preview.querySelector('.is-campaign'));
 		const recycled = window.document.createElement('div');
 		recycled.className = 'el-h5';
 		recycled.innerHTML = '<h5 class="rv-visit-stamp"><span class="rv-stamp-row"><span class="rv-cal">OCT</span><span class="rv-stamp-when">Sun, 9:58am</span><span class="rv-stamp-count">0d</span></span><span class="rv-stamp-source">Sun, 9:58am — Oct 11, 2026</span></h5>';
@@ -430,9 +424,7 @@ describe('smoke layout', () => {
 		recycledNote.innerHTML = '<p>Nobody answered.</p>';
 		sizer.append(recycled, recycledNote);
 		decorateVisitControls(preview, () => null, () => {}, () => '');
-		const recycledBox = recycled.nextElementSibling;
-		assert.equal(recycledBox?.classList.contains('rv-visit-note-box'), true);
-		assert.equal(recycledBox?.contains(recycledNote), true);
+		assert.equal(recycled.nextElementSibling, recycledNote);
 	});
 
 	it('paints the campaign chip from the note text when the Log is not in the DOM', () => {
@@ -1135,8 +1127,6 @@ describe('smoke layout', () => {
 		assert.equal(window.document.activeElement, area);
 		area.blur();
 		assert.notEqual(window.document.activeElement, area);
-		restoreHeldNote();
-		assert.equal(window.document.activeElement, area);
 		root.remove();
 	});
 
@@ -1287,838 +1277,58 @@ describe('smoke layout', () => {
 	it('binds each reading-view box to its own visit key', () => {
 		const css = readFileSync('styles.css', 'utf8');
 		const controls = readFileSync('src/visit-controls.ts', 'utf8');
-		assert.match(css, /\.rv-visit-note-box code\.mb-input \{[^}]*font-size:\s*0/);
+		assert.match(css, /\.rv-visit-notes-host \{[^}]*font-size:\s*0/);
 		assert.doesNotMatch(css, /display:\s*contents/);
-		assert.doesNotMatch(controls, /parentElement\?\.querySelector\(':scope > \.rv-visit-note-box/);
+		assert.doesNotMatch(controls, /absorbFollowingNotes/);
 		const preview = window.document.createElement('div');
 		preview.className = 'markdown-preview-view markdown-reading-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer markdown-preview-section';
 		const visits = [
 			['Sun, 9:05am — Oct 11, 2026', 'sVisit5Notes', 'newest'],
 			['Sat, 8:00am — Oct 4, 2026', 'sVisit4Notes', 'middle'],
 			['Fri, 7:00pm — Sep 26, 2026', 'sVisit3Notes', 'oldest'],
 		] as const;
-		const section = (html: string): HTMLElement => {
-			const block = window.document.createElement('div');
-			block.className = 'markdown-preview-section';
-			block.innerHTML = html;
-			return block;
-		};
 		for (const [stamp, key] of visits) {
-			sizer.append(
-				section(`<div class="el-h5"><h5>${stamp}</h5></div>`),
-				section(`<div class="el-p"><p><code>INPUT[textArea:${key}]</code></p></div>`),
-			);
-		}
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		assert.equal(visitLayoutMissing(preview), true);
-		decorateVisitControls(preview, () => null, () => {});
-		rehoistVisitNotes(preview);
-		assert.equal(visitLayoutMissing(preview), false);
-		const boxes = Array.from(preview.querySelectorAll('.rv-visit-note-box'));
-		assert.equal(boxes.length, 3);
-		const seqs = boxes.map((box) => box.querySelector('[data-rv-seq]')?.getAttribute('data-rv-seq') ?? '');
-		assert.equal(new Set(seqs).size, 3);
-		assert.equal(seqs[0] === seqs[1] && seqs[1] === seqs[2], false);
-		assert.equal(boxes[0]?.textContent?.includes('sVisit5Notes'), true);
-		assert.equal(boxes[1]?.textContent?.includes('sVisit4Notes'), true);
-		assert.equal(boxes[1]?.textContent?.includes('sVisit5Notes'), false);
-		assert.equal(boxes[2]?.textContent?.includes('sVisit3Notes'), true);
-		// Meta Bind replaces the declaration after the first paint and leaves no bind attribute.
-		preview.querySelectorAll('code').forEach((code) => {
-			code.textContent = '';
-			const wrap = window.document.createElement('div');
-			wrap.className = 'mb-input-wrapper mb-input-type-textArea';
-			const meta = window.document.createElement('textarea');
-			meta.className = 'mb-input-textarea';
-			wrap.appendChild(meta);
-			code.appendChild(wrap);
-		});
-		const leak = window.document.createElement('span');
-		leak.textContent = 'INPUT[textArea:sVisit5Notes]';
-		sizer.prepend(leak);
-		// A reading rebuild drops the captured key. Meta Bind has already removed the declaration.
-		boxes.forEach((box) => box.removeAttribute('data-rv-visit-key'));
-		const front = new Map(visits.map((row) => [row[1], row[2]]));
-		const writes: Array<[string, string]> = [];
-		const mount = (root: HTMLElement): void => {
-			mountRawVisitNotes(root, (key) => front.get(key) ?? '', (key, value) => {
-				writes.push([key, value]);
-				front.set(key, value);
-			}, visits.map((row) => row[1]));
-		};
-		sizer.querySelectorAll(':scope > .markdown-preview-section').forEach((node) => {
-			if (node instanceof window.HTMLElement) mount(node);
-		});
-		mount(preview);
-		const areas = boxes.map((box) => box.querySelector('textarea.rv-native-notes-area'));
-		assert.equal(areas.length, 3);
-		assert.equal(preview.querySelectorAll('.rv-visit-note-box').length, 3);
-		const keys = areas.map((area) => area?.getAttribute('data-rv-native-notes'));
-		assert.deepEqual(keys, ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
-		assert.deepEqual(areas.map((area) => area?.getAttribute('data-rv-note-key')), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
-		assert.deepEqual(areas.map((area) => (area as HTMLTextAreaElement).value), ['newest', 'middle', 'oldest']);
-		const second = areas[1] as HTMLTextAreaElement;
-		second.focus();
-		second.value = 'middle typed';
-		second.setSelectionRange(7, 7);
-		second.dispatchEvent(new window.Event('input', { bubbles: true }));
-		const third = areas[2] as HTMLTextAreaElement;
-		third.focus();
-		third.value = 'box3 typed';
-		third.setSelectionRange(4, 4);
-		third.dispatchEvent(new window.Event('input', { bubbles: true }));
-		// A click inside the debounce window moves the caret after the save was scheduled.
-		third.setSelectionRange(2, 2);
-		third.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
-		mount(preview);
-		const held = boxes[2]?.querySelector('textarea.rv-native-notes-area');
-		assert.equal(held, third);
-		assert.equal(third.selectionStart, 2);
-		assert.equal(third.selectionEnd, 2);
-		assert.equal(third.value, 'box3 typed');
-		third.remove();
-		mount(preview);
-		const restored = boxes[2]?.querySelector('textarea.rv-native-notes-area');
-		assert.ok(restored instanceof window.HTMLTextAreaElement);
-		assert.notEqual(restored, third);
-		assert.equal(preview.ownerDocument.activeElement, restored);
-		assert.equal(restored.selectionStart, 2);
-		assert.equal(restored.selectionEnd, 2);
-		assert.equal(restored.value, 'box3 typed');
-		assert.notEqual(restored.selectionStart, restored.value.length);
-		return new Promise<void>((resolve) => {
-			setTimeout(() => {
-				assert.deepEqual(writes, [
-					['sVisit4Notes', 'middle typed'],
-					['sVisit3Notes', 'box3 typed'],
-				]);
-				assert.equal(front.get('sVisit5Notes'), 'newest');
-				assert.equal(restored.selectionStart, 2);
-				assert.equal(restored.selectionEnd, 2);
-				preview.remove();
-				resolve();
-			}, 450);
-		});
-	});
-
-	it('keeps each note\'s visit text and writes on that file', () => {
-		const main = readFileSync('src/main.ts', 'utf8');
-		assert.match(main, /private onNoteOpened[\s\S]{0,120}clearVisitNoteCaches\(\)/);
-		assert.match(main, /active-leaf-change', \(\) => \{\s*clearVisitNoteCaches\(\)/);
-		assert.match(main, /onunload\(\): void \{\s*this\.unloaded = true;\s*clearVisitNoteCaches\(\)/);
-		assert.match(main, /releaseClosedVisitNotes\(open\)/);
-		assert.match(main, /getActiveFile\(\)\?\.path \?\? ''\) !== shown\) return/);
-		clearVisitNoteCaches();
-		const stamps = [
-			['Sun, 9:05am — Oct 11, 2026', 'sVisit5Notes'],
-			['Sat, 8:00am — Oct 4, 2026', 'sVisit4Notes'],
-			['Fri, 7:00pm — Sep 26, 2026', 'sVisit3Notes'],
-		] as const;
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view markdown-reading-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer markdown-preview-section';
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		const fill = (values: Record<string, string>): Map<string, string> => {
-			const front = new Map(Object.entries(values));
-			sizer.replaceChildren();
-			for (const [stamp, key] of stamps) {
-				const heading = window.document.createElement('div');
-				heading.className = 'markdown-preview-section';
-				heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
-				const note = window.document.createElement('div');
-				note.className = 'markdown-preview-section';
-				note.innerHTML = `<div class="el-p"><p><code>INPUT[textArea:${key}]</code></p></div>`;
-				sizer.append(heading, note);
-			}
-			decorateVisitControls(preview, () => null, () => {});
-			rehoistVisitNotes(preview);
-			preview.querySelectorAll('code').forEach((code) => {
-				code.textContent = '';
-				const wrap = window.document.createElement('div');
-				wrap.className = 'mb-input-wrapper mb-input-type-textArea';
-				const meta = window.document.createElement('textarea');
-				meta.className = 'mb-input-textarea';
-				wrap.appendChild(meta);
-				code.appendChild(wrap);
-			});
-			preview.querySelectorAll('.rv-visit-note-box').forEach((box) => box.removeAttribute('data-rv-visit-key'));
-			return front;
-		};
-		const boFront = fill({ sVisit5Notes: 'bo newest', sVisit4Notes: 'bo middle', sVisit3Notes: 'bo oldest' });
-		const boWrites: Array<[string, string]> = [];
-		const mount = (path: string, front: Map<string, string>, writes: Array<[string, string]>): void => {
-			setActiveVisitNote(path);
-			mountRawVisitNotes(preview, (key) => front.get(key) ?? '', (key, value) => {
-				writes.push([key, value]);
-				front.set(key, value);
-			}, stamps.map((row) => row[1]), path);
-		};
-		try {
-			mount('Bo.md', boFront, boWrites);
-			const boAreas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
-			assert.deepEqual(boAreas.map((area) => area.value), ['bo newest', 'bo middle', 'bo oldest']);
-			assert.deepEqual(boAreas.map((area) => area.dataset.rvNoteFile), ['Bo.md', 'Bo.md', 'Bo.md']);
-			assert.deepEqual(boAreas.map((area) => area.dataset.rvNoteKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
-			const boBox = boAreas[1];
-			assert.ok(boBox);
-			boBox.focus();
-			boBox.value = 'from bo';
-			boBox.setSelectionRange(4, 4);
-			boBox.dispatchEvent(new window.Event('input', { bubbles: true }));
-			clearVisitNoteCaches();
-			setActiveVisitNote('Pat.md');
-			preview.dataset.rvNoteFile = 'Pat.md';
-			assert.equal(visitNoteBusy(preview), false);
-			const earlyWrites: Array<[string, string]> = [];
-			const earlyFront = new Map([
-				['sVisit5Notes', 'pat newest'],
-				['sVisit4Notes', 'pat middle'],
-				['sVisit3Notes', 'pat oldest'],
-			]);
-			mount('Pat.md', earlyFront, earlyWrites);
-			const carried = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
-			assert.deepEqual(carried.map((area) => area.value), ['pat newest', 'pat middle', 'pat oldest']);
-			assert.equal(carried.some((area) => area.value.includes('from bo')), false);
-			assert.deepEqual(carried.map((area) => area.dataset.rvNoteFile), ['Pat.md', 'Pat.md', 'Pat.md']);
-			assert.deepEqual(carried.map((area) => area.dataset.rvNoteKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
-			const patFront = fill({ sVisit5Notes: 'pat newest', sVisit4Notes: 'pat middle', sVisit3Notes: 'pat oldest' });
-			const patWrites: Array<[string, string]> = [];
-			mount('Pat.md', patFront, patWrites);
-			const patAreas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
-			assert.equal(preview.querySelectorAll('h5.rv-visit-stamp').length, 3);
-			assert.deepEqual(patAreas.map((area) => area.value), ['pat newest', 'pat middle', 'pat oldest']);
-			assert.equal(patAreas.some((area) => area.value.includes('from bo')), false);
-			assert.deepEqual(patAreas.map((area) => area.dataset.rvNoteFile), ['Pat.md', 'Pat.md', 'Pat.md']);
-			assert.deepEqual(patAreas.map((area) => area.dataset.rvNoteKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
-			const patBox = patAreas[1];
-			assert.ok(patBox);
-			patBox.focus();
-			patBox.value = 'from pat';
-			patBox.setSelectionRange(4, 4);
-			patBox.dispatchEvent(new window.Event('input', { bubbles: true }));
-			return new Promise<void>((resolve, reject) => {
-				setTimeout(() => {
-					try {
-						assert.deepEqual(boWrites, []);
-						assert.deepEqual(patWrites, [['sVisit4Notes', 'from pat']]);
-						assert.equal(patFront.get('sVisit3Notes'), 'pat oldest');
-						assert.equal(boFront.get('sVisit4Notes'), 'bo middle');
-						clearVisitNoteCaches();
-						const again = fill({
-							sVisit5Notes: boFront.get('sVisit5Notes') ?? '',
-							sVisit4Notes: boFront.get('sVisit4Notes') ?? '',
-							sVisit3Notes: boFront.get('sVisit3Notes') ?? '',
-						});
-						const againWrites: Array<[string, string]> = [];
-						mount('Bo.md', again, againWrites);
-						const back = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')) as HTMLTextAreaElement[];
-						assert.deepEqual(back.map((area) => area.value), ['bo newest', 'bo middle', 'bo oldest']);
-						assert.equal(back.some((area) => area.value.includes('from pat')), false);
-						assert.deepEqual(back.map((area) => area.dataset.rvNoteFile), ['Bo.md', 'Bo.md', 'Bo.md']);
-						preview.remove();
-						resolve();
-					} catch (error) {
-						reject(error);
-					} finally {
-						clearVisitNoteCaches();
-						setActiveVisitNote('');
-					}
-				}, 450);
-			});
-		} catch (error) {
-			clearVisitNoteCaches();
-			setActiveVisitNote('');
-			preview.remove();
-			throw error;
-		}
-	});
-
-	it('rebuilds every Reading visit box when one view opens A, then B, then C, then A', () => {
-		const main = readFileSync('src/main.ts', 'utf8');
-		assert.match(main, /scheduleReadingDecorate\(file\)/);
-		assert.equal(main.includes('surfaceMatches'), false);
-		const notes = [
-			{
-				path: 'A.md',
-				stamps: [
-					'Mon, 9:00am — Sep 1, 2026',
-					'Tue, 10:00am — Sep 2, 2026',
-					'Wed, 11:00am — Sep 3, 2026',
-					'Thu, 12:00pm — Sep 4, 2026',
-				],
-			},
-			{
-				path: 'B.md',
-				stamps: [
-					'Fri, 1:00pm — Sep 5, 2026',
-					'Sat, 2:00pm — Sep 6, 2026',
-				],
-			},
-			{
-				path: 'C.md',
-				stamps: [
-					'Sun, 3:00pm — Sep 7, 2026',
-					'Mon, 4:00pm — Sep 8, 2026',
-					'Tue, 5:00pm — Sep 9, 2026',
-					'Wed, 6:00pm — Sep 10, 2026',
-					'Thu, 7:00pm — Sep 11, 2026',
-				],
-			},
-		] as const;
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view markdown-reading-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer markdown-preview-section';
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		let previous = '';
-		const paint = (note: { path: string; stamps: readonly string[] }): void => {
-			sizer.replaceChildren();
-			for (const stamp of note.stamps) {
-				const heading = window.document.createElement('div');
-				heading.className = 'markdown-preview-section';
-				heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
-				const paragraph = window.document.createElement('div');
-				paragraph.className = 'markdown-preview-section';
-				paragraph.innerHTML = '<div class="el-p"><p><code>INPUT[textArea:sVisit1Notes]</code></p></div>';
-				sizer.append(heading, paragraph);
-			}
-			if (previous) {
-				const stale = window.document.createElement('textarea');
-				stale.className = 'rv-native-notes-area';
-				stale.dataset.rvNoteFile = previous;
-				preview.dataset.rvNoteFile = previous;
-				preview.appendChild(stale);
-				stale.focus();
-			}
-			const markdown = note.stamps.map((stamp) => `##### ${stamp}`).join('\n');
-			decorateReadingSurface(preview, markdown, {
-				newestFirst: true,
-				collapseOlder: true,
-				limit: 3,
-			}, note.path);
-			const boxes = sizer.querySelectorAll('.rv-visit-note-box');
-			assert.equal(boxes.length, note.stamps.length, note.path);
-			assert.equal(sizer.querySelectorAll('h5.rv-visit-stamp').length, note.stamps.length, note.path);
-			const older = preview.querySelector('.rv-older-visits');
-			if (note.stamps.length > 3) assert.ok(older, note.path);
-			else assert.equal(older, null, note.path);
-			previous = note.path;
-		};
-		try {
-			paint(notes[0]);
-			paint(notes[1]);
-			paint(notes[2]);
-			paint(notes[0]);
-		} finally {
-			preview.remove();
-		}
-	});
-
-	it('does not focus a textarea on a note switch, and one focused box does not block the others', () => {
-		clearVisitNoteCaches();
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view markdown-reading-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer';
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		const paint = (stamps: readonly string[], keys: readonly string[]): void => {
-			sizer.replaceChildren();
-			stamps.forEach((stamp, index) => {
-				const heading = window.document.createElement('div');
-				heading.className = 'markdown-preview-section';
-				heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
-				const note = window.document.createElement('div');
-				note.className = 'markdown-preview-section';
-				note.innerHTML = `<div class="el-p"><p><code>INPUT[textArea:${keys[index]}]</code></p></div>`;
-				sizer.append(heading, note);
-			});
-			preview.dataset.rvNoteFile = '';
-			decorateVisitControls(preview, () => null, () => {});
-			rehoistVisitNotes(preview);
-		};
-		const mount = (path: string, keys: readonly string[], front: Map<string, string>): void => {
-			setActiveVisitNote(path);
-			preview.dataset.rvNoteFile = path;
-			mountRawVisitNotes(preview, (key) => front.get(key) ?? '', () => {}, keys, path);
-		};
-		const aStamps = ['Mon, 9:00am — Sep 1, 2026', 'Tue, 10:00am — Sep 2, 2026', 'Wed, 11:00am — Sep 3, 2026'] as const;
-		const aKeys = ['sVisit1Notes', 'sVisit2Notes', 'sVisit3Notes'] as const;
-		try {
-			paint(aStamps, aKeys);
-			const front = new Map(aKeys.map((key) => [key, '']));
-			mount('A.md', aKeys, front);
-			mount('A.md', aKeys, front);
-			preview.querySelectorAll('textarea.rv-native-notes-area').forEach((node) => node.remove());
-			mount('A.md', aKeys, front);
-			assert.notEqual(window.document.activeElement?.tagName, 'TEXTAREA');
-			const typed = preview.querySelector('textarea.rv-native-notes-area');
-			assert.ok(typed instanceof window.HTMLTextAreaElement);
-			typed.focus();
-			typed.value = 'from a';
-			typed.setSelectionRange(2, 2);
-			typed.dispatchEvent(new window.Event('input', { bubbles: true }));
-			clearVisitNoteCaches();
-			setActiveVisitNote('B.md');
-			const bStamps = ['Thu, 2:10pm — Sep 17, 2026', 'Fri, 3:10pm — Sep 18, 2026'] as const;
-			const bKeys = ['sVisit1Notes', 'sVisit2Notes'] as const;
-			paint(bStamps, bKeys);
-			assert.equal(readingDomIsStale(preview, bStamps.map((stamp) => `##### ${stamp}`).join('\n')), false);
-			assert.equal(readingDomIsStale(preview, aStamps.map((stamp) => `##### ${stamp}`).join('\n')), true);
-			const raw = preview.querySelector('h5');
-			assert.ok(raw instanceof window.HTMLElement);
-			raw.textContent = bStamps[0];
-			raw.classList.add('rv-visit-stamp');
-			raw.dataset.rvNoteFile = 'B.md';
-			preview.dataset.rvNoteFile = 'B.md';
-			const stray = window.document.createElement('div');
-			stray.className = 'rv-visit-note-box';
-			raw.insertAdjacentElement('afterend', stray);
-			assert.equal(visitLayoutMissing(preview), true);
-			mount('B.md', bKeys, new Map(bKeys.map((key) => [key, 'b'])));
-			assert.notEqual(window.document.activeElement?.tagName, 'TEXTAREA');
-			assert.equal(sizer.querySelectorAll('h5.rv-visit-stamp').length, bStamps.length);
-			const held = preview.querySelector('textarea.rv-native-notes-area');
-			assert.ok(held instanceof window.HTMLTextAreaElement);
-			held.focus();
-			held.value = 'keep';
-			held.setSelectionRange(1, 1);
-			held.dispatchEvent(new window.Event('input', { bubbles: true }));
-			held.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
-			const focusedKey = held.dataset.rvNoteKey;
-			const headings = Array.from(preview.querySelectorAll('h5'));
-			const other = headings[1];
-			assert.ok(other instanceof window.HTMLElement);
-			other.classList.remove('rv-visit-stamp');
-			other.querySelectorAll('.rv-stamp-row, .rv-stamp-source, .rv-visit-more').forEach((node) => node.remove());
-			other.textContent = bStamps[1];
-			decorateVisitControls(preview, () => null, () => {});
-			rehoistVisitNotes(preview);
-			assert.equal(other.classList.contains('rv-visit-stamp'), true);
-			assert.equal(preview.querySelectorAll('h5.rv-visit-stamp').length, bStamps.length);
-			assert.equal(window.document.activeElement, held);
-			assert.equal(held.selectionStart, 1);
-			held.remove();
-			mount('B.md', bKeys, new Map([['sVisit1Notes', 'keep'], ['sVisit2Notes', 'b']]));
-			const restored = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area')).find((node) => node.dataset.rvNoteKey === focusedKey);
-			assert.ok(restored instanceof window.HTMLTextAreaElement);
-			assert.equal(window.document.activeElement, restored);
-			assert.equal(restored.selectionStart, 1);
-			assert.equal(restored.selectionEnd, 1);
-			const untouched = window.document.createElement('textarea');
-			untouched.className = 'rv-native-notes-area';
-			preview.appendChild(untouched);
-			holdVisitNote(untouched, 2500, false);
-			untouched.blur();
-			restoreHeldNote();
-			assert.notEqual(window.document.activeElement, untouched);
-		} finally {
-			preview.remove();
-			clearVisitNoteCaches();
-		}
-	});
-
-	it('frames a decorated Reading note on a same-leaf switch and on reload', () => {
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view markdown-reading-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer';
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		const decorated = (stamp: string, age: string): HTMLElement => {
-			const heading = window.document.createElement('h5');
-			heading.className = 'rv-visit-stamp';
-			heading.setAttribute('data-heading', `${stamp}<span class="rv-stamp-ago">${age}</span>`);
-			heading.innerHTML = [
-				'<span class="rv-stamp-row">',
-				'<span class="rv-cal"><span class="rv-cal-month">SEP</span><span class="rv-cal-day">17</span></span>',
-				'<span class="rv-stamp-when">Thu, 2:10pm</span>',
-				'<span class="rv-stamp-ago rv-stamp-count">1d</span>',
-				'</span>',
-				`<span class="rv-stamp-source">${stamp}</span>`,
-			].join('');
-			return heading;
-		};
-		const show = (path: string, stamps: readonly string[]): void => {
-			sizer.replaceChildren();
-			delete preview.dataset.rvNoteFile;
-			for (const stamp of stamps) {
-				const heading = window.document.createElement('div');
-				heading.className = 'markdown-preview-section';
-				const wrap = window.document.createElement('div');
-				wrap.className = 'el-h5';
-				wrap.appendChild(decorated(stamp, '4 days ago'));
-				heading.appendChild(wrap);
-				const note = window.document.createElement('div');
-				note.className = 'markdown-preview-section';
-				const area = window.document.createElement('textarea');
-				area.className = 'rv-native-notes-area';
-				note.appendChild(area);
-				sizer.append(heading, note);
-			}
-			const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
-			assert.equal(readingDomIsStale(preview, markdown), false, path);
-			assert.equal(readingRefreshBlocked(preview, markdown, path), false, path);
-			preview.dataset.rvNoteFile = path;
-			decorateReadingSurface(preview, markdown, { newestFirst: true, collapseOlder: true, limit: 3 }, path);
-			assert.equal(sizer.querySelectorAll('.rv-visit-note-box').length, stamps.length, path);
-			assert.equal(sizer.querySelectorAll('textarea.rv-native-notes-area').length, stamps.length, path);
-		};
-		const lisa = ['Thu, 2:10pm — Sep 17, 2026', 'Fri, 3:10pm — Sep 18, 2026', 'Sat, 4:10pm — Sep 19, 2026'] as const;
-		const dale = [
-			'Sun, 9:00am — Sep 20, 2026',
-			'Mon, 10:00am — Sep 21, 2026',
-			'Tue, 11:00am — Sep 22, 2026',
-			'Wed, 12:00pm — Sep 23, 2026',
-			'Thu, 1:00pm — Sep 24, 2026',
-		] as const;
-		try {
-			show('Lisa.md', lisa);
-			show('Dale.md', dale);
-			show('Lisa.md', lisa);
-			const bare = window.document.createElement('div');
-			const daleOnly = window.document.createElement('h5');
-			daleOnly.className = 'rv-visit-stamp';
-			daleOnly.setAttribute('data-heading', 'Sun, 9:00am — Sep 20, 2026<span class="rv-stamp-ago">4 days ago</span>');
-			daleOnly.innerHTML = '<span class="rv-stamp-row"><span class="rv-cal">SEP</span><span class="rv-stamp-ago">1d</span></span>';
-			bare.appendChild(daleOnly);
-			assert.equal(readingDomIsStale(bare, '##### Sun, 9:00am — Sep 20, 2026'), false);
-			assert.equal(readingDomIsStale(bare, '##### Mon, 9:00am — Sep 1, 2026'), true);
-			delete preview.dataset.rvNoteFile;
-			preview.querySelectorAll('.rv-visit-note-box').forEach((box) => {
-				const area = box.querySelector('textarea');
-				box.replaceWith(area ?? window.document.createElement('textarea'));
-			});
-			const markdown = lisa.map((stamp) => `##### ${stamp}`).join('\n');
-			assert.equal(readingDomIsStale(preview, markdown), false);
-			assert.equal(readingRefreshBlocked(preview, markdown, 'Lisa.md'), false);
-			preview.dataset.rvNoteFile = 'Lisa.md';
-			decorateReadingSurface(preview, markdown, { newestFirst: true, collapseOlder: true, limit: 3 }, 'Lisa.md');
-			assert.equal(preview.querySelectorAll('.rv-visit-note-box').length, lisa.length);
-			const started = 1_000;
-			assert.equal(readingRefreshBlocked(preview, dale.map((stamp) => `##### ${stamp}`).join('\n'), 'Dale.md', started), true);
-			assert.equal(readingRefreshBlocked(preview, dale.map((stamp) => `##### ${stamp}`).join('\n'), 'Dale.md', started + 400), false);
-		} finally {
-			preview.remove();
-		}
-	});
-
-	it('frames the visible tab when two leaves show the same note, and still frames every leaf', () => {
-		const leaf = (file: string, stamp: string): { path: string; preview: HTMLElement } => {
-			const preview = window.document.createElement('div');
-			preview.className = 'markdown-preview-view markdown-reading-view';
-			const sizer = window.document.createElement('div');
-			sizer.className = 'markdown-preview-sizer';
 			const heading = window.document.createElement('div');
 			heading.className = 'markdown-preview-section';
 			heading.innerHTML = `<div class="el-h5"><h5>${stamp}</h5></div>`;
-			const note = window.document.createElement('div');
-			note.className = 'markdown-preview-section';
-			note.innerHTML = '<div class="el-p"><p><code>INPUT[textArea:sVisit1Notes]</code></p></div>';
-			sizer.append(heading, note);
-			preview.appendChild(sizer);
-			window.document.body.appendChild(preview);
-			return { path: file, preview };
-		};
-		const frame = (preview: HTMLElement): void => {
-			decorateVisitControls(preview, () => null, () => {});
-			rehoistVisitNotes(preview);
-		};
-		const back = leaf('Pat.md', 'Thu, 2:10pm — Sep 17, 2026');
-		const front = leaf('Pat.md', 'Thu, 2:10pm — Sep 17, 2026');
-		const other = leaf('Dale.md', 'Fri, 3:10pm — Sep 18, 2026');
-		try {
-			const section = front.preview.querySelector('.markdown-preview-section');
-			assert.ok(section instanceof window.HTMLElement);
-			const visible = readingSurfacesForPath([back, front, other], 'Pat.md', section);
-			assert.deepEqual(visible, [front.preview]);
-			frame(visible[0] ?? front.preview);
-			assert.equal(front.preview.querySelectorAll('.rv-visit-note-box').length, 1);
-			assert.equal(back.preview.querySelectorAll('.rv-visit-note-box').length, 0);
-			const every = readingSurfacesForPath([back, front, other], 'Pat.md');
-			assert.deepEqual(every, [back.preview, front.preview]);
-			for (const preview of every) frame(preview);
-			assert.equal(back.preview.querySelectorAll('.rv-visit-note-box').length, 1);
-			assert.equal(front.preview.querySelectorAll('.rv-visit-note-box').length, 1);
-			assert.equal(other.preview.querySelectorAll('.rv-visit-note-box').length, 0);
-			const main = readFileSync('src/main.ts', 'utf8');
-			assert.match(main, /readingSurfacesForPath\(this\.readingLeaves\(\), path, fallback\)/);
-		} finally {
-			back.preview.remove();
-			front.preview.remove();
-			other.preview.remove();
+			const notes = window.document.createElement('div');
+			notes.className = 'markdown-preview-section';
+			notes.innerHTML = `<div class="el-p"><p><code>INPUT[textArea:${key}]</code></p></div>`;
+			preview.append(heading, notes);
 		}
-	});
-
-	it('puts the caret back on a reused textarea after the preview blurs it, and a click stays in the box', () => {
-		clearVisitNoteCaches();
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view markdown-reading-view cm-editor';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer';
-		const heading = window.document.createElement('div');
-		heading.className = 'markdown-preview-section';
-		heading.innerHTML = '<div class="el-h5"><h5>Thu, 2:10pm — Sep 17, 2026</h5></div>';
-		const note = window.document.createElement('div');
-		note.className = 'markdown-preview-section';
-		note.innerHTML = '<div class="el-p"><p><code>INPUT[textArea:sVisit1Notes]</code></p></div>';
-		sizer.append(heading, note);
-		preview.appendChild(sizer);
 		window.document.body.appendChild(preview);
-		const reached: string[] = [];
-		for (const type of ['mousedown', 'pointerdown', 'keydown', 'beforeinput', 'input', 'compositionstart', 'compositionend', 'paste', 'cut'] as const) {
-			preview.addEventListener(type, () => reached.push(type));
-		}
-		const mount = (): void => {
-			decorateVisitControls(preview, () => null, () => {});
-			rehoistVisitNotes(preview);
-			setActiveVisitNote('Pat.md');
-			mountRawVisitNotes(preview, () => 'pat', () => {}, ['sVisit1Notes'], 'Pat.md');
+		decorateVisitControls(preview, () => null, () => {});
+		rehoistVisitNotes(preview);
+		assert.equal(preview.querySelector('.rv-visit-note-box'), null);
+		const front: Record<string, string> = {};
+		for (const row of visits) front[row[1]] = row[2];
+		const children: { load: () => void }[] = [];
+		const ctx = {
+			sourcePath: 'Dale.md',
+			frontmatter: front,
+			addChild(child: { load: () => void }) {
+				children.push(child);
+				child.load();
+			},
 		};
-		try {
-			mount();
-			const area = preview.querySelector('textarea.rv-native-notes-area');
-			assert.ok(area instanceof window.HTMLTextAreaElement);
-			assert.notEqual(window.document.activeElement, area);
-			area.focus();
-			area.value = 'pat note';
-			area.setSelectionRange(3, 3);
-			area.dispatchEvent(new window.Event('input', { bubbles: true }));
-			area.dispatchEvent(new window.KeyboardEvent('keyup', { bubbles: true }));
-			area.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
-			area.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
-			area.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key: 'n' }));
-			area.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'historyUndo' }));
-			area.dispatchEvent(new window.CompositionEvent('compositionstart', { bubbles: true }));
-			area.dispatchEvent(new window.CompositionEvent('compositionend', { bubbles: true }));
-			area.dispatchEvent(new window.Event('paste', { bubbles: true }));
-			area.dispatchEvent(new window.Event('cut', { bubbles: true }));
-			assert.deepEqual(reached, []);
-			area.blur();
-			assert.notEqual(window.document.activeElement, area);
-			mount();
-			const reused = preview.querySelector('textarea.rv-native-notes-area');
-			assert.equal(reused, area);
-			assert.equal(window.document.activeElement, area);
-			assert.equal(area.selectionStart, 3);
-			assert.equal(area.selectionEnd, 3);
-			clearVisitNoteCaches();
-			area.blur();
-			mount();
-			const fresh = preview.querySelector('textarea.rv-native-notes-area');
-			assert.ok(fresh instanceof window.HTMLTextAreaElement);
-			assert.notEqual(window.document.activeElement, fresh);
-		} finally {
-			preview.remove();
-			clearVisitNoteCaches();
+		for (const section of Array.from(preview.querySelectorAll('.markdown-preview-section'))) {
+			if (section instanceof window.HTMLElement) mountVisitNotesInSection(section, ctx);
 		}
-	});
-
-	it('keeps Older Visits open on the reading surface after a real click', () => {
-		const stamps = [
-			'Mon, 9am — Sep 1, 2026',
-			'Tue, 2pm — Sep 2, 2026',
-			'Wed, 3pm — Sep 3, 2026',
-			'Thu, 4pm — Sep 4, 2026',
-		];
-		const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
-		const reading = window.document.createElement('div');
-		reading.className = 'markdown-reading-view';
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer';
-		for (const stamp of stamps) {
-			const heading = window.document.createElement('h3');
-			heading.className = 'rv-visit-stamp';
-			heading.textContent = stamp;
-			const note = window.document.createElement('p');
-			note.textContent = 'notes';
-			sizer.append(heading, note);
-		}
-		preview.appendChild(sizer);
-		reading.appendChild(preview);
-		window.document.body.appendChild(reading);
-		const options = { newestFirst: true, collapseOlder: true, limit: 3 };
-		try {
-			layoutVisitNotes(reading, markdown, options);
-			const fold = reading.querySelector('h3.rv-older-visits');
-			assert.ok(fold instanceof window.HTMLElement);
-			const older = Array.from(sizer.querySelectorAll('h3.rv-visit-stamp')).find((node) => (node.textContent ?? '').includes('Thu'));
-			assert.ok(older instanceof window.HTMLElement);
-			assert.equal(older.classList.contains('rv-older-hidden'), true);
-			fold.click();
-			assert.equal(reading.dataset.rvOlderOpen, '1');
-			assert.notEqual(preview.dataset.rvOlderOpen, '1');
-			assert.equal(older.classList.contains('rv-older-hidden'), false);
-			layoutVisitNotes(reading, markdown, options);
-			assert.equal(reading.dataset.rvOlderOpen, '1');
-			assert.equal(older.classList.contains('rv-older-hidden'), false);
-		} finally {
-			reading.remove();
-		}
-	});
-
-	it('drops Older Visits saved before a Live Preview save when Reading opens, and will not write a misplaced box', async () => {
+		mountVisitNotesInSection(preview, ctx);
+		const areas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area'));
+		assert.equal(areas.length, 3);
+		assert.deepEqual(areas.map((area) => (area as HTMLTextAreaElement).dataset.rvNotesKey), ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes']);
+		assert.deepEqual(areas.map((area) => (area as HTMLTextAreaElement).value), ['newest', 'middle', 'oldest']);
+		const first = areas[0] as HTMLTextAreaElement;
+		first.focus();
+		first.setSelectionRange(2, 2);
+		mountVisitNotesInSection(preview, ctx);
+		assert.equal(preview.querySelectorAll('textarea.rv-native-notes-area').length, 3);
+		assert.equal(preview.querySelector('textarea.rv-native-notes-area'), first);
+		assert.equal(first.selectionStart, 2);
+		preview.remove();
 		clearVisitNoteCaches();
-		const stamps = [
-			'Fri, 5pm — Sep 5, 2026',
-			'Thu, 4pm — Sep 4, 2026',
-			'Wed, 3pm — Sep 3, 2026',
-			'Tue, 2pm — Sep 2, 2026',
-			'Mon, 9am — Sep 1, 2026',
-		];
-		const keys = ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes', 'sVisit2Notes', 'sVisit1Notes'];
-		const scrambled = ['sVisit2Notes', 'sVisit1Notes', 'sVisit3Notes', 'sVisit5Notes', 'sVisit4Notes'];
-		const visits = stamps.map((stamp, index) => `##### ${stamp}\n\`INPUT[textArea:${keys[index]}]\``).join('\n\n');
-		const before = `---\nsVisit2Notes: ""\n---\n### Recent Notes:\n${visits}\n`;
-		const after = `---\nsVisit2Notes: "k"\n---\n### Recent Notes:\n${visits}\n`;
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-reading-view is-live-preview';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer';
-		const notesWrap = window.document.createElement('div');
-		notesWrap.className = 'el-h3';
-		const notes = window.document.createElement('h3');
-		notes.className = 'rv-visit-notes-heading';
-		notes.textContent = 'Recent Notes:';
-		notesWrap.appendChild(notes);
-		sizer.appendChild(notesWrap);
-		for (let index = 0; index < stamps.length; index += 1) {
-			const heading = window.document.createElement('h3');
-			heading.className = 'rv-visit-stamp';
-			heading.textContent = stamps[index] ?? '';
-			const box = window.document.createElement('div');
-			box.className = 'rv-visit-note-box';
-			const code = window.document.createElement('code');
-			code.textContent = `INPUT[textArea:${keys[index]}]`;
-			box.appendChild(code);
-			sizer.append(heading, box);
-		}
-		const callout = window.document.createElement('div');
-		callout.className = 'callout';
-		const title = window.document.createElement('div');
-		title.className = 'callout-title';
-		title.textContent = 'Return Suggestions';
-		callout.appendChild(title);
-		const footer = window.document.createElement('div');
-		footer.className = 'mod-footer';
-		sizer.append(callout, footer);
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		const options = { newestFirst: true, collapseOlder: true, limit: 3 };
-		const writes: string[] = [];
-		try {
-			layoutVisitNotes(preview, before, options);
-			const savedTail = Array.from(sizer.querySelectorAll('.rv-older-visit, .rv-older-visits-wrap, .callout'));
-			assert.ok(savedTail.length > 0);
-			notesWrap.classList.add('is-collapsed');
-			for (const node of savedTail) node.remove();
-			preview.className = 'markdown-reading-view';
-			layoutVisitNotes(preview, after, options);
-			assert.equal(savedTail.every((node) => node.parentElement == null), true);
-			sizer.querySelectorAll('h3.rv-visit-stamp, .rv-visit-note-box, .rv-older-rule, .rv-older-visits-wrap').forEach((node) => node.remove());
-			for (let index = 0; index < stamps.length; index += 1) {
-				const heading = window.document.createElement('h3');
-				heading.className = 'rv-visit-stamp';
-				heading.textContent = stamps[index] ?? '';
-				const box = window.document.createElement('div');
-				box.className = 'rv-visit-note-box';
-				const code = window.document.createElement('code');
-				code.textContent = `INPUT[textArea:${scrambled[index]}]`;
-				box.appendChild(code);
-				sizer.insertBefore(box, footer);
-				sizer.insertBefore(heading, box);
-			}
-			setActiveVisitNote('Dale.md');
-			mountRawVisitNotes(preview, (key) => (key === 'sVisit4Notes' ? 'saved' : ''), (key) => {
-				writes.push(key);
-			}, keys, 'Dale.md');
-			const areas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area'));
-			assert.deepEqual(areas.map((node) => (node instanceof window.HTMLTextAreaElement ? node.dataset.rvNoteKey : '')), keys);
-			const visit4 = areas[1];
-			assert.ok(visit4 instanceof window.HTMLTextAreaElement);
-			assert.equal(visit4.value, 'saved');
-			visit4.focus();
-			visit4.value = 'savedx';
-			visit4.dispatchEvent(new window.Event('input', { bubbles: true }));
-			const misbound = areas[0];
-			assert.ok(misbound instanceof window.HTMLTextAreaElement);
-			misbound.dataset.rvNoteKey = 'sVisit2Notes';
-			misbound.closest('.rv-visit-note-box')?.setAttribute('data-rv-key-mismatch', '1');
-			misbound.focus();
-			misbound.value = 'nope';
-			misbound.dispatchEvent(new window.Event('input', { bubbles: true }));
-			await new Promise((resolve) => setTimeout(resolve, 450));
-			assert.deepEqual(writes, ['sVisit4Notes']);
-		} finally {
-			preview.remove();
-			clearVisitNoteCaches();
-		}
-	});
-
-	it('undoes and redoes a Reading visit note after the save replaces the textarea', async () => {
-		clearVisitNoteCaches();
-		const preview = window.document.createElement('div');
-		preview.className = 'markdown-preview-view markdown-reading-view';
-		const sizer = window.document.createElement('div');
-		sizer.className = 'markdown-preview-sizer';
-		const heading = window.document.createElement('h5');
-		heading.className = 'rv-visit-stamp';
-		heading.textContent = 'Thu, 2:10pm — Sep 17, 2026';
-		const box = window.document.createElement('div');
-		box.className = 'rv-visit-note-box';
-		const code = window.document.createElement('code');
-		code.textContent = 'INPUT[textArea:sVisit1Notes]';
-		box.appendChild(code);
-		sizer.append(heading, box);
-		preview.appendChild(sizer);
-		window.document.body.appendChild(preview);
-		const writes: string[] = [];
-		const mount = (): void => {
-			setActiveVisitNote('Pat.md');
-			mountRawVisitNotes(preview, () => 'pat', (key, value) => {
-				writes.push(`${key}:${value}`);
-			}, ['sVisit1Notes'], 'Pat.md');
-		};
-		try {
-			mount();
-			const area = preview.querySelector('textarea.rv-native-notes-area');
-			assert.ok(area instanceof window.HTMLTextAreaElement);
-			area.focus();
-			area.setSelectionRange(3, 3);
-			area.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: 'k' }));
-			area.value = 'patk';
-			area.setSelectionRange(4, 4);
-			area.dispatchEvent(new window.Event('input', { bubbles: true }));
-			assert.equal(area.value, 'patk');
-			area.remove();
-			mount();
-			const replaced = preview.querySelector('textarea.rv-native-notes-area');
-			assert.ok(replaced instanceof window.HTMLTextAreaElement);
-			assert.notEqual(replaced, area);
-			assert.equal(replaced.value, 'patk');
-			replaced.focus();
-			replaced.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'historyUndo' }));
-			assert.equal(replaced.value, 'pat');
-			assert.equal(replaced.selectionStart, 3);
-			await new Promise((resolve) => setTimeout(resolve, 450));
-			assert.equal(writes.at(-1), 'sVisit1Notes:pat');
-			replaced.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'historyRedo' }));
-			assert.equal(replaced.value, 'patk');
-			assert.equal(replaced.selectionStart, 4);
-			await new Promise((resolve) => setTimeout(resolve, 450));
-			assert.equal(writes.at(-1), 'sVisit1Notes:patk');
-		} finally {
-			preview.remove();
-			clearVisitNoteCaches();
-		}
+		setActiveVisitNote('');
 	});
 
 	it('draws a centered chevron on the companion and literature dropdown', () => {

@@ -7,7 +7,8 @@ import { buildMapPins, groupPinStacks, pinUrgencyZ } from '../src/map-pins';
 import { SNOOZE_SLATE, snoozeCardCaption } from '../src/snooze';
 import { mountStudyPanel } from '../src/study-panel';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { mountRawVisitNotes, rawVisitNoteKey } from '../src/visit-notes-field';
+import { clearVisitNoteCaches, mountVisitNotesInSection, rawVisitNoteKey } from '../src/visit-notes-field';
+import { bindVisitNoteFlush } from '../src/visit-notes-store';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
 import { visitLayoutMissing } from '../src/visit-controls';
 
@@ -179,8 +180,19 @@ describe('2026-10-12 dogfood round 2', () => {
 	it('mounts a native notes box only when Meta Bind left the raw field', () => {
 		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 		const { window } = dom;
-		const host = globalThis as typeof globalThis & { HTMLElement: typeof window.HTMLElement };
+		const host = globalThis as typeof globalThis & {
+			HTMLElement: typeof window.HTMLElement;
+			Node: typeof window.Node;
+			HTMLTextAreaElement: typeof window.HTMLTextAreaElement;
+		};
 		host.HTMLElement = window.HTMLElement;
+		host.Node = window.Node;
+		host.HTMLTextAreaElement = window.HTMLTextAreaElement;
+		clearVisitNoteCaches();
+		const writes: Array<[string, string]> = [];
+		bindVisitNoteFlush((_path, batch) => {
+			for (const [key, value] of Object.entries(batch)) writes.push([key, value]);
+		});
 		const root = window.document.createElement('div');
 		const raw = window.document.createElement('p');
 		raw.textContent = "'INPUT[textArea:sVisit5Notes]'";
@@ -190,13 +202,15 @@ describe('2026-10-12 dogfood round 2', () => {
 		live.appendChild(area);
 		root.append(raw, live);
 		window.document.body.appendChild(root);
-		const writes: Array<[string, string]> = [];
-		mountRawVisitNotes(root, (key) => (key === 'sVisit5Notes' ? 'kept' : ''), (key, value) => {
-			writes.push([key, value]);
+		mountVisitNotesInSection(root, {
+			sourcePath: 'Dale.md',
+			frontmatter: { sVisit5Notes: 'kept' },
+			addChild(child) { child.load(); },
 		});
 		const mounted = raw.querySelector('textarea');
 		assert.ok(mounted instanceof window.HTMLTextAreaElement);
 		assert.equal(mounted.value, 'kept');
+		assert.equal(raw.classList.contains('mb-none'), true);
 		assert.equal(live.querySelectorAll('textarea').length, 1);
 		assert.equal(live.querySelector('textarea'), area);
 		mounted.value = 'after the hub';
@@ -206,66 +220,68 @@ describe('2026-10-12 dogfood round 2', () => {
 				assert.deepEqual(writes, [['sVisit5Notes', 'after the hub']]);
 				assert.equal(rawVisitNoteKey('`INPUT[textArea:sVisit2Notes]`'), 'sVisit2Notes');
 				assert.equal(rawVisitNoteKey('notes'), null);
+				clearVisitNoteCaches();
 				resolve();
 			}, 450);
 		});
 	});
 
-	it('hides Meta Bind and keeps one debounced writer, including a rebuild', () => {
+	it('keeps one debounced writer and shows the stored value on a new section', () => {
 		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 		const { window } = dom;
 		const host = globalThis as typeof globalThis & {
 			HTMLElement: typeof window.HTMLElement;
 			Element: typeof window.Element;
+			Node: typeof window.Node;
+			HTMLTextAreaElement: typeof window.HTMLTextAreaElement;
 		};
 		host.HTMLElement = window.HTMLElement;
 		host.Element = window.Element;
+		host.Node = window.Node;
+		host.HTMLTextAreaElement = window.HTMLTextAreaElement;
+		clearVisitNoteCaches();
+		const writes: string[] = [];
+		bindVisitNoteFlush((_path, batch) => {
+			writes.push(...Object.entries(batch).map(([key, value]) => `${key}=${value}`));
+		});
 		const root = window.document.createElement('div');
 		const raw = window.document.createElement('p');
 		raw.textContent = 'INPUT[textArea:sVisit5Notes]';
-		const bound = window.document.createElement('div');
-		bound.className = 'mb-input-wrapper';
-		bound.setAttribute('data-mb-bind', 'sVisit5Notes');
-		const meta = window.document.createElement('textarea');
-		meta.className = 'mb-input-textarea';
-		bound.appendChild(meta);
-		root.append(raw, bound);
+		root.appendChild(raw);
 		window.document.body.appendChild(root);
-		const writes: string[] = [];
-		mountRawVisitNotes(root, () => 'Third', (key, value) => {
-			writes.push(`${key}=${value}`);
-		}, ['sVisit5Notes']);
+		const ctx = {
+			sourcePath: 'Dale.md',
+			frontmatter: { sVisit5Notes: 'Third' },
+			addChild(child: { load: () => void }) { child.load(); },
+		};
+		mountVisitNotesInSection(root, ctx);
 		const mounted = raw.querySelector('textarea.rv-native-notes-area');
 		assert.ok(mounted instanceof window.HTMLTextAreaElement);
 		assert.equal(root.querySelectorAll('textarea.rv-native-notes-area').length, 1);
-		assert.equal(meta.disabled, true);
-		assert.equal(bound.hidden, true);
+		assert.equal(raw.classList.contains('mb-none'), true);
 		const typed = 'Third box.\n';
 		for (let index = 0; index < typed.length; index += 1) {
 			mounted.value = typed.slice(0, index + 1);
 			mounted.setSelectionRange(mounted.value.length, mounted.value.length);
 			mounted.dispatchEvent(new window.Event('input', { bubbles: true }));
 		}
-		root.remove();
+		mountVisitNotesInSection(root, ctx);
+		assert.equal(raw.querySelector('textarea.rv-native-notes-area'), mounted);
+		assert.equal(mounted.selectionStart, typed.length);
 		const again = window.document.createElement('div');
 		const paragraph = window.document.createElement('p');
-		const rebound = window.document.createElement('div');
-		rebound.className = 'mb-input-wrapper';
-		rebound.setAttribute('data-mb-bind', 'sVisit5Notes');
-		rebound.appendChild(window.document.createElement('textarea'));
-		paragraph.appendChild(rebound);
+		paragraph.textContent = 'INPUT[textArea:sVisit5Notes]';
 		again.appendChild(paragraph);
 		window.document.body.appendChild(again);
-		mountRawVisitNotes(again, () => 'hird box.', () => {}, ['sVisit5Notes']);
+		mountVisitNotesInSection(again, ctx);
 		const restored = again.querySelector('textarea.rv-native-notes-area');
 		assert.ok(restored instanceof window.HTMLTextAreaElement);
-		assert.equal(again.querySelectorAll('textarea.rv-native-notes-area').length, 1);
+		assert.notEqual(restored, mounted);
 		assert.equal(restored.value, typed);
-		assert.equal(restored.selectionStart, typed.length);
-		assert.equal(restored.selectionEnd, typed.length);
 		return new Promise<void>((resolve) => {
 			window.setTimeout(() => {
 				assert.deepEqual(writes, [`sVisit5Notes=${typed}`]);
+				clearVisitNoteCaches();
 				resolve();
 			}, 450);
 		});
@@ -303,7 +319,9 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(source('src/main.ts'), /noteMapOpen = true/);
 		assert.match(source('src/visit-modals.ts'), /this\.campaignHost = null/);
 		assert.match(source('src/suggest-field.ts'), /if \(!gestured\) return/);
-		assert.match(source('src/visit-live-preview.ts'), /noteWritePending\(\)/);
+		assert.match(source('src/visit-notes-store.ts'), /bindVisitNoteFlush/);
+		assert.doesNotMatch(source('src/visit-live-preview.ts'), /noteWritePending/);
+		assert.doesNotMatch(source('src/visit-live-preview.ts'), /class VisitNoteWidget[\s\S]*?ignoreEvent/);
 	});
 
 	it('rebuilds a wiped reading-view layout and paints a snoozed dashboard slate', () => {
@@ -354,10 +372,11 @@ describe('2026-10-12 dogfood round 2', () => {
 		applyLiveUrgency(dashboard, 'RVs/Ada.md', host, true);
 		assert.equal(dashboard.classList.contains('is-snoozed'), true);
 		assert.equal(dashboard.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), SNOOZE_SLATE);
-		assert.match(source('src/main.ts'), /const layoutMissing = visitLayoutMissing\(surface\)/);
+		assert.match(source('src/main.ts'), /mountVisitNotesInSection/);
+		assert.match(source('src/main.ts'), /classifyVisitSection/);
 		assert.match(source('src/main.ts'), /if \(chrome\) this\.decorateOpenNote\(surface, shown\)/);
-		assert.match(source('src/visit-display.ts'), /visitNotesTyping\(preview\) && !olderChromeMissing/);
-		assert.match(css, /\.rv-visit-note-box code\.mb-input \{[^}]*font-size:\s*0/);
+		assert.doesNotMatch(source('src/visit-display.ts'), /rememberRecentTail|visitNotesTyping/);
+		assert.match(css, /\.rv-visit-notes-host \{[^}]*font-size:\s*0/);
 		assert.match(css, /\.rv-dashboard\.is-snoozed button\.rv-locator-urgency \{[^}]*border-style:\s*solid !important/);
 		const chrome = source('src/note-chrome.ts');
 		assert.match(chrome, /=== 'moon' \? SNOOZE_SLATE/);

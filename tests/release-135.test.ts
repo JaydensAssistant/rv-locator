@@ -214,12 +214,14 @@ describe('1.3.5 visit display order', () => {
 		assertOlderVisits(wrapped.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
 		const heading = wrapped.sizer.querySelector('h3.rv-older-visits');
 		assert.ok(heading);
+		assert.equal(wrapped.preview.classList.contains('rv-older-collapsed'), true);
 		heading.click();
 		const older = wrapped.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
-		assert.equal(older?.classList.contains('rv-older-hidden'), false);
+		assert.equal(wrapped.preview.classList.contains('rv-older-collapsed'), false);
+		assert.equal(older?.classList.contains('rv-older-section'), true);
 		heading.click();
 		assert.equal(wrapped.sizer.querySelector('h3.rv-older-visits')?.textContent, 'Older Visits');
-		assert.equal(older?.classList.contains('rv-older-hidden'), true);
+		assert.equal(wrapped.preview.classList.contains('rv-older-collapsed'), true);
 		assert.equal(heading.classList.contains('is-collapsed'), false);
 	});
 
@@ -243,7 +245,7 @@ describe('1.3.5 visit display order', () => {
 		}
 	});
 
-	it('keeps Older Visits after Recent Notes collapses and reopens', async () => {
+	it('recreates the Older Visits header in place and does not restore a detached tail', async () => {
 		const stamps = [
 			'Mon, 9am — Sep 1, 2026',
 			'Tue, 2pm — Sep 2, 2026',
@@ -277,26 +279,27 @@ describe('1.3.5 visit display order', () => {
 		assert.equal(notes.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
 		assert.equal(notes.classList.contains('is-open'), true);
 		assert.equal(svg.parentElement, null);
-		tree.preview.querySelectorAll('.rv-older-visits, .rv-older-rule').forEach((node) => node.remove());
-		tree.preview.querySelectorAll('.rv-older-visit').forEach((node) => {
-			node.classList.remove('rv-older-visit', 'rv-older-hidden');
-		});
+		const thu = tree.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
+		assert.ok(thu);
+		tree.preview.querySelectorAll('.rv-older-visits, .rv-older-visits-wrap, .rv-older-rule').forEach((node) => node.remove());
 		wrap.classList.add('is-collapsed');
 		notes.click();
 		assert.equal(notes.classList.contains('is-open'), false);
 		await new Promise((resolve) => setTimeout(resolve, 150));
-		assert.ok(tree.sizer.querySelector('h3.rv-older-visits'));
-		assert.equal(tree.sizer.querySelector('.callout')?.textContent?.includes('Return Suggestions'), true);
-		wrap.classList.remove('is-collapsed');
-		notes.click();
-		await new Promise((resolve) => setTimeout(resolve, 150));
+		assert.equal(tree.sizer.querySelector('h3.rv-older-visits'), null);
+		assert.equal(thu.parentElement, tree.sizer);
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
 		assertOlderVisits(tree.sizer, ['Mon, 9am', 'Tue, 2pm', 'Wed, 3pm'], 'Thu, 4pm');
-		assert.equal(notes.classList.contains('is-open'), true);
+		assert.equal(tree.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm')), thu);
 		assert.equal(notes.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
 		assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
 	});
 
-	it('keeps Older Visits and Return Suggestions when collapse removes the tail', async () => {
+	it('leaves a removed Older Visits tail removed when Recent Notes collapses', async () => {
 		const stamps = [
 			'Mon, 9am — Sep 1, 2026',
 			'Tue, 2pm — Sep 2, 2026',
@@ -331,25 +334,10 @@ describe('1.3.5 visit display order', () => {
 		wrap.classList.add('is-collapsed');
 		notes.click();
 		await new Promise((resolve) => setTimeout(resolve, 150));
-		const older = tree.sizer.querySelector('h3.rv-older-visits');
-		const suggestions = tree.sizer.querySelector('.callout');
-		assert.equal(older?.textContent, 'Older Visits');
-		assert.equal(older?.parentElement != null, true);
-		assert.equal(suggestions?.textContent?.includes('Return Suggestions'), true);
-		assert.equal(suggestions?.parentElement != null, true);
-		assert.notEqual(wrap.nextElementSibling, footer);
-		assert.ok(tree.sizer.children.indexOf(footer) > tree.sizer.children.indexOf(older?.parentElement as DomEl));
-		assert.equal(tree.sizer.querySelectorAll('h3.rv-older-visits').length, 1);
-		assert.equal(tree.sizer.querySelectorAll('.callout').length, 1);
-		const olderBody = tree.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
-		assert.ok(olderBody);
-		assert.ok(tree.sizer.children.indexOf(olderBody) < tree.sizer.children.indexOf(footer));
-		wrap.classList.remove('is-collapsed');
-		notes.click();
-		await new Promise((resolve) => setTimeout(resolve, 150));
-		assert.equal(tree.sizer.querySelectorAll('h3.rv-older-visits').length, 1);
-		assert.equal(tree.sizer.querySelectorAll('.callout').length, 1);
-		assert.equal(tree.sizer.querySelector('.callout')?.textContent?.includes('Return Suggestions'), true);
+		assert.equal(wrap.nextElementSibling, footer);
+		assert.equal(tree.sizer.querySelector('h3.rv-older-visits'), null);
+		assert.equal(tree.sizer.querySelector('.callout'), null);
+		assert.equal(tree.sizer.querySelectorAll('h3.rv-older-visits').length, 0);
 		assert.equal(markdown, `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`);
 	});
 
@@ -653,14 +641,21 @@ describe('1.3.5 visit display order', () => {
 			collapseOlder: true,
 			limit: 3,
 		});
-		const hidden = tree.sizer.children.find((node) => node.classList.contains('rv-older-hidden') && (node.textContent ?? '').includes('Thu, 4pm'));
+		assert.equal(tree.preview.classList.contains('rv-older-collapsed'), true);
+		const hidden = tree.sizer.children.find((node) => node.classList.contains('rv-older-first') && (node.textContent ?? '').includes('Thu, 4pm'));
 		assert.ok(hidden);
 		const stray = tree.preview.ownerDocument.createElement('p');
 		const area = tree.preview.ownerDocument.createElement('textarea');
 		stray.appendChild(area);
 		tree.sizer.insertBefore(stray, hidden.nextElementSibling);
-		concealCollapsedVisitNotes(tree.preview as unknown as HTMLElement);
-		assert.equal(stray.classList.contains('rv-older-hidden'), true);
+		layoutVisitNotes(tree.preview as unknown as HTMLElement, markdown, {
+			newestFirst: true,
+			collapseOlder: true,
+			limit: 3,
+		});
+		assert.equal(stray.classList.contains('rv-older-section'), true);
+		assert.equal(stray.classList.contains('rv-older-hidden'), false);
+		assert.equal(tree.preview.classList.contains('rv-older-collapsed'), true);
 		assert.equal(markdown, stamps.map((stamp) => `##### ${stamp}`).join('\n'));
 	});
 
@@ -805,30 +800,32 @@ function assertOlderVisits(sizer: DomEl, visible: readonly string[], older: stri
 	assert.equal(heading?.querySelector('path')?.getAttribute('d'), 'm9 18 6-6-6-6');
 	const wrap = heading?.parentElement;
 	assert.equal(wrap?.children[0], heading);
-	const siblings = wrap?.parentElement?.children ?? [];
+	const host = wrap?.parentElement;
+	assert.ok(host);
+	assert.equal(host.classList.contains('rv-older-section'), true);
+	assert.equal(host.classList.contains('rv-older-first'), true);
+	assert.match(host.textContent ?? '', new RegExp(older.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+	const siblings = host.children;
 	const rule = siblings[siblings.indexOf(wrap as DomEl) - 1];
 	assert.equal(rule?.tagName, 'HR');
 	assert.equal(rule?.classList.contains('rv-older-rule'), true);
-	const labels = sizer.children.map((node) => node.textContent ?? '');
-	const headingAt = labels.indexOf('Older Visits');
-	assert.ok(headingAt > 0);
+	assert.equal(sizer.parentElement?.classList.contains('rv-older-collapsed'), true);
+	const hostAt = sizer.children.indexOf(host);
+	assert.ok(hostAt > 0);
 	for (const stamp of visible) {
-		const at = labels.findIndex((label) => label.includes(stamp));
-		assert.ok(at >= 0 && at < headingAt, stamp);
-		const node = sizer.children[at];
-		assert.equal(node?.classList.contains('rv-older-hidden'), false);
+		const at = sizer.children.findIndex((node) => (node.textContent ?? '').includes(stamp) && !node.classList.contains('rv-older-section'));
+		assert.ok(at >= 0 && at < hostAt, stamp);
 	}
-	const olderAt = labels.findIndex((label) => label.includes(older));
-	assert.ok(olderAt > headingAt);
-	assert.equal(sizer.children[olderAt]?.classList.contains('rv-older-hidden'), true);
-	const suggestions = labels.findIndex((label) => label.includes('Return Suggestions'));
-	assert.ok(suggestions > olderAt);
+	const suggestions = sizer.children.findIndex((node) => (node.textContent ?? '').includes('Return Suggestions'));
+	assert.ok(suggestions > hostAt);
+	assert.equal(sizer.children.includes(heading), false);
 }
 
 function assertVisitNotesStaysAbove(sizer: DomEl, visible: readonly string[]): void {
 	const labels = sizer.children.map((node) => node.textContent ?? '');
 	const notesAt = labels.findIndex((label) => /^visit notes:?$/i.test(label.trim()));
-	const olderAt = labels.indexOf('Older Visits');
+	const olderHost = sizer.children.find((node) => node.classList.contains('rv-older-first') || node.querySelector('.rv-older-first'));
+	const olderAt = olderHost ? sizer.children.indexOf(olderHost) : -1;
 	const firstStamp = visible
 		.map((stamp) => labels.findIndex((label) => label.includes(stamp)))
 		.filter((at) => at >= 0)
