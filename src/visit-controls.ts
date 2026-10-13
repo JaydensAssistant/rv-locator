@@ -335,7 +335,7 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 		hidden.className = 'rv-stamp-source';
 		heading.appendChild(hidden);
 	}
-	hidden.textContent = source;
+	writeText(hidden, source);
 	for (const node of Array.from(heading.childNodes)) {
 		if (node === row || node === hidden) continue;
 		if (domInstanceOf(node, HTMLElement) && (
@@ -347,29 +347,30 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 	}
 	const tile = row.querySelector('.rv-cal');
 	if (tile instanceof HTMLElement) {
-		tile.setAttribute('title', fullDate);
-		tile.setAttribute('aria-label', fullDate);
+		writeAttr(tile, 'title', fullDate);
+		writeAttr(tile, 'aria-label', fullDate);
 		const monthEl = tile.querySelector('.rv-cal-month');
 		const dayEl = tile.querySelector('.rv-cal-day');
-		if (monthEl) monthEl.textContent = month;
-		if (dayEl) dayEl.textContent = day;
+		if (monthEl) writeText(monthEl, month);
+		if (dayEl) writeText(dayEl, day);
 	}
 	const whenEl = row.querySelector('.rv-stamp-when');
-	if (whenEl) whenEl.textContent = lead;
+	if (whenEl) writeText(whenEl, lead);
 	const publisher = companionNear(heading, when);
 	let withEl = row.querySelector('.rv-stamp-with');
 	if (publisher) {
+		const label = `with ${publisher}`;
 		if (!(withEl instanceof HTMLElement)) {
 			withEl = doc.createElement('span');
 			withEl.className = 'rv-stamp-with';
 			whenEl?.insertAdjacentElement('afterend', withEl);
 		}
-		withEl.textContent = `with ${publisher}`;
+		writeText(withEl, label);
 	} else if (withEl) {
 		withEl.remove();
 	}
 	const pill = row.querySelector('.rv-stamp-count');
-	if (pill instanceof HTMLElement) pill.textContent = count;
+	if (pill instanceof HTMLElement) writeText(pill, count);
 	const more = heading.querySelector(`.${MORE_CLASS}`);
 	if (more && more.parentElement !== row) row.appendChild(more);
 	paintItemStrip(heading, source, covered);
@@ -388,8 +389,9 @@ export function paintLiveVisitHeading(
 	onMenu?: (evt: MouseEvent) => void,
 ): void {
 	heading.classList.add('rv-visit-stamp');
-	heading.textContent = source;
-	if (publisher) heading.dataset.rvCompanion = publisher;
+	const stored = heading.querySelector(':scope > .rv-stamp-source')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+	if (stored !== source.replace(/\s+/g, ' ').trim()) heading.textContent = source;
+	if (publisher && heading.dataset.rvCompanion !== publisher) heading.dataset.rvCompanion = publisher;
 	const when = stampDateTime(source);
 	if (!when) return;
 	if (onMenu) moreButton(heading, 'Visit options', onMenu);
@@ -402,61 +404,79 @@ export function visitHasStripItems(source: string, covered: string): boolean {
 	return /·\s+(?:«(?:book|film|lesson)»|(?:Left|Shared|Also))\s+«[^»]+»/.test(source);
 }
 
+interface StripItem {
+	icon: string;
+	title: string;
+	kind: 'literature' | 'media' | 'lesson' | 'plain';
+	campaign?: boolean;
+}
+
+function collectStripItems(source: string, covered: string): StripItem[] {
+	const items: StripItem[] = [];
+	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain', campaign: true });
+	const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»/g;
+	let match = piece.exec(source);
+	while (match) {
+		const kind = match[1] || match[2] || '';
+		const title = match[3] ?? '';
+		if (title && kind !== 'Covered') {
+			items.push({
+				icon: kind === 'film' || kind === 'Shared' ? 'clapperboard' : kind === 'lesson' || kind === 'Also' ? 'book-marked' : 'book-open',
+				title,
+				kind: kind === 'film' || kind === 'Shared' ? 'media' : kind === 'lesson' || kind === 'Also' ? 'lesson' : 'literature',
+			});
+		}
+		match = piece.exec(source);
+	}
+	return items;
+}
+
+function stripSignature(items: readonly StripItem[]): string {
+	return items.map((item) => `${item.campaign ? 'c' : ''}${item.kind}\t${item.icon}\t${item.title}`).join('\n');
+}
+
+function stripPaintStable(strip: HTMLElement, ghost: boolean): boolean {
+	if (ghost) return strip.classList.contains('is-ghost') && strip.childElementCount === 0;
+	return !strip.classList.contains('is-ghost') && strip.childElementCount > 0;
+}
+
+function writeText(node: { textContent: string | null }, value: string): void {
+	if ((node.textContent ?? '') === value) return;
+	node.textContent = value;
+}
+
+function writeAttr(el: Element, name: string, value: string): void {
+	if (el.getAttribute(name) === value) return;
+	el.setAttribute(name, value);
+}
+
 function paintItemStrip(heading: HTMLElement, source: string, covered: string): void {
+	const items = collectStripItems(source, covered);
+	const signature = stripSignature(items);
 	const doc = heading.ownerDocument;
 	let strip = findItemStrip(heading);
+	if (strip && strip.dataset.rvItems === signature && stripPaintStable(strip, items.length === 0)) return;
 	if (!strip) {
 		strip = doc.createElement('div');
 		strip.className = 'rv-item-strip';
 		heading.insertAdjacentElement('afterend', strip);
 	}
-	strip.replaceChildren();
-	const items: Array<{ icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }> = [];
-	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain', campaign: true });
-	const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»/g;
-	let match = piece.exec(source);
-	while (match) {
-		const kind = match[1] || match[2] || '';
-		const title = match[3] ?? '';
-		if (title && kind !== 'Covered') {
-			items.push({
-				icon: kind === 'film' || kind === 'Shared' ? 'clapperboard' : kind === 'lesson' || kind === 'Also' ? 'book-marked' : 'book-open',
-				title,
-				kind: kind === 'film' || kind === 'Shared' ? 'media' : kind === 'lesson' || kind === 'Also' ? 'lesson' : 'literature',
-			});
-		}
-		match = piece.exec(source);
-	}
-	if (items.length === 0) {
-		strip.classList.add('is-ghost');
-		return;
-	}
-	strip.classList.remove('is-ghost');
-	const campaign = items.filter((item) => item.campaign);
-	const rest = items.filter((item) => !item.campaign);
-	for (const item of [...campaign, ...rest]) paintStripChip(strip, item);
-	watchTitleRow(strip, () => refitItemStrip(strip));
+	fillStripChildren(strip, items);
+	strip.dataset.rvItems = signature;
+	if (items.length > 0) watchTitleRow(strip, () => refitItemStrip(strip));
 }
 
 /** Fill a strip we created. The heading and the notes stay where Obsidian put them. */
 export function fillItemStrip(strip: HTMLElement, source: string, covered: string): void {
+	const items = collectStripItems(source, covered);
+	const signature = stripSignature(items);
+	if (strip.dataset.rvItems === signature && stripPaintStable(strip, items.length === 0)) return;
+	fillStripChildren(strip, items);
+	strip.dataset.rvItems = signature;
+}
+
+function fillStripChildren(strip: HTMLElement, items: readonly StripItem[]): void {
 	strip.replaceChildren();
-	const items: Array<{ icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }> = [];
-	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain', campaign: true });
-	const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»/g;
-	let match = piece.exec(source);
-	while (match) {
-		const kind = match[1] || match[2] || '';
-		const title = match[3] ?? '';
-		if (title && kind !== 'Covered') {
-			items.push({
-				icon: kind === 'film' || kind === 'Shared' ? 'clapperboard' : kind === 'lesson' || kind === 'Also' ? 'book-marked' : 'book-open',
-				title,
-				kind: kind === 'film' || kind === 'Shared' ? 'media' : kind === 'lesson' || kind === 'Also' ? 'lesson' : 'literature',
-			});
-		}
-		match = piece.exec(source);
-	}
 	if (items.length === 0) {
 		strip.classList.add('is-ghost');
 		return;

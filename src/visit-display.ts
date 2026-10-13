@@ -109,17 +109,10 @@ export function mountHeadingChevron(mark: HTMLElement): void {
 }
 
 function chevronReady(mark: HTMLElement): boolean {
-	let svg: HTMLElement | null = null;
-	let count = 0;
-	for (const kid of Array.from(mark.children)) {
-		if (kid instanceof HTMLElement && kid.tagName === 'SVG') {
-			count += 1;
-			svg = kid;
-		}
-	}
-	if (count !== 1 || !svg) return false;
-	const path = svg.querySelector('path');
-	return path instanceof HTMLElement && path.getAttribute('d') === CHEVRON_PATH;
+	const svgs = Array.from(mark.children).filter((kid) => kid.tagName.toLowerCase() === 'svg');
+	if (svgs.length !== 1) return false;
+	const path = svgs[0]?.querySelector('path');
+	return path != null && path.getAttribute('d') === CHEVRON_PATH;
 }
 
 function appendHeadingChevron(mark: HTMLElement): void {

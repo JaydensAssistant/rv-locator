@@ -31,6 +31,7 @@ import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
 import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from './visit-display';
+import { watchVisitSurface } from './visit-surface';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
@@ -143,8 +144,6 @@ export default class RVLocatorPlugin extends Plugin {
 	private maskingStamps = false;
 	private readonly stampHeaders = new WeakSet<HTMLElement>();
 	private readonly visitSurfaces = new WeakSet<HTMLElement>();
-	private visitSurfaceLock = 0;
-	private visitSurfaceDirty = false;
 	/** Picked Geoapify hit whose formatted address was submitted unchanged. */
 	private verifiedNewRvHit: GeocodeHit | null = null;
 	/** Set while Add a housemate is creating a note. The template skips geocode. */
@@ -725,42 +724,15 @@ export default class RVLocatorPlugin extends Plugin {
 			: start.closest('.markdown-preview-view, .markdown-reading-view');
 		if (!(surface instanceof HTMLElement) || this.visitSurfaces.has(surface)) return;
 		this.visitSurfaces.add(surface);
-		let frame = 0;
-		const schedule = (): void => {
+		const watch = watchVisitSurface(surface, () => {
 			if (this.unloaded) return;
-			if (this.visitSurfaceLock > 0) {
-				this.visitSurfaceDirty = true;
-				return;
-			}
-			if (frame) return;
-			frame = window.requestAnimationFrame(() => {
-				frame = 0;
-				const livePath = this.pathForSurface(surface) || path;
-				this.visitSurfaceLock += 1;
-				try {
-					this.refreshVisitCards(livePath, surface, false, true);
-				} finally {
-					this.visitSurfaceLock -= 1;
-					if (this.visitSurfaceDirty) {
-						this.visitSurfaceDirty = false;
-						schedule();
-					}
-				}
-			});
-		};
-		this.registerDomEvent(surface, 'scroll', () => schedule(), { passive: true });
-		if (typeof MutationObserver === 'undefined') return;
-		const observer = new MutationObserver((records) => {
-			const relevant = records.some((record) => {
-				const target = record.target;
-				const el = target instanceof HTMLElement ? target : target.parentElement;
-				if (!(el instanceof HTMLElement)) return false;
-				return el.closest('.rv-visit-note-box, .rv-item-strip, .rv-stamp-row, .rv-visit-more') == null;
-			});
-			if (relevant) schedule();
+			const livePath = this.pathForSurface(surface) || path;
+			this.refreshVisitCards(livePath, surface, false, true);
 		});
-		observer.observe(surface, { childList: true, subtree: true });
-		this.register(() => observer.disconnect());
+		this.registerDomEvent(surface, 'scroll', () => {
+			if (!this.unloaded) watch.schedule();
+		}, { passive: true });
+		this.register(() => watch.stop());
 	}
 
 	/**

@@ -690,6 +690,7 @@ export function visitPreviewExtension(
 	});
 	const liveWatch = ViewPlugin.fromClass(class {
 		observer: MutationObserver | null = null;
+		contentWidth = -1;
 
 		constructor(view: EditorView) {
 			const onStart = (event: Event): void => {
@@ -707,6 +708,7 @@ export function visitPreviewExtension(
 			};
 			view.contentDOM.addEventListener('compositionstart', onStart, true);
 			view.contentDOM.addEventListener('compositionend', onEnd, true);
+			this.contentWidth = livePreviewContentWidth(view);
 			queueMicrotask(() => {
 				syncLivePreview(view);
 				syncNotePath(view);
@@ -726,7 +728,15 @@ export function visitPreviewExtension(
 
 		update(update: ViewUpdate): void {
 			const view = update.view;
-			const changed = update.docChanged || update.viewportChanged || update.geometryChanged;
+			const nextWidth = livePreviewContentWidth(view);
+			const changed = livePreviewShouldPaint({
+				docChanged: update.docChanged,
+				viewportChanged: update.viewportChanged,
+				geometryChanged: update.geometryChanged,
+				previousWidth: this.contentWidth,
+				nextWidth,
+			});
+			this.contentWidth = nextWidth;
 			queueMicrotask(() => {
 				if (!view.dom.isConnected) return;
 				syncNotePath(view);
@@ -754,6 +764,22 @@ function syncLivePreview(view: EditorView): void {
 	const live = editorIsLivePreview(view);
 	if (view.state.field(livePreviewField, false) === live) return;
 	view.dispatch({ effects: setLivePreview.of(live) });
+}
+
+export function livePreviewContentWidth(view: { contentDOM?: { clientWidth?: number } | null; dom: { clientWidth?: number } }): number {
+	return view.contentDOM?.clientWidth || view.dom.clientWidth || 0;
+}
+
+/** Doc and viewport always repaint. Geometry repaints only when the content width changed. */
+export function livePreviewShouldPaint(input: {
+	docChanged: boolean;
+	viewportChanged: boolean;
+	geometryChanged: boolean;
+	previousWidth: number;
+	nextWidth: number;
+}): boolean {
+	const widthChanged = input.nextWidth !== input.previousWidth;
+	return input.docChanged || input.viewportChanged || (input.geometryChanged && widthChanged);
 }
 
 export function dispatchVisitPreviewRefresh(view: EditorView): void {

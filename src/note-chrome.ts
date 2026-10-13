@@ -162,22 +162,22 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	if (inkHost) paintUrgencyInk(inkHost, accent);
 	const ink = inkHost?.style.getPropertyValue('--rv-urgency-ink') || accent;
 	for (const el of hosts) {
-		el.style.setProperty('--rv-urgency-accent', accent);
-		el.style.setProperty('--rv-urgency-ink', ink);
-		if (el.classList.contains('rv-locator-return-suggestions')) el.style.setProperty('--callout-color', accent);
+		setPaint(el, '--rv-urgency-accent', accent);
+		setPaint(el, '--rv-urgency-ink', ink);
+		if (el.classList.contains('rv-locator-return-suggestions')) setPaint(el, '--callout-color', accent);
 	}
 	start.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
-		node.style.setProperty('--rv-urgency-accent', accent);
-		node.style.setProperty('--rv-urgency-ink', ink);
-		node.style.setProperty('--callout-color', accent);
+		setPaint(node, '--rv-urgency-accent', accent);
+		setPaint(node, '--rv-urgency-ink', ink);
+		setPaint(node, '--callout-color', accent);
 	});
 	start.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
-		node.style.setProperty('--rv-urgency-accent', accent);
+		setPaint(node, '--rv-urgency-accent', accent);
 		paintUrgencyInk(node, accent);
-		const ink = node.style.getPropertyValue('--rv-urgency-ink').trim() || accent;
-		node.style.setProperty('color', ink, 'important');
+		const nodeInk = node.style.getPropertyValue('--rv-urgency-ink').trim() || accent;
+		setPaint(node, 'color', nodeInk, true);
 	});
 	markUrgencyReady(hosts);
 	paintUrgencyDetails(start, accent);
@@ -194,19 +194,26 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 	].join(', ');
 	start.querySelectorAll(colorOf).forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
-		node.style.setProperty('color', accent, 'important');
+		setPaint(node, 'color', accent, true);
 		node.querySelectorAll('svg').forEach((svg) => {
 			if (!(svg instanceof SVGElement)) return;
-			svg.style.setProperty('color', accent, 'important');
-			svg.style.setProperty('stroke', accent, 'important');
+			setPaint(svg, 'color', accent, true);
+			setPaint(svg, 'stroke', accent, true);
 		});
 	});
 	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		pinBadgeStroke(node);
-		node.style.setProperty('border-color', accent, 'important');
-		node.style.setProperty('color', accent, 'important');
+		setPaint(node, 'border-color', accent, true);
+		setPaint(node, 'color', accent, true);
 	});
+}
+
+function setPaint(el: HTMLElement | SVGElement, name: string, value: string, important = false): void {
+	const priority = important ? 'important' : '';
+	if (el.style.getPropertyValue(name) === value && el.style.getPropertyPriority(name) === priority) return;
+	if (important) el.style.setProperty(name, value, 'important');
+	else el.style.setProperty(name, value);
 }
 
 function markSnoozedDashboard(start: HTMLElement, hosts: readonly HTMLElement[], snoozed: boolean): void {
@@ -278,10 +285,22 @@ function paintFactsTitle(
 	host: NoteChromeHost,
 ): void {
 	const inner = title.querySelector('.callout-title-inner');
-	if (inner) inner.textContent = 'Quick Facts';
+	if (inner && inner.textContent !== 'Quick Facts') inner.textContent = 'Quick Facts';
 	let badges = title.querySelector(':scope > .rv-qf-badges');
 	if (!(badges instanceof HTMLElement)) {
 		badges = title.createSpan('rv-qf-badges');
+	}
+	if (!(badges instanceof HTMLElement)) return;
+	const ghost = host.ghostIcon(path);
+	const signature = [
+		host.settings.showUrgencyBadge ? `u:${urgency ?? ''}:${priority ?? ''}:${ghost}` : '',
+		host.settings.showPriorityBadge && priority != null ? `p:${priority}` : '',
+		host.settings.showRouteBadge ? 'r:1' : '',
+	].join('|');
+	const expectsBadges = /(?:^|\|)[upr]:/.test(signature);
+	if (badges.dataset.rvFacts === signature && (!expectsBadges || badges.childElementCount > 0)) {
+		if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+		return;
 	}
 	badges.empty();
 	const name = path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
@@ -292,7 +311,6 @@ function paintFactsTitle(
 			attr: { type: 'button', 'data-band': String(marks.band), 'aria-label': 'Urgency' },
 		});
 		mountUrgencyGlyph(button, marks.glyphs);
-		const ghost = host.ghostIcon(path);
 		if (ghost) {
 			if (ghost !== 'moon') button.addClass('is-ghost');
 			button.empty();
@@ -339,7 +357,8 @@ function paintFactsTitle(
 			host.openRoute(path);
 		});
 	}
-	title.setAttr('data-rv-status', status);
+	badges.dataset.rvFacts = signature;
+	if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
 }
 
 function paintFactsBody(

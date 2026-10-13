@@ -1000,18 +1000,19 @@ function badgeStrokePx(host: HTMLElement): string {
 	return strokeLabel(specified);
 }
 
-/** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. */
+/** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. Measured once per host. */
 export function pinBadgeStroke(host: HTMLElement): void {
-	applyBadgeStroke(host, badgeStrokePx(host));
-	const view = host.ownerDocument.defaultView;
-	if (!view || host.dataset.rvStrokeFrame === '1') return;
-	host.dataset.rvStrokeFrame = '1';
-	const again = (): void => {
-		host.dataset.rvStrokeFrame = '';
-		if (!host.isConnected) return;
-		applyBadgeStroke(host, badgeStrokePx(host));
-	};
-	if (typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(again);
+	const ghost = host.classList.contains('is-ghost');
+	const style = ghost ? 'dashed' : 'solid';
+	const cached = host.dataset.rvStrokePx;
+	if (
+		cached
+		&& host.style.getPropertyValue('border-width') === cached
+		&& host.style.getPropertyValue('border-style') === style
+	) return;
+	const px = cached || badgeStrokePx(host);
+	host.dataset.rvStrokePx = px;
+	applyBadgeStroke(host, px);
 }
 
 function applyBadgeStroke(host: HTMLElement, px: string): void {

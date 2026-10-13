@@ -415,5 +415,12 @@ export function resolvePaintedColor(el: HTMLElement, color: string): string {
 
 /** Read the theme background and set `--rv-urgency-ink` on `el` for this band color. */
 export function paintUrgencyInk(el: HTMLElement, color: string): void {
-	el.style.setProperty('--rv-urgency-ink', cachedUrgencyInk(resolvePaintedColor(el, color), themePageBackground(el)));
+	const background = themePageBackground(el);
+	const key = `${color}|${background}`;
+	const painted = el.style.getPropertyValue('--rv-urgency-ink').trim();
+	if (el.dataset.rvInkSource === key && painted) return;
+	const ink = cachedUrgencyInk(resolvePaintedColor(el, color), background);
+	el.dataset.rvInkSource = key;
+	if (painted === ink) return;
+	el.style.setProperty('--rv-urgency-ink', ink);
 }
