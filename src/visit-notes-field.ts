@@ -529,9 +529,9 @@ function wireNative(
 	const keepInBox = (evt: Event): void => {
 		evt.stopPropagation();
 	};
-	area.addEventListener('mousedown', keepInBox);
-	area.addEventListener('pointerdown', keepInBox);
-	area.addEventListener('keydown', keepInBox);
+	for (const type of ['mousedown', 'pointerdown', 'keydown', 'beforeinput', 'compositionstart', 'compositionend', 'paste', 'cut'] as const) {
+		area.addEventListener(type, keepInBox);
+	}
 	area.addEventListener('focus', (evt) => {
 		if (!evt.isTrusted && liveDraft(path, key)?.typed !== true) return;
 		holdVisitNote(area, 2500, true);

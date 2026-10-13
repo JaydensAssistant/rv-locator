@@ -1872,7 +1872,7 @@ describe('smoke layout', () => {
 		preview.appendChild(sizer);
 		window.document.body.appendChild(preview);
 		const reached: string[] = [];
-		for (const type of ['mousedown', 'pointerdown', 'keydown', 'input'] as const) {
+		for (const type of ['mousedown', 'pointerdown', 'keydown', 'beforeinput', 'input', 'compositionstart', 'compositionend', 'paste', 'cut'] as const) {
 			preview.addEventListener(type, () => reached.push(type));
 		}
 		const mount = (): void => {
@@ -1894,6 +1894,11 @@ describe('smoke layout', () => {
 			area.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true }));
 			area.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
 			area.dispatchEvent(new window.KeyboardEvent('keydown', { bubbles: true, key: 'n' }));
+			area.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'historyUndo' }));
+			area.dispatchEvent(new window.CompositionEvent('compositionstart', { bubbles: true }));
+			area.dispatchEvent(new window.CompositionEvent('compositionend', { bubbles: true }));
+			area.dispatchEvent(new window.Event('paste', { bubbles: true }));
+			area.dispatchEvent(new window.Event('cut', { bubbles: true }));
 			assert.deepEqual(reached, []);
 			area.blur();
 			assert.notEqual(window.document.activeElement, area);
