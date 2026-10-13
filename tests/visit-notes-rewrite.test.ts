@@ -159,7 +159,9 @@ describe('visit notes rewrite', () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
 		const live = areaIn(view.dom, 'sVisit2Notes');
-		assert.equal(view.dom.querySelector('textarea[data-rv-notes-key="sVisit1Notes"]'), null);
+		const folded = view.dom.querySelector('textarea[data-rv-notes-key="sVisit1Notes"]');
+		assert.ok(folded instanceof window.HTMLTextAreaElement);
+		assert.equal(folded.disabled, true);
 		typeInto(live, 'newest box');
 		flushVisitNotes(DALE);
 		assert.equal(flushed.at(-1)?.sVisit2Notes, 'newest box');

@@ -4,7 +4,9 @@ import { EditorView } from '@codemirror/view';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { layoutVisitNotes } from '../src/visit-display';
+import { clearOlderVisitsState } from '../src/visit-older';
 import {
+	lockHiddenMetaBindFields,
 	planLivePreviewVisits,
 	refreshVisitPreviewEffect,
 	setOlderVisitsOpen,
@@ -19,6 +21,8 @@ const host = globalThis as typeof globalThis & Record<string, unknown>;
 host.window = window;
 host.document = window.document;
 host.HTMLElement = window.HTMLElement;
+host.HTMLTextAreaElement = window.HTMLTextAreaElement;
+host.HTMLInputElement = window.HTMLInputElement;
 host.Element = window.Element;
 host.Node = window.Node;
 host.Document = window.Document;
@@ -100,7 +104,7 @@ describe('live preview older visits', () => {
 		assert.equal(view.state.doc.toString(), before);
 		assert.equal(Buffer.from(view.state.doc.toString(), 'utf8').equals(Buffer.from(before, 'utf8')), true);
 		assert.match(view.dom.textContent ?? '', /Older Visits/);
-		assert.equal((view.dom.textContent ?? '').includes('##### Thu'), true);
+		assert.match(view.dom.textContent ?? '', /Thu, 4pm/);
 		const hidden = view.dom.querySelectorAll('.rv-older-hidden');
 		assert.ok(hidden.length >= 2);
 		view.dispatch({ effects: setOlderVisitsOpen.of(true) });
@@ -152,6 +156,9 @@ describe('live preview older visits', () => {
 		const heading = view.dom.querySelector('.cm-line.rv-lp-visit-heading');
 		assert.ok(heading);
 		assert.match(heading.textContent ?? '', /Sun, 9:05am/);
+		assert.ok(heading.querySelector('.rv-cal'));
+		assert.ok(heading.querySelector('.rv-stamp-when'));
+		assert.ok(heading.querySelector('.rv-stamp-count'));
 		assert.equal(view.state.doc.toString(), doc);
 		view.destroy();
 	});
@@ -336,8 +343,10 @@ describe('live preview older visits', () => {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 			const headings = Array.from(view.dom.querySelectorAll('.cm-line.rv-lp-visit-heading'));
 			assert.equal(headings.length, 3);
-			assert.match(headings[1]?.textContent ?? '', /«book»/);
-			assert.match(headings[2]?.textContent ?? '', /Thu, 2:10pm/);
+			assert.ok(headings[1]?.querySelector('.rv-cal'));
+			assert.match(headings[1]?.querySelector('.rv-stamp-when')?.textContent ?? '', /Sun, 5:23pm/);
+			assert.match(headings[1]?.textContent ?? '', /Enjoy Life Forever/);
+			assert.match(headings[2]?.querySelector('.rv-stamp-when')?.textContent ?? '', /Thu, 2:10pm/);
 			const bound = Array.from(view.dom.querySelectorAll('textarea.rv-native-notes-area')).map((node) => (
 				node instanceof window.HTMLTextAreaElement ? node.dataset.rvNotesKey : ''
 			));
@@ -345,6 +354,54 @@ describe('live preview older visits', () => {
 			const thu = view.dom.querySelector('textarea.rv-native-notes-area[data-rv-notes-key="sVisit3Notes"]');
 			assert.ok(thu instanceof window.HTMLTextAreaElement);
 			assert.equal(thu.value, 'thu');
+			assert.equal(view.state.doc.toString(), doc);
+		} finally {
+			view.destroy();
+			parent.remove();
+			clearVisitNoteCaches();
+		}
+	});
+
+	it('keeps closed Older Visits text areas hidden and inert', async () => {
+		const doc = [
+			'##### Wed, 3pm — Sep 3, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'##### Thu, 2:10pm — Jul 2, 2026',
+			'`INPUT[textArea:sVisit2Notes]`',
+		].join('\n');
+		clearVisitNoteCaches();
+		clearOlderVisitsState();
+		applyExternalVisitNotes('Dale.md', { sVisit1Notes: 'new', sVisit2Notes: 'old' });
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 1 }), () => 'Dale.md'),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const visible = view.dom.querySelector('textarea.rv-native-notes-area:not([disabled])');
+			assert.ok(visible instanceof window.HTMLTextAreaElement, 'visible box');
+			assert.equal(visible.dataset.rvNotesKey, 'sVisit1Notes');
+			const locked = view.dom.querySelector('textarea.rv-native-notes-area[disabled]');
+			assert.ok(locked instanceof window.HTMLTextAreaElement, 'locked box');
+			assert.equal(locked.dataset.rvNotesKey, 'sVisit2Notes');
+			assert.equal(locked.tabIndex, -1);
+			const line = view.dom.querySelector('.cm-line.rv-older-hidden');
+			assert.ok(line instanceof window.HTMLElement, 'hidden line');
+			const foreignHost = window.document.createElement('div');
+			const foreign = window.document.createElement('textarea');
+			foreign.className = 'mb-input';
+			foreignHost.appendChild(foreign);
+			line.insertAdjacentElement('afterend', foreignHost);
+			lockHiddenMetaBindFields(view.dom);
+			assert.equal(foreign.disabled, true);
+			assert.equal(foreignHost.classList.contains('rv-mb-locked'), true);
 			assert.equal(view.state.doc.toString(), doc);
 		} finally {
 			view.destroy();

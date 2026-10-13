@@ -1,7 +1,7 @@
 import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { coveredCampaignFor, stampDateTime } from './schedule';
-import { fillItemStrip, publisherForVisit } from './visit-controls';
+import { paintLiveVisitHeading, publisherForVisit, visitHasStripItems } from './visit-controls';
 import { visitStampLine } from './visit-display';
 import { attachVisitNoteArea } from './visit-notes-field';
 import { visitNoteValue } from './visit-notes-store';
@@ -175,34 +175,57 @@ class VisitNoteWidget extends WidgetType {
 	constructor(
 		readonly path: string,
 		readonly key: string,
+		readonly locked = false,
+		readonly underStrip = false,
 	) {
 		super();
 	}
 
 	eq(other: WidgetType): boolean {
-		return other instanceof VisitNoteWidget && other.path === this.path && other.key === this.key;
+		return other instanceof VisitNoteWidget
+			&& other.path === this.path
+			&& other.key === this.key
+			&& other.locked === this.locked
+			&& other.underStrip === this.underStrip;
 	}
 
 	toDOM(view: EditorView): HTMLElement {
 		const id = noteId(this.path, this.key);
-		const saved = parkedNotes.get(id);
+		const saved = !this.locked ? parkedNotes.get(id) : undefined;
 		if (saved) {
 			parkedNotes.delete(id);
+			saved.el.classList.toggle('rv-note-under-strip', this.underStrip);
+			saved.el.classList.remove('rv-older-hidden', 'rv-mb-locked');
+			const area = saved.el.querySelector('textarea');
+			if (area instanceof HTMLTextAreaElement) unlockNoteArea(area);
 			return saved.el;
 		}
 		const doc = view.dom.ownerDocument;
 		const host = doc.createElement('div');
 		host.className = 'rv-lp-notes rv-visit-notes-host mb-none';
+		if (this.underStrip) host.classList.add('rv-note-under-strip');
 		const area = doc.createElement('textarea');
 		area.rows = 1;
+		area.classList.add('rv-native-notes-area');
+		area.dataset.rvNotesKey = this.key;
 		area.value = visitNoteValue(this.path, this.key);
 		host.appendChild(area);
+		if (this.locked) {
+			host.classList.add('rv-older-hidden', 'rv-mb-locked');
+			lockNoteArea(area);
+			noteUnloads.set(host, () => {});
+			return host;
+		}
 		const unload = attachVisitNoteArea(area, this.path, this.key);
 		noteUnloads.set(host, unload);
 		return host;
 	}
 
 	destroy(dom: HTMLElement): void {
+		if (dom.classList.contains('rv-mb-locked')) {
+			noteUnloads.delete(dom);
+			return;
+		}
 		const id = noteId(this.path, this.key);
 		const unload = noteUnloads.get(dom) ?? (() => {});
 		parkedNotes.set(id, { el: dom, unload });
@@ -216,46 +239,139 @@ class VisitNoteWidget extends WidgetType {
 	}
 }
 
-/** "with X" on the heading line. The heading text itself stays a CodeMirror line. */
-class VisitWithWidget extends WidgetType {
-	constructor(private readonly name: string) {
-		super();
-	}
+function lockNoteArea(area: HTMLTextAreaElement): void {
+	area.disabled = true;
+	area.readOnly = true;
+	area.tabIndex = -1;
+	area.setAttribute('aria-hidden', 'true');
+	area.setAttribute('inert', '');
+}
 
-	eq(other: WidgetType): boolean {
-		return other instanceof VisitWithWidget && other.name === this.name;
-	}
+function unlockNoteArea(area: HTMLTextAreaElement): void {
+	area.disabled = false;
+	area.readOnly = false;
+	area.removeAttribute('aria-hidden');
+	area.removeAttribute('inert');
+}
 
-	toDOM(view: EditorView): HTMLElement {
-		const span = view.dom.ownerDocument.createElement('span');
-		span.className = 'rv-stamp-with';
-		span.textContent = `with ${this.name}`;
-		return span;
+/**
+ * A Meta Bind textArea on a closed Older Visits line is a block widget beside
+ * the hidden line, so the line's display:none does not cover it. Mark that
+ * widget and disable its fields.
+ */
+export function lockHiddenMetaBindFields(root: ParentNode): void {
+	root.querySelectorAll('.rv-lp-notes.rv-older-hidden, .rv-lp-stamp.rv-older-hidden').forEach((node) => {
+		const line = node.closest('.cm-line');
+		if (line instanceof HTMLElement) {
+			line.classList.add('rv-older-hidden', 'mb-none');
+			return;
+		}
+		let prev: Element | null = node.previousElementSibling;
+		while (prev && !prev.classList.contains('cm-line')) prev = prev.previousElementSibling;
+		prev?.classList.add('rv-older-hidden', 'mb-none');
+	});
+	const lines = root.querySelectorAll('.cm-line.rv-older-hidden');
+	for (const line of Array.from(lines)) {
+		if (!(line instanceof HTMLElement)) continue;
+		line.querySelectorAll('textarea:not(.rv-native-notes-area), .mb-input, input').forEach((node) => {
+			lockForeignField(node);
+		});
+		let sib: Element | null = line.nextElementSibling;
+		while (sib && !sib.classList.contains('cm-line')) {
+			const owned = sib.classList.contains('rv-lp-notes') || sib.querySelector('.rv-native-notes-area') != null;
+			if (!owned) {
+				sib.classList.add('rv-older-hidden', 'rv-mb-locked');
+				lockForeignField(sib);
+				sib.querySelectorAll('textarea, input, .mb-input').forEach((node) => lockForeignField(node));
+			}
+			sib = sib.nextElementSibling;
+		}
 	}
 }
 
-/** Literature, media, and lesson chips, or the empty ghost strip. */
-class VisitStripWidget extends WidgetType {
+function lockForeignField(node: Element): void {
+	if (!(node instanceof HTMLElement)) return;
+	node.classList.add('rv-mb-locked');
+	node.setAttribute('aria-hidden', 'true');
+	node.setAttribute('inert', '');
+	if (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT') {
+		const field = node as HTMLTextAreaElement;
+		field.disabled = true;
+		field.readOnly = true;
+		field.tabIndex = -1;
+	}
+}
+
+function installElHelpers(doc: Document): void {
+	const proto = doc.defaultView?.HTMLElement.prototype as (HTMLElement & {
+		createEl?: (tag: string, spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) => HTMLElement;
+		createSpan?: (spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) => HTMLElement;
+		addClass?: (cls: string) => void;
+	}) | undefined;
+	if (!proto || typeof proto.createEl === 'function') return;
+	const host = proto as unknown as {
+		createEl: (this: HTMLElement, tag: string, spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) => HTMLElement;
+		createSpan: (this: HTMLElement, spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) => HTMLElement;
+		addClass: (this: HTMLElement, cls: string) => void;
+	};
+	host.createEl = function createEl(this: HTMLElement, tag: string, spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) {
+		const el = this.ownerDocument.createElement(tag);
+		if (typeof spec === 'string') el.className = spec;
+		else if (spec) {
+			if (spec.cls) el.className = spec.cls;
+			if (spec.text) el.textContent = spec.text;
+			if (spec.attr) {
+				for (const [key, value] of Object.entries(spec.attr)) el.setAttribute(key, value);
+			}
+		}
+		this.appendChild(el);
+		return el;
+	};
+	host.createSpan = function createSpan(this: HTMLElement, spec?: string | { cls?: string; text?: string; attr?: Record<string, string> }) {
+		return host.createEl.call(this, 'span', typeof spec === 'string' ? { cls: spec } : spec);
+	};
+	host.addClass = function addClass(this: HTMLElement, cls: string) {
+		this.classList.add(...cls.split(/\s+/).filter(Boolean));
+	};
+}
+
+/** Calendar tile, time, "with X", day pill, and the item strip. Replaces the raw stamp line. */
+class VisitHeadingWidget extends WidgetType {
 	constructor(
-		private readonly source: string,
-		private readonly covered: string,
+		readonly source: string,
+		readonly publisher: string,
+		readonly covered: string,
+		readonly hidden = false,
 	) {
 		super();
 	}
 
 	eq(other: WidgetType): boolean {
-		return other instanceof VisitStripWidget && other.source === this.source && other.covered === this.covered;
+		return other instanceof VisitHeadingWidget
+			&& other.source === this.source
+			&& other.publisher === this.publisher
+			&& other.covered === this.covered
+			&& other.hidden === this.hidden;
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		const strip = view.dom.ownerDocument.createElement('div');
-		strip.className = 'rv-item-strip';
-		try {
-			fillItemStrip(strip, this.source, this.covered);
-		} catch {
-			if (!strip.childElementCount) strip.classList.add('is-ghost');
-		}
-		return strip;
+		installElHelpers(view.dom.ownerDocument);
+		const doc = view.dom.ownerDocument;
+		const wrap = doc.createElement('div');
+		wrap.className = this.hidden ? 'rv-lp-stamp rv-older-hidden' : 'rv-lp-stamp';
+		const heading = doc.createElement('div');
+		heading.className = 'rv-visit-stamp';
+		wrap.appendChild(heading);
+		const when = stampDateTime(this.source);
+		paintLiveVisitHeading(heading, this.source, this.covered, this.publisher, when
+			? (evt) => {
+				wrap.dispatchEvent(new CustomEvent('rv-open-visit-menu', {
+					bubbles: true,
+					detail: { when: when.getTime(), event: evt },
+				}));
+			}
+			: undefined);
+		return wrap;
 	}
 }
 
@@ -395,61 +511,48 @@ export function buildVisitDecorations(
 	}
 	const lines = docLines(doc);
 	const seenStamps = new Map<number, number>();
+	let lastStrip = false;
 	for (const line of lines) {
 		const stamp = visitStampLine(line.text);
 		if (stamp) {
 			const classes = ['rv-lp-visit', 'rv-lp-visit-heading'];
-			if (hidden.has(line.from)) classes.push('rv-older-hidden');
+			if (hidden.has(line.from)) classes.push('rv-older-hidden', 'mb-none');
 			pieces.push({
 				from: line.from,
 				to: line.from,
 				kind: 1,
 				deco: Decoration.line({ class: classes.join(' ') }),
 			});
-			if (!hidden.has(line.from)) {
-				const when = stampDateTime(stamp);
-				const publisher = when ? publisherForVisit(doc, when) : '';
-				if (publisher) {
-					pieces.push({
-						from: line.from + line.text.length,
-						to: line.from + line.text.length,
-						kind: 2,
-						deco: Decoration.widget({ widget: new VisitWithWidget(publisher), side: 1 }),
-					});
-				}
-				const newestIndex = when ? (seenStamps.get(when.getTime()) ?? 0) : 0;
-				if (when) seenStamps.set(when.getTime(), newestIndex + 1);
-				const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
-				pieces.push({
-					from: line.from + line.text.length,
-					to: line.from + line.text.length,
-					kind: 3,
-					deco: Decoration.widget({
-						widget: new VisitStripWidget(stamp, covered),
-						block: true,
-						side: 1,
-					}),
-				});
-			}
-			continue;
-		}
-		const key = INPUT_KEY.exec(line.text)?.[1];
-		if (!key) continue;
-		if (hidden.has(line.from)) {
+			const when = stampDateTime(stamp);
+			const publisher = when ? publisherForVisit(doc, when) : '';
+			const newestIndex = when ? (seenStamps.get(when.getTime()) ?? 0) : 0;
+			if (when) seenStamps.set(when.getTime(), newestIndex + 1);
+			const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
+			const raw = line.text.replace(/^(?:###|#####)\s+/, '').trim();
+			lastStrip = visitHasStripItems(raw, covered);
+			const end = line.from + line.text.length;
 			pieces.push({
 				from: line.from,
-				to: line.from,
-				kind: 1,
-				deco: Decoration.line({ class: 'rv-older-hidden' }),
+				to: end,
+				kind: 2,
+				deco: Decoration.replace({ widget: new VisitHeadingWidget(raw, publisher, covered, hidden.has(line.from)) }),
 			});
 			continue;
 		}
+		const key = INPUT_KEY.exec(line.text)?.[1];
+		if (!key) {
+			if (stopsVisitSection(line.text)) lastStrip = false;
+			continue;
+		}
+		const locked = hidden.has(line.from);
 		const end = line.from + line.text.length;
+		const underStrip = !locked && lastStrip;
+		lastStrip = false;
 		pieces.push({
 			from: line.from,
 			to: end,
 			kind: 5,
-			deco: Decoration.replace({ widget: new VisitNoteWidget(path, key), block: true }),
+			deco: Decoration.replace({ widget: new VisitNoteWidget(path, key, locked, underStrip), block: true }),
 		});
 	}
 	if (pieces.length === 0) return Decoration.none;
@@ -523,6 +626,7 @@ export function visitPreviewExtension(
 			queueMicrotask(() => {
 				syncLivePreview(view);
 				syncNotePath(view);
+				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);
 			});
 			const parent = view.dom.parentElement;
@@ -541,6 +645,7 @@ export function visitPreviewExtension(
 			queueMicrotask(() => {
 				if (!view.dom.isConnected) return;
 				syncNotePath(view);
+				lockHiddenMetaBindFields(view.dom);
 				if (changed) paint?.(view.dom);
 			});
 		}

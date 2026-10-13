@@ -284,6 +284,21 @@ export default class RVLocatorPlugin extends Plugin {
 				for (const [key, value] of Object.entries(writes)) data[key] = value;
 			});
 		});
+		const openVisitMenuFromStamp = (evt: Event): void => {
+			const detail = (evt as CustomEvent<{ when?: number; event?: MouseEvent }>).detail;
+			if (!detail || typeof detail.when !== 'number') return;
+			const node = evt.target instanceof HTMLElement ? evt.target : null;
+			const path = (node && this.pathForSurface(node)) || this.app.workspace.getActiveFile()?.path || '';
+			if (!path) return;
+			this.openVisitMenu(path, {
+				when: new Date(detail.when),
+				home: true,
+				ordinal: 0,
+				fileLine: null,
+			}, detail.event ?? (evt as MouseEvent));
+		};
+		window.addEventListener('rv-open-visit-menu', openVisitMenuFromStamp);
+		this.register(() => window.removeEventListener('rv-open-visit-menu', openVisitMenuFromStamp));
 		this.registerEditorExtension(visitPreviewExtension(
 			() => ({
 				collapseOlder: this.settings.collapseOlderVisits,
