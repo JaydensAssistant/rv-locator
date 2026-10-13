@@ -1,4 +1,4 @@
-import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension, type Text } from '@codemirror/state';
+import { Prec, RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { coveredCampaignFor, stampDateTime } from './schedule';
 import { paintLiveVisitHeading, publisherForVisit, visitHasStripItems } from './visit-controls';
@@ -259,6 +259,24 @@ function unlockNoteArea(area: HTMLTextAreaElement): void {
  * the hidden line, so the line's display:none does not cover it. Mark that
  * widget and disable its fields.
  */
+/**
+ * The blank line under a visit note is its own editor line. That line, not the
+ * heading margin, was the extra space before the next stamp.
+ */
+export function collapseVisitGapLines(root: ParentNode): void {
+	root.querySelectorAll('.cm-line').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const text = (node.textContent ?? '').replace(/\u200b/g, '').trim();
+		const empty = text.length === 0
+			&& node.querySelector('.rv-lp-stamp, .rv-lp-notes, .rv-visit-notes-heading, textarea, .cm-widget') == null;
+		const previous = node.previousElementSibling;
+		const afterNote = previous instanceof HTMLElement && (
+			previous.classList.contains('rv-lp-notes') || previous.querySelector('.rv-lp-notes, textarea.rv-native-notes-area') != null
+		);
+		node.classList.toggle('rv-lp-gap', empty && afterNote);
+	});
+}
+
 export function lockHiddenMetaBindFields(root: ParentNode): void {
 	root.querySelectorAll('.rv-lp-notes.rv-older-hidden, .rv-lp-stamp.rv-older-hidden').forEach((node) => {
 		const line = node.closest('.cm-line');
@@ -660,7 +678,10 @@ export function visitPreviewExtension(
 			}
 			return decorate(transaction.state, open);
 		},
-		provide: (field) => EditorView.decorations.from(field),
+		// Obsidian's markup-hide replace covers the first six characters of the
+		// heading and would otherwise outrank this full-line widget. Highest
+		// precedence keeps the stamp, including on an empty-material visit.
+		provide: (field) => Prec.highest(EditorView.decorations.from(field)),
 	});
 	const liveWatch = ViewPlugin.fromClass(class {
 		observer: MutationObserver | null = null;
@@ -685,6 +706,7 @@ export function visitPreviewExtension(
 				syncLivePreview(view);
 				syncNotePath(view);
 				lockHiddenMetaBindFields(view.dom);
+				collapseVisitGapLines(view.dom);
 				paint?.(view.dom);
 			});
 			const parent = view.dom.parentElement;
@@ -704,6 +726,7 @@ export function visitPreviewExtension(
 				if (!view.dom.isConnected) return;
 				syncNotePath(view);
 				lockHiddenMetaBindFields(view.dom);
+				collapseVisitGapLines(view.dom);
 				if (changed) paint?.(view.dom);
 			});
 		}

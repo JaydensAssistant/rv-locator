@@ -7238,36 +7238,55 @@ h5.rv-visit-stamp,
 
 .markdown-rendered h5.rv-visit-stamp,
 .markdown-rendered .el-h5:has(> h5.rv-visit-stamp),
-.markdown-rendered .markdown-preview-section:has(> h5.rv-visit-stamp) {
-	margin-top: 12px;
-	margin-bottom: 0;
+.markdown-rendered .markdown-preview-section:has(> h5.rv-visit-stamp),
+.markdown-preview-view .markdown-preview-section:has(> h5.rv-visit-stamp),
+.markdown-reading-view .markdown-preview-section:has(> h5.rv-visit-stamp) {
+	margin-top: 24px !important;
+	margin-bottom: 0 !important;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
 }
 
 .markdown-rendered h5.rv-visit-stamp,
+.markdown-preview-view h5.rv-visit-stamp,
 .rv-lp-stamp .rv-visit-stamp {
-	margin-top: 0;
-	margin-bottom: 6px;
+	margin-top: 0 !important;
+	margin-bottom: 6px !important;
 }
 
 .markdown-preview-section:has(.rv-visit-notes-host),
+.markdown-reading-view .markdown-preview-section:has(.rv-visit-notes-host),
 .markdown-preview-section:has(.rv-visit-notes-host) > p,
 .el-p:has(.rv-visit-notes-host),
 .el-p:has(.rv-visit-notes-host) > p,
 p:has(.rv-visit-notes-host) {
-	margin-top: 0;
-	margin-bottom: 0;
-	padding: 0;
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
+	padding: 0 !important;
 }
 
-/* A blank line between visits is an empty paragraph. It is not a second gap. */
+/* A blank line between visits is an empty paragraph. Its margins were the extra gap. */
+.markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(p > br:only-child):not(:has(h5, h3, textarea, .callout, li)),
+.markdown-reading-view .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(p > br:only-child):not(:has(h5, h3, textarea, .callout, li)),
 .markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(> .el-p > p > br:only-child),
 .markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(> p > br:only-child) {
-	height: 0;
-	min-height: 0;
-	margin: 0;
-	padding: 0;
-	overflow: hidden;
-	border: 0;
+	height: 0 !important;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+	border: 0 !important;
+	line-height: 0 !important;
+}
+
+.markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(p > br:only-child):not(:has(h5, h3, textarea)) :is(p, .el-p),
+.markdown-reading-view .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:has(p > br:only-child):not(:has(h5, h3, textarea)) :is(p, .el-p) {
+	margin: 0 !important;
+	padding: 0 !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	line-height: 0 !important;
+	overflow: hidden !important;
 }
 
 .markdown-rendered code.rv-visit-notes-host {
@@ -7321,11 +7340,22 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	padding-top: 0;
 	padding-bottom: 0;
 	flex-wrap: nowrap;
+	gap: 6px;
+	font-size: 11px;
+	font-weight: 400;
 	border: 1px solid var(--background-modifier-border);
-	border-bottom: 0;
+	border-bottom: 1px solid var(--background-modifier-border);
 	border-radius: 6px 6px 0 0;
 	corner-shape: squircle;
 	margin: 0;
+}
+
+.theme-light .rv-item-strip:not(.is-ghost) {
+	border-bottom-color: color-mix(in srgb, var(--background-modifier-border, #d0d0d0) 100%, #000);
+}
+
+.theme-dark .rv-item-strip:not(.is-ghost) {
+	border-bottom-color: color-mix(in srgb, var(--text-normal, #fff) 16%, transparent);
 }
 
 .el-h5:has(> .rv-item-strip:not(.is-ghost)) + .el-p textarea.rv-native-notes-area,
@@ -7340,12 +7370,13 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .cm-line.rv-lp-visit-heading {
 	margin-top: 0;
-	margin-bottom: 0;
-	padding-top: 12px;
-	padding-bottom: 0;
+	margin-bottom: 0 !important;
+	padding-top: 24px;
+	padding-bottom: 0 !important;
 	padding-left: 0 !important;
 	padding-right: 0 !important;
-	line-height: 0;
+	min-height: 0 !important;
+	line-height: 0 !important;
 	background: none;
 }
 
@@ -7354,13 +7385,14 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	width: 100%;
 }
 
-.rv-lp-notes + .cm-line:not(.rv-lp-visit-heading):has(> br:only-child) {
-	height: 0;
-	min-height: 0;
-	padding: 0;
-	margin: 0;
-	overflow: hidden;
-	line-height: 0;
+.cm-line.rv-lp-gap {
+	height: 0 !important;
+	min-height: 0 !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	overflow: hidden !important;
+	line-height: 0 !important;
+	font-size: 0 !important;
 }
 
 .rv-lp-notes.rv-older-hidden,
@@ -7423,8 +7455,16 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 }
 
 .cm-line.rv-lp-visit-heading > br,
-.cm-line.rv-lp-notes-heading > br {
-	display: none;
+.cm-line.rv-lp-visit-heading > .cm-widgetBuffer,
+.cm-line.rv-lp-notes-heading > br,
+.cm-line.rv-lp-notes-heading > .cm-widgetBuffer {
+	display: none !important;
+	height: 0 !important;
+	width: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	position: absolute !important;
+	overflow: hidden !important;
 }
 
 .cm-line.rv-lp-visit-heading .rv-lp-stamp,
@@ -7455,29 +7495,34 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .rv-item-strip:not(.is-ghost) > .rv-item,
 .rv-item-strip:not(.is-ghost) .rv-fit {
-	flex: 1 1 auto;
-	flex-shrink: 1;
-	min-width: 0;
-	max-width: 100%;
+	flex: 0 0 auto;
+	flex-grow: 0;
+	flex-shrink: 0;
+	width: auto;
+	min-width: max-content;
+	max-width: none;
 }
 
 .rv-item-strip:not(.is-ghost) .rv-fit-stem {
-	flex: 1 1 auto;
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
+	flex: 0 0 auto;
+	min-width: max-content;
+	overflow: visible;
+	text-overflow: clip;
 }
 
 .rv-item-strip:not(.is-ghost) .rv-type {
 	flex: 0 0 auto;
 	display: inline;
 	overflow: visible;
-	color: var(--text-muted);
+	color: var(--text-faint);
+	font-weight: 400;
 }
 
 .cm-line.rv-lp-notes-heading {
-	padding-left: 0 !important;
-	padding-right: 0 !important;
+	padding: 0 !important;
+	margin: 0 !important;
+	min-height: 0 !important;
+	line-height: 0 !important;
 	text-align: center;
 }
 
@@ -7487,5 +7532,9 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	align-items: center;
 	gap: 4px;
 	width: 100%;
-	margin: 0 auto;
+	margin: 0 !important;
+	padding: 0;
+	font-size: var(--h3-size, 1.125em);
+	font-weight: var(--h3-weight, 600);
+	line-height: var(--h3-line-height, 1.3);
 }

@@ -3,9 +3,11 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
+import { decorateVisitControls } from '../src/visit-controls';
 import { layoutVisitNotes } from '../src/visit-display';
 import { clearOlderVisitsState } from '../src/visit-older';
 import {
+	collapseVisitGapLines,
 	lockHiddenMetaBindFields,
 	planLivePreviewVisits,
 	refreshVisitPreviewEffect,
@@ -430,6 +432,88 @@ describe('live preview older visits', () => {
 			view.destroy();
 			parent.remove();
 		}
+	});
+
+	it('draws an empty-material heading after Older Visits opens and when the cursor is on it', async () => {
+		clearOlderVisitsState();
+		const doc = [
+			'##### Sun, 11:23pm — Oct 11, 2026 · «lesson» «How Can the Bible Help You?»',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'##### Wed, 5:30pm — Aug 26, 2026',
+			'`INPUT[textArea:sVisit2Notes]`',
+			'',
+			'##### Sat, 10:15am — Aug 15, 2026',
+			'`INPUT[textArea:sVisit3Notes]`',
+		].join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: [
+					visitPreviewExtension(() => ({ collapseOlder: true, limit: 1 }), () => 'empty-material.md'),
+				],
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const visible = view.dom.querySelector('.rv-lp-stamp');
+			assert.ok(visible?.querySelector('.rv-cal'));
+			assert.ok(visible?.querySelector('.rv-stamp-when'));
+			view.dispatch({ effects: setOlderVisitsOpen.of(true) });
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const painted = Array.from(view.dom.querySelectorAll('.rv-lp-stamp'));
+			assert.equal(painted.length, 3);
+			for (const stamp of painted) {
+				assert.ok(stamp.querySelector('.rv-cal'), 'calendar tile');
+				assert.ok(stamp.querySelector('.rv-stamp-when'), 'time');
+				assert.ok(stamp.querySelector('.rv-stamp-count'), 'day pill');
+			}
+			const ghosts = view.dom.querySelectorAll('.rv-item-strip.is-ghost');
+			assert.equal(ghosts.length, 2);
+			const line = view.state.doc.line(4);
+			view.dispatch({ selection: { anchor: line.from + 8 } });
+			assert.ok(view.dom.querySelectorAll('.rv-lp-stamp')[1]?.querySelector('.rv-cal'));
+			assert.equal(view.state.doc.toString(), doc);
+		} finally {
+			view.destroy();
+			parent.remove();
+			clearOlderVisitsState();
+		}
+	});
+
+	it('shows the same heading row in Reading when a visit has no strip material', () => {
+		const root = window.document.createElement('div');
+		root.className = 'markdown-rendered';
+		root.innerHTML = '<h5>Wed, 5:30pm — Aug 26, 2026</h5><p>Quick chat at the door.</p>';
+		decorateVisitControls(root, () => null, () => {});
+		const heading = root.querySelector('h5.rv-visit-stamp');
+		assert.ok(heading instanceof window.HTMLElement);
+		assert.ok(heading.querySelector('.rv-cal'));
+		assert.ok(heading.querySelector('.rv-stamp-when'));
+		assert.ok(heading.querySelector('.rv-stamp-count'));
+		const ghost = root.querySelector('.rv-item-strip');
+		assert.ok(ghost instanceof window.HTMLElement);
+		assert.equal(ghost.classList.contains('is-ghost'), true);
+		assert.equal(ghost.previousElementSibling, heading);
+	});
+
+	it('collapses only the blank editor line under a visit note', () => {
+		const root = window.document.createElement('div');
+		root.innerHTML = [
+			'<div class="cm-line rv-lp-visit-heading"><div class="rv-lp-stamp">Sun</div></div>',
+			'<div class="rv-lp-notes"><textarea class="rv-native-notes-area"></textarea></div>',
+			'<div class="cm-line"><br></div>',
+			'<div class="cm-line">A real paragraph.</div>',
+		].join('');
+		collapseVisitGapLines(root);
+		const lines = root.querySelectorAll('.cm-line');
+		assert.equal(lines[1]?.classList.contains('rv-lp-gap'), true);
+		assert.equal(lines[0]?.classList.contains('rv-lp-gap'), false);
+		assert.equal(lines[2]?.classList.contains('rv-lp-gap'), false);
 	});
 
 	it('keeps closed Older Visits text areas hidden and inert', async () => {

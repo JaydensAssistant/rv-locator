@@ -461,7 +461,10 @@ describe('visit notes rewrite', () => {
 		assert.doesNotMatch(css, /\.theme-light \.el-h5:has\(h5\.rv-visit-stamp\) \{[^}]*background:\s*color-mix/);
 		assert.match(css, /\.markdown-rendered code\.rv-visit-notes-host \{[^}]*font-size:\s*inherit/);
 		assert.match(css, /\.rv-dashboard textarea\.rv-native-notes-area \{[^}]*min-height:\s*0/);
-		assert.match(css, /margin-top:\s*12px/);
+		assert.match(css, /has\(> h5\.rv-visit-stamp\) \{\s*margin-top:\s*24px/);
+		assert.match(css, /\.cm-line\.rv-lp-visit-heading \{[\s\S]*?padding-top:\s*24px/);
+		assert.match(css, /\.rv-item-strip:not\(\.is-ghost\) \{[^}]*font-size:\s*11px[^}]*font-weight:\s*400/);
+		assert.match(readFileSync('src/visit-live-preview.ts', 'utf8'), /Prec\.highest\(EditorView\.decorations\.from\(field\)\)/);
 		assert.match(css, /\.rv-visit-stamp \.rv-stamp-row \{[^}]*width:\s*max-content/);
 		assert.match(css, /\.rv-visit-stamp \.rv-stamp-row > \.rv-visit-more,[\s\S]*margin-left:\s*0/);
 		assert.match(css, /h5\.rv-visit-stamp,[\s\S]*margin-bottom:\s*0/);
