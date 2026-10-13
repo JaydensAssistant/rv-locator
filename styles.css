@@ -7584,7 +7584,7 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 }
 
 .theme-light .rv-item-strip.is-ghost {
-	background: color-mix(in srgb, var(--background-primary, #fff) 97%, #000) !important;
+	background: color-mix(in srgb, var(--background-primary, #fff) 92%, #000) !important;
 	border-color: color-mix(in srgb, var(--background-modifier-border, #e3e3e3) 85%, #fff) !important;
 	border-bottom-color: var(--background-modifier-border) !important;
 }
