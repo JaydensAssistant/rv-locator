@@ -22,7 +22,7 @@ import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickMod
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
-import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, readingDomIsStale, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, readingRefreshBlocked, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -555,7 +555,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const current = this.pathForSurface(element) || shown;
 			if (current !== shown) return;
 			const live = element.isConnected ? element : this.markdownSurface(shown);
-			if (!live || readingDomIsStale(live, markdown)) return;
+			if (!live || readingRefreshBlocked(live, markdown, shown)) return;
 			live.dataset.rvNoteFile = shown;
 			layoutVisitNotes(live, markdown, {
 				newestFirst: this.settings.visitsNewestFirst,
@@ -670,7 +670,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const surface = this.markdownSurface(shown) ?? hinted;
 		if (!surface) return;
 		const body = this.noteBodies.get(shown) ?? '';
-		if (readingDomIsStale(surface, body)) return;
+		if (readingRefreshBlocked(surface, body, shown)) return;
 		surface.dataset.rvNoteFile = shown;
 		const coveredFor = (when: Date, line = -1, domIndex = 0): string | null => {
 			if (!this.noteBodies.has(shown)) return null;

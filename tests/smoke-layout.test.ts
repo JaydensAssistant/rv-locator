@@ -7,7 +7,7 @@ import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../sr
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
+import { decorateReadingSurface, decorateVisitControls, readingDomIsStale, readingRefreshBlocked, refitItemStrip, rehoistVisitNotes, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountRawVisitNotes, setActiveVisitNote } from '../src/visit-notes-field';
 import { mountAlwaysChevron } from '../src/suggest-field';
 import { armVisitNoteFocus, holdVisitNote, placeVisitNoteFocus, restoreHeldNote, visitNoteBusy } from '../src/visit-display';
@@ -1721,6 +1721,91 @@ describe('smoke layout', () => {
 		} finally {
 			preview.remove();
 			clearVisitNoteCaches();
+		}
+	});
+
+	it('frames a decorated Reading note on a same-leaf switch and on reload', () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		const decorated = (stamp: string, age: string): HTMLElement => {
+			const heading = window.document.createElement('h5');
+			heading.className = 'rv-visit-stamp';
+			heading.setAttribute('data-heading', `${stamp}<span class="rv-stamp-ago">${age}</span>`);
+			heading.innerHTML = [
+				'<span class="rv-stamp-row">',
+				'<span class="rv-cal"><span class="rv-cal-month">SEP</span><span class="rv-cal-day">17</span></span>',
+				'<span class="rv-stamp-when">Thu, 2:10pm</span>',
+				'<span class="rv-stamp-ago rv-stamp-count">1d</span>',
+				'</span>',
+				`<span class="rv-stamp-source">${stamp}</span>`,
+			].join('');
+			return heading;
+		};
+		const show = (path: string, stamps: readonly string[]): void => {
+			sizer.replaceChildren();
+			delete preview.dataset.rvNoteFile;
+			for (const stamp of stamps) {
+				const heading = window.document.createElement('div');
+				heading.className = 'markdown-preview-section';
+				const wrap = window.document.createElement('div');
+				wrap.className = 'el-h5';
+				wrap.appendChild(decorated(stamp, '4 days ago'));
+				heading.appendChild(wrap);
+				const note = window.document.createElement('div');
+				note.className = 'markdown-preview-section';
+				const area = window.document.createElement('textarea');
+				area.className = 'rv-native-notes-area';
+				note.appendChild(area);
+				sizer.append(heading, note);
+			}
+			const markdown = stamps.map((stamp) => `##### ${stamp}`).join('\n');
+			assert.equal(readingDomIsStale(preview, markdown), false, path);
+			assert.equal(readingRefreshBlocked(preview, markdown, path), false, path);
+			preview.dataset.rvNoteFile = path;
+			decorateReadingSurface(preview, markdown, { newestFirst: true, collapseOlder: true, limit: 3 }, path);
+			assert.equal(sizer.querySelectorAll('.rv-visit-note-box').length, stamps.length, path);
+			assert.equal(sizer.querySelectorAll('textarea.rv-native-notes-area').length, stamps.length, path);
+		};
+		const lisa = ['Thu, 2:10pm — Sep 17, 2026', 'Fri, 3:10pm — Sep 18, 2026', 'Sat, 4:10pm — Sep 19, 2026'] as const;
+		const dale = [
+			'Sun, 9:00am — Sep 20, 2026',
+			'Mon, 10:00am — Sep 21, 2026',
+			'Tue, 11:00am — Sep 22, 2026',
+			'Wed, 12:00pm — Sep 23, 2026',
+			'Thu, 1:00pm — Sep 24, 2026',
+		] as const;
+		try {
+			show('Lisa.md', lisa);
+			show('Dale.md', dale);
+			show('Lisa.md', lisa);
+			const bare = window.document.createElement('div');
+			const daleOnly = window.document.createElement('h5');
+			daleOnly.className = 'rv-visit-stamp';
+			daleOnly.setAttribute('data-heading', 'Sun, 9:00am — Sep 20, 2026<span class="rv-stamp-ago">4 days ago</span>');
+			daleOnly.innerHTML = '<span class="rv-stamp-row"><span class="rv-cal">SEP</span><span class="rv-stamp-ago">1d</span></span>';
+			bare.appendChild(daleOnly);
+			assert.equal(readingDomIsStale(bare, '##### Sun, 9:00am — Sep 20, 2026'), false);
+			assert.equal(readingDomIsStale(bare, '##### Mon, 9:00am — Sep 1, 2026'), true);
+			delete preview.dataset.rvNoteFile;
+			preview.querySelectorAll('.rv-visit-note-box').forEach((box) => {
+				const area = box.querySelector('textarea');
+				box.replaceWith(area ?? window.document.createElement('textarea'));
+			});
+			const markdown = lisa.map((stamp) => `##### ${stamp}`).join('\n');
+			assert.equal(readingDomIsStale(preview, markdown), false);
+			assert.equal(readingRefreshBlocked(preview, markdown, 'Lisa.md'), false);
+			preview.dataset.rvNoteFile = 'Lisa.md';
+			decorateReadingSurface(preview, markdown, { newestFirst: true, collapseOlder: true, limit: 3 }, 'Lisa.md');
+			assert.equal(preview.querySelectorAll('.rv-visit-note-box').length, lisa.length);
+			const started = 1_000;
+			assert.equal(readingRefreshBlocked(preview, dale.map((stamp) => `##### ${stamp}`).join('\n'), 'Dale.md', started), true);
+			assert.equal(readingRefreshBlocked(preview, dale.map((stamp) => `##### ${stamp}`).join('\n'), 'Dale.md', started + 400), false);
+		} finally {
+			preview.remove();
 		}
 	});
 

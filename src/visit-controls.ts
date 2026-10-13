@@ -1,7 +1,7 @@
 import { addIcon, displayTooltip, getIcon, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
-import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter } from './dates';
+import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter, stripStampAge, visibleStampText } from './dates';
 import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
 import { layoutVisitNotes, mountHeadingChevron, visitStampsInMarkdown, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
@@ -686,13 +686,28 @@ function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): voi
  * Matching `data-rv-note-file` does not count: a file switch writes the new
  * path onto the previous note's headings before their text is replaced.
  */
+/** The same stamp text the file parser keeps: age span and age words removed, spaces collapsed. */
+function normalizeVisitStamp(text: string): string {
+	const stripped = stripStampAge(text).replace(/<[^>]*>/g, ' ');
+	return visibleStampText(stripped);
+}
+
 function rawStampLine(node: HTMLElement): string {
-	const visible = textWithout(node, '.rv-stamp-source, .rv-stamp-row, .rv-stamp-ago, .rv-visit-extra, .rv-visit-more, .heading-collapse-indicator, .collapse-indicator')
-		.replace(/^#{1,6}\s+/, '')
-		.trim();
+	const visible = normalizeVisitStamp(
+		textWithout(node, '.rv-stamp-source, .rv-stamp-row, .rv-stamp-ago, .rv-visit-extra, .rv-visit-more, .heading-collapse-indicator, .collapse-indicator')
+			.replace(/^#{1,6}\s+/, ''),
+	);
 	if (stampDateTime(visible)) return visible;
-	const attr = (node.getAttribute('data-heading') ?? '').replace(/\s+/g, ' ').trim();
+	const attr = normalizeVisitStamp(node.getAttribute('data-heading') ?? '');
 	return stampDateTime(attr) ? attr : '';
+}
+
+/** Prefer the stored stamp line. A decorated heading's visible text is the badge and the age pill. */
+function domVisitStamp(node: HTMLElement): string {
+	const stored = normalizeVisitStamp(headingSource(node));
+	if (stampDateTime(stored)) return stored;
+	const fallback = rawStampLine(node);
+	return stampDateTime(fallback) ? fallback : '';
 }
 
 export function visitLayoutMissing(root: HTMLElement): boolean {
@@ -722,15 +737,39 @@ export function readingDomIsStale(root: HTMLElement, markdown: string): boolean 
 	root.querySelectorAll('h3, h5').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
-		const source = headingSource(node).replace(/\s+/g, ' ').trim();
-		const line = rawStampLine(node) || (stampDateTime(source) ? source : '');
+		const line = domVisitStamp(node);
 		if (line) dom.push(line);
 	});
 	if (dom.length === 0) return false;
-	const file = visitStampsInMarkdown(markdown).map((stamp) => stamp.text.replace(/\s+/g, ' ').trim());
+	const file = visitStampsInMarkdown(markdown).map((stamp) => normalizeVisitStamp(stamp.text));
 	if (file.length === 0) return true;
 	const known = new Set(file);
 	return !dom.some((text) => known.has(text));
+}
+
+/**
+ * How long a preview may keep the previous note's headings after a switch.
+ * Past this, the refresh proceeds so a decorated note cannot stay unframed.
+ */
+const READING_STALE_BLOCK_MS = 400;
+
+/**
+ * True only while the preview still shows a different note.
+ * A matching file proceeds immediately. A mismatch stops blocking after one bounded wait.
+ */
+export function readingRefreshBlocked(root: HTMLElement, markdown: string, path: string, now = Date.now()): boolean {
+	if (!readingDomIsStale(root, markdown)) {
+		delete root.dataset.rvStaleSince;
+		delete root.dataset.rvStalePath;
+		return false;
+	}
+	if (root.dataset.rvStalePath !== path) {
+		root.dataset.rvStalePath = path;
+		root.dataset.rvStaleSince = String(now);
+		return true;
+	}
+	const since = Number(root.dataset.rvStaleSince || now);
+	return now - since < READING_STALE_BLOCK_MS;
 }
 
 /**
