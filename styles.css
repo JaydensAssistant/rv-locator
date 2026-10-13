@@ -6946,17 +6946,33 @@ body.rv-hide-note-status .status-bar {
 }
 
 textarea.rv-native-notes-area {
+	display: block;
+	width: 100%;
 	border: 0 !important;
 	outline: none !important;
-	background: transparent !important;
-	background-color: transparent !important;
 	box-shadow: none !important;
-	border-radius: 0 !important;
 	resize: none;
 	box-sizing: border-box;
 	margin: 0;
-	padding: 8px;
+	padding: 0 12px;
 	line-height: 1.45;
+	border-radius: 0 0 12px 12px;
+}
+
+.theme-light textarea.rv-native-notes-area,
+.theme-light .rv-visit-notes-host,
+.theme-light .markdown-preview-section:has(h5.rv-visit-stamp),
+.theme-light .el-h5:has(h5.rv-visit-stamp) {
+	background: #fff;
+	background-color: #fff;
+}
+
+.theme-dark textarea.rv-native-notes-area,
+.theme-dark .rv-visit-notes-host,
+.theme-dark .markdown-preview-section:has(h5.rv-visit-stamp),
+.theme-dark .el-h5:has(h5.rv-visit-stamp) {
+	background: color-mix(in srgb, var(--background-primary, #262626) 70%, #000);
+	background-color: color-mix(in srgb, var(--background-primary, #262626) 70%, #000);
 }
 
 .markdown-preview-view .rv-visit-note-box :is(p, .el-p, .markdown-preview-section),
@@ -7174,4 +7190,53 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	width: auto !important;
 	flex: 0 0 auto !important;
 	margin-left: 12px;
+}
+
+/* Visit heading and its notes are adjacent sections. The textarea is the card. */
+h5.rv-visit-stamp,
+.el-h5:has(> h5.rv-visit-stamp),
+.markdown-preview-section:has(> h5.rv-visit-stamp),
+.cm-line.rv-lp-visit-heading {
+	margin-bottom: 0;
+}
+
+.markdown-preview-section:has(.rv-visit-notes-host),
+.markdown-preview-section:has(.rv-visit-notes-host) > p,
+.el-p:has(.rv-visit-notes-host),
+.el-p:has(.rv-visit-notes-host) > p,
+p:has(.rv-visit-notes-host) {
+	margin: 0;
+	margin-block: 0;
+	padding: 0;
+}
+
+.rv-visit-notes-host {
+	display: block;
+	font-size: 0;
+	line-height: 0;
+	margin: 0;
+	padding: 0;
+}
+
+.rv-visit-notes-host textarea.rv-native-notes-area {
+	font-size: var(--font-text-size, 16px);
+	line-height: 1.45;
+}
+
+.el-h5:has(> h5.rv-visit-stamp),
+.markdown-preview-section:has(h5.rv-visit-stamp),
+.cm-line.rv-lp-visit-heading {
+	border-radius: 12px 12px 0 0;
+}
+
+.rv-older-collapsed .rv-older-section {
+	display: none !important;
+}
+
+.rv-older-collapsed .rv-older-section.rv-older-first {
+	display: block !important;
+}
+
+.rv-older-collapsed .rv-older-section.rv-older-first > :not(.rv-older-visits-wrap):not(.rv-older-rule) {
+	display: none !important;
 }

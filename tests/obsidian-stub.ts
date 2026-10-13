@@ -392,6 +392,22 @@ export function normalizePath(path: string): string {
 	return path.replace(/\\/g, '/');
 }
 
+export class Component {
+	load(): void { this.onload(); }
+	unload(): void { this.onunload(); }
+	onload(): void {}
+	onunload(): void {}
+}
+
+export class MarkdownRenderChild extends Component {
+	containerEl: HTMLElement;
+
+	constructor(containerEl: HTMLElement) {
+		super();
+		this.containerEl = containerEl;
+	}
+}
+
 export class ItemView {}
 export class BasesView {}
 export class HoverPopover {}

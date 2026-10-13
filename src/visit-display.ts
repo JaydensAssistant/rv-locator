@@ -1,5 +1,6 @@
 import { stripStampAge } from './dates';
 import { stampDateTime } from './schedule';
+import { markPreviewOlderVisits } from './visit-older';
 
 export interface VisitStampRef {
 	text: string;
@@ -79,137 +80,23 @@ export interface VisitLayoutOptions {
 export function layoutVisitNotes(root: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
 	const preview = visitPreview(root);
 	if (!preview) return;
-	// Live Preview is a CodeMirror document. Inserting nodes there writes the
-	// note. Older Visits in that mode is an editor decoration, never DOM.
+	// Live Preview is a CodeMirror document. Older Visits there is an editor
+	// decoration. This pass never inserts into CodeMirror.
 	if (isCodeMirrorSurface(preview)) return;
-	if (preview.dataset.rvLaying === '1') return;
-	preview.dataset.rvLaying = '1';
-	preview.dataset.rvFolding = '1';
-	disconnectRecent(preview);
-	try {
-		layoutVisitNotesNow(preview, markdown, options);
-	} finally {
-		preview.dataset.rvLaying = '0';
-		delete preview.dataset.rvFolding;
-		concealCollapsedVisitNotes(preview);
-		settleRecent(preview);
-	}
+	decorateRecentChevron(preview);
+	const path = preview.dataset.rvNoteFile || '';
+	markPreviewOlderVisits(preview, {
+		limit: options.limit,
+		collapseOlder: options.collapseOlder,
+	}, path);
+	if (!preview.querySelector('.rv-older-visits')) ensureSuggestionStop(preview);
+	concealCollapsedVisitNotes(preview);
+	void markdown;
 }
 
 function isCodeMirrorSurface(preview: HTMLElement): boolean {
 	if (preview.classList.contains('markdown-source-view') || preview.classList.contains('cm-content') || preview.classList.contains('cm-editor')) return true;
 	return preview.querySelector('.cm-content, .cm-editor') != null;
-}
-
-function layoutVisitNotesNow(
-	preview: HTMLElement,
-	markdown: string,
-	options: VisitLayoutOptions,
-): void {
-	armRecentNotesRelayout(preview, markdown, options);
-	decorateRecentChevron(preview);
-	const stamps = stampHeads(preview);
-	const fileStamps = visitStampsInMarkdown(markdown);
-	if (stamps.length === 0) {
-		restoreRecentTail(preview, markdown);
-		return;
-	}
-	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
-	if (visitNotesTyping(preview) && !olderChromeMissing(preview, markdown, options)) {
-		releaseRecentNotesTail(preview);
-		rememberRecentTail(preview, markdown);
-		return;
-	}
-	const blocks = blocksFor(preview, stamps);
-	if (blocks.length === 0) return;
-	const matched = matchBlocks(blocks, fileStamps);
-	const cap = options.collapseOlder ? Math.max(0, Math.floor(options.limit)) : matched.length;
-	const older = matched.slice(cap);
-	for (const block of matched) {
-		for (const node of block.nodes) {
-			setClass(node, 'rv-older-visit', false);
-			setClass(node, 'rv-older-hidden', false);
-		}
-	}
-	preview.dataset.rvOlderExpected = older.length > 0 ? '1' : '0';
-	if (older.length === 0) {
-		clearOlderChrome(preview);
-		ensureSuggestionStop(preview);
-		releaseRecentNotesTail(preview);
-		rememberRecentTail(preview, markdown);
-		return;
-	}
-	const first = older[0]?.nodes[0];
-	const parent = first?.parentElement;
-	if (!first || !parent) return;
-	const collapsed = preview.dataset.rvOlderOpen !== '1';
-	const existing = olderChromeFits(preview, first);
-	const heading = existing ?? insertOlderChrome(preview, parent, first);
-	setClass(heading, 'is-open', !collapsed);
-	for (const block of older) {
-		for (const node of block.nodes) {
-			setClass(node, 'rv-older-visit', true);
-			setClass(node, 'rv-older-hidden', collapsed);
-		}
-	}
-	releaseRecentNotesTail(preview);
-	rememberRecentTail(preview, markdown);
-}
-
-interface VisitBlock extends VisitStampRef {
-	nodes: HTMLElement[];
-}
-
-/** Keep an Older Visits control that is already sitting on the first hidden stamp. */
-function olderChromeFits(preview: HTMLElement, first: HTMLElement): HTMLElement | null {
-	const heading = preview.querySelector('.rv-older-visits');
-	if (!(heading instanceof HTMLElement)) return null;
-	const wrap = heading.closest('.rv-older-visits-wrap, .rv-older-visits-line');
-	const anchor = wrap instanceof HTMLElement ? wrap : heading;
-	if (anchor.nextElementSibling !== first) return null;
-	const rule = anchor.previousElementSibling;
-	if (!(rule instanceof HTMLElement) || !rule.classList.contains('rv-older-rule')) return null;
-	return heading;
-}
-
-/**
- * Reading view gets an h3 beside Recent Notes. Never insert into CodeMirror:
- * its DOM observer would save that text into the note.
- */
-function insertOlderChrome(preview: HTMLElement, parent: HTMLElement, first: HTMLElement): HTMLElement {
-	if (first.classList.contains('cm-line') || parent.classList.contains('cm-content') || isCodeMirrorSurface(parent)) return first;
-	clearOlderChrome(preview);
-	const doc = parent.ownerDocument;
-	const rule = doc.createElement('hr');
-	rule.className = 'rv-older-rule';
-	const wrap = doc.createElement('div');
-	wrap.className = 'el-h3 rv-older-visits-wrap';
-	const heading = doc.createElement('h3');
-	heading.className = 'rv-older-visits';
-	heading.dataset.heading = 'Older Visits';
-	const mark = doc.createElement('span');
-	mark.className = 'collapse-indicator collapse-icon';
-	appendHeadingChevron(mark);
-	const label = doc.createElement('span');
-	label.className = 'rv-older-label';
-	label.textContent = 'Older Visits';
-	heading.appendChild(mark);
-	heading.appendChild(label);
-	wrap.appendChild(heading);
-	parent.insertBefore(rule, first);
-	parent.insertBefore(wrap, first);
-	heading.addEventListener('click', (event) => {
-		event.preventDefault();
-		if ('stopPropagation' in event && typeof event.stopPropagation === 'function') event.stopPropagation();
-		const open = preview.dataset.rvOlderOpen === '1';
-		preview.dataset.rvOlderOpen = open ? '0' : '1';
-		const nowCollapsed = preview.dataset.rvOlderOpen !== '1';
-		setClass(heading, 'is-open', !nowCollapsed);
-		preview.querySelectorAll('.rv-older-visit').forEach((node) => {
-			if (node instanceof HTMLElement) setClass(node, 'rv-older-hidden', nowCollapsed);
-		});
-	});
-	return heading;
 }
 
 const CHEVRON_PATH = 'm9 18 6-6-6-6';
@@ -295,7 +182,6 @@ function bindRecentNotesToggle(preview: HTMLElement, heading: HTMLElement): void
 		if (preview.dataset.rvFolding === '1' || preview.dataset.rvLaying === '1') return;
 		const open = !headingIsCollapsed(heading);
 		if (heading.classList.contains('is-open') !== open) heading.classList.toggle('is-open', open);
-		scheduleRecentRelayout(preview);
 	};
 	heading.addEventListener('click', sync);
 	const host = collapseHost(heading);
@@ -318,157 +204,6 @@ function directChild(parent: HTMLElement, className: string): HTMLElement | null
 	return null;
 }
 
-interface RecentWatch {
-	markdown: string;
-	options: VisitLayoutOptions;
-}
-
-const recentWatches = new WeakMap<HTMLElement, RecentWatch>();
-const recentSchedules = new WeakMap<HTMLElement, () => void>();
-const recentObservers = new WeakMap<HTMLElement, MutationObserver>();
-
-const RECENT_OBSERVE: MutationObserverInit = {
-	childList: true,
-	subtree: true,
-	attributes: true,
-	attributeOldValue: true,
-	attributeFilter: ['class'],
-};
-
-function disconnectRecent(preview: HTMLElement): void {
-	recentObservers.get(preview)?.disconnect();
-}
-
-/** Drop records our own writes queued, then listen again. */
-function settleRecent(preview: HTMLElement): void {
-	const observer = recentObservers.get(preview);
-	if (!observer) return;
-	observer.disconnect();
-	observer.takeRecords();
-	try {
-		observer.observe(preview, RECENT_OBSERVE);
-	} catch {
-		/* The layout test document is not a browser node. */
-	}
-}
-
-/**
- * Collapsing Recent Notes rebuilds the section and drops the injected Older
- * Visits heading. Put it back on the live preview after that toggle.
- * A short stamp list (the fold is mid-rebuild) must not clear the chrome.
- */
-function olderChromeMissing(preview: HTMLElement, markdown: string, options: VisitLayoutOptions): boolean {
-	if (!options.collapseOlder) return false;
-	const fileStamps = visitStampsInMarkdown(markdown);
-	const cap = Math.max(0, Math.floor(options.limit));
-	if (fileStamps.length <= cap) return false;
-	return preview.querySelector('.rv-older-visits') == null;
-}
-
-function scheduleRecentRelayout(preview: HTMLElement): void {
-	recentSchedules.get(preview)?.();
-}
-
-function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
-	const existing = recentWatches.get(preview);
-	if (existing) {
-		if (existing.markdown !== markdown) dropRecentTail(preview);
-		existing.markdown = markdown;
-		existing.options = options;
-		dropRecentTailUnless(preview, markdown);
-		return;
-	}
-	const state: RecentWatch = { markdown, options };
-	recentWatches.set(preview, state);
-	let soon: ReturnType<typeof globalThis.setTimeout> | undefined;
-	let later: ReturnType<typeof globalThis.setTimeout> | undefined;
-	const rerun = (): void => {
-		disconnectRecent(preview);
-		try {
-			restoreRecentTail(preview, state.markdown);
-			if (preview.dataset.rvLaying === '1') return;
-			if (visitNotesTyping(preview)) {
-				releaseRecentNotesTail(preview);
-				rememberRecentTail(preview, state.markdown);
-				return;
-			}
-			if (!olderChromeMissing(preview, state.markdown, state.options)) {
-				releaseRecentNotesTail(preview);
-				rememberRecentTail(preview, state.markdown);
-				concealCollapsedVisitNotes(preview);
-				return;
-			}
-			layoutVisitNotes(preview, state.markdown, state.options);
-		} finally {
-			settleRecent(preview);
-		}
-	};
-	const schedule = (): void => {
-		if (soon !== undefined) globalThis.clearTimeout(soon);
-		if (later !== undefined) globalThis.clearTimeout(later);
-		soon = globalThis.setTimeout(rerun, 60);
-		later = globalThis.setTimeout(rerun, 240);
-	};
-	recentSchedules.set(preview, schedule);
-	preview.dataset.rvRecentWatch = '1';
-	const onRecentNotes = (event: Event): boolean => {
-		const target = (event as { target?: { closest?: (selector: string) => HTMLElement | null } }).target;
-		const heading = target?.closest?.('h3');
-		if (!heading || heading.classList.contains('rv-older-visits')) return false;
-		const title = (heading.textContent ?? '').replace(/\s+/g, ' ');
-		return /recent notes:?/i.test(title) || heading.classList.contains('rv-visit-notes-heading');
-	};
-	preview.addEventListener('pointerdown', (event) => {
-		if (!onRecentNotes(event)) return;
-		rememberRecentTail(preview, state.markdown);
-	}, true);
-	preview.addEventListener('click', (event) => {
-		if (!onRecentNotes(event)) return;
-		const target = (event as { target?: { closest?: (selector: string) => HTMLElement | null } }).target;
-		const heading = target?.closest?.('h3');
-		if (!heading) return;
-		heading.classList.toggle('is-open', !headingIsCollapsed(heading));
-		schedule();
-	});
-	if (typeof MutationObserver === 'undefined') return;
-	try {
-		const observer = new MutationObserver((records) => {
-			// Empty class diffs and our own tokens are not Recent Notes. A visit
-			// fold's class writes used to schedule another pass forever.
-			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
-			if (records.length > 0 && !records.some((record) => isRecentNotesMutation(preview, record))) return;
-			restoreRecentTail(preview, state.markdown);
-			schedule();
-		});
-		recentObservers.set(preview, observer);
-	} catch {
-		/* The layout test document is not a browser node. */
-	}
-}
-
-function isRecentNotesMutation(preview: HTMLElement, record: MutationRecord): boolean {
-	if (ownFoldClassChange(record)) return false;
-	if (record.type === 'childList') {
-		const nodes = [...Array.from(record.removedNodes), ...Array.from(record.addedNodes)];
-		return nodes.some((node) => node instanceof HTMLElement && isRecentStructureNode(node));
-	}
-	if (record.type !== 'attributes') return false;
-	const target = record.target;
-	if (!(target instanceof HTMLElement)) return false;
-	const notes = recentNotesHeading(preview);
-	if (!notes) return false;
-	const host = collapseHost(notes);
-	return target === notes || target === host || host.contains(target);
-}
-
-function isRecentStructureNode(node: HTMLElement): boolean {
-	if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-visits-line') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-notes-fold-stop')) return true;
-	if (node.classList.contains('rv-locator-return-suggestions')) return true;
-	if (node.querySelector('.rv-older-visits, .rv-older-visits-wrap, .rv-locator-return-suggestions')) return true;
-	const title = node.querySelector('.callout-title');
-	return (title?.textContent ?? '').includes('Return Suggestions');
-}
-
 function visitPreview(root: HTMLElement): HTMLElement | null {
 	const found = root.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered, .markdown-source-view');
 	if (found instanceof HTMLElement) return found;
@@ -479,8 +214,8 @@ function visitPreview(root: HTMLElement): HTMLElement | null {
 const FOLD_CLASS = 'rv-visit-folded';
 
 /**
- * Hide Meta Bind text areas under a collapsed visit heading, and any text area
- * that mounted late under a collapsed Older Visits group. Render only.
+ * Hide the blocks under a collapsed visit heading. Render only.
+ * Older Visits hiding is a root class, not a walk that pairs boxes by position.
  * A collapsed heading starts hidden before the next paint when the fold class
  * is already on the wrapper; a later mount is hidden from the mutation observer.
  */
@@ -605,59 +340,11 @@ function applyCollapsedVisitNotesNow(preview: HTMLElement): void {
 	preview.querySelectorAll(`.${FOLD_CLASS}`).forEach((node) => {
 		if (node instanceof HTMLElement && !tagged.has(node)) setClass(node, FOLD_CLASS, false);
 	});
-	concealStrayOlderFields(preview);
-}
-
-function concealStrayOlderFields(preview: HTMLElement): void {
-	const groupCollapsed = preview.querySelector('.rv-older-visits') != null && preview.dataset.rvOlderOpen !== '1';
-	if (!groupCollapsed) return;
-	preview.querySelectorAll('textarea').forEach((area) => {
-		if (!(area instanceof HTMLElement)) return;
-		if (area.closest('.rv-older-hidden, .rv-visit-folded')) return;
-		const block = sectionBlock(area, preview);
-		if (!block || block === preview || containsActiveNotes(block)) return;
-		if (block.classList.contains('rv-older-hidden') || block.classList.contains(FOLD_CLASS)) return;
-		if (!belongsToHiddenOlderVisit(block)) return;
-		setClass(block, 'rv-older-visit', true);
-		setClass(block, 'rv-older-hidden', true);
-	});
 }
 
 function containsActiveNotes(node: HTMLElement): boolean {
 	const active = node.ownerDocument?.activeElement;
 	return active instanceof HTMLElement && node.contains(active);
-}
-
-function sectionBlock(node: HTMLElement, preview: HTMLElement): HTMLElement | null {
-	let current: HTMLElement | null = node;
-	while (current && current !== preview) {
-		const parent: HTMLElement | null = current.parentElement;
-		if (!parent || parent === preview || parent.classList.contains('markdown-preview-section') || parent.classList.contains('markdown-preview-sizer') || parent.classList.contains('cm-content')) {
-			return current;
-		}
-		current = parent;
-	}
-	return null;
-}
-
-function belongsToHiddenOlderVisit(block: HTMLElement): boolean {
-	let cursor = block.previousElementSibling;
-	while (cursor instanceof HTMLElement) {
-		if (isOlderWalkStop(cursor)) return false;
-		if (cursor.classList.contains('rv-older-hidden')) return true;
-		cursor = cursor.previousElementSibling;
-	}
-	return false;
-}
-
-function isOlderWalkStop(node: HTMLElement): boolean {
-	if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-notes-fold-stop')) return true;
-	if (node.classList.contains('rv-locator-return-suggestions')) return true;
-	if (node.tagName === 'HR' && !node.classList.contains('rv-older-hidden')) return true;
-	if (node.querySelector('.callout-title')?.textContent?.includes('Return Suggestions')) return true;
-	if (isVisitHeading(node) && !node.classList.contains('rv-older-hidden')) return true;
-	const inner = node.querySelector('h3, h5');
-	return inner instanceof HTMLElement && isVisitHeading(inner) && !node.classList.contains('rv-older-hidden') && !inner.classList.contains('rv-older-hidden');
 }
 
 function visitHeadingHosts(preview: HTMLElement): HTMLElement[] {
@@ -717,74 +404,6 @@ function endsVisitSection(node: HTMLElement, level: number): boolean {
 	return innerLevel != null && innerLevel <= level && node.classList.contains(`el-h${innerLevel}`);
 }
 
-function stampLabel(node: HTMLElement): string {
-	return stripStampAge((node.textContent ?? '').replace(/\s+/g, ' ').trim()).replace(/^#{1,6}\s+/, '').trim();
-}
-
-function stampHeads(preview: HTMLElement): HTMLElement[] {
-	const found: HTMLElement[] = [];
-	preview.querySelectorAll('h3, h5, .cm-line.HyperMD-header-3, .cm-line.HyperMD-header-5').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
-		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
-		if (node.classList.contains('cm-line')) {
-			if (isVisitHeading(node)) found.push(node);
-			return;
-		}
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		if (/^(?:visit|recent) notes:?$/i.test(text)) return;
-		if (node.classList.contains('rv-visit-stamp') || node.querySelector('.rv-stamp-ago')) found.push(node);
-	});
-	return found;
-}
-
-/**
- * Obsidian 1.13 puts every block in one `.markdown-preview-section` sizer.
- * The move unit is the highest ancestor that does not contain another stamp,
- * so the walk is that unit's siblings and not the shared sizer.
- */
-function visitMoveUnit(stamp: HTMLElement, stamps: readonly HTMLElement[], boundary: HTMLElement): HTMLElement {
-	let node = stamp;
-	while (node.parentElement && node.parentElement !== boundary && boundary.contains(node.parentElement)) {
-		const parent = node.parentElement;
-		if (stamps.some((other) => other !== stamp && parent.contains(other))) break;
-		node = parent;
-	}
-	return node;
-}
-
-function blocksFor(preview: HTMLElement, stamps: readonly HTMLElement[]): VisitBlock[] {
-	const blocks: VisitBlock[] = [];
-	const units = stamps.map((stamp) => visitMoveUnit(stamp, stamps, preview));
-	for (let index = 0; index < stamps.length; index += 1) {
-		const stamp = stamps[index];
-		const start = units[index];
-		if (!stamp || !start) continue;
-		const end = units[index + 1] ?? null;
-		const nodes: HTMLElement[] = [];
-		let cursor: HTMLElement | null = start;
-		while (cursor && cursor !== end) {
-			if (cursor.classList.contains('rv-older-rule') || cursor.classList.contains('rv-older-visits') || cursor.classList.contains('rv-older-visits-wrap') || cursor.classList.contains('rv-older-visits-line')) {
-				cursor = cursor.nextElementSibling instanceof HTMLElement ? cursor.nextElementSibling : null;
-				continue;
-			}
-			if (cursor !== start && isStop(cursor)) break;
-			nodes.push(cursor);
-			const next = cursor.nextElementSibling;
-			cursor = next instanceof HTMLElement ? next : null;
-		}
-		if (nodes.length === 0) continue;
-		const text = stampLabel(stamp);
-		const when = stampDateTime(text)?.getTime() ?? Number.NaN;
-		blocks.push({
-			text,
-			when: Number.isFinite(when) ? when : 0,
-			fileIndex: index,
-			nodes,
-		});
-	}
-	return blocks;
-}
-
 function isStop(node: HTMLElement): boolean {
 	if (node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-wrap')) return false;
 	if (node.classList.contains('rv-locator-return-suggestions')) return true;
@@ -796,35 +415,13 @@ function isStop(node: HTMLElement): boolean {
 	return rule instanceof HTMLElement && !rule.classList.contains('rv-older-rule');
 }
 
-function matchBlocks(blocks: readonly VisitBlock[], fileStamps: readonly VisitStampRef[]): VisitBlock[] {
-	const used = new Set<number>();
-	return blocks.map((block, index) => {
-		const fileIndex = fileStamps.findIndex((stamp, stampIndex) => {
-			if (used.has(stampIndex)) return false;
-			return stamp.text === block.text || block.text.includes(stamp.text) || stamp.text.includes(block.text);
-		});
-		if (fileIndex >= 0) used.add(fileIndex);
-		const file = fileIndex >= 0 ? fileStamps[fileIndex] : null;
-		return {
-			...block,
-			when: file?.when ?? block.when,
-			fileIndex: file?.fileIndex ?? index,
-		};
-	});
-}
-
 function isVisitTextArea(node: EventTarget | null | undefined): node is HTMLTextAreaElement {
 	return node instanceof HTMLElement && node.tagName === 'TEXTAREA';
 }
 
-let heldNote: HTMLTextAreaElement | null = null;
-let heldNoteUntil = 0;
-/** A click or keystroke. A mount's programmatic focus is not one of these. */
-let heldTyped = false;
-
 /**
  * Obsidian puts focus on the note title after a new file opens. That is not
- * the user leaving the visit note, so the hold has to take the caret back.
+ * the user leaving the visit note.
  */
 export function isFocusThief(node: EventTarget | null | undefined): boolean {
 	if (!(node instanceof Element)) return true;
@@ -832,64 +429,6 @@ export function isFocusThief(node: EventTarget | null | undefined): boolean {
 	if (tag === 'BODY' || tag === 'HTML') return true;
 	if (node.classList.contains('view-header-title') || node.classList.contains('inline-title') || node.classList.contains('view-header')) return true;
 	return typeof node.closest === 'function' && node.closest('.view-header, .view-header-title, .inline-title') != null;
-}
-
-/** Keep a visit note focused. A shorter later hold does not cut a longer one short. */
-export function holdVisitNote(area: HTMLTextAreaElement, ms = 900, typed = false): void {
-	const until = Date.now() + ms;
-	if (heldNote === area && heldNoteUntil >= until) {
-		if (typed) heldTyped = true;
-		return;
-	}
-	heldNote = area;
-	heldNoteUntil = until;
-	heldTyped = typed;
-}
-
-/** True while this textarea is held because the user typed or moved the caret. */
-export function visitNoteHoldTyped(area: HTMLTextAreaElement): boolean {
-	return heldTyped && heldNote === area && area.isConnected && Date.now() < heldNoteUntil;
-}
-
-export function releaseVisitNote(next: EventTarget | null): void {
-	if (next === heldNote || isFocusThief(next)) return;
-	heldNote = null;
-	heldNoteUntil = 0;
-}
-
-/** A file switch must not keep the previous note focused or block the next layout. */
-export function dropHeldVisitNote(): void {
-	heldNote = null;
-	heldNoteUntil = 0;
-	heldTyped = false;
-}
-
-function noteOwnedHere(root: HTMLElement, area: HTMLTextAreaElement): boolean {
-	const file = root.dataset.rvNoteFile || '';
-	const bound = area.dataset.rvNoteFile || '';
-	return !file || !bound || file === bound;
-}
-
-/** True while a visit textarea in `root` is focused, or was just tapped and must stay focused. */
-export function visitNoteBusy(root: HTMLElement): boolean {
-	const active = root.ownerDocument?.activeElement;
-	if (isVisitTextArea(active) && root.contains(active) && noteOwnedHere(root, active)) return true;
-	return heldNote != null && heldNote.isConnected && noteOwnedHere(root, heldNote) && Date.now() < heldNoteUntil && root.contains(heldNote);
-}
-
-/** Put the caret back when a repaint left it on the document body. */
-export function restoreHeldNote(): void {
-	const area = heldNote;
-	if (!heldTyped || !area || !area.isConnected || Date.now() >= heldNoteUntil) return;
-	const doc = area.ownerDocument;
-	const active = doc.activeElement;
-	if (active === area) return;
-	if (!isFocusThief(active)) return;
-	try {
-		area.focus({ preventScroll: true });
-	} catch {
-		area.focus();
-	}
 }
 
 /** The first textarea rendered after the `ordinal`th heading showing `stamp`. */
@@ -927,7 +466,6 @@ export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
 			area = root.querySelector('textarea');
 		}
 		if (!isVisitTextArea(area)) return;
-		holdVisitNote(area, Math.max(900, stopAt - Date.now()));
 		const active = doc.activeElement;
 		if (active !== area && isFocusThief(active)) {
 			try {
@@ -1018,7 +556,6 @@ export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: n
 	const found = root.querySelector('textarea');
 	const area = matched ?? (isVisitTextArea(found) ? found : null);
 	if (!area) return null;
-	holdVisitNote(area, 8000, true);
 	try {
 		area.focus({ preventScroll: true });
 	} catch {
@@ -1031,147 +568,6 @@ export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: n
 		/* The box is not editable yet. */
 	}
 	return area;
-}
-
-function visitNotesTyping(preview: HTMLElement): boolean {
-	if (visitNoteBusy(preview)) return true;
-	const doc = preview.ownerDocument as { activeElement?: Element | null } | null;
-	const active = doc?.activeElement;
-	if (!(active instanceof HTMLElement)) return false;
-	if (!isVisitTextArea(active)) return false;
-	if (!preview.contains(active)) return false;
-	const file = preview.dataset.rvNoteFile || '';
-	const bound = active.dataset.rvNoteFile || '';
-	return !file || !bound || file === bound;
-}
-
-/** Recent Notes collapse stops at the Older Visits heading. Anything from there on stays shown. */
-function releaseRecentNotesTail(preview: HTMLElement): void {
-	const heading = recentNotesHeading(preview);
-	if (!heading) return;
-	const host = collapseHost(heading);
-	let cursor = host.nextElementSibling;
-	let tail = false;
-	while (cursor instanceof HTMLElement) {
-		if (!tail && isOlderTail(cursor)) tail = true;
-		if (tail) clearInlineHidden(cursor);
-		cursor = cursor.nextElementSibling;
-	}
-}
-
-function recentNotesHeading(preview: HTMLElement): HTMLElement | null {
-	let found: HTMLElement | null = null;
-	preview.querySelectorAll('h3').forEach((node) => {
-		if (found || !(node instanceof HTMLElement) || node.classList.contains('rv-older-visits')) return;
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
-		if (/^(?:visit|recent) notes:?$/i.test(text) || node.classList.contains('rv-visit-notes-heading')) found = node;
-	});
-	return found;
-}
-
-function isOlderTail(node: HTMLElement): boolean {
-	if (node.classList.contains('rv-notes-fold-stop') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visit')) return true;
-	if (node.classList.contains('rv-locator-return-suggestions')) return true;
-	if (node.querySelector('.rv-older-visits, .rv-older-rule, .rv-locator-return-suggestions')) return true;
-	const title = node.querySelector('.callout-title');
-	return (title?.textContent ?? '').includes('Return Suggestions');
-}
-
-interface RecentTail {
-	nodes: HTMLElement[];
-	markdown: string;
-	mode: string;
-}
-
-const recentTails = new WeakMap<HTMLElement, RecentTail>();
-
-/** Reading, source, or Live Preview. A switch must not reuse the other mode's nodes. */
-function previewMode(preview: HTMLElement): string {
-	if (preview.classList.contains('is-live-preview')) return 'live';
-	if (preview.classList.contains('markdown-source-view')) return 'source';
-	return 'reading';
-}
-
-function dropRecentTail(preview: HTMLElement): void {
-	recentTails.delete(preview);
-}
-
-/** A tail saved for another note body or another view mode is not this preview. */
-function dropRecentTailUnless(preview: HTMLElement, markdown: string): void {
-	const saved = recentTails.get(preview);
-	if (!saved) return;
-	if (saved.markdown === markdown && saved.mode === previewMode(preview)) return;
-	dropRecentTail(preview);
-}
-
-/**
- * Recent Notes collapse detaches every following sibling until the footer.
- * The saved tail is Older Visits through Return Suggestions, taken while
- * those nodes are still in the note. An empty walk must not replace it.
- * A different note body or view mode drops the saved nodes instead of putting
- * them back into the next render.
- */
-function rememberRecentTail(preview: HTMLElement, markdown: string): void {
-	dropRecentTailUnless(preview, markdown);
-	const heading = recentNotesHeading(preview);
-	if (!heading) return;
-	const host = collapseHost(heading);
-	const parent = host.parentElement;
-	if (!parent) return;
-	const footer = sectionFooter(parent);
-	const nodes: HTMLElement[] = [];
-	let started = false;
-	let cursor = host.nextElementSibling;
-	while (cursor instanceof HTMLElement && cursor !== footer) {
-		if (!started && isOlderTail(cursor)) started = true;
-		if (started) nodes.push(cursor);
-		cursor = cursor.nextElementSibling;
-	}
-	if (nodes.length === 0 || nodes.some((node) => node.parentElement == null)) return;
-	recentTails.set(preview, { nodes, markdown, mode: previewMode(preview) });
-}
-
-/** Put a detached Older Visits / Return Suggestions tail back in front of the footer. */
-function restoreRecentTail(preview: HTMLElement, markdown: string): void {
-	dropRecentTailUnless(preview, markdown);
-	const heading = recentNotesHeading(preview);
-	if (!heading) return;
-	const host = collapseHost(heading);
-	if (!host.classList.contains('is-collapsed')) return;
-	const saved = recentTails.get(preview);
-	if (!saved || saved.nodes.length === 0) return;
-	const tailGone = saved.nodes.some((node) => node.parentElement == null && isTailAnchor(node));
-	if (!tailGone) return;
-	const parent = host.parentElement;
-	if (!parent) return;
-	const footer = sectionFooter(parent);
-	const anchor = footer && footer.parentElement === parent ? footer : null;
-	const missing = saved.nodes.filter((node) => node.parentElement == null);
-	if (missing.length === 0) return;
-	for (const node of missing) parent.insertBefore(node, anchor);
-}
-
-function isTailAnchor(node: HTMLElement): boolean {
-	if (node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-notes-fold-stop')) return true;
-	if (node.classList.contains('rv-locator-return-suggestions')) return true;
-	const title = node.querySelector('.callout-title');
-	return (title?.textContent ?? '').includes('Return Suggestions');
-}
-
-function sectionFooter(parent: HTMLElement): HTMLElement | null {
-	for (const kid of Array.from(parent.children)) {
-		if (!(kid instanceof HTMLElement)) continue;
-		if (kid.classList.contains('mod-footer') || kid.classList.contains('embedded-backlinks')) return kid;
-	}
-	return null;
-}
-
-function clearInlineHidden(node: HTMLElement): void {
-	if (node.classList.contains(FOLD_CLASS) || node.classList.contains('rv-older-hidden')) return;
-	const style = (node as HTMLElement & { style?: { display?: string; removeProperty?: (name: string) => void } }).style;
-	if (!style || style.display !== 'none') return;
-	if (typeof style.removeProperty === 'function') style.removeProperty('display');
-	else style.display = '';
 }
 
 function ensureSuggestionStop(preview: HTMLElement): void {
@@ -1227,12 +623,4 @@ function climbToSection(node: HTMLElement, preview: HTMLElement): HTMLElement {
 		current = parent;
 	}
 	return current;
-}
-
-function clearOlderChrome(preview: HTMLElement): void {
-	preview.querySelectorAll('.rv-older-rule, .rv-older-visits, .rv-older-visits-wrap, .rv-notes-fold-stop').forEach((node) => node.remove());
-	preview.querySelectorAll('.rv-older-visit').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
-		node.classList.remove('rv-older-visit', 'rv-older-hidden');
-	});
 }

@@ -1,9 +1,11 @@
-import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension } from '@codemirror/state';
+import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extension, type Text } from '@codemirror/state';
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { coveredCampaignFor, stampDateTime } from './schedule';
+import { fillItemStrip, publisherForVisit } from './visit-controls';
 import { visitStampLine } from './visit-display';
-import { decorateVisitControls, publisherForVisit, type VisitTarget } from './visit-controls';
-import { noteWritePending } from './visit-notes-field';
+import { attachVisitNoteArea } from './visit-notes-field';
+import { visitNoteValue } from './visit-notes-store';
+import { olderVisitsOpen, setOlderVisitsOpenState } from './visit-older';
 
 export interface VisitPreviewSettings {
 	collapseOlder: boolean;
@@ -88,13 +90,7 @@ function stopsVisitCard(line: string): boolean {
 }
 
 const HIDDEN_BUTTON_IDS = new Set(['rv-log-home', 'rv-log-miss', 'rv-log-past', 'rv-log-housemate', 'rv-archive']);
-
-let liveHostHook: ((root: HTMLElement) => void) | null = null;
-
-/** Mounts the native notes textarea once the visit widget exists. */
-export function onLiveVisitHost(hook: ((root: HTMLElement) => void) | null): void {
-	liveHostHook = hook;
-}
+const INPUT_LINE = /INPUT\[textArea:(sVisit\d+Notes)\]/;
 
 /**
  * Lines of a hoisted `meta-bind-button` fence. Live Preview shows that
@@ -153,11 +149,93 @@ export function planVisitCardRanges(markdown: string): { from: number; to: numbe
 	return ranges;
 }
 
+const INPUT_KEY = INPUT_LINE;
+
+/** Documents currently in an IME composition. Decorations are mapped, not rebuilt. */
+const composingDocs = new WeakSet<Text>();
+
+interface ParkedNote {
+	el: HTMLElement;
+	unload: () => void;
+}
+
+const parkedNotes = new Map<string, ParkedNote>();
+const noteUnloads = new WeakMap<HTMLElement, () => void>();
+
+function noteId(path: string, key: string): string {
+	return `${path}\0${key}`;
+}
+
 /**
- * Live Preview has no inner `h5`. The widget replaces the raw `#####` line and
- * the note under it while the cursor is outside that range.
+ * Replaces one `INPUT[textArea:sVisitNNotes]` line.
+ * `eq` is the path and the key. A rebuild parks the DOM and hands it back.
+ * `ignoreEvent` stays at the default, so CodeMirror ignores clicks, keys, paste, and undo.
  */
-class VisitCardWidget extends WidgetType {
+class VisitNoteWidget extends WidgetType {
+	constructor(
+		readonly path: string,
+		readonly key: string,
+	) {
+		super();
+	}
+
+	eq(other: WidgetType): boolean {
+		return other instanceof VisitNoteWidget && other.path === this.path && other.key === this.key;
+	}
+
+	toDOM(view: EditorView): HTMLElement {
+		const id = noteId(this.path, this.key);
+		const saved = parkedNotes.get(id);
+		if (saved) {
+			parkedNotes.delete(id);
+			return saved.el;
+		}
+		const doc = view.dom.ownerDocument;
+		const host = doc.createElement('div');
+		host.className = 'rv-lp-notes rv-visit-notes-host mb-none';
+		const area = doc.createElement('textarea');
+		area.rows = 1;
+		area.value = visitNoteValue(this.path, this.key);
+		host.appendChild(area);
+		const unload = attachVisitNoteArea(area, this.path, this.key);
+		noteUnloads.set(host, unload);
+		return host;
+	}
+
+	destroy(dom: HTMLElement): void {
+		const id = noteId(this.path, this.key);
+		const unload = noteUnloads.get(dom) ?? (() => {});
+		parkedNotes.set(id, { el: dom, unload });
+		queueMicrotask(() => {
+			const saved = parkedNotes.get(id);
+			if (saved?.el !== dom) return;
+			parkedNotes.delete(id);
+			saved.unload();
+			noteUnloads.delete(dom);
+		});
+	}
+}
+
+/** "with X" on the heading line. The heading text itself stays a CodeMirror line. */
+class VisitWithWidget extends WidgetType {
+	constructor(private readonly name: string) {
+		super();
+	}
+
+	eq(other: WidgetType): boolean {
+		return other instanceof VisitWithWidget && other.name === this.name;
+	}
+
+	toDOM(view: EditorView): HTMLElement {
+		const span = view.dom.ownerDocument.createElement('span');
+		span.className = 'rv-stamp-with';
+		span.textContent = `with ${this.name}`;
+		return span;
+	}
+}
+
+/** Literature, media, and lesson chips, or the empty ghost strip. */
+class VisitStripWidget extends WidgetType {
 	constructor(
 		private readonly source: string,
 		private readonly covered: string,
@@ -166,54 +244,18 @@ class VisitCardWidget extends WidgetType {
 	}
 
 	eq(other: WidgetType): boolean {
-		return other instanceof VisitCardWidget && other.source === this.source && other.covered === this.covered;
+		return other instanceof VisitStripWidget && other.source === this.source && other.covered === this.covered;
 	}
 
 	toDOM(view: EditorView): HTMLElement {
-		const doc = view.dom.ownerDocument;
-		const wrap = doc.createElement('div');
-		wrap.className = 'rv-lp-visit markdown-rendered';
-		const lines = this.source.replace(/\n$/, '').split('\n');
-		const heading = doc.createElement('h5');
-		heading.textContent = (lines[0] ?? '').replace(/^#{1,6}\s+/, '');
-		wrap.appendChild(heading);
-		let list: HTMLElement | null = null;
-		for (const line of lines.slice(1)) {
-			const item = /^\s*[-*]\s+(.*)$/.exec(line);
-			if (item) {
-				if (!list) {
-					list = doc.createElement('ul');
-					wrap.appendChild(list);
-				}
-				const li = doc.createElement('li');
-				li.textContent = item[1] ?? '';
-				list.appendChild(li);
-				continue;
-			}
-			list = null;
-			if (!line.trim()) continue;
-			const paragraph = doc.createElement('p');
-			paragraph.textContent = line;
-			wrap.appendChild(paragraph);
-		}
+		const strip = view.dom.ownerDocument.createElement('div');
+		strip.className = 'rv-item-strip';
 		try {
-			const when = stampDateTime((lines[0] ?? '').replace(/^#{1,6}\s+/, ''));
-			if (when) {
-				const publisher = publisherForVisit(view.state.doc.toString(), when);
-				if (publisher) heading.dataset.rvCompanion = publisher;
-			}
-			decorateVisitControls(wrap, () => null, (target: VisitTarget, evt: MouseEvent) => {
-				wrap.dispatchEvent(new CustomEvent('rv-open-visit', { bubbles: true, detail: { target, event: evt } }));
-			}, () => this.covered);
+			fillItemStrip(strip, this.source, this.covered);
 		} catch {
-			// createEl is Obsidian's. The heading and note are already in the widget.
+			if (!strip.childElementCount) strip.classList.add('is-ghost');
 		}
-		liveHostHook?.(wrap);
-		return wrap;
-	}
-
-	ignoreEvent(): boolean {
-		return false;
+		return strip;
 	}
 }
 
@@ -224,12 +266,27 @@ export const setOlderVisitsOpen = StateEffect.define<boolean>();
 export const refreshVisitPreviewEffect = StateEffect.define<null>();
 
 const setLivePreview = StateEffect.define<boolean>();
+const setNotePath = StateEffect.define<string>();
+
+const notePathField = StateField.define<string>({
+	create: () => '',
+	update(value, transaction) {
+		for (const effect of transaction.effects) {
+			if (effect.is(setNotePath)) value = effect.value;
+		}
+		return value;
+	},
+});
 
 const olderOpenField = StateField.define<boolean>({
 	create: () => false,
 	update(value, transaction) {
 		for (const effect of transaction.effects) {
-			if (effect.is(setOlderVisitsOpen)) value = effect.value;
+			if (effect.is(setOlderVisitsOpen)) {
+				value = effect.value;
+				const path = transaction.state.field(notePathField, false);
+				if (path) setOlderVisitsOpenState(path, effect.value);
+			}
 		}
 		return value;
 	},
@@ -293,21 +350,12 @@ class OlderVisitsWidget extends WidgetType {
 		heading.addEventListener('click', (event) => {
 			event.preventDefault();
 			if ('stopPropagation' in event && typeof event.stopPropagation === 'function') event.stopPropagation();
-			const open = view.state.field(olderOpenField, false);
-			view.dispatch({ effects: setOlderVisitsOpen.of(!open) });
+			const path = view.state.field(notePathField, false);
+			const open = path ? !olderVisitsOpen(path) : !view.state.field(olderOpenField, false);
+			view.dispatch({ effects: setOlderVisitsOpen.of(open) });
 		});
 		return wrap;
 	}
-
-	ignoreEvent(): boolean {
-		return true;
-	}
-}
-
-/** A frontmatter save keeps the visit cards. A different note does not. */
-function visitCardsUnchanged(before: string, after: string): boolean {
-	const signature = (doc: string): string => planVisitCardRanges(doc).map((range) => doc.slice(range.from, range.to)).join('\0');
-	return signature(before) === signature(after);
 }
 
 function editorIsLivePreview(view: EditorView): boolean {
@@ -316,15 +364,19 @@ function editorIsLivePreview(view: EditorView): boolean {
 	return dom.closest('.is-live-preview') != null || dom.classList.contains('is-live-preview');
 }
 
+function composingNow(state: EditorState, start: EditorState): boolean {
+	return composingDocs.has(state.doc) || composingDocs.has(start.doc);
+}
+
 export function buildVisitDecorations(
 	doc: string,
 	options: VisitPreviewSettings,
 	open: boolean,
-	selection?: { from: number; to: number } | null,
+	path = '',
 ): DecorationSet {
 	const plan = planLivePreviewVisits(doc, options);
 	const pieces: { from: number; to: number; deco: Decoration; kind: number }[] = [];
-	const blocked: number[] = [];
+	const hidden = new Set(!open && plan.widgetAt != null ? plan.hiddenLines : []);
 	if (plan.widgetAt != null) {
 		pieces.push({
 			from: plan.widgetAt,
@@ -333,14 +385,6 @@ export function buildVisitDecorations(
 			deco: Decoration.widget({ widget: new OlderVisitsWidget(open), block: true, side: -1 }),
 		});
 	}
-	if (!open && plan.widgetAt != null) {
-		for (const from of plan.hiddenLines) {
-			blocked.push(from);
-			pieces.push({ from, to: from, kind: 1, deco: Decoration.line({ class: 'rv-older-hidden' }) });
-		}
-	}
-	const cursor = selection ?? null;
-	const lines = docLines(doc);
 	for (const from of hiddenButtonFenceLines(doc)) {
 		pieces.push({
 			from,
@@ -349,60 +393,107 @@ export function buildVisitDecorations(
 			deco: Decoration.line({ class: 'rv-mb-hidden' }),
 		});
 	}
+	const lines = docLines(doc);
 	const seenStamps = new Map<number, number>();
-	for (const range of planVisitCardRanges(doc)) {
-		if (cursor && cursor.from < range.to && cursor.to > range.from) continue;
-		if (blocked.some((at) => at >= range.from && at < range.to)) continue;
-		const source = doc.slice(range.from, range.to);
-		const stamp = visitStampLine(source.split('\n')[0] ?? '') ?? '';
-		const when = stampDateTime(stamp);
-		const newestIndex = when ? (seenStamps.get(when.getTime()) ?? 0) : 0;
-		if (when) seenStamps.set(when.getTime(), newestIndex + 1);
-		const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
-		pieces.push({
-			from: range.from,
-			to: range.from,
-			kind: 2,
-			deco: Decoration.widget({ widget: new VisitCardWidget(source, covered), block: true, side: -1 }),
-		});
-		for (const line of lines) {
-			if (line.from < range.from || line.from >= range.to) continue;
-			if (blocked.includes(line.from)) continue;
+	for (const line of lines) {
+		const stamp = visitStampLine(line.text);
+		if (stamp) {
+			const classes = ['rv-lp-visit', 'rv-lp-visit-heading'];
+			if (hidden.has(line.from)) classes.push('rv-older-hidden');
 			pieces.push({
 				from: line.from,
 				to: line.from,
-				kind: 3,
-				deco: Decoration.line({ class: 'rv-lp-card-source' }),
+				kind: 1,
+				deco: Decoration.line({ class: classes.join(' ') }),
 			});
+			if (!hidden.has(line.from)) {
+				const when = stampDateTime(stamp);
+				const publisher = when ? publisherForVisit(doc, when) : '';
+				if (publisher) {
+					pieces.push({
+						from: line.from + line.text.length,
+						to: line.from + line.text.length,
+						kind: 2,
+						deco: Decoration.widget({ widget: new VisitWithWidget(publisher), side: 1 }),
+					});
+				}
+				const newestIndex = when ? (seenStamps.get(when.getTime()) ?? 0) : 0;
+				if (when) seenStamps.set(when.getTime(), newestIndex + 1);
+				const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
+				pieces.push({
+					from: line.from + line.text.length,
+					to: line.from + line.text.length,
+					kind: 3,
+					deco: Decoration.widget({
+						widget: new VisitStripWidget(stamp, covered),
+						block: true,
+						side: 1,
+					}),
+				});
+			}
+			continue;
 		}
+		const key = INPUT_KEY.exec(line.text)?.[1];
+		if (!key) continue;
+		if (hidden.has(line.from)) {
+			pieces.push({
+				from: line.from,
+				to: line.from,
+				kind: 1,
+				deco: Decoration.line({ class: 'rv-older-hidden' }),
+			});
+			continue;
+		}
+		const end = line.from + line.text.length;
+		pieces.push({
+			from: line.from,
+			to: end,
+			kind: 5,
+			deco: Decoration.replace({ widget: new VisitNoteWidget(path, key), block: true }),
+		});
 	}
 	if (pieces.length === 0) return Decoration.none;
 	pieces.sort((a, b) => a.from - b.from || a.to - b.to || a.kind - b.kind);
 	const builder = new RangeSetBuilder<Decoration>();
-	for (const piece of pieces) builder.add(piece.from, piece.to, piece.deco);
+	let cursor = -1;
+	for (const piece of pieces) {
+		if (piece.from < cursor) continue;
+		if (piece.to < piece.from) continue;
+		builder.add(piece.from, piece.to, piece.deco);
+		cursor = piece.to;
+	}
 	return builder.finish();
 }
 
 /**
- * Older Visits for Live Preview. Every dispatch from here is effects-only.
- * Block widgets have to come from a state field; a view plugin cannot provide them.
- * The document text is never part of the transaction.
+ * Live Preview visit notes. Block widgets replace only the INPUT lines.
+ * Headings stay in the document and receive line classes.
+ * Every dispatch from here is effects-only.
  */
-export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: (dom: HTMLElement) => void): Extension {
+export function visitPreviewExtension(
+	read: () => VisitPreviewSettings,
+	pathOf?: (view: EditorView) => string,
+	paint?: (dom: HTMLElement) => void,
+): Extension {
 	const decorate = (state: EditorState): DecorationSet => {
 		if (!state.field(livePreviewField)) return Decoration.none;
-		const selection = state.selection.main;
-		return buildVisitDecorations(state.doc.toString(), read(), state.field(olderOpenField), selection);
+		const path = state.field(notePathField);
+		const open = path ? olderVisitsOpen(path) : state.field(olderOpenField);
+		return buildVisitDecorations(state.doc.toString(), read(), open, path);
 	};
 	const decorations = StateField.define<DecorationSet>({
 		create: decorate,
 		update(value, transaction) {
 			const refresh = transaction.effects.some((effect) => (
-				effect.is(refreshVisitPreviewEffect) || effect.is(setOlderVisitsOpen) || effect.is(setLivePreview)
+				effect.is(refreshVisitPreviewEffect)
+				|| effect.is(setOlderVisitsOpen)
+				|| effect.is(setLivePreview)
+				|| effect.is(setNotePath)
 			));
-			if (!refresh && transaction.docChanged && noteWritePending() && visitCardsUnchanged(transaction.startState.doc.toString(), transaction.state.doc.toString())) {
-				return value.map(transaction.changes);
-			}
+			const typing = transaction.isUserEvent('input.type.compose')
+				|| transaction.isUserEvent('input.type.compose.start')
+				|| composingNow(transaction.state, transaction.startState);
+			if (typing && transaction.docChanged && !refresh) return value.map(transaction.changes);
 			if (!transaction.docChanged && !refresh) return value;
 			return decorate(transaction.state);
 		},
@@ -412,9 +503,24 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 		observer: MutationObserver | null = null;
 
 		constructor(view: EditorView) {
+			const onStart = (event: Event): void => {
+				const target = event.target;
+				if (target instanceof HTMLTextAreaElement) return;
+				composingDocs.add(view.state.doc);
+			};
+			const onEnd = (event: Event): void => {
+				const target = event.target;
+				if (target instanceof HTMLTextAreaElement) return;
+				composingDocs.delete(view.state.doc);
+				queueMicrotask(() => {
+					if (view.dom.isConnected) view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+				});
+			};
+			view.contentDOM.addEventListener('compositionstart', onStart, true);
+			view.contentDOM.addEventListener('compositionend', onEnd, true);
 			queueMicrotask(() => {
 				syncLivePreview(view);
-				mountLiveVisitHosts(view.dom);
+				syncNotePath(view);
 				paint?.(view.dom);
 			});
 			const parent = view.dom.parentElement;
@@ -428,10 +534,12 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 		}
 
 		update(update: ViewUpdate): void {
-			if (!update.docChanged && !update.viewportChanged && !update.geometryChanged) return;
+			const view = update.view;
+			const changed = update.docChanged || update.viewportChanged || update.geometryChanged;
 			queueMicrotask(() => {
-				mountLiveVisitHosts(update.view.dom);
-				paint?.(update.view.dom);
+				if (!view.dom.isConnected) return;
+				syncNotePath(view);
+				if (changed) paint?.(view.dom);
 			});
 		}
 
@@ -439,14 +547,13 @@ export function visitPreviewExtension(read: () => VisitPreviewSettings, paint?: 
 			this.observer?.disconnect();
 		}
 	});
-	return [olderOpenField, livePreviewField, decorations, liveWatch];
-}
+	return [olderOpenField, livePreviewField, notePathField, decorations, liveWatch];
 
-function mountLiveVisitHosts(dom: HTMLElement): void {
-	if (!liveHostHook) return;
-	dom.querySelectorAll('.rv-lp-visit').forEach((node) => {
-		if (node instanceof HTMLElement) liveHostHook?.(node);
-	});
+	function syncNotePath(view: EditorView): void {
+		const path = pathOf?.(view) ?? '';
+		if (view.state.field(notePathField, false) === path) return;
+		view.dispatch({ effects: setNotePath.of(path) });
+	}
 }
 
 function syncLivePreview(view: EditorView): void {

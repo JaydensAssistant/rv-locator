@@ -22,7 +22,7 @@ import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickMod
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
-import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, readingRefreshBlocked, readingSurfacesForPath, rehoistVisitNotes, visitLayoutMissing, VisitButtonLongPress, type VisitTarget } from './visit-controls';
+import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -30,8 +30,8 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { armVisitNoteFocus, concealCollapsedVisitNotes, holdVisitNote, isFocusThief, layoutVisitNotes, placeVisitNoteFocus, releaseVisitNote, restoreHeldNote, visitNoteHoldTyped, watchVisitNoteFocus } from './visit-display';
-import { dispatchVisitPreviewRefresh, onLiveVisitHost, visitPreviewExtension } from './visit-live-preview';
+import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from './visit-display';
+import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
@@ -42,7 +42,9 @@ import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { clearVisitNoteCaches, mountRawVisitNotes, releaseClosedVisitNotes, setActiveVisitNote, visitNoteKeys } from './visit-notes-field';
+import { clearVisitNoteCaches, focusVisitNoteField, mountVisitNotesInSection, noteValuesFromFrontmatter, releaseClosedVisitNotes, setActiveVisitNote } from './visit-notes-field';
+import { applyExternalVisitNotes, bindVisitNoteFlush } from './visit-notes-store';
+import { classifyVisitSection } from './visit-older';
 import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
 import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
@@ -275,19 +277,28 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice('Turn on the Bases core plugin to use Nearby.');
 		}
 		this.registerView(MAP_VIEW_TYPE, (leaf) => new RvMapView(leaf, this));
-		onLiveVisitHost((root) => {
-			const path = (root.isConnected ? this.pathForSurface(root) : '') || this.app.workspace.getActiveFile()?.path || '';
-			if (path) this.mountNativeVisitNotes(root, path);
+		bindVisitNoteFlush((path, writes) => {
+			const file = this.app.vault.getFileByPath(path);
+			if (!(file instanceof TFile) || this.unloaded) return;
+			void this.app.fileManager.processFrontMatter(file, (data) => {
+				for (const [key, value] of Object.entries(writes)) data[key] = value;
+			});
 		});
-		this.registerEditorExtension(visitPreviewExtension(() => ({
-			collapseOlder: this.settings.collapseOlderVisits,
-			limit: this.settings.visibleVisitCount,
-		}), (dom) => {
-			const path = this.pathForSurface(dom) || this.app.workspace.getActiveFile()?.path || '';
-			if (!path) return;
-			this.mountNativeVisitNotes(dom, path);
-			applyLiveUrgency(dom, path, this.noteChromeHost(), true);
-		}));
+		this.registerEditorExtension(visitPreviewExtension(
+			() => ({
+				collapseOlder: this.settings.collapseOlderVisits,
+				limit: this.settings.visibleVisitCount,
+			}),
+			(view) => this.pathForSurface(view.dom) || this.app.workspace.getActiveFile()?.path || '',
+			(dom) => {
+				const path = this.pathForSurface(dom) || this.app.workspace.getActiveFile()?.path || '';
+				if (!path) return;
+				const file = this.app.vault.getFileByPath(path);
+				const front = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
+				applyExternalVisitNotes(path, noteValuesFromFrontmatter(front ?? null));
+				applyLiveUrgency(dom, path, this.noteChromeHost(), true);
+			},
+		));
 
 		this.registerMarkdownPostProcessor((element, context) => {
 			const path = context.sourcePath;
@@ -316,20 +327,24 @@ export default class RVLocatorPlugin extends Plugin {
 				coveredFor,
 			);
 			applyLiveUrgency(element, path, this.noteChromeHost());
-			concealCollapsedVisitNotes(element);
+			const info = context.getSectionInfo(element);
+			const body = this.noteBodies.get(path) ?? '';
+			if (info && body) {
+				classifyVisitSection(element, path, body, info.lineStart, info.lineEnd, {
+					limit: this.settings.visibleVisitCount,
+					collapseOlder: this.settings.collapseOlderVisits,
+				});
+			}
+			mountVisitNotesInSection(element, context);
 			const file = this.app.vault.getFileByPath(path);
 			if (file && !this.noteBodies.has(path)) this.rememberNoteText(file);
 			this.bindVisitSurface(element, path);
 			const lastDelay = NOTES_FIT_DELAYS_MS[NOTES_FIT_DELAYS_MS.length - 1] ?? 2_500;
 			for (const delay of NOTES_FIT_DELAYS_MS) {
 				window.setTimeout(() => {
-					if (this.unloaded) return;
-					const shown = (element.isConnected ? this.pathForSurface(element) : '') || path;
-					const own = element.isConnected ? element.closest('.markdown-preview-view, .markdown-reading-view') : null;
-					const live = own instanceof HTMLElement ? own : this.markdownSurface(shown);
-					if (live) fitNotesBoxes(live);
-					else if (element.isConnected) fitNotesBoxes(element);
-					this.refreshVisitCards(shown, element.isConnected ? element : undefined, delay === lastDelay, delay >= 250);
+					if (this.unloaded || !element.isConnected) return;
+					fitNotesBoxes(element);
+					this.refreshVisitCards(path, element, delay === lastDelay, false);
 				}, delay);
 			}
 		});
@@ -337,23 +352,8 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerDomEvent(document, 'input', (evt) => {
 			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
 		});
-		this.registerDomEvent(document, 'pointerdown', (evt) => {
-			const area = evt.target instanceof Element ? evt.target.closest('textarea') : null;
-			if (area instanceof HTMLTextAreaElement && area.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(area, 900, true);
-		}, { capture: true });
 		this.registerDomEvent(document, 'focusin', (evt) => {
 			if (isNotesBox(evt.target)) fitNotesBox(evt.target);
-			if (evt.isTrusted && evt.target instanceof HTMLTextAreaElement && evt.target.closest('.rv-dashboard, .rv-visit-note-box')) holdVisitNote(evt.target, 900, true);
-		});
-		this.registerDomEvent(document, 'focusout', (evt) => {
-			if (!(evt.target instanceof HTMLTextAreaElement)) return;
-			if (!evt.target.closest('.rv-dashboard, .rv-visit-note-box')) return;
-			const typedHold = visitNoteHoldTyped(evt.target);
-			releaseVisitNote(evt.relatedTarget);
-			if (!isFocusThief(evt.relatedTarget) && evt.relatedTarget instanceof Element && evt.relatedTarget !== evt.target) return;
-			if (!typedHold) return;
-			holdVisitNote(evt.target, 8000, true);
-			for (const delay of [0, 120, 250]) window.setTimeout(() => restoreHeldNote(), delay);
 		});
 		this.registerDomEvent(window, 'resize', () => this.scheduleNotesFit());
 		ensureIconAlias('rotate-ccw-clock', 'history');
@@ -381,7 +381,6 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		this.registerEvent(this.app.workspace.on('file-open', (file) => this.onNoteOpened(file)));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-			clearVisitNoteCaches();
 			setActiveVisitNote(this.app.workspace.getActiveFile()?.path ?? '');
 			this.scheduleAgeRefresh();
 			this.applyLayoutClasses();
@@ -396,7 +395,10 @@ export default class RVLocatorPlugin extends Plugin {
 				const fromCache = (cache as { frontmatter?: Record<string, unknown> }).frontmatter;
 				if (fromCache) frontmatter = fromCache;
 			}
-			if (file instanceof TFile && frontmatter) this.cachedFrontmatter.set(file.path, { ...frontmatter });
+			if (file instanceof TFile && frontmatter) {
+				this.cachedFrontmatter.set(file.path, { ...frontmatter });
+				applyExternalVisitNotes(file.path, noteValuesFromFrontmatter(frontmatter));
+			}
 			const active = this.app.workspace.getActiveFile();
 			if (!active || file.path === active.path) this.applyLayoutClasses();
 			if (file instanceof TFile) this.rememberNoteText(file);
@@ -548,22 +550,15 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private layoutOpenVisits(element: HTMLElement, path: string): void {
+		if (!element.isConnected) return;
 		const shown = this.pathForSurface(element) || path;
-		const file = this.app.vault.getFileByPath(shown);
-		if (!file) return;
-		void this.app.vault.cachedRead(file).then((markdown) => {
-			if (this.unloaded) return;
-			const current = this.pathForSurface(element) || shown;
-			if (current !== shown) return;
-			const live = element.isConnected ? element : this.markdownSurface(shown);
-			if (!live || readingRefreshBlocked(live, markdown, shown)) return;
-			live.dataset.rvNoteFile = shown;
-			layoutVisitNotes(live, markdown, {
-				newestFirst: this.settings.visitsNewestFirst,
-				collapseOlder: this.settings.collapseOlderVisits,
-				limit: this.settings.visibleVisitCount,
-			});
-			this.mountNativeVisitNotes(live, shown);
+		const markdown = this.noteBodies.get(shown) ?? '';
+		if (!markdown) return;
+		element.dataset.rvNoteFile = shown;
+		layoutVisitNotes(element, markdown, {
+			newestFirst: this.settings.visitsNewestFirst,
+			collapseOlder: this.settings.collapseOlderVisits,
+			limit: this.settings.visibleVisitCount,
 		});
 	}
 
@@ -589,7 +584,6 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private onNoteOpened(file: TFile | null): void {
-		clearVisitNoteCaches();
 		setActiveVisitNote(file?.path ?? '');
 		this.applyLayoutClasses();
 		this.scheduleAgeRefresh();
@@ -663,16 +657,14 @@ export default class RVLocatorPlugin extends Plugin {
 	 */
 	private refreshVisitCards(path: string, fallback?: HTMLElement, chrome = false, notesFallback = false): void {
 		if (this.unloaded || !path) return;
-		const surfaces = readingSurfacesForPath(this.readingLeaves(), path, fallback);
-		if (surfaces.length === 0 && fallback?.isConnected) surfaces.push(fallback);
+		const surfaces: HTMLElement[] = [];
+		if (fallback?.isConnected) surfaces.push(fallback);
 		for (const surface of surfaces) this.refreshVisitSurface(path, surface, chrome, notesFallback);
 	}
 
 	private refreshVisitSurface(path: string, surface: HTMLElement, chrome: boolean, notesFallback: boolean): void {
 		const shown = this.pathForSurface(surface) || path;
 		if (shown !== path) return;
-		const body = this.noteBodies.get(shown) ?? '';
-		if (readingRefreshBlocked(surface, body, shown)) return;
 		surface.dataset.rvNoteFile = shown;
 		const coveredFor = (when: Date, line = -1, domIndex = 0): string | null => {
 			if (!this.noteBodies.has(shown)) return null;
@@ -680,54 +672,17 @@ export default class RVLocatorPlugin extends Plugin {
 			const newestIndex = line >= 0 ? headingNewestIndex(body, when, line) : domIndex;
 			return coveredCampaignFor(body, when, newestIndex);
 		};
-		const layoutMissing = visitLayoutMissing(surface);
 		decorateVisitControls(
 			surface,
 			() => null,
 			(target, evt) => this.openVisitMenu(shown, target, evt),
 			coveredFor,
 		);
-		rehoistVisitNotes(surface);
 		applyLiveUrgency(surface, shown, this.noteChromeHost(), true);
 		if (chrome) this.decorateOpenNote(surface, shown);
 		else this.layoutOpenVisits(surface, shown);
-		if (notesFallback || chrome || layoutMissing) this.mountNativeVisitNotes(surface, shown);
 		this.bindVisitSurface(surface, shown);
-	}
-
-	/**
-	 * One debounced textarea per `sVisitNNotes` key, in Live Preview and in
-	 * Reading view. Meta Bind's own textarea is hidden so it cannot save on
-	 * each keystroke. A frontmatter write from this box is ignored while the
-	 * caret is still in it; a rebuild restores the in-memory draft.
-	 */
-	private mountNativeVisitNotes(surface: HTMLElement, path: string): void {
-		const shown = this.pathForSurface(surface) || path;
-		if (!shown) return;
-		const file = this.app.vault.getFileByPath(shown);
-		if (!file || file.path !== shown) return;
-		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-		const keys = visitNoteKeys(this.noteBodies.get(shown) ?? '');
-		const wide = surface.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view, .cm-editor');
-		mountRawVisitNotes(
-			wide instanceof HTMLElement ? wide : surface,
-			(key) => {
-				const value = frontmatter ? (frontmatter as Record<string, unknown>)[key] : '';
-				return typeof value === 'string' ? value : value == null ? '' : String(value);
-			},
-			(key, value) => {
-				if ((this.app.workspace.getActiveFile()?.path ?? '') !== shown) return;
-				if ((this.pathForSurface(surface) || shown) !== shown) return;
-				const current = this.app.vault.getFileByPath(shown);
-				if (!current || current.path !== shown) return;
-				void this.app.fileManager.processFrontMatter(current, (data) => {
-					if ((this.app.workspace.getActiveFile()?.path ?? '') !== shown) return;
-					data[key] = value;
-				});
-			},
-			keys,
-			shown,
-		);
+		void notesFallback;
 	}
 
 	/** A closed markdown view drops its note cache. The open note keeps its own. */
@@ -738,21 +693,6 @@ export default class RVLocatorPlugin extends Plugin {
 			if (view instanceof MarkdownView && view.file) open.add(view.file.path);
 		}
 		releaseClosedVisitNotes(open);
-	}
-
-	private readingLeaves(): { path: string; preview: HTMLElement }[] {
-		const leaves: { path: string; preview: HTMLElement }[] = [];
-		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
-			const view = leaf.view;
-			if (!(view instanceof MarkdownView) || !view.file) continue;
-			const preview = view.containerEl.querySelector('.markdown-preview-view, .markdown-reading-view');
-			if (preview instanceof HTMLElement) leaves.push({ path: view.file.path, preview });
-		}
-		return leaves;
-	}
-
-	private markdownSurface(path: string): HTMLElement | null {
-		return this.readingLeaves().find((leaf) => leaf.path === path)?.preview ?? null;
 	}
 
 	private pathForSurface(surface: HTMLElement): string {
@@ -3497,26 +3437,17 @@ export default class RVLocatorPlugin extends Plugin {
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
 		this.openInReadingView(file, true);
-		watchVisitNoteFocus(view.containerEl, 12000);
 		if (!name || fieldAt < 1) return;
-
-		let steady = 0;
-		let placed: HTMLTextAreaElement | null = null;
-		for (let attempt = 0; attempt < FOCUS_ATTEMPTS && steady < 3; attempt += 1) {
+		for (let attempt = 0; attempt < FOCUS_ATTEMPTS; attempt += 1) {
 			if (this.unloaded) return;
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
-			const area = placeVisitNoteFocus(view.containerEl, stamp, ordinal);
+			const area = focusVisitNoteField(view.containerEl, name) ?? placeVisitNoteFocus(view.containerEl, stamp, ordinal);
 			if (!area) continue;
-			holdVisitNote(area, 8000);
-			if (area.ownerDocument.activeElement === area) steady += 1;
-			else steady = 0;
-			restoreHeldNote();
-			if (placed === area) continue;
 			fitNotesBox(area);
 			area.scrollIntoView({ block: 'center' });
-			placed = area;
+			if (area.ownerDocument.activeElement === area) return;
 		}
-		for (const delay of [0, 120, 250, 600, 1200, 2500, 4000, 6000]) window.setTimeout(() => restoreHeldNote(), delay);
+		void ordinal;
 	}
 
 	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): void {

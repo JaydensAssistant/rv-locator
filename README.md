@@ -57,3 +57,5 @@ shasum -a 256 main.js styles.css manifest.json
 ## Attribution
 
 Geocoding uses Geoapify (OpenStreetMap data). Addresses are sent to Geoapify. Powered by Geoapify.
+
+Visit notes follow the shape of [Meta Bind](https://github.com/mProjectsCode/obsidian-meta-bind-plugin) input fields: each box is bound by the key in its own `INPUT[textArea:…]` declaration, Reading view mounts a render child on that element, and Live Preview uses an editor widget for that line. Meta Bind is GPL-3.0. This plugin does not include Meta Bind source; the field is a separate implementation.

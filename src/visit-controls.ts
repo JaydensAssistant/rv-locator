@@ -3,7 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter, stripStampAge, visibleStampText } from './dates';
 import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
-import { layoutVisitNotes, mountHeadingChevron, visitStampsInMarkdown, type VisitLayoutOptions } from './visit-display';
+import { layoutVisitNotes, mountHeadingChevron, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
 
 /** A rendered stamp or Attempt Log line, resolved against the file on click. */
@@ -163,7 +163,6 @@ export function decorateVisitControls(
 	}
 	backfillCoveredChips(root, coveredFor);
 	rehoistVisitNotes(root);
-	attachLooseNote(root);
 }
 
 function headingStampText(heading: HTMLElement): string {
@@ -406,8 +405,33 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	const campaign = items.filter((item) => item.campaign);
 	const rest = items.filter((item) => !item.campaign);
 	for (const item of [...campaign, ...rest]) paintStripChip(strip, item);
-	ensureNoteBox(heading, strip);
 	watchTitleRow(strip, () => refitItemStrip(strip));
+}
+
+/** Fill a strip we created. The heading and the notes stay where Obsidian put them. */
+export function fillItemStrip(strip: HTMLElement, source: string, covered: string): void {
+	strip.replaceChildren();
+	const items: Array<{ icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }> = [];
+	if (covered) items.push({ icon: 'book-check', title: covered, kind: 'plain', campaign: true });
+	const piece = /·\s+(?:«(book|film|lesson)»|(Left|Shared|Covered|Also))\s+«([^»]*)»/g;
+	let match = piece.exec(source);
+	while (match) {
+		const kind = match[1] || match[2] || '';
+		const title = match[3] ?? '';
+		if (title && kind !== 'Covered') {
+			items.push({
+				icon: kind === 'film' || kind === 'Shared' ? 'clapperboard' : kind === 'lesson' || kind === 'Also' ? 'book-marked' : 'book-open',
+				title,
+				kind: kind === 'film' || kind === 'Shared' ? 'media' : kind === 'lesson' || kind === 'Also' ? 'lesson' : 'literature',
+			});
+		}
+		match = piece.exec(source);
+	}
+	if (items.length === 0) strip.classList.add('is-ghost');
+	else strip.classList.remove('is-ghost');
+	for (const item of [...items.filter((item) => item.campaign), ...items.filter((item) => !item.campaign)]) {
+		paintStripChip(strip, item);
+	}
 }
 
 function paintStripChip(strip: HTMLElement, item: { icon: string; title: string; kind: 'literature' | 'media' | 'lesson' | 'plain'; campaign?: boolean }): void {
@@ -547,145 +571,6 @@ function findItemStrip(heading: HTMLElement): HTMLElement | null {
 	return null;
 }
 
-/** The strip sits at the top of the tinted note box. The note text is inside that same box. */
-function activeNoteIn(node: HTMLElement): boolean {
-	const active = node.ownerDocument?.activeElement;
-	return active instanceof HTMLElement && active.tagName === 'TEXTAREA' && node.contains(active);
-}
-
-function ensureNoteBox(heading: HTMLElement, strip: HTMLElement): void {
-	let box = strip.parentElement;
-	if (box instanceof HTMLElement && box.classList.contains('rv-visit-note-box') && activeNoteIn(box)) return;
-	if (!(box instanceof HTMLElement) || !box.classList.contains('rv-visit-note-box')) {
-		const created = heading.ownerDocument.createElement('div');
-		created.className = 'rv-visit-note-box';
-		strip.replaceWith(created);
-		created.appendChild(strip);
-		box = created;
-	}
-	const host = blockHost(heading);
-	if (box.parentElement !== host.parentElement || box.previousElementSibling !== host) {
-		host.insertAdjacentElement('afterend', box);
-	}
-	absorbFollowingNotes(host, box, strip);
-}
-
-/**
- * Pull every following note block into the box. A post-processor root is one
- * section, so the walk climbs out to the next `.markdown-preview-section`,
- * `.el-p`, or list. Order is the order they had before the move.
- */
-function absorbFollowingNotes(host: HTMLElement, box: HTMLElement, strip: HTMLElement): void {
-	let cursor = nextBlock(host);
-	while (cursor) {
-		if (cursor === box) {
-			cursor = nextBlock(cursor);
-			continue;
-		}
-		if (!isVisitNoteBlock(cursor)) break;
-		const following = nextBlock(cursor);
-		placeNote(box, strip, cursor);
-		cursor = following;
-	}
-}
-
-function nextBlock(node: HTMLElement): HTMLElement | null {
-	const direct = node.nextElementSibling;
-	if (direct instanceof HTMLElement) return direct;
-	let parent = node.parentElement;
-	while (parent) {
-		const next = parent.nextElementSibling;
-		const climb = parent.classList.contains('markdown-preview-section')
-			|| parent.classList.contains('el-h1')
-			|| parent.classList.contains('el-h2')
-			|| parent.classList.contains('el-h3')
-			|| parent.classList.contains('el-h4')
-			|| parent.classList.contains('el-h5')
-			|| parent.classList.contains('el-h6')
-			|| parent.classList.contains('cm-line');
-		if (next instanceof HTMLElement && climb) return next;
-		if (
-			parent.classList.contains('markdown-preview-sizer')
-			|| parent.classList.contains('markdown-preview-view')
-			|| parent.classList.contains('markdown-reading-view')
-			|| parent.classList.contains('markdown-rendered')
-			|| parent.classList.contains('cm-editor')
-			|| parent.classList.contains('cm-content')
-			|| parent.classList.contains('workspace-leaf-content')
-		) return null;
-		if (!climb) return null;
-		parent = parent.parentElement;
-	}
-	return null;
-}
-
-let nextNoteSeq = 0;
-
-/**
- * Order notes inside one box. A child index in the shared preview parent is
- * not a visit identity: each note is at the same slot when it is moved, so
- * every box cached one sequence.
- */
-function noteSeq(note: HTMLElement): string {
-	if (note.dataset.rvSeq) return note.dataset.rvSeq;
-	nextNoteSeq += 1;
-	const seq = String(nextNoteSeq).padStart(4, '0');
-	note.dataset.rvSeq = seq;
-	return seq;
-}
-
-function captureVisitKey(box: HTMLElement, note: HTMLElement): void {
-	if (box.dataset.rvVisitKey) return;
-	const keys: string[] = [];
-	const collect = (text: string): void => {
-		const pattern = /INPUT\[textArea:(sVisit\d+Notes)\]/g;
-		let match = pattern.exec(text);
-		while (match) {
-			if (match[1] && !keys.includes(match[1])) keys.push(match[1]);
-			match = pattern.exec(text);
-		}
-	};
-	const scan = (node: HTMLElement): void => {
-		let own = '';
-		for (const child of Array.from(node.childNodes)) {
-			if (child.nodeType === 3) own += child.textContent ?? '';
-		}
-		const direct = keys.length;
-		collect(own);
-		if (keys.length === direct) collect(node.textContent ?? '');
-	};
-	if (note.matches('code')) scan(note);
-	note.querySelectorAll('code').forEach((node) => {
-		if (node instanceof HTMLElement && node.closest('.rv-visit-note-box') == null) scan(node);
-	});
-	if (keys.length === 1 && keys[0]) box.dataset.rvVisitKey = keys[0];
-}
-
-function placeNote(box: HTMLElement, strip: HTMLElement, note: HTMLElement): void {
-	captureVisitKey(box, note);
-	const seq = noteSeq(note);
-	let before: Element | null = null;
-	for (const child of Array.from(box.children)) {
-		if (child === strip || child === note) continue;
-		if (!(child instanceof HTMLElement)) continue;
-		if ((child.dataset.rvSeq ?? '') > seq) {
-			before = child;
-			break;
-		}
-	}
-	box.insertBefore(note, before);
-}
-
-/**
- * A Reading view rebuild drops `.rv-visit-stamp` and the note box.
- * That pass still has to run while the textarea is focused, or the boxes stay gone.
- */
-/**
- * The stamp line still sitting in the heading. A reshaped heading keeps that
- * line in `.rv-stamp-source`, so this is empty once the row has been built.
- * Matching `data-rv-note-file` does not count: a file switch writes the new
- * path onto the previous note's headings before their text is replaced.
- */
 /** The same stamp text the file parser keeps: age span and age words removed, spaces collapsed. */
 function normalizeVisitStamp(text: string): string {
 	const stripped = stripStampAge(text).replace(/<[^>]*>/g, ' ');
@@ -700,14 +585,6 @@ function rawStampLine(node: HTMLElement): string {
 	if (stampDateTime(visible)) return visible;
 	const attr = normalizeVisitStamp(node.getAttribute('data-heading') ?? '');
 	return stampDateTime(attr) ? attr : '';
-}
-
-/** Prefer the stored stamp line. A decorated heading's visible text is the badge and the age pill. */
-function domVisitStamp(node: HTMLElement): string {
-	const stored = normalizeVisitStamp(headingSource(node));
-	if (stampDateTime(stored)) return stored;
-	const fallback = rawStampLine(node);
-	return stampDateTime(fallback) ? fallback : '';
 }
 
 export function visitLayoutMissing(root: HTMLElement): boolean {
@@ -725,69 +602,12 @@ export function visitLayoutMissing(root: HTMLElement): boolean {
 		if (!reshaped && !node.classList.contains('rv-visit-stamp')) continue;
 		if (!reshaped) return true;
 		if (expected && (node.dataset.rvNoteFile || '') !== expected) return true;
-		if (!noteBoxNear(node)) return true;
 	}
 	return false;
 }
 
-/** The preview still shows another note's visit headings. */
-export function readingDomIsStale(root: HTMLElement, markdown: string): boolean {
-	if (typeof root.querySelectorAll !== 'function') return false;
-	const dom: string[] = [];
-	root.querySelectorAll('h3, h5').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
-		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
-		const line = domVisitStamp(node);
-		if (line) dom.push(line);
-	});
-	if (dom.length === 0) return false;
-	const file = visitStampsInMarkdown(markdown).map((stamp) => normalizeVisitStamp(stamp.text));
-	if (file.length === 0) return true;
-	const known = new Set(file);
-	return !dom.some((text) => known.has(text));
-}
-
-/**
- * How long a preview may keep the previous note's headings after a switch.
- * Past this, the refresh proceeds so a decorated note cannot stay unframed.
- */
-const READING_STALE_BLOCK_MS = 400;
-
-/**
- * The preview to decorate for `path`.
- * A passed section from the visible tab wins over the first leaf that has the file.
- * With no passed element, every leaf showing `path` is decorated.
- */
-export function readingSurfacesForPath(
-	leaves: ReadonlyArray<{ path: string; preview: HTMLElement }>,
-	path: string,
-	passed?: HTMLElement | null,
-): HTMLElement[] {
-	if (passed?.isConnected) {
-		const owner = leaves.find((leaf) => leaf.preview === passed || leaf.preview.contains(passed) || passed.contains(leaf.preview));
-		if (owner?.path === path) return [owner.preview];
-	}
-	return leaves.filter((leaf) => leaf.path === path && leaf.preview.isConnected).map((leaf) => leaf.preview);
-}
-
-/**
- * True only while the preview still shows a different note.
- * A matching file proceeds immediately. A mismatch stops blocking after one bounded wait.
- */
-export function readingRefreshBlocked(root: HTMLElement, markdown: string, path: string, now = Date.now()): boolean {
-	if (!readingDomIsStale(root, markdown)) {
-		delete root.dataset.rvStaleSince;
-		delete root.dataset.rvStalePath;
-		return false;
-	}
-	if (root.dataset.rvStalePath !== path) {
-		root.dataset.rvStalePath = path;
-		root.dataset.rvStaleSince = String(now);
-		return true;
-	}
-	const since = Number(root.dataset.rvStaleSince || now);
-	return now - since < READING_STALE_BLOCK_MS;
-}
+/** Headings and notes stay in the sections Obsidian rendered. Nothing is pulled into a box. */
+export function rehoistVisitNotes(_root: HTMLElement): void {}
 
 /**
  * Stamp every visit that is already in this Reading view, then fold Older Visits.
@@ -808,96 +628,6 @@ export function decorateReadingSurface(
 	decorateVisitControls(root, () => null, () => {});
 	rehoistVisitNotes(root);
 	layoutVisitNotes(surface, markdown, options);
-}
-
-function noteBoxNear(heading: HTMLElement): boolean {
-	const hosts = [heading, heading.closest('.el-h3, .el-h5, .cm-line')];
-	for (const host of hosts) {
-		if (!(host instanceof HTMLElement)) continue;
-		const next = host.nextElementSibling;
-		if (!(next instanceof HTMLElement)) continue;
-		if (next.classList.contains('rv-visit-note-box')) return true;
-	}
-	return false;
-}
-
-/**
- * A later or earlier post-processor pass still owns the notes that follow each stamp.
- * A scroll re-render drops a fresh paragraph back beside the heading; pull it in again.
- */
-export function rehoistVisitNotes(root: HTMLElement): void {
-	const surface = coveredSearchRoot(root);
-	for (const heading of stampHeadings(surface)) {
-		const strip = findItemStrip(heading);
-		if (strip) ensureNoteBox(heading, strip);
-	}
-	surface.querySelectorAll('.markdown-preview-section, .el-p, .el-ul, .el-ol').forEach((node) => {
-		if (node instanceof HTMLElement) attachLooseNote(node);
-	});
-}
-
-/** The note block rendered before its heading. Attach it once the stamp row exists. */
-function attachLooseNote(root: HTMLElement): void {
-	const block = looseNoteBlock(root);
-	if (!block || block.closest('.rv-visit-note-box') || !isVisitNoteBlock(block)) return;
-	const heading = previousVisitHeading(block);
-	if (!heading) return;
-	const strip = findItemStrip(heading);
-	if (strip) ensureNoteBox(heading, strip);
-}
-
-function looseNoteBlock(root: HTMLElement): HTMLElement | null {
-	if (root.classList.contains('markdown-preview-section') || root.classList.contains('el-p') || root.classList.contains('el-ul') || root.classList.contains('el-ol') || root.classList.contains('cm-line')) return root;
-	const section = root.closest('.markdown-preview-section');
-	return section instanceof HTMLElement ? section : root;
-}
-
-function previousVisitHeading(block: HTMLElement): HTMLElement | null {
-	let cursor: HTMLElement | null = block;
-	while (cursor) {
-		let prev = cursor.previousElementSibling;
-		while (prev instanceof HTMLElement) {
-			const heading = stampInside(prev);
-			if (heading) return heading;
-			if (!isVisitNoteBlock(prev) && !prev.classList.contains('rv-visit-note-box')) return null;
-			prev = prev.previousElementSibling;
-		}
-		const parent: HTMLElement | null = cursor.parentElement instanceof HTMLElement ? cursor.parentElement : null;
-		if (!parent) return null;
-		if (
-			parent.classList.contains('markdown-preview-sizer')
-			|| parent.classList.contains('markdown-preview-view')
-			|| parent.classList.contains('cm-content')
-			|| parent.classList.contains('cm-editor')
-		) return null;
-		cursor = parent;
-	}
-	return null;
-}
-
-function stampInside(node: HTMLElement): HTMLElement | null {
-	if (node.matches('h3, h5') && node.classList.contains('rv-visit-stamp')) return node;
-	const found = node.querySelector('h3.rv-visit-stamp, h5.rv-visit-stamp');
-	return found instanceof HTMLElement ? found : null;
-}
-
-function isVisitNoteBlock(node: HTMLElement): boolean {
-	if (node.matches('h1, h2, h3, h4, h5, h6, .callout, hr, .rv-item-strip, .rv-visit-note-box, .rv-older-visits-wrap, .rv-notes-fold-stop')) return false;
-	if (node.querySelector(':scope > h1, :scope > h2, :scope > h3, :scope > h4, :scope > h5, :scope > h6, :scope > .callout, :scope > hr')) return false;
-	if (node.classList.contains('markdown-preview-section')) {
-		if (node.querySelector('.callout, hr, h1, h2, h3, h4, h5, h6, .rv-visit-stamp, .rv-stamp-row')) return false;
-		return node.querySelector('p, ul, ol, blockquote, textarea, .el-p, .el-ul, .el-ol, .el-blockquote') != null
-			|| (node.textContent ?? '').trim().length > 0;
-	}
-	if (node.classList.contains('cm-line')) {
-		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/^#{1,6}\s+/, '');
-		if (!text) return false;
-		if (stampDateTime(text)) return false;
-		return true;
-	}
-	if (node.querySelector('h1, h2, h3, h4, h5, h6')) return false;
-	if (node.querySelector('textarea, ul, ol')) return true;
-	return node.matches('p, div, .el-p, .el-ul, .el-ol, .el-blockquote, blockquote, ul, ol, li, textarea');
 }
 
 function renderCoveredMention(item: HTMLElement, covered: string): void {
