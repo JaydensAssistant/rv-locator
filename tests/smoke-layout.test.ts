@@ -1965,6 +1965,104 @@ describe('smoke layout', () => {
 		}
 	});
 
+	it('drops Older Visits saved before a Live Preview save when Reading opens, and will not write a misplaced box', async () => {
+		clearVisitNoteCaches();
+		const stamps = [
+			'Fri, 5pm — Sep 5, 2026',
+			'Thu, 4pm — Sep 4, 2026',
+			'Wed, 3pm — Sep 3, 2026',
+			'Tue, 2pm — Sep 2, 2026',
+			'Mon, 9am — Sep 1, 2026',
+		];
+		const keys = ['sVisit5Notes', 'sVisit4Notes', 'sVisit3Notes', 'sVisit2Notes', 'sVisit1Notes'];
+		const scrambled = ['sVisit2Notes', 'sVisit1Notes', 'sVisit3Notes', 'sVisit5Notes', 'sVisit4Notes'];
+		const visits = stamps.map((stamp, index) => `##### ${stamp}\n\`INPUT[textArea:${keys[index]}]\``).join('\n\n');
+		const before = `---\nsVisit2Notes: ""\n---\n### Recent Notes:\n${visits}\n`;
+		const after = `---\nsVisit2Notes: "k"\n---\n### Recent Notes:\n${visits}\n`;
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-reading-view is-live-preview';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		const notesWrap = window.document.createElement('div');
+		notesWrap.className = 'el-h3';
+		const notes = window.document.createElement('h3');
+		notes.className = 'rv-visit-notes-heading';
+		notes.textContent = 'Recent Notes:';
+		notesWrap.appendChild(notes);
+		sizer.appendChild(notesWrap);
+		for (let index = 0; index < stamps.length; index += 1) {
+			const heading = window.document.createElement('h3');
+			heading.className = 'rv-visit-stamp';
+			heading.textContent = stamps[index] ?? '';
+			const box = window.document.createElement('div');
+			box.className = 'rv-visit-note-box';
+			const code = window.document.createElement('code');
+			code.textContent = `INPUT[textArea:${keys[index]}]`;
+			box.appendChild(code);
+			sizer.append(heading, box);
+		}
+		const callout = window.document.createElement('div');
+		callout.className = 'callout';
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		title.textContent = 'Return Suggestions';
+		callout.appendChild(title);
+		const footer = window.document.createElement('div');
+		footer.className = 'mod-footer';
+		sizer.append(callout, footer);
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		const options = { newestFirst: true, collapseOlder: true, limit: 3 };
+		const writes: string[] = [];
+		try {
+			layoutVisitNotes(preview, before, options);
+			const savedTail = Array.from(sizer.querySelectorAll('.rv-older-visit, .rv-older-visits-wrap, .callout'));
+			assert.ok(savedTail.length > 0);
+			notesWrap.classList.add('is-collapsed');
+			for (const node of savedTail) node.remove();
+			preview.className = 'markdown-reading-view';
+			layoutVisitNotes(preview, after, options);
+			assert.equal(savedTail.every((node) => node.parentElement == null), true);
+			sizer.querySelectorAll('h3.rv-visit-stamp, .rv-visit-note-box, .rv-older-rule, .rv-older-visits-wrap').forEach((node) => node.remove());
+			for (let index = 0; index < stamps.length; index += 1) {
+				const heading = window.document.createElement('h3');
+				heading.className = 'rv-visit-stamp';
+				heading.textContent = stamps[index] ?? '';
+				const box = window.document.createElement('div');
+				box.className = 'rv-visit-note-box';
+				const code = window.document.createElement('code');
+				code.textContent = `INPUT[textArea:${scrambled[index]}]`;
+				box.appendChild(code);
+				sizer.insertBefore(box, footer);
+				sizer.insertBefore(heading, box);
+			}
+			setActiveVisitNote('Dale.md');
+			mountRawVisitNotes(preview, (key) => (key === 'sVisit4Notes' ? 'saved' : ''), (key) => {
+				writes.push(key);
+			}, keys, 'Dale.md');
+			const areas = Array.from(preview.querySelectorAll('textarea.rv-native-notes-area'));
+			assert.deepEqual(areas.map((node) => (node instanceof window.HTMLTextAreaElement ? node.dataset.rvNoteKey : '')), keys);
+			const visit4 = areas[1];
+			assert.ok(visit4 instanceof window.HTMLTextAreaElement);
+			assert.equal(visit4.value, 'saved');
+			visit4.focus();
+			visit4.value = 'savedx';
+			visit4.dispatchEvent(new window.Event('input', { bubbles: true }));
+			const misbound = areas[0];
+			assert.ok(misbound instanceof window.HTMLTextAreaElement);
+			misbound.dataset.rvNoteKey = 'sVisit2Notes';
+			misbound.closest('.rv-visit-note-box')?.setAttribute('data-rv-key-mismatch', '1');
+			misbound.focus();
+			misbound.value = 'nope';
+			misbound.dispatchEvent(new window.Event('input', { bubbles: true }));
+			await new Promise((resolve) => setTimeout(resolve, 450));
+			assert.deepEqual(writes, ['sVisit4Notes']);
+		} finally {
+			preview.remove();
+			clearVisitNoteCaches();
+		}
+	});
+
 	it('draws a centered chevron on the companion and literature dropdown', () => {
 		const css = readFileSync('styles.css', 'utf8');
 		const suggest = readFileSync('src/suggest-field.ts', 'utf8');

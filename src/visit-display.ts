@@ -111,13 +111,13 @@ function layoutVisitNotesNow(
 	const stamps = stampHeads(preview);
 	const fileStamps = visitStampsInMarkdown(markdown);
 	if (stamps.length === 0) {
-		restoreRecentTail(preview);
+		restoreRecentTail(preview, markdown);
 		return;
 	}
 	if (fileStamps.length > 0 && stamps.length < fileStamps.length) return;
 	if (visitNotesTyping(preview) && !olderChromeMissing(preview, markdown, options)) {
 		releaseRecentNotesTail(preview);
-		rememberRecentTail(preview);
+		rememberRecentTail(preview, markdown);
 		return;
 	}
 	const blocks = blocksFor(preview, stamps);
@@ -136,7 +136,7 @@ function layoutVisitNotesNow(
 		clearOlderChrome(preview);
 		ensureSuggestionStop(preview);
 		releaseRecentNotesTail(preview);
-		rememberRecentTail(preview);
+		rememberRecentTail(preview, markdown);
 		return;
 	}
 	const first = older[0]?.nodes[0];
@@ -153,7 +153,7 @@ function layoutVisitNotesNow(
 		}
 	}
 	releaseRecentNotesTail(preview);
-	rememberRecentTail(preview);
+	rememberRecentTail(preview, markdown);
 }
 
 interface VisitBlock extends VisitStampRef {
@@ -372,8 +372,10 @@ function scheduleRecentRelayout(preview: HTMLElement): void {
 function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options: VisitLayoutOptions): void {
 	const existing = recentWatches.get(preview);
 	if (existing) {
+		if (existing.markdown !== markdown) dropRecentTail(preview);
 		existing.markdown = markdown;
 		existing.options = options;
+		dropRecentTailUnless(preview, markdown);
 		return;
 	}
 	const state: RecentWatch = { markdown, options };
@@ -383,16 +385,16 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	const rerun = (): void => {
 		disconnectRecent(preview);
 		try {
-			restoreRecentTail(preview);
+			restoreRecentTail(preview, state.markdown);
 			if (preview.dataset.rvLaying === '1') return;
 			if (visitNotesTyping(preview)) {
 				releaseRecentNotesTail(preview);
-				rememberRecentTail(preview);
+				rememberRecentTail(preview, state.markdown);
 				return;
 			}
 			if (!olderChromeMissing(preview, state.markdown, state.options)) {
 				releaseRecentNotesTail(preview);
-				rememberRecentTail(preview);
+				rememberRecentTail(preview, state.markdown);
 				concealCollapsedVisitNotes(preview);
 				return;
 			}
@@ -418,7 +420,7 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 	};
 	preview.addEventListener('pointerdown', (event) => {
 		if (!onRecentNotes(event)) return;
-		rememberRecentTail(preview);
+		rememberRecentTail(preview, state.markdown);
 	}, true);
 	preview.addEventListener('click', (event) => {
 		if (!onRecentNotes(event)) return;
@@ -435,7 +437,7 @@ function armRecentNotesRelayout(preview: HTMLElement, markdown: string, options:
 			// fold's class writes used to schedule another pass forever.
 			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
 			if (records.length > 0 && !records.some((record) => isRecentNotesMutation(preview, record))) return;
-			restoreRecentTail(preview);
+			restoreRecentTail(preview, state.markdown);
 			schedule();
 		});
 		recentObservers.set(preview, observer);
@@ -1075,14 +1077,42 @@ function isOlderTail(node: HTMLElement): boolean {
 	return (title?.textContent ?? '').includes('Return Suggestions');
 }
 
-const recentTails = new WeakMap<HTMLElement, HTMLElement[]>();
+interface RecentTail {
+	nodes: HTMLElement[];
+	markdown: string;
+	mode: string;
+}
+
+const recentTails = new WeakMap<HTMLElement, RecentTail>();
+
+/** Reading, source, or Live Preview. A switch must not reuse the other mode's nodes. */
+function previewMode(preview: HTMLElement): string {
+	if (preview.classList.contains('is-live-preview')) return 'live';
+	if (preview.classList.contains('markdown-source-view')) return 'source';
+	return 'reading';
+}
+
+function dropRecentTail(preview: HTMLElement): void {
+	recentTails.delete(preview);
+}
+
+/** A tail saved for another note body or another view mode is not this preview. */
+function dropRecentTailUnless(preview: HTMLElement, markdown: string): void {
+	const saved = recentTails.get(preview);
+	if (!saved) return;
+	if (saved.markdown === markdown && saved.mode === previewMode(preview)) return;
+	dropRecentTail(preview);
+}
 
 /**
  * Recent Notes collapse detaches every following sibling until the footer.
  * The saved tail is Older Visits through Return Suggestions, taken while
  * those nodes are still in the note. An empty walk must not replace it.
+ * A different note body or view mode drops the saved nodes instead of putting
+ * them back into the next render.
  */
-function rememberRecentTail(preview: HTMLElement): void {
+function rememberRecentTail(preview: HTMLElement, markdown: string): void {
+	dropRecentTailUnless(preview, markdown);
 	const heading = recentNotesHeading(preview);
 	if (!heading) return;
 	const host = collapseHost(heading);
@@ -1098,24 +1128,25 @@ function rememberRecentTail(preview: HTMLElement): void {
 		cursor = cursor.nextElementSibling;
 	}
 	if (nodes.length === 0 || nodes.some((node) => node.parentElement == null)) return;
-	recentTails.set(preview, nodes);
+	recentTails.set(preview, { nodes, markdown, mode: previewMode(preview) });
 }
 
 /** Put a detached Older Visits / Return Suggestions tail back in front of the footer. */
-function restoreRecentTail(preview: HTMLElement): void {
+function restoreRecentTail(preview: HTMLElement, markdown: string): void {
+	dropRecentTailUnless(preview, markdown);
 	const heading = recentNotesHeading(preview);
 	if (!heading) return;
 	const host = collapseHost(heading);
 	if (!host.classList.contains('is-collapsed')) return;
 	const saved = recentTails.get(preview);
-	if (!saved || saved.length === 0) return;
-	const tailGone = saved.some((node) => node.parentElement == null && isTailAnchor(node));
+	if (!saved || saved.nodes.length === 0) return;
+	const tailGone = saved.nodes.some((node) => node.parentElement == null && isTailAnchor(node));
 	if (!tailGone) return;
 	const parent = host.parentElement;
 	if (!parent) return;
 	const footer = sectionFooter(parent);
 	const anchor = footer && footer.parentElement === parent ? footer : null;
-	const missing = saved.filter((node) => node.parentElement == null);
+	const missing = saved.nodes.filter((node) => node.parentElement == null);
 	if (missing.length === 0) return;
 	for (const node of missing) parent.insertBefore(node, anchor);
 }

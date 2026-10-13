@@ -406,15 +406,48 @@ function visitSurface(root: HTMLElement): HTMLElement {
 	return isElement(wide) ? wide : root;
 }
 
+/** Key of the visit heading at this index. Boxes are collected in heading order. */
+function expectedKey(index: number, ordered: readonly string[]): string {
+	const key = ordered[index] ?? '';
+	return NOTE_KEY.test(key) ? key : '';
+}
+
 /**
- * Key for this visit: its own rendered field, otherwise this visit's index
- * in the note. A key already stored on the box is not reused: a per-section
- * mount used to pin every box to the first INPUT in the parent.
+ * A box that still carries another visit's INPUT is not that heading's box.
+ * Drop its textarea so the next mount builds one for the heading above it.
+ */
+function rebuildMismatchedBox(box: HTMLElement): void {
+	box.querySelectorAll('textarea').forEach((node) => {
+		if (isTextArea(node)) node.remove();
+	});
+	delete box.dataset.rvVisitKey;
+	box.dataset.rvKeyMismatch = '1';
+}
+
+/** A box whose field key is not the heading directly above it must not write. */
+function boxWriteAllowed(area: HTMLTextAreaElement, key: string): boolean {
+	const box = area.closest('.rv-visit-note-box');
+	if (!isElement(box)) return true;
+	const expected = box.dataset.rvExpectedKey || '';
+	if (box.dataset.rvKeyMismatch === '1' && key !== expected) return false;
+	if (expected && key !== expected) return false;
+	return true;
+}
+
+/**
+ * Key for this visit: the field under this heading when it matches that
+ * heading, otherwise this visit's index in the note. A mismatched field is
+ * rebuilt. It is never treated as the heading it was moved under.
  */
 function keyForBox(box: HTMLElement, index: number, ordered: readonly string[], used: Set<string>): string {
+	const expected = box.dataset.rvExpectedKey || '';
 	const declared = fieldKey(box);
+	if (expected && declared && declared !== expected) {
+		rebuildMismatchedBox(box);
+		return used.has(expected) ? '' : expected;
+	}
 	if (declared && !used.has(declared)) return declared;
-	const indexed = ordered[index] ?? '';
+	const indexed = (expected || ordered[index]) ?? '';
 	if (NOTE_KEY.test(indexed) && !used.has(indexed)) return indexed;
 	const free = ordered.find((key) => NOTE_KEY.test(key) && !used.has(key));
 	return free ?? '';
@@ -451,7 +484,11 @@ function pinKey(area: HTMLTextAreaElement, host: HTMLElement, key: string, path:
 	host.dataset.rvNoteFile = path;
 	host.classList.add('rv-native-notes');
 	const box = host.closest('.rv-visit-note-box');
-	if (isElement(box)) box.dataset.rvVisitKey = key;
+	if (isElement(box)) {
+		box.dataset.rvVisitKey = key;
+		const expected = box.dataset.rvExpectedKey || '';
+		if (!expected || expected === key) delete box.dataset.rvKeyMismatch;
+	}
 }
 
 function dropForeignArea(area: HTMLTextAreaElement | null, path: string): HTMLTextAreaElement | null {
@@ -482,6 +519,7 @@ function scheduleNoteWrite(
 		if (activeNotePath && path !== activeNotePath) return;
 		const writeKey = area.dataset.rvNoteKey || area.dataset.rvNativeNotes || '';
 		if (writeKey !== key) return;
+		if (!boxWriteAllowed(area, writeKey)) return;
 		if (area.isConnected) rememberCaret(area, path, writeKey, true);
 		markOwnNoteWrite(path);
 		const saved = liveDraft(path, writeKey);
@@ -549,6 +587,7 @@ function wireNative(
 		const writeKey = area.dataset.rvNoteKey || key;
 		if (writePath !== path) return;
 		if (activeNotePath && writePath !== activeNotePath) return;
+		if (!boxWriteAllowed(area, writeKey)) return;
 		const typed = area.value;
 		rememberDraft(area, writePath, writeKey);
 		markOwnNoteWrite(writePath);
@@ -620,9 +659,19 @@ export function mountRawVisitNotes(
 		rememberCaret(node, path, key, false);
 	});
 	const boxes = boxesAfterStamps(surface);
+	const stampCount = surface.querySelectorAll('h3.rv-visit-stamp, h5.rv-visit-stamp').length;
+	const headingKeys = orderedKeys.filter((key) => NOTE_KEY.test(key));
+	const keysFollowHeadings = headingKeys.length === stampCount && stampCount > 0 && stampCount === boxes.length;
+	boxes.forEach((box, index) => {
+		const expected = keysFollowHeadings ? expectedKey(index, headingKeys) : '';
+		if (expected) box.dataset.rvExpectedKey = expected;
+		else delete box.dataset.rvExpectedKey;
+		const declared = fieldKey(box);
+		if (expected && declared && declared !== expected) rebuildMismatchedBox(box);
+	});
 	const used = new Set<string>();
 	boxes.forEach((box, index) => {
-		const key = keyForBox(box, index, orderedKeys, used);
+		const key = keyForBox(box, index, keysFollowHeadings ? headingKeys : orderedKeys, used);
 		if (!key) return;
 		used.add(key);
 		box.dataset.rvVisitKey = key;
