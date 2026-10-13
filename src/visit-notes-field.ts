@@ -83,7 +83,7 @@ function fitArea(area: HTMLTextAreaElement): void {
 	const min = line * NOTES_MIN_LINES;
 	const max = line * NOTES_MAX_LINES;
 	area.style.height = '0px';
-	const content = area.scrollHeight;
+	const content = area.value.length === 0 ? min : area.scrollHeight;
 	const next = Math.min(max, Math.max(min, content || min));
 	area.style.height = `${Math.ceil(next)}px`;
 	area.style.overflowY = content > max + 1 ? 'auto' : 'hidden';

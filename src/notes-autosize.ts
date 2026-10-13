@@ -46,8 +46,9 @@ export function fitNotesBox(area: HTMLTextAreaElement): void {
 	const scroller = area.closest('.markdown-preview-view, .cm-scroller');
 	const scrollTop = scroller?.scrollTop ?? 0;
 	area.setCssStyles({ height: '0px', overflowY: 'hidden' });
+	const empty = area.value.length === 0;
 	const fit = notesBoxHeight({
-		scrollHeight: area.scrollHeight,
+		scrollHeight: empty ? lineHeight + paddingY : area.scrollHeight,
 		lineHeight,
 		paddingY,
 		borderY,

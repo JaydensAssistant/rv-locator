@@ -4589,7 +4589,7 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-stamp-when {
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 600;
 }
 
@@ -4658,7 +4658,7 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 }
 
 .rv-type {
-	color: var(--text-faint);
+	color: var(--text-muted);
 	flex: 0 0 auto;
 }
 
@@ -4841,7 +4841,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	text-overflow: clip;
 	white-space: nowrap;
 	text-align: start;
-	font-size: 14px;
+	font-size: 15px;
 	font-weight: 600;
 	line-height: 18px;
 	text-box-trim: none;
@@ -5510,7 +5510,8 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 .rv-stamp-with {
 	margin-left: 0.35em;
 	color: var(--text-faint);
-	font-size: 0.92em;
+	font-size: 12.9px;
+	font-weight: 400;
 	white-space: nowrap;
 }
 
@@ -6961,7 +6962,7 @@ body.rv-hide-note-status .status-bar {
 textarea.rv-native-notes-area {
 	display: block;
 	width: 100%;
-	border: 0 !important;
+	border: 1px solid var(--background-modifier-border) !important;
 	outline: none !important;
 	box-shadow: none !important;
 	resize: none;
@@ -6970,32 +6971,34 @@ textarea.rv-native-notes-area {
 	padding: 8px 12px;
 	font-size: 13px;
 	line-height: 1.45;
-	border-radius: 12px;
+	min-height: 0;
+	field-sizing: content;
+	border-radius: 6px;
 	corner-shape: squircle;
 }
 
 .theme-light textarea.rv-native-notes-area {
-	background: color-mix(in srgb, var(--background-primary, #fff) 95%, #000);
-	background-color: color-mix(in srgb, var(--background-primary, #fff) 95%, #000);
+	background: color-mix(in srgb, var(--background-primary, #fff) 96%, #000);
+	background-color: color-mix(in srgb, var(--background-primary, #fff) 96%, #000);
+	border-color: color-mix(in srgb, var(--background-modifier-border, #e3e3e3) 85%, #fff) !important;
 }
 
 .theme-light .rv-item-strip:not(.is-ghost) {
-	background: color-mix(in srgb, var(--background-primary, #fff) 90%, #000);
-	background-color: color-mix(in srgb, var(--background-primary, #fff) 90%, #000);
-	border: 0;
-	border-bottom: 0;
+	background: color-mix(in srgb, var(--background-primary, #fff) 92%, #000);
+	background-color: color-mix(in srgb, var(--background-primary, #fff) 92%, #000);
+	border-color: color-mix(in srgb, var(--background-modifier-border, #e3e3e3) 85%, #fff);
 }
 
 .theme-dark textarea.rv-native-notes-area {
-	background: color-mix(in srgb, var(--background-primary, #262626) 82%, #000);
-	background-color: color-mix(in srgb, var(--background-primary, #262626) 82%, #000);
+	background: color-mix(in srgb, var(--background-primary, #1c1c1c) 94%, var(--text-normal, #fff));
+	background-color: color-mix(in srgb, var(--background-primary, #1c1c1c) 94%, var(--text-normal, #fff));
+	border-color: color-mix(in srgb, var(--text-normal, #fff) 14%, transparent) !important;
 }
 
 .theme-dark .rv-item-strip:not(.is-ghost) {
-	background: color-mix(in srgb, var(--background-primary, #262626) 70%, #fff);
-	background-color: color-mix(in srgb, var(--background-primary, #262626) 70%, #fff);
-	border: 0;
-	border-bottom: 0;
+	background: color-mix(in srgb, var(--background-primary, #1c1c1c) 90%, var(--text-normal, #fff));
+	background-color: color-mix(in srgb, var(--background-primary, #1c1c1c) 90%, var(--text-normal, #fff));
+	border-color: color-mix(in srgb, var(--text-normal, #fff) 14%, transparent);
 }
 
 .theme-light .el-h5:has(h5.rv-visit-stamp),
@@ -7236,13 +7239,14 @@ h5.rv-visit-stamp,
 .markdown-rendered h5.rv-visit-stamp,
 .markdown-rendered .el-h5:has(> h5.rv-visit-stamp),
 .markdown-rendered .markdown-preview-section:has(> h5.rv-visit-stamp) {
-	margin-top: 24px;
+	margin-top: 12px;
 	margin-bottom: 0;
 }
 
 .markdown-rendered h5.rv-visit-stamp,
 .rv-lp-stamp .rv-visit-stamp {
-	margin-bottom: 8px;
+	margin-top: 0;
+	margin-bottom: 6px;
 }
 
 .markdown-preview-section:has(.rv-visit-notes-host),
@@ -7310,9 +7314,16 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .rv-item-strip:not(.is-ghost) {
 	justify-content: center;
-	border: 0;
+	box-sizing: border-box;
+	height: 24px;
+	min-height: 24px;
+	max-height: 24px;
+	padding-top: 0;
+	padding-bottom: 0;
+	flex-wrap: nowrap;
+	border: 1px solid var(--background-modifier-border);
 	border-bottom: 0;
-	border-radius: 12px 12px 0 0;
+	border-radius: 6px 6px 0 0;
 	corner-shape: squircle;
 	margin: 0;
 }
@@ -7322,15 +7333,19 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 .cm-line:has(.rv-item-strip:not(.is-ghost)) + .rv-lp-notes textarea.rv-native-notes-area,
 .cm-line:has(.rv-item-strip:not(.is-ghost)) + .cm-line textarea.rv-native-notes-area,
 .rv-note-under-strip textarea.rv-native-notes-area {
-	border-radius: 0 0 12px 12px;
+	border-top: 0 !important;
+	border-radius: 0 0 6px 6px;
 	corner-shape: squircle;
 }
 
 .cm-line.rv-lp-visit-heading {
 	margin-top: 0;
 	margin-bottom: 0;
-	padding-top: 24px;
+	padding-top: 12px;
 	padding-bottom: 0;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	line-height: 0;
 	background: none;
 }
 
@@ -7372,4 +7387,105 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .rv-older-collapsed .rv-older-section.rv-older-first > :not(.rv-older-visits-wrap):not(.rv-older-rule) {
 	display: none !important;
+}
+
+/* The heading row shares the card's box, so a 6px line pad cannot shift it. */
+h5.rv-visit-stamp,
+.el-h5:has(> h5.rv-visit-stamp),
+.markdown-preview-section:has(> h5.rv-visit-stamp),
+.rv-lp-stamp,
+.rv-lp-stamp .rv-visit-stamp {
+	width: 100%;
+	max-width: 100%;
+	margin-left: 0;
+	margin-right: 0;
+	padding-left: 0;
+	padding-right: 0;
+	box-sizing: border-box;
+	text-align: center;
+}
+
+.rv-visit-stamp .rv-stamp-row {
+	display: inline-flex;
+	width: max-content;
+	max-width: 100%;
+	margin-left: auto;
+	margin-right: auto;
+	justify-content: center;
+	position: static;
+	left: auto;
+	transform: none;
+}
+
+.rv-visit-stamp .rv-stamp-row > .rv-visit-more,
+body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
+	margin-left: 0;
+}
+
+.cm-line.rv-lp-visit-heading > br,
+.cm-line.rv-lp-notes-heading > br {
+	display: none;
+}
+
+.cm-line.rv-lp-visit-heading .rv-lp-stamp,
+.cm-line.rv-lp-visit-heading .rv-visit-stamp,
+.cm-line.rv-lp-visit-heading .rv-stamp-row,
+.cm-line.rv-lp-visit-heading .rv-item-strip {
+	line-height: normal;
+}
+
+.rv-lp-notes,
+.rv-lp-notes textarea.rv-native-notes-area {
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+.rv-item-strip:not(.is-ghost),
+.rv-item-strip.is-two-line:not(.is-ghost) {
+	flex-wrap: nowrap;
+	height: 24px;
+	min-height: 24px;
+	max-height: 24px;
+	overflow: hidden;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-strip-break {
+	display: none;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item,
+.rv-item-strip:not(.is-ghost) .rv-fit {
+	flex: 1 1 auto;
+	flex-shrink: 1;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.rv-item-strip:not(.is-ghost) .rv-fit-stem {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.rv-item-strip:not(.is-ghost) .rv-type {
+	flex: 0 0 auto;
+	display: inline;
+	overflow: visible;
+	color: var(--text-muted);
+}
+
+.cm-line.rv-lp-notes-heading {
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	text-align: center;
+}
+
+.cm-line.rv-lp-notes-heading .rv-visit-notes-heading {
+	display: flex;
+	justify-content: center;
+	align-items: center;
+	gap: 4px;
+	width: 100%;
+	margin: 0 auto;
 }

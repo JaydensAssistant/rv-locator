@@ -401,6 +401,37 @@ describe('live preview older visits', () => {
 		}
 	});
 
+	it('centers Recent Notes and gives it the reading chevron', async () => {
+		clearOlderVisitsState();
+		const doc = [
+			'### Recent Notes:',
+			'',
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+		].join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'recent.md'),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const heading = view.dom.querySelector('h3.rv-visit-notes-heading');
+			assert.ok(heading instanceof window.HTMLElement);
+			assert.match(heading.textContent ?? '', /Recent Notes:/);
+			assert.ok(heading.querySelector('.collapse-indicator svg'));
+			assert.equal(view.state.doc.toString(), doc);
+		} finally {
+			view.destroy();
+			parent.remove();
+		}
+	});
+
 	it('keeps closed Older Visits text areas hidden and inert', async () => {
 		const doc = [
 			'##### Wed, 3pm — Sep 3, 2026',
