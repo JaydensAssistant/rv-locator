@@ -413,6 +413,12 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.72\)/);
 		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.48\) !important/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*width:\s*max-content/);
+		assert.match(css, /\.rv-nh-toast \{[^}]*background:\s*var\(--background-secondary\) !important/);
+		assert.match(css, /-webkit-line-clamp:\s*2/);
+		assert.match(css, /\.rv-slot-when \{[^}]*align-items:\s*flex-start/);
+		assert.match(css, /\.rv-when-row \.setting-item-control \{[^}]*flex-wrap:\s*nowrap !important/);
+		assert.match(source('src/note-chrome.ts'), /minmax\(0, 1fr\) 40px/);
+		assert.match(source('src/note-chrome.ts'), /flex', '0 0 40px'/);
 		assert.match(css, /h3\.rv-older-visits,\s*\.rv-older-visits-widget \.rv-older-visits \{[^}]*justify-content:\s*center/);
 		assert.match(css, /\.rv-visit-stamp \.rv-stamp-row > \.rv-visit-more[^}]*right:\s*0/);
 		assert.match(css, /--callout-padding:\s*8px !important/);

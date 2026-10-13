@@ -767,7 +767,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (earth instanceof HTMLElement) line.append(earth);
 	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
 	line.style.setProperty('display', 'grid', 'important');
-	line.style.setProperty('grid-template-columns', 'var(--rv-pair-label) minmax(0, 1fr) 28px', 'important');
+	line.style.setProperty('grid-template-columns', 'var(--rv-pair-label) minmax(0, 1fr) 40px', 'important');
 	line.style.setProperty('grid-template-rows', 'auto', 'important');
 	line.style.setProperty('grid-column', '1 / -1', 'important');
 	line.style.setProperty('column-gap', '4px', 'important');
@@ -782,7 +782,9 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	pinPairLabel(address);
 	field.style.setProperty('grid-column', '2', 'important');
 	field.style.setProperty('grid-row', '1', 'important');
-	field.style.setProperty('display', 'block', 'important');
+	field.style.setProperty('display', 'flex', 'important');
+	field.style.setProperty('align-items', 'center', 'important');
+	field.style.setProperty('height', '40px', 'important');
 	field.style.setProperty('width', 'auto', 'important');
 	field.style.setProperty('min-width', '0', 'important');
 	field.style.setProperty('max-width', 'none', 'important');
@@ -792,20 +794,20 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (earth instanceof HTMLElement) {
 		earth.style.setProperty('grid-column', '3', 'important');
 		earth.style.setProperty('grid-row', '1', 'important');
-		earth.style.setProperty('align-self', 'start', 'important');
+		earth.style.setProperty('align-self', 'center', 'important');
 		earth.style.setProperty('justify-self', 'center', 'important');
 		earth.style.setProperty('position', 'static', 'important');
 		earth.style.setProperty('inset', 'auto', 'important');
 		earth.style.setProperty('transform', 'none', 'important');
 		earth.style.setProperty('margin', '0', 'important');
-		earth.style.setProperty('margin-top', 'calc((1.25em - 28px) / 2)', 'important');
-		earth.style.setProperty('width', '28px', 'important');
-		earth.style.setProperty('height', '28px', 'important');
-		earth.style.setProperty('min-width', '28px', 'important');
-		earth.style.setProperty('max-width', '28px', 'important');
-		earth.style.setProperty('min-height', '28px', 'important');
-		earth.style.setProperty('max-height', '28px', 'important');
-		earth.style.setProperty('flex', '0 0 28px', 'important');
+		earth.style.setProperty('margin-top', '0', 'important');
+		earth.style.setProperty('width', '40px', 'important');
+		earth.style.setProperty('height', '40px', 'important');
+		earth.style.setProperty('min-width', '40px', 'important');
+		earth.style.setProperty('max-width', '40px', 'important');
+		earth.style.setProperty('min-height', '40px', 'important');
+		earth.style.setProperty('max-height', '40px', 'important');
+		earth.style.setProperty('flex', '0 0 40px', 'important');
 		earth.style.setProperty('z-index', '0', 'important');
 	}
 }
