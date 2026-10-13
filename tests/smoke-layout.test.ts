@@ -2063,6 +2063,64 @@ describe('smoke layout', () => {
 		}
 	});
 
+	it('undoes and redoes a Reading visit note after the save replaces the textarea', async () => {
+		clearVisitNoteCaches();
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		const heading = window.document.createElement('h5');
+		heading.className = 'rv-visit-stamp';
+		heading.textContent = 'Thu, 2:10pm — Sep 17, 2026';
+		const box = window.document.createElement('div');
+		box.className = 'rv-visit-note-box';
+		const code = window.document.createElement('code');
+		code.textContent = 'INPUT[textArea:sVisit1Notes]';
+		box.appendChild(code);
+		sizer.append(heading, box);
+		preview.appendChild(sizer);
+		window.document.body.appendChild(preview);
+		const writes: string[] = [];
+		const mount = (): void => {
+			setActiveVisitNote('Pat.md');
+			mountRawVisitNotes(preview, () => 'pat', (key, value) => {
+				writes.push(`${key}:${value}`);
+			}, ['sVisit1Notes'], 'Pat.md');
+		};
+		try {
+			mount();
+			const area = preview.querySelector('textarea.rv-native-notes-area');
+			assert.ok(area instanceof window.HTMLTextAreaElement);
+			area.focus();
+			area.setSelectionRange(3, 3);
+			area.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'insertText', data: 'k' }));
+			area.value = 'patk';
+			area.setSelectionRange(4, 4);
+			area.dispatchEvent(new window.Event('input', { bubbles: true }));
+			assert.equal(area.value, 'patk');
+			area.remove();
+			mount();
+			const replaced = preview.querySelector('textarea.rv-native-notes-area');
+			assert.ok(replaced instanceof window.HTMLTextAreaElement);
+			assert.notEqual(replaced, area);
+			assert.equal(replaced.value, 'patk');
+			replaced.focus();
+			replaced.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'historyUndo' }));
+			assert.equal(replaced.value, 'pat');
+			assert.equal(replaced.selectionStart, 3);
+			await new Promise((resolve) => setTimeout(resolve, 450));
+			assert.equal(writes.at(-1), 'sVisit1Notes:pat');
+			replaced.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, inputType: 'historyRedo' }));
+			assert.equal(replaced.value, 'patk');
+			assert.equal(replaced.selectionStart, 4);
+			await new Promise((resolve) => setTimeout(resolve, 450));
+			assert.equal(writes.at(-1), 'sVisit1Notes:patk');
+		} finally {
+			preview.remove();
+			clearVisitNoteCaches();
+		}
+	});
+
 	it('draws a centered chevron on the companion and literature dropdown', () => {
 		const css = readFileSync('styles.css', 'utf8');
 		const suggest = readFileSync('src/suggest-field.ts', 'utf8');

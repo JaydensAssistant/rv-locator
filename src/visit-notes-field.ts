@@ -19,6 +19,17 @@ interface NoteDraft {
 const draftByKey = new Map<string, NoteDraft>();
 const pendingByPath = new Map<string, number>();
 const pendingTimers = new Set<ReturnType<typeof setTimeout>>();
+
+interface UndoSnap {
+	value: string;
+	start: number;
+	end: number;
+}
+
+const UNDO_LIMIT = 100;
+const undoStacks = new Map<string, UndoSnap[]>();
+const redoStacks = new Map<string, UndoSnap[]>();
+const pendingUndo = new WeakMap<HTMLTextAreaElement, UndoSnap>();
 let session = 0;
 let activeNotePath = '';
 /** The visit key that was focused while the user was actually editing. */
@@ -41,6 +52,8 @@ export function clearVisitNoteCaches(): void {
 	session += 1;
 	draftByKey.clear();
 	pendingByPath.clear();
+	undoStacks.clear();
+	redoStacks.clear();
 	caretFocus = null;
 	for (const timer of pendingTimers) clearTimeout(timer);
 	pendingTimers.clear();
@@ -574,20 +587,33 @@ function wireNative(
 	const keepInBox = (evt: Event): void => {
 		evt.stopPropagation();
 	};
-	for (const type of ['mousedown', 'pointerdown', 'keydown', 'beforeinput', 'compositionstart', 'compositionend', 'paste', 'cut'] as const) {
+	for (const type of ['mousedown', 'pointerdown', 'keydown', 'compositionstart', 'compositionend', 'paste', 'cut'] as const) {
 		area.addEventListener(type, keepInBox);
 	}
+	area.addEventListener('beforeinput', (evt) => {
+		evt.stopPropagation();
+		const inputType = (evt as InputEvent).inputType || '';
+		if (inputType !== 'historyUndo' && inputType !== 'historyRedo') {
+			rememberUndoPoint(area, path, key);
+			return;
+		}
+		if (typeof evt.preventDefault === 'function') evt.preventDefault();
+		restoreVisitHistory(area, path, key, inputType === 'historyUndo' ? 'undo' : 'redo', writeValue);
+	});
 	area.addEventListener('focus', (evt) => {
 		if (!evt.isTrusted && liveDraft(path, key)?.typed !== true) return;
 		holdVisitNote(area, 2500, true);
 	});
 	area.addEventListener('input', (evt) => {
 		evt.stopPropagation();
+		const inputType = (evt as InputEvent).inputType || '';
+		if (inputType === 'historyUndo' || inputType === 'historyRedo') return;
 		const writePath = area.dataset.rvNoteFile || '';
 		const writeKey = area.dataset.rvNoteKey || key;
 		if (writePath !== path) return;
 		if (activeNotePath && writePath !== activeNotePath) return;
 		if (!boxWriteAllowed(area, writeKey)) return;
+		commitUndoPoint(area, writePath, writeKey);
 		const typed = area.value;
 		rememberDraft(area, writePath, writeKey);
 		markOwnNoteWrite(writePath);
@@ -602,6 +628,67 @@ function wireNative(
 	area.value = saved?.value ?? readValue(key);
 	suppressCaret = false;
 	placeRebuiltCaret(area, path, key);
+}
+
+function undoSnap(area: HTMLTextAreaElement): UndoSnap {
+	const start = typeof area.selectionStart === 'number' ? area.selectionStart : 0;
+	const end = typeof area.selectionEnd === 'number' ? area.selectionEnd : start;
+	return { value: area.value, start, end };
+}
+
+/** The text before this keystroke. The stack is the visit key, so a new textarea can still undo. */
+function rememberUndoPoint(area: HTMLTextAreaElement, path: string, key: string): void {
+	if (!boxWriteAllowed(area, key)) return;
+	pendingUndo.set(area, undoSnap(area));
+}
+
+function commitUndoPoint(area: HTMLTextAreaElement, path: string, key: string): void {
+	const pending = pendingUndo.get(area);
+	pendingUndo.delete(area);
+	if (!pending || pending.value === area.value) return;
+	const id = cacheKey(path, key);
+	const stack = undoStacks.get(id) ?? [];
+	stack.push(pending);
+	if (stack.length > UNDO_LIMIT) stack.shift();
+	undoStacks.set(id, stack);
+	redoStacks.set(id, []);
+}
+
+/**
+ * Reading view replaces the textarea on save, which drops the browser undo stack.
+ * Ctrl+Z and Ctrl+Shift+Z apply this visit's own stack and save that text.
+ */
+function restoreVisitHistory(
+	area: HTMLTextAreaElement,
+	path: string,
+	key: string,
+	direction: 'undo' | 'redo',
+	writeValue: (key: string, value: string) => void,
+): void {
+	if (!boxWriteAllowed(area, key)) return;
+	const id = cacheKey(path, key);
+	const from = direction === 'undo' ? undoStacks : redoStacks;
+	const onto = direction === 'undo' ? redoStacks : undoStacks;
+	const stack = from.get(id) ?? [];
+	const entry = stack.pop();
+	if (!entry) return;
+	from.set(id, stack);
+	const other = onto.get(id) ?? [];
+	other.push(undoSnap(area));
+	onto.set(id, other);
+	suppressCaret = true;
+	area.value = entry.value;
+	try {
+		area.setSelectionRange(entry.start, entry.end);
+	} catch {
+		/* The layout document has no selection. */
+	}
+	suppressCaret = false;
+	rememberDraft(area, path, key);
+	markOwnNoteWrite(path);
+	holdVisitNote(area, 2500, true);
+	scheduleNoteWrite(area, path, key, entry.value, writeValue);
+	fitNativeNotes(area);
 }
 
 /**
