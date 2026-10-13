@@ -362,6 +362,45 @@ describe('live preview older visits', () => {
 		}
 	});
 
+	it('rebuilds older heading widgets when the fold opens', async () => {
+		clearOlderVisitsState();
+		const doc = stamps.map((stamp, index) => (
+			index === 3
+				? `##### ${stamp} · «book» «Enjoy Life Forever»\n\`INPUT[textArea:sVisit${index + 1}Notes]\``
+				: `##### ${stamp}\n\`INPUT[textArea:sVisit${index + 1}Notes]\``
+		)).join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 3 }), () => 'older-open.md'),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			assert.equal(view.dom.querySelectorAll('.rv-lp-stamp').length, 3);
+			view.dispatch({ effects: setOlderVisitsOpen.of(true) });
+			const painted = Array.from(view.dom.querySelectorAll('.rv-lp-stamp'));
+			assert.equal(painted.length, 5);
+			for (const stamp of painted) {
+				assert.ok(stamp.querySelector('.rv-cal'), 'calendar tile');
+				assert.ok(stamp.querySelector('.rv-stamp-when'), 'time');
+				assert.ok(stamp.querySelector('.rv-stamp-count'), 'day pill');
+				assert.ok(stamp.querySelector('.rv-visit-more'), 'menu');
+			}
+			assert.match(painted[3]?.textContent ?? '', /Enjoy Life Forever/);
+			assert.equal(view.dom.querySelector('.cm-line.rv-lp-visit-heading .rv-lp-stamp') != null, true);
+			assert.equal(view.state.doc.toString(), doc);
+		} finally {
+			view.destroy();
+			parent.remove();
+			clearOlderVisitsState();
+		}
+	});
+
 	it('keeps closed Older Visits text areas hidden and inert', async () => {
 		const doc = [
 			'##### Wed, 3pm — Sep 3, 2026',

@@ -2,7 +2,7 @@ import { RangeSetBuilder, StateEffect, StateField, type EditorState, type Extens
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view';
 import { coveredCampaignFor, stampDateTime } from './schedule';
 import { paintLiveVisitHeading, publisherForVisit, visitHasStripItems } from './visit-controls';
-import { visitStampLine } from './visit-display';
+import { mountHeadingChevron, visitStampLine } from './visit-display';
 import { attachVisitNoteArea } from './visit-notes-field';
 import { visitNoteValue } from './visit-notes-store';
 import { olderVisitsOpen, setOlderVisitsOpenState } from './visit-older';
@@ -335,6 +335,31 @@ function installElHelpers(doc: Document): void {
 	};
 }
 
+const NOTES_HEADING = /^###\s+((?:Recent|Visit) Notes:)\s*$/i;
+
+/** Recent Notes, centered, with the same chevron Reading view draws. The line stays in the file. */
+class RecentNotesWidget extends WidgetType {
+	constructor(readonly label: string) {
+		super();
+	}
+
+	eq(other: WidgetType): boolean {
+		return other instanceof RecentNotesWidget && other.label === this.label;
+	}
+
+	toDOM(view: EditorView): HTMLElement {
+		installElHelpers(view.dom.ownerDocument);
+		const heading = view.dom.ownerDocument.createElement('h3');
+		heading.className = 'rv-visit-notes-heading is-open';
+		const mark = view.dom.ownerDocument.createElement('span');
+		mark.className = 'collapse-indicator collapse-icon';
+		heading.appendChild(mark);
+		heading.appendChild(view.dom.ownerDocument.createTextNode(this.label));
+		mountHeadingChevron(mark);
+		return heading;
+	}
+}
+
 /** Calendar tile, time, "with X", day pill, and the item strip. Replaces the raw stamp line. */
 class VisitHeadingWidget extends WidgetType {
 	constructor(
@@ -469,6 +494,11 @@ class OlderVisitsWidget extends WidgetType {
 			const path = view.state.field(notePathField, false);
 			const open = path ? !olderVisitsOpen(path) : !view.state.field(olderOpenField, false);
 			view.dispatch({ effects: setOlderVisitsOpen.of(open) });
+			// The heading widgets were built while those lines were display:none.
+			// A second pass, after the open flag is stored, mounts them on screen.
+			queueMicrotask(() => {
+				if (view.dom.isConnected) view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+			});
 		});
 		return wrap;
 	}
@@ -513,10 +543,28 @@ export function buildVisitDecorations(
 	const seenStamps = new Map<number, number>();
 	let lastStrip = false;
 	for (const line of lines) {
+		const notesHeading = NOTES_HEADING.exec(line.text.trim());
+		if (notesHeading) {
+			const end = line.from + line.text.length;
+			pieces.push({
+				from: line.from,
+				to: line.from,
+				kind: 1,
+				deco: Decoration.line({ class: 'rv-lp-notes-heading' }),
+			});
+			pieces.push({
+				from: line.from,
+				to: end,
+				kind: 2,
+				deco: Decoration.replace({ widget: new RecentNotesWidget(notesHeading[1] ?? 'Recent Notes:') }),
+			});
+			continue;
+		}
 		const stamp = visitStampLine(line.text);
 		if (stamp) {
+			const concealed = hidden.has(line.from);
 			const classes = ['rv-lp-visit', 'rv-lp-visit-heading'];
-			if (hidden.has(line.from)) classes.push('rv-older-hidden', 'mb-none');
+			if (concealed) classes.push('rv-older-hidden', 'mb-none');
 			pieces.push({
 				from: line.from,
 				to: line.from,
@@ -530,12 +578,16 @@ export function buildVisitDecorations(
 			const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
 			const raw = line.text.replace(/^(?:###|#####)\s+/, '').trim();
 			lastStrip = visitHasStripItems(raw, covered);
+			// A widget built while the line is display:none stays an empty
+			// contenteditable span after the fold opens. Mount it only once
+			// the line is visible, so the tile, time, pill, and strip are drawn.
+			if (concealed) continue;
 			const end = line.from + line.text.length;
 			pieces.push({
 				from: line.from,
 				to: end,
 				kind: 2,
-				deco: Decoration.replace({ widget: new VisitHeadingWidget(raw, publisher, covered, hidden.has(line.from)) }),
+				deco: Decoration.replace({ widget: new VisitHeadingWidget(raw, publisher, covered, false) }),
 			});
 			continue;
 		}
@@ -578,16 +630,16 @@ export function visitPreviewExtension(
 	pathOf?: (view: EditorView) => string,
 	paint?: (dom: HTMLElement) => void,
 ): Extension {
-	const decorate = (state: EditorState): DecorationSet => {
+	const decorate = (state: EditorState, open?: boolean): DecorationSet => {
 		if (!state.field(livePreviewField)) return Decoration.none;
 		const path = state.field(notePathField);
 		// An empty path is the gap between notes. Building widgets then fills
 		// them from whatever was last cached under ''.
 		if (!path) return Decoration.none;
-		return buildVisitDecorations(state.doc.toString(), read(), olderVisitsOpen(path), path);
+		return buildVisitDecorations(state.doc.toString(), read(), open ?? olderVisitsOpen(path), path);
 	};
 	const decorations = StateField.define<DecorationSet>({
-		create: decorate,
+		create: (state) => decorate(state),
 		update(value, transaction) {
 			const refresh = transaction.effects.some((effect) => (
 				effect.is(refreshVisitPreviewEffect)
@@ -600,7 +652,13 @@ export function visitPreviewExtension(
 				|| composingNow(transaction.state, transaction.startState);
 			if (typing && transaction.docChanged && !refresh) return value.map(transaction.changes);
 			if (!transaction.docChanged && !refresh) return value;
-			return decorate(transaction.state);
+			// Read the fold from this transaction. The module map is written
+			// by another field, and that write can land after this rebuild.
+			let open: boolean | undefined;
+			for (const effect of transaction.effects) {
+				if (effect.is(setOlderVisitsOpen)) open = effect.value;
+			}
+			return decorate(transaction.state, open);
 		},
 		provide: (field) => EditorView.decorations.from(field),
 	});
