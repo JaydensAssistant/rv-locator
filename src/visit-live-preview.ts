@@ -257,41 +257,25 @@ function unlockNoteArea(area: HTMLTextAreaElement): void {
 }
 
 /**
- * A Meta Bind textArea on a closed Older Visits line is a block widget beside
- * the hidden line, so the line's display:none does not cover it. Mark that
- * widget and disable its fields.
+ * Blank document line directly under a visit note or the Recent Notes heading.
+ * The class is a line decoration. Writing it onto `.cm-line` makes CodeMirror
+ * drop it and schedule another update.
  */
-/**
- * The blank line under a visit note is its own editor line. That line, not the
- * heading margin, was the extra space before the next stamp.
- */
-export function collapseVisitGapLines(root: ParentNode): void {
-	root.querySelectorAll('.cm-line').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
-		const text = (node.textContent ?? '').replace(/\u200b/g, '').trim();
-		const empty = text.length === 0
-			&& node.querySelector('.rv-lp-stamp, .rv-lp-notes, .rv-visit-notes-heading, textarea, .cm-widget') == null;
-		const previous = node.previousElementSibling;
-		const afterNote = previous instanceof HTMLElement && (
-			previous.classList.contains('rv-lp-notes')
-			|| previous.classList.contains('rv-lp-notes-heading')
-			|| previous.querySelector('.rv-lp-notes, textarea.rv-native-notes-area, .rv-visit-notes-heading') != null
-		);
-		node.classList.toggle('rv-lp-gap', empty && afterNote);
-	});
+export function isVisitGapLine(lines: readonly DocLine[], index: number): boolean {
+	const line = lines[index];
+	if (!line || line.text.replace(/\u200b/g, '').trim() !== '') return false;
+	const previous = lines[index - 1];
+	if (!previous) return false;
+	const text = previous.text.trim();
+	if (NOTES_HEADING.test(text)) return true;
+	return INPUT_LINE.test(text);
 }
 
+/**
+ * Disable a Meta Bind field that mounted beside a hidden Older Visits line.
+ * Line classes come from decorations. This does not touch `.cm-line`.
+ */
 export function lockHiddenMetaBindFields(root: ParentNode): void {
-	root.querySelectorAll('.rv-lp-notes.rv-older-hidden, .rv-lp-stamp.rv-older-hidden').forEach((node) => {
-		const line = node.closest('.cm-line');
-		if (line instanceof HTMLElement) {
-			line.classList.add('rv-older-hidden', 'mb-none');
-			return;
-		}
-		let prev: Element | null = node.previousElementSibling;
-		while (prev && !prev.classList.contains('cm-line')) prev = prev.previousElementSibling;
-		prev?.classList.add('rv-older-hidden', 'mb-none');
-	});
 	const lines = root.querySelectorAll('.cm-line.rv-older-hidden');
 	for (const line of Array.from(lines)) {
 		if (!(line instanceof HTMLElement)) continue;
@@ -302,7 +286,7 @@ export function lockHiddenMetaBindFields(root: ParentNode): void {
 		while (sib && !sib.classList.contains('cm-line')) {
 			const owned = sib.classList.contains('rv-lp-notes') || sib.querySelector('.rv-native-notes-area') != null;
 			if (!owned) {
-				sib.classList.add('rv-older-hidden', 'rv-mb-locked');
+				if (!sib.classList.contains('rv-mb-locked')) sib.classList.add('rv-older-hidden', 'rv-mb-locked');
 				lockForeignField(sib);
 				sib.querySelectorAll('textarea, input, .mb-input').forEach((node) => lockForeignField(node));
 			}
@@ -313,14 +297,14 @@ export function lockHiddenMetaBindFields(root: ParentNode): void {
 
 function lockForeignField(node: Element): void {
 	if (!(node instanceof HTMLElement)) return;
-	node.classList.add('rv-mb-locked');
-	node.setAttribute('aria-hidden', 'true');
-	node.setAttribute('inert', '');
+	if (!node.classList.contains('rv-mb-locked')) node.classList.add('rv-mb-locked');
+	if (node.getAttribute('aria-hidden') !== 'true') node.setAttribute('aria-hidden', 'true');
+	if (!node.hasAttribute('inert')) node.setAttribute('inert', '');
 	if (node.tagName === 'TEXTAREA' || node.tagName === 'INPUT') {
 		const field = node as HTMLTextAreaElement;
-		field.disabled = true;
-		field.readOnly = true;
-		field.tabIndex = -1;
+		if (!field.disabled) field.disabled = true;
+		if (!field.readOnly) field.readOnly = true;
+		if (field.tabIndex !== -1) field.tabIndex = -1;
 	}
 }
 
@@ -564,7 +548,20 @@ export function buildVisitDecorations(
 	const lines = docLines(doc);
 	const seenStamps = new Map<number, number>();
 	let lastStrip = false;
-	for (const line of lines) {
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (!line) continue;
+		const foldClasses: string[] = [];
+		if (hidden.has(line.from) && visitStampLine(line.text) == null) foldClasses.push('rv-older-hidden', 'mb-none');
+		if (isVisitGapLine(lines, index)) foldClasses.push('rv-lp-gap');
+		if (foldClasses.length > 0) {
+			pieces.push({
+				from: line.from,
+				to: line.from,
+				kind: 1,
+				deco: Decoration.line({ class: foldClasses.join(' ') }),
+			});
+		}
 		const notesHeading = NOTES_HEADING.exec(line.text.trim());
 		if (notesHeading) {
 			const end = line.from + line.text.length;
@@ -594,9 +591,9 @@ export function buildVisitDecorations(
 				deco: Decoration.line({ class: classes.join(' ') }),
 			});
 			const when = stampDateTime(stamp);
-			const publisher = when ? publisherForVisit(doc, when) : '';
 			const newestIndex = when ? (seenStamps.get(when.getTime()) ?? 0) : 0;
 			if (when) seenStamps.set(when.getTime(), newestIndex + 1);
+			const publisher = when ? publisherForVisit(doc, when, newestIndex) : '';
 			const covered = when ? coveredCampaignFor(doc, when, newestIndex) : '';
 			const raw = line.text.replace(/^(?:###|#####)\s+/, '').trim();
 			// A stamp always paints a strip, including the muted ghost on an empty visit.
@@ -631,14 +628,13 @@ export function buildVisitDecorations(
 		});
 	}
 	if (pieces.length === 0) return Decoration.none;
-	pieces.sort((a, b) => a.from - b.from || a.to - b.to || a.kind - b.kind);
+	// Block replaces start further left than line classes. Same-from ranges
+	// have to be added in startSide order, or the builder rejects the set.
+	pieces.sort((a, b) => a.from - b.from || a.deco.startSide - b.deco.startSide || a.to - b.to || a.kind - b.kind);
 	const builder = new RangeSetBuilder<Decoration>();
-	let cursor = -1;
 	for (const piece of pieces) {
-		if (piece.from < cursor) continue;
 		if (piece.to < piece.from) continue;
 		builder.add(piece.from, piece.to, piece.deco);
-		cursor = piece.to;
 	}
 	return builder.finish();
 }
@@ -713,7 +709,6 @@ export function visitPreviewExtension(
 				syncLivePreview(view);
 				syncNotePath(view);
 				lockHiddenMetaBindFields(view.dom);
-				collapseVisitGapLines(view.dom);
 				paint?.(view.dom);
 			});
 			const parent = view.dom.parentElement;
@@ -740,9 +735,9 @@ export function visitPreviewExtension(
 			queueMicrotask(() => {
 				if (!view.dom.isConnected) return;
 				syncNotePath(view);
+				if (!changed) return;
 				lockHiddenMetaBindFields(view.dom);
-				collapseVisitGapLines(view.dom);
-				if (changed) paint?.(view.dom);
+				paint?.(view.dom);
 			});
 		}
 

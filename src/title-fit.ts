@@ -172,7 +172,8 @@ function applyStripSplit(row: HTMLElement, splitAt: number): void {
 	else row.appendChild(breaker);
 }
 
-export function watchTitleRow(row: HTMLElement, refit?: () => void): void {
+export function watchTitleRow(row: HTMLElement, refit?: () => void, observed?: HTMLElement | null): void {
+	const target = observed instanceof HTMLElement ? observed : row;
 	const run = (): void => {
 		if (refit) refit();
 		else fitTitleRow(row);
@@ -183,9 +184,15 @@ export function watchTitleRow(row: HTMLElement, refit?: () => void): void {
 	}
 	if (row.dataset.rvFit === '1' || typeof ResizeObserver === 'undefined') return;
 	row.dataset.rvFit = '1';
+	let width = target.clientWidth;
 	try {
-		const observer = new ResizeObserver(() => run());
-		observer.observe(row);
+		const observer = new ResizeObserver(() => {
+			const next = target.clientWidth;
+			if (next === width) return;
+			width = next;
+			run();
+		});
+		observer.observe(target);
 	} catch {
 		/* Not a browser node. */
 	}

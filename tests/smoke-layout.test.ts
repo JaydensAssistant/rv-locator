@@ -1193,6 +1193,38 @@ describe('smoke layout', () => {
 		pop?.remove();
 	});
 
+	it('refits a strip from its parent and drops a pinned width before measuring', () => {
+		const observed: Element[] = [];
+		const previous = globalThis.ResizeObserver;
+		class RecordingObserver {
+			observe(target: Element): void {
+				observed.push(target);
+			}
+			disconnect(): void {}
+			unobserve(): void {}
+		}
+		const host = globalThis as typeof globalThis & { ResizeObserver: typeof RecordingObserver };
+		host.ResizeObserver = RecordingObserver;
+		window.ResizeObserver = RecordingObserver as unknown as typeof ResizeObserver;
+		try {
+			const root = visitRoot(LONG, 'Talked.', 'Log');
+			decorateVisitControls(root, () => null, () => {});
+			const strip = root.querySelector('.rv-item-strip');
+			assert.ok(strip instanceof window.HTMLElement);
+			assert.ok(strip.parentElement);
+			assert.equal(observed.includes(strip.parentElement), true);
+			assert.equal(observed.includes(strip), false);
+			strip.style.setProperty('width', '80px', 'important');
+			strip.style.setProperty('max-width', '80px', 'important');
+			refitItemStrip(strip);
+			assert.equal(strip.style.getPropertyValue('width'), '');
+			assert.equal(strip.style.getPropertyValue('max-width'), '');
+		} finally {
+			if (previous) host.ResizeObserver = previous;
+			else delete (host as { ResizeObserver?: typeof RecordingObserver }).ResizeObserver;
+		}
+	});
+
 	it('keeps every strip icon when the titles do not fit', () => {
 		const root = visitRoot(LONG, 'Talked.', 'Log');
 		decorateVisitControls(root, () => null, () => {});

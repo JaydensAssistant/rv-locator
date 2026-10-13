@@ -18,6 +18,7 @@ import {
 	sectionEnd,
 	unfoldDashboard,
 	visitNotesField,
+	assignLaterStamp,
 	visitPhrase,
 } from './visit-log';
 
@@ -320,7 +321,7 @@ function applyLessonChange(frontmatter: Record<string, unknown>, change: VisitCh
 	if (addedTitles.length === 0 && removedTitles.length === 0) return;
 	shiftCount(frontmatter, 'Studies', addedTitles.length - removedTitles.length);
 	if (added && addedTitles.length > 0) {
-		assignProperty(frontmatter, 'Last Studied', formatFrontmatterDateTime(added.when));
+		assignLaterStamp(frontmatter, 'Last Studied', formatFrontmatterDateTime(added.when));
 	}
 	const kept = new Set(
 		[...change.remaining, ...(added ? [added] : [])]

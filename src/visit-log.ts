@@ -44,6 +44,30 @@ export function formatFrontmatterDateTime(date: Date): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function localStampMillis(value: unknown): number | null {
+	const text = value instanceof Date ? formatFrontmatterDateTime(value) : typeof value === 'string' ? value.trim() : '';
+	const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?)?/.exec(text);
+	if (!match) return null;
+	const date = new Date(
+		Number(match[1]),
+		Number(match[2]) - 1,
+		Number(match[3]),
+		Number(match[4] ?? 0),
+		Number(match[5] ?? 0),
+		Number(match[6] ?? 0),
+	);
+	return Number.isNaN(date.getTime()) ? null : date.getTime();
+}
+
+/** A last-* datetime only moves forward. An earlier stamp leaves the stored value. */
+export function assignLaterStamp(frontmatter: Record<string, unknown>, name: string, stamp: string): void {
+	const next = localStampMillis(stamp);
+	if (next == null) return;
+	const current = localStampMillis(readProperty(frontmatter, name));
+	if (current != null && current >= next) return;
+	assignProperty(frontmatter, name, stamp);
+}
+
 /** Glancable drive date: weekday, hour rounded to the nearest hour, then the calendar date. */
 export function formatVisitStamp(date: Date): string {
 	return formatExactVisitStamp(date);
@@ -51,8 +75,8 @@ export function formatVisitStamp(date: Date): string {
 
 /**
  * Frontmatter for one logged visit. Address is never assigned.
- * Home bumps Visits and Successful Visits and sets Last Spoke and Last Attempted.
- * A miss bumps Visits and sets Last Attempted only.
+ * Home bumps Visits and Successful Visits and moves Last Spoke and Last Attempted forward.
+ * A miss bumps Visits and moves Last Attempted forward. An earlier stamp does not replace a later one.
  * A non-empty home companion is appended to Taken. Met With is left unchanged.
  * A blank companion, and every miss, leaves Met With and Taken alone.
  */
@@ -67,10 +91,10 @@ export function applyVisitFrontmatter(
 	const hadAddress = Object.keys(frontmatter).some((key) => key.toLowerCase() === ADDRESS_KEY.toLowerCase());
 	bumpCount(frontmatter, 'Visits');
 	const stamp = formatFrontmatterDateTime(now);
-	assignProperty(frontmatter, 'Last Attempted', stamp);
+	assignLaterStamp(frontmatter, 'Last Attempted', stamp);
 	if (outcome === 'home') {
 		bumpCount(frontmatter, 'Successful Visits');
-		assignProperty(frontmatter, 'Last Spoke', stamp);
+		assignLaterStamp(frontmatter, 'Last Spoke', stamp);
 		const stored = typeof companion === 'string' ? companion.trim() : '';
 		if (stored) {
 			assignProperty(frontmatter, 'Taken', appendCompanionTaken(readProperty(frontmatter, 'Taken'), stored));
@@ -447,7 +471,7 @@ export function recordLoggedLessons(frontmatter: Record<string, unknown>, share:
 	if (titles.length === 0) return;
 	const current = finiteCount(readProperty(frontmatter, 'Studies')) ?? 0;
 	assignProperty(frontmatter, 'Studies', current + titles.length);
-	assignProperty(frontmatter, 'Last Studied', stamp);
+	assignLaterStamp(frontmatter, 'Last Studied', stamp);
 	const list = lessonNames(readProperty(frontmatter, 'Lessons Studied'));
 	for (const title of titles) {
 		if (!list.some((item) => item.toLowerCase() === title.toLowerCase())) list.push(title);

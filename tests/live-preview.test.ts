@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { decorateVisitControls } from '../src/visit-controls';
+import { decorateVisitControls, publisherForVisit } from '../src/visit-controls';
 import { layoutVisitNotes } from '../src/visit-display';
 import { clearOlderVisitsState, markPreviewOlderVisits, visitLineSpans } from '../src/visit-older';
 import {
-	collapseVisitGapLines,
+	isVisitGapLine,
 	lockHiddenMetaBindFields,
 	planLivePreviewVisits,
 	refreshVisitPreviewEffect,
@@ -551,19 +552,75 @@ describe('live preview older visits', () => {
 		assert.equal(ghost.previousElementSibling, heading);
 	});
 
-	it('collapses only the blank editor line under a visit note', () => {
+	it('marks the blank line under a visit note with a line decoration', async () => {
+		const doc = [
+			'##### Sun, 9:05am — Oct 11, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'A real paragraph.',
+		].join('\n');
+		const lines = doc.split('\n').map((text) => ({ text, from: 0 }));
+		assert.equal(isVisitGapLine(lines, 2), true);
+		assert.equal(isVisitGapLine(lines, 0), false);
+		assert.equal(isVisitGapLine(lines, 3), false);
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: false, limit: 3 }), () => 'gap.md'),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			view.dispatch({ effects: refreshVisitPreviewEffect.of(null) });
+			const gaps = view.dom.querySelectorAll('.cm-line.rv-lp-gap');
+			assert.equal(gaps.length, 1);
+			assert.equal(view.dom.querySelector('.cm-line.rv-lp-visit-heading')?.classList.contains('rv-lp-gap'), false);
+			const preview = readFileSync('src/visit-live-preview.ts', 'utf8');
+			const updateAt = preview.indexOf('update(update: ViewUpdate)');
+			const updateBody = preview.slice(updateAt, preview.indexOf('destroy():', updateAt));
+			assert.doesNotMatch(updateBody, /collapseVisitGapLines|classList\.(add|toggle)\(/);
+			assert.doesNotMatch(preview, /classList\.toggle\('rv-lp-gap'/);
+			assert.doesNotMatch(preview, /classList\.add\('rv-older-hidden', 'mb-none'\)/);
+		} finally {
+			view.destroy();
+			parent.remove();
+		}
+	});
+
+	it('does not borrow a companion from another visit the same day', () => {
+		const ten = new Date(2026, 9, 13, 10, 0, 0);
+		const later = new Date(2026, 9, 13, 16, 40, 0);
+		const close = new Date(2026, 9, 13, 10, 30, 0);
+		const markdown = [
+			'> - Mon, 10:00am — Oct 13, 2026 — success',
+			'> - Mon, 10:30am — Oct 13, 2026 — success with Sam',
+			'> - Mon, 4:40pm — Oct 13, 2026 — success with Sam',
+		].join('\n');
+		assert.equal(publisherForVisit(markdown, ten), '');
+		assert.equal(publisherForVisit(markdown, close), 'Sam');
+		assert.equal(publisherForVisit(markdown, later), 'Sam');
 		const root = window.document.createElement('div');
+		root.className = 'markdown-preview-view';
 		root.innerHTML = [
-			'<div class="cm-line rv-lp-visit-heading"><div class="rv-lp-stamp">Sun</div></div>',
-			'<div class="rv-lp-notes"><textarea class="rv-native-notes-area"></textarea></div>',
-			'<div class="cm-line"><br></div>',
-			'<div class="cm-line">A real paragraph.</div>',
+			'<h5>Mon, 10:00am — Oct 13, 2026</h5>',
+			'<h5>Mon, 4:40pm — Oct 13, 2026</h5>',
+			'<div class="callout" data-callout="note">',
+			'<div class="callout-title"><div class="callout-title-inner">Log</div></div>',
+			'<div class="callout-content"><ul>',
+			'<li>Mon, 10:00am — Oct 13, 2026 — success</li>',
+			'<li>Mon, 4:40pm — Oct 13, 2026 — success with Sam</li>',
+			'</ul></div></div>',
 		].join('');
-		collapseVisitGapLines(root);
-		const lines = root.querySelectorAll('.cm-line');
-		assert.equal(lines[1]?.classList.contains('rv-lp-gap'), true);
-		assert.equal(lines[0]?.classList.contains('rv-lp-gap'), false);
-		assert.equal(lines[2]?.classList.contains('rv-lp-gap'), false);
+		decorateVisitControls(root, () => null, () => {});
+		const withs = Array.from(root.querySelectorAll('.rv-stamp-with')).map((node) => node.textContent);
+		assert.deepEqual(withs, ['with Sam']);
+		const headings = Array.from(root.querySelectorAll('h5'));
+		assert.equal(headings[0]?.querySelector('.rv-stamp-with'), null);
+		assert.equal(headings[1]?.querySelector('.rv-stamp-with')?.textContent, 'with Sam');
 	});
 
 	it('keeps closed Older Visits text areas hidden and inert', async () => {

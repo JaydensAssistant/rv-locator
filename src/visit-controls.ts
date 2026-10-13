@@ -256,15 +256,30 @@ function headingSource(heading: HTMLElement): string {
 	return textWithout(heading, `.rv-stamp-ago, .rv-visit-extra, .${MORE_CLASS}, .heading-collapse-indicator, .rv-stamp-row, .collapse-indicator, .rv-stamp-source`);
 }
 
-/** Companion on a home visit, from the note markdown. Live Preview reads this before the card is mounted. */
-export function publisherForVisit(markdown: string, when: Date): string {
-	let found = '';
-	for (const line of markdown.split(/\r?\n/)) {
-		const next = companionFromBullet(line, when, found);
-		found = next.found;
-		if (next.done) return found;
+/**
+ * Companion on the home bullet with this exact time. A different visit the
+ * same day, even within an hour, does not count. `newestIndex` 0 is the last
+ * matching bullet, matching the newest heading in the file.
+ */
+export function publisherForVisit(markdown: string, when: Date, newestIndex = 0): string {
+	return companionAtIndex(companionsAt(markdown.split(/\r?\n/), when), newestIndex);
+}
+
+function companionsAt(lines: readonly string[], when: Date): string[] {
+	const target = when.getTime();
+	const names: string[] = [];
+	for (const line of lines) {
+		const bullet = parseLogBullet(line);
+		if (!bullet || !bullet.home || bullet.when.getTime() !== target) continue;
+		names.push(bullet.companion.trim());
 	}
-	return found;
+	return names;
+}
+
+function companionAtIndex(names: readonly string[], newestIndex: number): string {
+	const index = names.length - 1 - Math.max(0, Math.floor(newestIndex));
+	if (index < 0 || index >= names.length) return '';
+	return names[index] ?? '';
 }
 
 /** Reading view has the log on screen. A mounted Live Preview card can see the editor lines. */
@@ -275,38 +290,30 @@ function companionSearchRoot(heading: HTMLElement): HTMLElement {
 	return heading.ownerDocument.body;
 }
 
-function companionFromBullet(text: string, when: Date, found: string): { found: string; done: boolean } {
-	const bullet = parseLogBullet(text);
-	if (!bullet?.companion || !sameLocalDay(bullet.when, when)) return { found, done: false };
-	const name = bullet.companion.trim();
-	if (Math.abs(bullet.when.getTime() - when.getTime()) < 90 * 60 * 1000) return { found: name, done: true };
-	return { found: name, done: false };
-}
-
-/** Companion from the same day's attempt-log line, when someone came along. */
+/** Companion from this visit's attempt-log line. Another visit's name is not used. */
 function companionNear(heading: HTMLElement, when: Date): string {
-	const stored = heading.dataset.rvCompanion?.trim();
-	if (stored) return stored;
+	if (heading.dataset.rvCompanion != null) return heading.dataset.rvCompanion.trim();
 	const root = companionSearchRoot(heading);
 	if (!(root instanceof HTMLElement) || typeof root.querySelectorAll !== 'function') return '';
-	let found = '';
+	const lines: string[] = [];
 	for (const callout of attemptLogCallouts(root)) {
 		for (const item of Array.from(callout.querySelectorAll('li'))) {
 			if (!(item instanceof HTMLElement)) continue;
-			const next = companionFromBullet(`- ${item.textContent ?? ''}`, when, found);
-			found = next.found;
-			if (next.done) return found;
+			lines.push(`- ${item.textContent ?? ''}`);
 		}
 	}
 	for (const line of Array.from(root.querySelectorAll('.cm-line'))) {
 		if (!(line instanceof HTMLElement) || line.closest('.rv-lp-visit')) continue;
 		const text = (line.textContent ?? '').replace(/\s+/g, ' ').trim();
-		if (!text) continue;
-		const next = companionFromBullet(text, when, found);
-		found = next.found;
-		if (next.done) return found;
+		if (text) lines.push(text);
 	}
-	return found;
+	let newest = 0;
+	for (const other of stampHeadings(root)) {
+		if (other === heading) break;
+		const stamp = stampDateTime(headingSource(other));
+		if (stamp && stamp.getTime() === when.getTime()) newest += 1;
+	}
+	return companionAtIndex(companionsAt(lines, when), newest);
 }
 
 /** Heading row and item strip. The markdown line is only restructured on screen. */
@@ -391,7 +398,8 @@ export function paintLiveVisitHeading(
 	heading.classList.add('rv-visit-stamp');
 	const stored = heading.querySelector(':scope > .rv-stamp-source')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 	if (stored !== source.replace(/\s+/g, ' ').trim()) heading.textContent = source;
-	if (publisher && heading.dataset.rvCompanion !== publisher) heading.dataset.rvCompanion = publisher;
+	if (publisher) heading.dataset.rvCompanion = publisher;
+	else delete heading.dataset.rvCompanion;
 	const when = stampDateTime(source);
 	if (!when) return;
 	if (onMenu) moreButton(heading, 'Visit options', onMenu);
@@ -463,7 +471,7 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	}
 	fillStripChildren(strip, items);
 	strip.dataset.rvItems = signature;
-	if (items.length > 0) watchTitleRow(strip, () => refitItemStrip(strip));
+	if (items.length > 0) watchTitleRow(strip, () => refitItemStrip(strip), strip.parentElement);
 }
 
 /** Fill a strip we created. The heading and the notes stay where Obsidian put them. */
@@ -500,8 +508,14 @@ function paintStripChip(strip: HTMLElement, item: { icon: string; title: string;
 	mountFittedTitle(chip, item.title, item.kind);
 }
 
+function releaseStripWidth(strip: HTMLElement): void {
+	strip.style.removeProperty('max-width');
+	strip.style.removeProperty('width');
+}
+
 /** Restore full chip titles, then fold the ones that do not fit into a +n chip. Campaign stays. */
 export function refitItemStrip(strip: HTMLElement): void {
+	releaseStripWidth(strip);
 	for (const stem of Array.from(strip.querySelectorAll('.rv-fit-stem'))) {
 		const host = stem.closest('.rv-fit');
 		const full = host instanceof HTMLElement ? host.getAttribute('data-stem') ?? '' : '';
@@ -549,6 +563,7 @@ function setChipIconOnly(chip: HTMLElement, iconOnly: boolean): void {
 }
 
 function collapseStripOverflow(strip: HTMLElement): void {
+	releaseStripWidth(strip);
 	const parked = strip.querySelector(':scope > .rv-item-overflow');
 	if (parked) parked.remove();
 	strip.querySelector(':scope > .rv-item-more')?.remove();

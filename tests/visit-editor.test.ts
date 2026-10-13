@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseLogBullet } from '../src/schedule';
 import { notesBoxHeight } from '../src/notes-autosize';
-import { applyVisitBody, ensureVisitButtons, iconizeVisitButtons } from '../src/visit-log';
+import { applyVisitBody, applyVisitFrontmatter, ensureVisitButtons, iconizeVisitButtons } from '../src/visit-log';
 import {
 	applyVisitChangeFrontmatter,
 	editVisit,
@@ -316,6 +316,30 @@ describe('visit change frontmatter', () => {
 		assert.equal(frontmatter.sVisit2Notes, 'Went well');
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Last Spoke'], '2026-09-26T10:12:00');
+	});
+
+	it('does not move last- fields backward when a past visit is earlier', () => {
+		const frontmatter: Record<string, unknown> = {
+			'Last Attempted': '2026-10-13T16:40:00',
+			'Last Spoke': '2026-10-13T16:40:00',
+			'Last Studied': '2026-10-13T16:40:00',
+			Studies: 1,
+			'Lessons Studied': ['Love'],
+		};
+		applyVisitFrontmatter(frontmatter, 'home', new Date(2026, 9, 13, 10), '');
+		assert.equal(frontmatter['Last Attempted'], '2026-10-13T16:40:00');
+		assert.equal(frontmatter['Last Spoke'], '2026-10-13T16:40:00');
+		applyVisitChangeFrontmatter(frontmatter, {
+			added: { when: new Date(2026, 9, 13, 10), home: true, companion: '', lesson: 'Faith' },
+			remaining: [],
+		});
+		assert.equal(frontmatter['Last Studied'], '2026-10-13T16:40:00');
+		const later: Record<string, unknown> = { 'Last Studied': '2026-10-13T10:00:00', Studies: 1 };
+		applyVisitChangeFrontmatter(later, {
+			added: { when: new Date(2026, 9, 13, 16, 40), home: true, companion: '', lesson: 'Faith' },
+			remaining: [],
+		});
+		assert.equal(later['Last Studied'], '2026-10-13T16:40:00');
 	});
 
 	it('reads stored local date-times', () => {
