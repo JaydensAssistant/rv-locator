@@ -189,8 +189,6 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 		'.rv-item-icon',
 		'.rv-label-icon',
 		'.rv-stamp-kind',
-		'.rv-dash-campaign',
-		'.rv-locator-campaign-mark',
 	].join(', ');
 	start.querySelectorAll(colorOf).forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
@@ -338,6 +336,7 @@ function paintFactsTitle(
 			text: String(Math.max(0, Math.min(5, Math.round(priority)))),
 			attr: { type: 'button', 'aria-label': `Priority ${priority}` },
 		});
+		pinBadgeStroke(pill);
 		pill.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -665,7 +664,7 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 			if (row.parentElement !== line) line.appendChild(row);
 		}
 		row.empty();
-		paintLabelIcon(hubLabel, 'layout-grid', 'Hub:');
+		hubLabel.textContent = 'Hub:';
 		pinPairLabel(hubLabel);
 		if (!(line instanceof HTMLElement)) continue;
 		line.style.setProperty('display', 'grid', 'important');
@@ -713,7 +712,7 @@ function ensureAddressInput(paragraph: HTMLElement): HTMLInputElement {
 function decorateAddress(paragraph: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
 	const address = labeledStrong(paragraph, 'address');
 	if (!address) return;
-	paintLabelIcon(address, 'earth', 'Address:');
+	address.textContent = 'Address:';
 	const property = host.settings.addressProperty.trim() || 'Address';
 	const input = ensureAddressInput(paragraph);
 	for (const child of Array.from(paragraph.childNodes)) {
@@ -880,22 +879,15 @@ function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 function pinPairLabel(label: HTMLElement): void {
 	label.style.setProperty('display', 'inline-flex', 'important');
 	label.style.setProperty('align-items', 'center', 'important');
-	label.style.setProperty('gap', '2px', 'important');
+	label.style.setProperty('gap', '0', 'important');
 	label.style.setProperty('width', 'var(--rv-pair-label)', 'important');
 	label.style.setProperty('min-width', 'var(--rv-pair-label)', 'important');
 	label.style.setProperty('max-width', 'var(--rv-pair-label)', 'important');
 	label.style.setProperty('margin', '0', 'important');
 	label.style.setProperty('white-space', 'nowrap', 'important');
-	label.style.setProperty('font-size', '10px', 'important');
+	label.style.setProperty('font-size', '14px', 'important');
 	label.style.setProperty('line-height', '1.15', 'important');
 	label.style.setProperty('overflow', 'hidden', 'important');
-}
-
-function paintLabelIcon(label: HTMLElement, icon: string, text: string): void {
-	label.empty();
-	const mark = label.createSpan('rv-label-icon');
-	setIcon(mark, icon);
-	label.createSpan({ cls: 'rv-label-text', text });
 }
 
 function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: string, host: NoteChromeHost): void {

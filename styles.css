@@ -6609,7 +6609,7 @@ button.rv-study-toggle {
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
 	--callout-padding: 8px !important;
 	--rv-dash-pad: 0px;
-	--rv-pair-label: 56px;
+	--rv-pair-label: 72px;
 	padding: 8px !important;
 }
 
@@ -7603,22 +7603,7 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	display: none !important;
 }
 
-/* 2026-10-13 dogfood. Later than the blocks above so these used values win. */
-button.rv-locator-map-pin > svg,
-:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg {
-	width: calc(var(--rv-control-size, 28px) * 0.48) !important;
-	height: calc(var(--rv-control-size, 28px) * 0.48) !important;
-}
-
-.rv-map-card .rv-locator-map-pin svg {
-	width: calc(38px * 0.48) !important;
-	height: calc(38px * 0.48) !important;
-}
-
-:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
-	font-size: calc(var(--rv-control-size, 28px) * 0.72);
-	line-height: 1;
-}
+/* 2026-10-13 dogfood. Badge ink size lives in the shared rule at the end of this file. */
 
 .rv-nh-toast {
 	left: 12px;
@@ -7811,4 +7796,112 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	height: 100% !important;
 	min-height: 0 !important;
 	max-height: 100% !important;
+}
+
+/*
+  One badge glyph. Ink, not the font box or the SVG viewBox padding, is
+  --rv-badge-ink of the circle. Line icons share --rv-badge-stroke.
+  Digits use a medium weight sized from the cap height.
+*/
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card, .rv-locator-attempt-log) {
+	--rv-badge-ink: 0.53;
+	--rv-line-ink: 0.8333;
+	--rv-digit-ink: 0.72;
+	--rv-badge-stroke: 2px;
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-priority-pill, .rv-locator-map-pin) {
+	border-width: 2px;
+	border-style: solid;
+	border-color: var(--rv-urgency-accent, var(--text-faint));
+	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 22%, transparent);
+	color: var(--rv-urgency-ink, var(--rv-urgency-accent, var(--text-faint)));
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency .rv-urgency-glyph,
+.rv-map-card .rv-locator-urgency .rv-urgency-glyph {
+	width: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink)) !important;
+	height: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink)) !important;
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg,
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-urgency > svg:not(.rv-urgency-glyph),
+button.rv-locator-urgency > svg:not(.rv-urgency-glyph),
+button.rv-locator-map-pin > svg:not(.rv-urgency-glyph) {
+	width: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-line-ink)) !important;
+	height: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-line-ink)) !important;
+	stroke-width: var(--rv-badge-stroke) !important;
+}
+
+:is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-priority-pill {
+	font-size: calc(var(--rv-control-size, 28px) * var(--rv-badge-ink) / var(--rv-digit-ink)) !important;
+	font-weight: 500 !important;
+	line-height: 1 !important;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) {
+	flex-direction: row !important;
+	flex-wrap: nowrap !important;
+	align-items: center !important;
+	height: 40px;
+	gap: 4px;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) > .rv-locator-sort-scroll {
+	display: flex !important;
+	flex: 1 1 auto !important;
+	width: auto !important;
+	min-width: 0 !important;
+	height: 40px !important;
+	overflow-x: auto !important;
+	overflow-y: hidden !important;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) .rv-locator-sort-pills {
+	flex-wrap: nowrap !important;
+	align-items: center !important;
+	width: max-content !important;
+	min-width: max-content !important;
+	height: 40px !important;
+	overflow: visible !important;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) .rv-locator-sort-preset {
+	flex: 0 0 auto !important;
+	width: max-content !important;
+	min-width: 40px !important;
+	max-width: none !important;
+	height: 40px !important;
+	min-height: 40px !important;
+}
+
+.rv-locator-glancable .rv-sort-close {
+	flex: 0 0 40px !important;
+	width: 40px !important;
+	min-width: 40px !important;
+	max-width: 40px !important;
+	height: 40px !important;
+	min-height: 40px !important;
+}
+
+.rv-dashboard .rv-hub-add,
+.rv-dashboard .rv-hub-add svg,
+.rv-dashboard a.rv-map-button,
+.rv-dashboard a.rv-map-button svg {
+	color: var(--text-normal) !important;
+}
+
+.rv-locator-glancable .rv-locator-campaign-mark,
+.rv-locator-glancable .rv-locator-campaign-mark svg,
+.rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-campaign,
+.rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-campaign svg {
+	color: var(--text-normal) !important;
+}
+
+.rv-dashboard .rv-hub-line > strong,
+.rv-dashboard .rv-address-line > strong,
+.rv-hub-line > strong,
+.rv-address-line > strong {
+	font-size: 14px !important;
+	line-height: 1 !important;
 }

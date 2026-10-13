@@ -1307,7 +1307,7 @@ describe('smoke layout', () => {
 		assert.match(activate, /setActiveLeaf/);
 		assert.match(activate, /await this\.openInReadingView/);
 		assert.match(main, /source: false/);
-		assert.match(css, /--rv-pair-label: 56px/);
+		assert.match(css, /--rv-pair-label: 72px/);
 		assert.match(css, /padding: 8px !important/);
 		assert.match(css, /> \.callout-content \{[^}]*padding: 0 !important/);
 		assert.match(css, /input\.rv-address-input\[hidden\],\s*a\.rv-address-link\[hidden\] \{\s*display: none !important;/);

@@ -77,22 +77,24 @@ export interface UrgencyBangShape {
 }
 
 /**
- * Heavy marks in a 28×28 viewBox, drawn large enough to match the priority digit.
- * Stem width tracks that digit and the map pin. One, two, or three marks stay
- * the same size and sit inset inside the circle.
- * Band 0 draws an inner ring (stroke, not a fill). Priority 0 draws a dash.
+ * Marks in a 28×28 viewBox. The ink touches the viewBox, so sizing the SVG to
+ * `--rv-badge-ink` of the circle sizes the ink, not the empty padding.
+ * One, two, or three marks stay the same size. Band 0 is an inner ring.
+ * Priority 0 is a dash. Stem width matches the shared line-icon stroke.
  */
 export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
+	const box = 28;
+	const stroke = 2.8;
 	if (glyphs === '—' || glyphs === '-') {
 		return [{
 			kind: 'rect',
 			attr: {
 				class: 'is-dash',
-				x: '6',
-				y: '12.4',
-				width: '16',
-				height: '3.2',
-				rx: '1.15',
+				x: '0',
+				y: num((box - stroke) / 2),
+				width: num(box),
+				height: num(stroke),
+				rx: '1.4',
 				fill: 'currentColor',
 			},
 		}];
@@ -102,47 +104,53 @@ export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
 			kind: 'circle',
 			attr: {
 				class: 'is-ring',
-				cx: '14',
-				cy: '14',
-				r: '8.6',
+				cx: num(box / 2),
+				cy: num(box / 2),
+				r: num((box - stroke) / 2),
 				fill: 'none',
 				stroke: 'currentColor',
-				'stroke-width': '2.9',
+				'stroke-width': num(stroke),
 			},
 		}];
 	}
 	const count = glyphs === '!' ? 1 : glyphs === '!!' ? 2 : glyphs === '!!!' ? 3 : 0;
 	if (count === 0) return [];
-	const stem = 3.2;
-	const gap = 1.7;
-	const group = count * stem + (count - 1) * gap;
-	const left = (28 - group) / 2;
+	const gap = 2.4;
+	const group = count * stroke + (count - 1) * gap;
+	const left = (box - group) / 2;
+	const dotR = stroke / 2;
+	const dotCy = box - dotR;
+	const stemHeight = dotCy - dotR - 1.2;
 	const shapes: UrgencyBangShape[] = [];
 	for (let index = 0; index < count; index += 1) {
-		const x = left + index * (stem + gap);
-		const cx = x + stem / 2;
+		const x = left + index * (stroke + gap);
 		shapes.push({
 			kind: 'rect',
 			attr: {
-				x: x.toFixed(2),
-				y: '4.8',
-				width: String(stem),
-				height: '12.6',
-				rx: '1.15',
+				x: num(x),
+				y: '0',
+				width: num(stroke),
+				height: num(stemHeight),
+				rx: '1.4',
 				fill: 'currentColor',
 			},
 		});
 		shapes.push({
 			kind: 'circle',
 			attr: {
-				cx: cx.toFixed(2),
-				cy: '20.7',
-				r: '1.75',
+				cx: num(x + stroke / 2),
+				cy: num(dotCy),
+				r: num(dotR),
 				fill: 'currentColor',
 			},
 		});
 	}
 	return shapes;
+}
+
+function num(value: number): string {
+	const rounded = Math.round(value * 100) / 100;
+	return String(rounded);
 }
 
 /** Markup form of {@link urgencyBangShapes}. The card mounts real SVG nodes instead of parsing this. */

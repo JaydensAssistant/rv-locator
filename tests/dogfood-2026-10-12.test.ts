@@ -85,10 +85,9 @@ describe('2026-10-12 dogfood round 2', () => {
 	});
 
 	it('fills sort pills, hides the overlapping backlink, and keeps note-map pins on the map', () => {
-		assert.match(css, /\.rv-locator-glancable \.rv-locator-sort-pills \{[^}]*flex-wrap:\s*nowrap/);
-		assert.match(css, /\.rv-locator-glancable \.rv-locator-sort-pills \{[^}]*width:\s*100%/);
-		assert.match(css, /\.rv-locator-glancable \.rv-locator-sort-pills \.rv-locator-sort-preset \{[^}]*flex:\s*1 1 0/);
-		assert.doesNotMatch(css, /\.rv-locator-sort-pills \{[^}]*width:\s*max-content/);
+		assert.match(css, /\.rv-locator-sortbar:has\(> \.rv-sort-close\) > \.rv-locator-sort-scroll \{[^}]*overflow-x:\s*auto !important/);
+		assert.match(css, /\.rv-sort-close \{[^}]*flex:\s*0 0 40px !important/);
+		assert.match(css, /\.rv-locator-sortbar:has\(> \.rv-sort-close\) \.rv-locator-sort-preset \{[^}]*height:\s*40px !important/);
 		assert.match(css, /body\.rv-hide-backlinks \.status-bar \{\s*display:\s*none/);
 		assert.match(css, /\.theme-dark \.rv-map-tile-back/);
 		assert.match(css, /\.workspace-leaf-content\.is-note-map > \.rv-note-map \.rv-map-pins \{[^}]*position:\s*absolute/);
@@ -410,8 +409,10 @@ describe('2026-10-12 dogfood round 2', () => {
 	});
 
 	it('locks the 2026-10-13 dogfood layout', () => {
-		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.72\)/);
-		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* 0\.48\) !important/);
+		assert.match(css, /--rv-badge-ink:\s*0\.53/);
+		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-digit-ink\)\) !important/);
+		assert.match(css, /font-weight:\s*500 !important/);
+		assert.match(css, /width:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-line-ink\)\) !important/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*width:\s*max-content/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*background:\s*var\(--background-secondary\) !important/);
 		assert.match(css, /\.rv-nh-toast \.rv-toast-text \{[^}]*display:\s*block/);

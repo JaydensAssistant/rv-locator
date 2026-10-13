@@ -817,8 +817,8 @@ describe('dayparts and return suggester', () => {
 	it('draws heavy bangs and a band 0 inner ring', () => {
 		const triple = urgencyGlyphMarkup('!!!');
 		assert.equal(triple.split('<rect ').length - 1, 3);
-		assert.equal(triple.includes('width="3.2"'), true);
-		assert.equal(triple.includes('height="12.6"'), true);
+		assert.equal(triple.includes('width="2.8"'), true);
+		assert.equal(triple.includes('height="24"'), true);
 		assert.equal(triple.includes('fill="currentColor"'), true);
 		assert.equal(triple.includes('width="1.7"'), false);
 		assert.equal(triple.includes('!'), false);

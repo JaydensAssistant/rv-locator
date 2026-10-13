@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type ViewState, type WorkspaceLeaf } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
@@ -51,6 +51,7 @@ import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
+import { navigatingToFile, withReadingPreview } from './reading-open';
 import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
@@ -173,6 +174,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	async onload(): Promise<void> {
 		await this.loadPluginData();
+		this.installReadingModeOpen();
 		this.addSettingTab(new RVLocatorSettingTab(this.app, this));
 		this.registerHoverLinkSource(HOVER_SOURCE, {
 			display: 'RV Locator',
@@ -395,7 +397,9 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 		this.registerEvent(this.app.workspace.on('file-open', (file) => this.onNoteOpened(file)));
 		this.registerEvent(this.app.workspace.on('active-leaf-change', () => {
-			setActiveVisitNote(this.app.workspace.getActiveFile()?.path ?? '');
+			const active = this.app.workspace.getActiveFile();
+			setActiveVisitNote(active?.path ?? '');
+			if (active) void this.openInReadingView(active, false);
 			this.scheduleAgeRefresh();
 			this.applyLayoutClasses();
 			this.maskFilenameStamps();
@@ -611,6 +615,7 @@ export default class RVLocatorPlugin extends Plugin {
 		} else if (this.noteMapOpen) {
 			this.syncNoteMap();
 		}
+		if (file) void this.openInReadingView(file, false);
 		if (file && this.pendingNewRvPath === file.path) this.armNewRvFocus(file);
 		else if (file && this.pendingNewRvPath && file.path !== this.pendingNewRvPath) {
 			this.pendingNewRvPath = null;
@@ -623,7 +628,6 @@ export default class RVLocatorPlugin extends Plugin {
 		this.rememberNoteText(file);
 		this.primeOpenUrgency(file);
 		this.scheduleReadingDecorate(file);
-		window.setTimeout(() => this.openInReadingView(file, false), 0);
 	}
 
 	/** Reading view paints section by section. Run the visit decorate pass again after each of those paints. */
@@ -854,20 +858,62 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Show an RV note in Reading view. Reopening the note restores Reading view
-	 * even after a switch to editing. `force` is for a new note whose template
-	 * finished after it was opened.
+	 * Put preview into the open state before the leaf renders. A later mode
+	 * toggle on the same file is left alone, so Live Preview stays available.
+	 */
+	private installReadingModeOpen(): void {
+		const proto = Object.getPrototypeOf(this.app.workspace.getLeaf(false)) as WorkspaceLeaf;
+		const openFile = proto.openFile;
+		const setViewState = proto.setViewState;
+		const plugin = this;
+		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
+			return openFile.call(this, file, plugin.previewStateFor(file, openState));
+		};
+		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
+			return setViewState.call(this, plugin.previewViewState(this, viewState), eState);
+		};
+		this.register(() => {
+			proto.openFile = openFile;
+			proto.setViewState = setViewState;
+		});
+	}
+
+	private previewStateFor(file: TFile, openState?: OpenViewState): OpenViewState | undefined {
+		if (!this.noteOpensInReading(file)) return openState;
+		return withReadingPreview(openState);
+	}
+
+	private previewViewState(leaf: WorkspaceLeaf, viewState: ViewState): ViewState {
+		const nextPath = typeof viewState.state?.file === 'string' ? viewState.state.file : '';
+		const current = leaf.view instanceof MarkdownView ? leaf.view.file?.path ?? '' : '';
+		if (!navigatingToFile(current, nextPath)) return viewState;
+		const file = this.app.vault.getFileByPath(nextPath);
+		if (!(file instanceof TFile) || !this.noteOpensInReading(file)) return viewState;
+		return withReadingPreview(viewState);
+	}
+
+	private noteOpensInReading(file: TFile): boolean {
+		if (!this.settings.openRvInReadingView || this.isTemplateNote(file)) return false;
+		if (this.pendingNewRvPath === file.path) return true;
+		const cached = this.cachedFrontmatter.get(file.path);
+		const frontmatter = cached ?? this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return isRvDashboardNote(frontmatter);
+	}
+
+	/**
+	 * Show an RV note in Reading view the first time a leaf displays it.
+	 * `force` is for a new note whose template finished after it was opened.
+	 * A leaf that already showed the note keeps the mode the user chose.
 	 */
 	private async openInReadingView(file: TFile, force: boolean): Promise<void> {
 		if (this.unloaded) return;
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== file.path) continue;
+			if (!force && !this.noteOpensInReading(file)) continue;
+			const seen = this.readingViewFor.get(leaf);
 			this.readingViewFor.set(leaf, file.path);
-			if (!force) {
-				if (!this.settings.openRvInReadingView || this.isTemplateNote(file)) continue;
-				if (!isRvDashboardNote(this.app.metadataCache.getFileCache(file)?.frontmatter)) continue;
-			}
+			if (!force && seen === file.path) continue;
 			if (view.getMode() === 'preview') continue;
 			const state = leaf.getViewState();
 			const inner = state.state && typeof state.state === 'object' ? state.state : {};
@@ -2001,7 +2047,7 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 		} else {
 			const next = this.app.workspace.getLeaf('tab');
-			await next.openFile(current, { active: true });
+			await next.openFile(current, { active: true, state: { mode: 'preview', source: false } });
 			if (next.view instanceof MarkdownView && next.view.file?.path === current.path) leaf = next;
 			else {
 				leaf = this.app.workspace.getLeavesOfType('markdown')
@@ -2376,10 +2422,11 @@ export default class RVLocatorPlugin extends Plugin {
 	private async openNoteDay(path: string, when: Date): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
-		const workspace = this.app.workspace as { getLeaf?: (split: boolean) => { openFile?: (file: TFile) => Promise<void>; view?: { containerEl?: HTMLElement } } };
+		const workspace = this.app.workspace as { getLeaf?: (split: boolean) => { openFile?: (file: TFile, openState?: OpenViewState) => Promise<void>; view?: { containerEl?: HTMLElement } } };
 		const leaf = workspace.getLeaf?.(false);
-		if (leaf?.openFile) await leaf.openFile(file);
-		else await this.app.workspace.openLinkText(path, path, false);
+		const preview = { state: { mode: 'preview', source: false } };
+		if (leaf?.openFile) await leaf.openFile(file, preview);
+		else await this.app.workspace.openLinkText(path, path, false, preview);
 		window.setTimeout(() => {
 			const root = leaf?.view?.containerEl;
 			if (root instanceof HTMLElement) jumpToDayInRoot(root, when);
@@ -3419,7 +3466,7 @@ export default class RVLocatorPlugin extends Plugin {
 			this.app.workspace.setActiveLeaf(leaf, { focus: false });
 		} else {
 			leaf = this.app.workspace.getLeaf(false);
-			await leaf.openFile(file, { active: true });
+			await leaf.openFile(file, { active: true, state: { mode: 'preview', source: false } });
 		}
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;

@@ -562,21 +562,17 @@ export class NearbyGlancableView extends NearbyBasesView {
 			},
 		});
 		mountUrgencyGlyph(urgencyButton, marks.glyphs);
-		const ghost = this.plugin.ghostIconForCard(row.path);
-		if (ghost) {
-			if (ghost !== 'moon') urgencyButton.addClass('is-ghost');
+		if (this.plugin.ghostIconForCard(row.path) === 'moon') {
 			urgencyButton.empty();
-			setIcon(urgencyButton, ghost);
+			setIcon(urgencyButton, 'moon');
 			pinBadgeStroke(urgencyButton);
-			if (ghost === 'moon') {
-				urgencyButton.style.setProperty('color', SNOOZE_SLATE, 'important');
-				urgencyButton.style.setProperty('border-color', SNOOZE_SLATE, 'important');
-				urgencyButton.querySelectorAll('svg').forEach((node) => {
-					if (!(node instanceof SVGElement)) return;
-					node.style.setProperty('color', SNOOZE_SLATE, 'important');
-					node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
-				});
-			}
+			urgencyButton.style.setProperty('color', SNOOZE_SLATE, 'important');
+			urgencyButton.style.setProperty('border-color', SNOOZE_SLATE, 'important');
+			urgencyButton.querySelectorAll('svg').forEach((node) => {
+				if (!(node instanceof SVGElement)) return;
+				node.style.setProperty('color', SNOOZE_SLATE, 'important');
+				node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
+			});
 		}
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
@@ -592,6 +588,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 					'aria-label': `Priority ${rank}. Change priority`,
 				},
 			});
+			pinBadgeStroke(pill);
 			pill.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
@@ -1044,8 +1041,9 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 	}, 'rv-urgency-glyph');
 	svg.style.display = 'block';
 	svg.style.flex = '0 0 auto';
-	svg.style.width = 'calc(var(--rv-control-size, 28px) * 0.7)';
-	svg.style.height = 'calc(var(--rv-control-size, 28px) * 0.7)';
+	const ink = host.classList.contains('rv-pin-head') ? '0.7' : 'var(--rv-badge-ink, 0.53)';
+	svg.style.width = `calc(var(--rv-control-size, 28px) * ${ink})`;
+	svg.style.height = `calc(var(--rv-control-size, 28px) * ${ink})`;
 	svg.style.overflow = 'visible';
 	svg.style.color = 'inherit';
 	svg.style.setProperty('fill', 'currentColor');

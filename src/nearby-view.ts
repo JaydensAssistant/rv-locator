@@ -475,14 +475,13 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
-				if (glancable) this.sortMenuOpen = false;
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
 				if (glancable) this.paintSortPresets();
 			});
 		}
 		if (glancable && this.sortMenuOpen) {
-			const close = pillHost.createEl('button', {
-				cls: 'rv-locator-sort-preset rv-sort-close',
+			const close = this.sortEl.createEl('button', {
+				cls: 'rv-locator-toolbar-quiet rv-sort-close',
 				attr: { type: 'button', 'aria-label': 'Close sort' },
 			});
 			setIcon(close, 'x');

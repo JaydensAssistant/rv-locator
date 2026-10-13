@@ -1039,11 +1039,12 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			this.host.promptUrgencyMenu?.(pin.path, pin.name, event);
 		});
-		actions.createSpan({
+		const priority = actions.createSpan({
 			cls: 'rv-locator-priority-pill',
 			text: String(pin.priority),
 			attr: { 'aria-label': `Priority ${pin.priority}` },
 		});
+		pinBadgeStroke(priority);
 		const route = actions.createEl('button', {
 			cls: 'rv-locator-map-pin',
 			attr: { type: 'button', 'aria-label': 'Directions' },
