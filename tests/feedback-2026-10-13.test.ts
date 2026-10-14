@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, badgeLineOpticalKey, urgencyInkFraction, urgencyOpticalKey } from '../src/badge-glyph';
+import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, LINE_ICON_INK_BY_ICON, badgeLineOpticalKey, urgencyInkFraction, urgencyOpticalKey } from '../src/badge-glyph';
 import { navigatingToFile, withReadingPreview } from '../src/reading-open';
 
 function source(file: string): string {
@@ -12,6 +12,10 @@ describe('2026-10-13 feedback', () => {
 	it('sizes every badge glyph from one ink fraction', () => {
 		assert.equal(BADGE_INK, 0.53);
 		assert.ok(Math.abs(LINE_ICON_INK - 20 / 24) < 0.0001);
+		assert.equal(LINE_ICON_INK_BY_ICON.moon, 20 / 24);
+		assert.equal(LINE_ICON_INK_BY_ICON.route, 22 / 24);
+		assert.equal(LINE_ICON_INK_BY_ICON.hourglass, 22 / 24);
+		assert.equal(LINE_ICON_INK_BY_ICON.ban, 22 / 24);
 		assert.equal(DIGIT_CAP_INK, 0.72);
 		for (const glyphs of ['!', '!!', '!!!', '○', '—']) {
 			assert.ok(urgencyInkFraction(glyphs) > 0.8, glyphs);
@@ -22,6 +26,10 @@ describe('2026-10-13 feedback', () => {
 		assert.match(css, /font-weight:\s*500 !important/);
 		for (const [key, value] of Object.entries(BADGE_OPTICAL)) {
 			assert.match(css, new RegExp(`--rv-opt-${key}:\\s*${value}(;|\\s)`));
+		}
+		for (const [key, value] of Object.entries(LINE_ICON_INK_BY_ICON)) {
+			const fraction = value.toFixed(4);
+			assert.match(css, new RegExp(`data-rv-glyph="${key}"\\] \\{[\\s\\S]*?--rv-line-ink:\\s*${fraction}`));
 		}
 		assert.ok(BADGE_OPTICAL.digit < 1 && BADGE_OPTICAL.bang < 1 && BADGE_OPTICAL.dash < 1);
 		assert.ok(BADGE_OPTICAL.ring > 1 && BADGE_OPTICAL.route > 1 && BADGE_OPTICAL.moon > 1);
@@ -69,6 +77,14 @@ describe('2026-10-13 feedback', () => {
 		assert.match(main, /installReadingModeOpen/);
 		assert.match(main, /withReadingPreview/);
 		assert.match(main, /mode: 'preview', source: false/);
+		const onload = main.slice(main.indexOf('async onload()'), main.indexOf('onunload()'));
+		assert.doesNotMatch(onload, /getLeaf/);
+		const install = main.slice(main.indexOf('private installReadingModeOpen'), main.indexOf('private previewStateFor'));
+		assert.match(install, /WorkspaceLeaf\.prototype/);
+		assert.doesNotMatch(install, /getLeaf/);
+		const imported = main.slice(0, main.indexOf('from \'obsidian\''));
+		assert.match(imported, /\bWorkspaceLeaf\b/);
+		assert.doesNotMatch(imported, /type WorkspaceLeaf/);
 	});
 
 	it('keeps urgency on glancable cards unless the card is snoozed', () => {
@@ -92,5 +108,18 @@ describe('2026-10-13 feedback', () => {
 		const paint = chrome.slice(chrome.indexOf('function paintUrgencyDetails'), chrome.indexOf('function markUrgencyReady'));
 		assert.doesNotMatch(paint, /rv-dash-campaign/);
 		assert.doesNotMatch(paint, /rv-locator-campaign-mark/);
+	});
+
+	it('lifts the mobile sort bar above the floating navbar and leaves embeds alone', () => {
+		const css = source('styles.css');
+		assert.match(css, /body\.is-mobile \.workspace-leaf-content \.rv-locator-glancable\.is-stacked \.rv-locator-sortbar \{[^}]*padding-bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 48px\)/);
+		assert.match(css, /body\.is-mobile \.workspace-leaf-content :is\(\.markdown-preview-view, \.markdown-source-view, \.markdown-embed, \.internal-embed\) \.rv-locator-glancable\.is-stacked \.rv-locator-sortbar \{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom, 0px\)/);
+	});
+
+	it('paints the review strip with the live accent ink and each icon box', () => {
+		const strip = source('scripts/badge-optical-strip.ts');
+		assert.match(strip, /urgencyInkFor/);
+		assert.match(strip, /LINE_ICON_INK_BY_ICON/);
+		assert.doesNotMatch(strip, /urgencyInk\(/);
 	});
 });

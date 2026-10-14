@@ -8,7 +8,7 @@ import type { App } from 'obsidian';
 import { refreshVisitPreviewEffect, visitPreviewExtension } from '../src/visit-live-preview';
 import { attachVisitNoteArea, clearVisitNoteCaches, mountVisitNotesInSection } from '../src/visit-notes-field';
 import { applyExternalVisitNotes, bindVisitNoteFlush, flushVisitNotes, setVisitNoteFocus, visitNoteValue } from '../src/visit-notes-store';
-import { classifyVisitSection, clearOlderVisitsState, olderVisitsOpen } from '../src/visit-older';
+import { classifyVisitSection, clearOlderVisitsState, markPreviewOlderVisits, olderVisitsOpen } from '../src/visit-older';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
 const { window } = dom;
@@ -195,6 +195,29 @@ describe('visit notes rewrite', () => {
 		header.click();
 		assert.equal(preview.classList.contains('rv-older-collapsed'), true);
 		clearVisitNoteCaches();
+		clearOlderVisitsState();
+	});
+
+	it('keeps one Older Visits heading when a later pass sees the header nested', () => {
+		clearOlderVisitsState();
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-reading-view';
+		preview.dataset.rvNoteFile = DALE;
+		const newest = section('sVisit2Notes', NEWEST);
+		const older = section('sVisit1Notes', OLDER);
+		const block = window.document.createElement('div');
+		block.append(older);
+		preview.append(newest, block);
+		const options = { limit: 1, collapseOlder: true };
+		classifyVisitSection(newest, DALE, DALE_NOTE, 0, 1, options);
+		classifyVisitSection(older, DALE, DALE_NOTE, 2, 3, options);
+		assert.equal(preview.querySelectorAll('h3.rv-older-visits').length, 1);
+		markPreviewOlderVisits(preview, options, DALE);
+		assert.equal(preview.querySelectorAll('h3.rv-older-visits').length, 1);
+		classifyVisitSection(older, DALE, DALE_NOTE, 2, 3, options);
+		markPreviewOlderVisits(preview, options, DALE);
+		assert.equal(preview.querySelectorAll('h3.rv-older-visits').length, 1);
+		assert.equal(preview.querySelectorAll('.rv-older-rule').length, 1);
 		clearOlderVisitsState();
 	});
 

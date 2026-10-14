@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type ViewState, type WorkspaceLeaf } from 'obsidian';
+import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
@@ -862,7 +862,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * toggle on the same file is left alone, so Live Preview stays available.
 	 */
 	private installReadingModeOpen(): void {
-		const proto = Object.getPrototypeOf(this.app.workspace.getLeaf(false)) as WorkspaceLeaf;
+		const proto = WorkspaceLeaf.prototype;
 		const openFile = proto.openFile;
 		const setViewState = proto.setViewState;
 		const plugin = this;

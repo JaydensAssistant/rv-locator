@@ -127,18 +127,58 @@ function wireOlderHeader(heading: HTMLElement, path: string, root: HTMLElement, 
 	});
 }
 
-/** Our fold header, created in the first older heading's section. */
-export function ensureOlderHeader(section: HTMLElement, path: string, root: HTMLElement): HTMLElement {
-	let heading: HTMLElement | null = null;
+function directOlderHeading(section: HTMLElement): HTMLElement | null {
 	for (const kid of Array.from(section.children)) {
 		if (!(kid instanceof HTMLElement)) continue;
-		if (kid.classList.contains('rv-older-visits')) heading = kid;
-		else if (kid.classList.contains('rv-older-visits-wrap')) {
+		if (kid.classList.contains('rv-older-visits')) return kid;
+		if (kid.classList.contains('rv-older-visits-wrap')) {
 			const inner = kid.querySelector('.rv-older-visits');
-			if (inner instanceof HTMLElement) heading = inner;
+			if (inner instanceof HTMLElement) return inner;
 		}
 	}
+	return null;
+}
+
+/** Live Preview draws its own Older Visits widget. Reading dedupe stays out of it. */
+function isEditorOlder(node: HTMLElement): boolean {
+	return node.closest('.rv-older-visits-widget, .cm-content, .cm-editor, .markdown-source-view') instanceof HTMLElement;
+}
+
+function readingOlderHeadings(root: HTMLElement): HTMLElement[] {
+	return Array.from(root.querySelectorAll('h3.rv-older-visits')).filter((node): node is HTMLElement => (
+		node instanceof HTMLElement && !isEditorOlder(node)
+	));
+}
+
+/** Remove an Older Visits wrap we inserted, plus the rule that sits in front of it. */
+function removeOurOlderWrap(heading: HTMLElement): void {
+	const wrap = heading.closest('.rv-older-visits-wrap');
+	if (!(wrap instanceof HTMLElement) || isEditorOlder(wrap)) return;
+	const prev = wrap.previousElementSibling;
+	if (prev instanceof HTMLElement && prev.classList.contains('rv-older-rule')) prev.remove();
+	wrap.remove();
+}
+
+/**
+ * One Older Visits heading per preview. A later pass can see a parent of the
+ * section that already holds the header, and a direct-child search would
+ * insert a second one. Extra wraps are ours; anything else stays put.
+ */
+function dedupeOlderHeaders(root: HTMLElement, keep: HTMLElement | null): void {
+	const headings = readingOlderHeadings(root);
+	const chosen = keep && headings.includes(keep) ? keep : headings[0] ?? null;
+	for (const heading of headings) {
+		if (heading === chosen) continue;
+		removeOurOlderWrap(heading);
+	}
+}
+
+/** Our fold header, created in the first older heading's section. */
+export function ensureOlderHeader(section: HTMLElement, path: string, root: HTMLElement): HTMLElement {
+	const scope = root.contains(section) ? root : section;
+	let heading = directOlderHeading(section) ?? readingOlderHeadings(scope)[0] ?? null;
 	if (heading instanceof HTMLElement) {
+		dedupeOlderHeaders(scope, heading);
 		wireOlderHeader(heading, path, root, true);
 		return heading;
 	}
@@ -177,6 +217,7 @@ export function ensureOlderHeader(section: HTMLElement, path: string, root: HTML
 	const anchor = section.children[0] instanceof HTMLElement ? section.children[0] : null;
 	section.insertBefore(wrap, anchor);
 	section.insertBefore(rule, wrap);
+	dedupeOlderHeaders(scope, created);
 	wireOlderHeader(created, path, root, true);
 	return created;
 }
@@ -283,5 +324,7 @@ export function markPreviewOlderVisits(
 		}
 		if (older && index === cap) ensureOlderHeader(block, path, preview);
 	});
+	const kept = readingOlderHeadings(preview)[0] ?? null;
+	dedupeOlderHeaders(preview, kept);
 	paintOlderChrome(path, preview, headings.length > cap);
 }

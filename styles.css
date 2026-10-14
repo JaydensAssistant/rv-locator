@@ -7842,18 +7842,22 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="route"] {
 	--rv-opt-icon: var(--rv-opt-route);
+	--rv-line-ink: 0.9167;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="moon"] {
 	--rv-opt-icon: var(--rv-opt-moon);
+	--rv-line-ink: 0.8333;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="hourglass"] {
 	--rv-opt-icon: var(--rv-opt-hourglass);
+	--rv-line-ink: 0.9167;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-map-pin)[data-rv-glyph="ban"] {
 	--rv-opt-icon: var(--rv-opt-ban);
+	--rv-line-ink: 0.9167;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) :is(.rv-locator-urgency, .rv-locator-priority-pill, .rv-locator-map-pin) {
@@ -7958,4 +7962,26 @@ button.rv-locator-map-pin > svg:not(.rv-urgency-glyph) {
 .rv-address-line > strong {
 	font-size: 14px !important;
 	line-height: 1 !important;
+}
+
+/*
+  Phone base: the stacked sort/search bar is the last row of the leaf, and
+  that leaf runs under Obsidian's floating navbar. The navbar is about 48px
+  plus the safe area. Embeds already reserve that chrome, so they keep only
+  the safe area and do not pick up a second gap.
+*/
+body.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar {
+	padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 48px);
+}
+
+body.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar:has(> .rv-sort-close) {
+	height: auto;
+}
+
+body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-source-view, .markdown-embed, .internal-embed) .rv-locator-glancable.is-stacked .rv-locator-sortbar {
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-source-view, .markdown-embed, .internal-embed) .rv-locator-glancable.is-stacked .rv-locator-sortbar:has(> .rv-sort-close) {
+	height: 40px;
 }

@@ -4,10 +4,20 @@ import { urgencyBangShapes, type UrgencyBangShape } from './scoring';
 export const BADGE_INK = 0.53;
 
 /**
- * Lucide line icons sit in a 20px box on a 24px viewBox.
- * The SVG is drawn larger than the ink so the ink, not the viewBox, is {@link BADGE_INK}.
+ * Lucide line icons are not one content box on the 24px viewBox.
+ * Moon is drawn in 20px. Route, hourglass, and ban use 22px.
+ * {@link LINE_ICON_INK} stays the moon box. The SVG is drawn larger than that
+ * box so the ink, not the viewBox, is {@link BADGE_INK}.
  */
 export const LINE_ICON_INK = 20 / 24;
+
+/** Ink box of each Lucide badge icon, as a fraction of its 24px viewBox. */
+export const LINE_ICON_INK_BY_ICON = {
+	moon: 20 / 24,
+	route: 22 / 24,
+	hourglass: 22 / 24,
+	ban: 22 / 24,
+} as const;
 
 /** Cap height of a medium digit, as a fraction of the em square. Not the font box. */
 export const DIGIT_CAP_INK = 0.72;

@@ -3,10 +3,11 @@
  * Draws the same ink math, stroke, and colors the badges use.
  */
 import { writeFileSync } from 'node:fs';
-import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, urgencyOpticalKey } from '../src/badge-glyph';
+import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, LINE_ICON_INK_BY_ICON, urgencyOpticalKey } from '../src/badge-glyph';
+import { parseCssColor, urgencyInkFor, type RGB } from '../src/color-math';
 import { urgencyGlyphMarkup } from '../src/scoring';
 import { SNOOZE_SLATE } from '../src/snooze';
-import { defaultUrgencyColors, urgencyInk } from '../src/urgency-palette';
+import { defaultUrgencyColors } from '../src/urgency-palette';
 
 const LINE_ICONS: Record<'route' | 'moon' | 'hourglass' | 'ban', string> = {
 	moon: '<path d="M20.985 12.486a9 9 0 1 1-9.473-9.472c.405-.022.617.46.402.803a6 6 0 0 0 8.268 8.268c.344-.215.825-.004.803.401"/>',
@@ -23,9 +24,20 @@ interface Badge {
 	body: string;
 }
 
-function mark(glyphs: string, accent: string, label: string, dashed = false): Badge {
+const LIGHT_PAGE: RGB = { r: 1, g: 1, b: 1 };
+const DARK_PAGE: RGB = { r: 30 / 255, g: 30 / 255, b: 30 / 255 };
+
+/** Same ink the live badge paints: the accent when it clears 4.5:1 on the tint. */
+function themeInk(accent: string, background: RGB): string {
+	if (accent === 'var(--faint)') return 'var(--faint)';
+	const color = parseCssColor(accent);
+	if (!color) return accent;
+	return urgencyInkFor(color, background).ink;
+}
+
+function mark(glyphs: string, accent: string, label: string, background: RGB, dashed = false): Badge {
 	const key = urgencyOpticalKey(glyphs);
-	const ink = accent === 'var(--faint)' ? 'var(--faint)' : urgencyInk(accent);
+	const ink = themeInk(accent, background);
 	const svg = urgencyGlyphMarkup(glyphs).replace(
 		'<svg ',
 		`<svg class="rv-urgency-glyph" data-rv-glyph="${key}" style="--rv-opt-icon:var(--rv-opt-${key})" `,
@@ -33,16 +45,18 @@ function mark(glyphs: string, accent: string, label: string, dashed = false): Ba
 	return { label, accent, ink, dashed, body: svg };
 }
 
-function icon(name: keyof typeof LINE_ICONS, accent: string, label: string, inkColor: string, dashed = false): Badge {
-	const svg = `<svg class="line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="--rv-opt-icon:var(--rv-opt-${name})">${LINE_ICONS[name]}</svg>`;
+function icon(name: keyof typeof LINE_ICONS, accent: string, label: string, background: RGB, dashed = false): Badge {
+	const inkColor = name === 'moon' ? accent : themeInk(accent, background);
+	const fraction = LINE_ICON_INK_BY_ICON[name].toFixed(4);
+	const svg = `<svg class="line-icon" data-rv-glyph="${name}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="--rv-opt-icon:var(--rv-opt-${name});--rv-line-ink:${fraction}">${LINE_ICONS[name]}</svg>`;
 	return { label, accent, ink: inkColor, dashed, body: svg };
 }
 
-function digit(text: string, accent: string): Badge {
+function digit(text: string, accent: string, background: RGB): Badge {
 	return {
 		label: text,
 		accent,
-		ink: urgencyInk(accent),
+		ink: themeInk(accent, background),
 		body: text,
 	};
 }
@@ -57,31 +71,31 @@ function group(title: string, badges: readonly Badge[]): string {
 	return `<section class="group"><h2>${title}</h2><div class="badges">${badges.map(badgeHtml).join('')}</div></section>`;
 }
 
-export function badgeStripHtml(): string {
+function badgeRow(background: RGB): string {
 	const [green, yellow, orange, red] = defaultUrgencyColors();
 	const facts = [
-		mark('!', yellow, '!'),
-		digit('3', yellow),
-		icon('route', yellow, 'route', urgencyInk(yellow)),
+		mark('!', yellow, '!', background),
+		digit('3', yellow, background),
+		icon('route', yellow, 'route', background),
 	];
 	const card = [
-		mark('!!', orange, '!!'),
-		digit('2', orange),
-		icon('route', orange, 'route', urgencyInk(orange)),
+		mark('!!', orange, '!!', background),
+		digit('2', orange, background),
+		icon('route', orange, 'route', background),
 	];
-	const snoozed = [icon('moon', SNOOZE_SLATE, 'moon', SNOOZE_SLATE)];
-	const priorities = ['1', '2', '3', '4', '5'].map((text) => digit(text, green));
+	const snoozed = [icon('moon', SNOOZE_SLATE, 'moon', background)];
+	const priorities = ['1', '2', '3', '4', '5'].map((text) => digit(text, green, background));
 	const urgency = [
-		mark('○', green, 'ring'),
-		mark('!', yellow, '!'),
-		mark('!!', orange, '!!'),
-		mark('!!!', red, '!!!'),
-		mark('—', 'var(--faint)', 'dash'),
-		icon('hourglass', green, 'hourglass', urgencyInk(green), true),
-		icon('ban', red, 'ban', urgencyInk(red), true),
+		mark('○', green, 'ring', background),
+		mark('!', yellow, '!', background),
+		mark('!!', orange, '!!', background),
+		mark('!!!', red, '!!!', background),
+		mark('—', 'var(--faint)', 'dash', background),
+		icon('hourglass', green, 'hourglass', background, true),
+		icon('ban', red, 'ban', background, true),
 	];
-	const route = [icon('route', green, 'route', urgencyInk(green))];
-	const row = [
+	const route = [icon('route', green, 'route', background)];
+	return [
 		group('Quick Facts', facts),
 		group('Card column', card),
 		group('Snoozed', snoozed),
@@ -89,8 +103,13 @@ export function badgeStripHtml(): string {
 		group('Urgency states', urgency),
 		group('Route', route),
 	].join('');
+}
+
+export function badgeStripHtml(): string {
+	const darkRow = badgeRow(DARK_PAGE);
+	const lightRow = badgeRow(LIGHT_PAGE);
 	const factors = Object.entries(BADGE_OPTICAL).map(([key, value]) => `${key} ${value}`).join(' · ');
-	const band = (scale: string, px: number) => `<div class="band" style="--rv-control-size:${px}px"><h3>${scale}</h3><div class="row">${row}</div></div>`;
+	const band = (scale: string, px: number, row: string) => `<div class="band" style="--rv-control-size:${px}px"><h3>${scale}</h3><div class="row">${row}</div></div>`;
 	const root = [
 		`--rv-badge-ink:${BADGE_INK}`,
 		`--rv-line-ink:${LINE_ICON_INK}`,
@@ -164,14 +183,14 @@ export function badgeStripHtml(): string {
 <section class="sheet dark">
   <h1>Badge optical scale</h1>
   <p class="legend">Equal ink ${BADGE_INK}, then one factor per glyph. ${factors}. Strokes stay 2px. 1× is 28px, 2× is 56px.</p>
-  ${band('Dark 1×', 28)}
-  ${band('Dark 2×', 56)}
+  ${band('Dark 1×', 28, darkRow)}
+  ${band('Dark 2×', 56, darkRow)}
 </section>
 <section class="sheet light">
   <h1>Badge optical scale</h1>
   <p class="legend">Equal ink ${BADGE_INK}, then one factor per glyph. ${factors}. Strokes stay 2px. 1× is 28px, 2× is 56px.</p>
-  ${band('Light 1×', 28)}
-  ${band('Light 2×', 56)}
+  ${band('Light 1×', 28, lightRow)}
+  ${band('Light 2×', 56, lightRow)}
 </section>
 </body>
 </html>`;
