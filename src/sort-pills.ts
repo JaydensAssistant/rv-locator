@@ -86,9 +86,9 @@ export function horizontalScrollDelta(deltaX: number, deltaY: number, shiftKey =
 	return deltaY;
 }
 
-/** Sort labels start at the pill's 12px and can drop to 11px before they clip. */
+/** Sort labels start at the pill's 12px and can drop to 10px before they clip. */
 export const SORT_LABEL_FONT_MAX_PX = 12;
-export const SORT_LABEL_FONT_MIN_PX = 11;
+export const SORT_LABEL_FONT_MIN_PX = 10;
 
 /**
  * Font size that keeps a control-width pill. The label stays at {@link SORT_LABEL_FONT_MAX_PX}
@@ -102,7 +102,7 @@ export function sortLabelFontPx(textWidth: number, available: number, max = SORT
 	return Math.round(scaled * 100) / 100;
 }
 
-/** Shrink the label toward 11px when the control-width pill cannot hold 12px. */
+/** Shrink the label toward 10px when the control-width pill cannot hold 12px. */
 function fitSortLabel(pill: HTMLElement): void {
 	const label = pill.querySelector(':scope > .rv-sort-label');
 	if (!(label instanceof HTMLElement)) return;

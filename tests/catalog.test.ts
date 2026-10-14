@@ -502,7 +502,8 @@ describe('glancable smart search', () => {
 		assert.equal(sortLabelFontPx(30, 40), 12);
 		assert.equal(sortLabelFontPx(40, 40), 12);
 		assert.equal(sortLabelFontPx(42, 40), 11.43);
-		assert.equal(sortLabelFontPx(80, 40), 11);
+		assert.equal(sortLabelFontPx(44, 40), 10.91);
+		assert.equal(sortLabelFontPx(80, 40), 10);
 	});
 
 	it('stacks phone labels, fills the hub, and keeps the map credit on the map edge', () => {
