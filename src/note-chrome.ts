@@ -271,6 +271,70 @@ function quickFactsCallout(root: HTMLElement): HTMLElement | null {
 	return null;
 }
 
+/** Fractional part in [0, 1). */
+function unitFraction(value: number): number {
+	const mod = value % 1;
+	return mod < 0 ? mod + 1 : mod;
+}
+
+/**
+ * Margin that puts a row on a whole pixel.
+ * `top` is the row's top while its margin-top is still `base`.
+ * The added amount is `(1 - f) mod 1`, which is 0 when the top is already whole.
+ */
+export function factsRowMargin(base: number, top: number): number {
+	const next = base + unitFraction(1 - unitFraction(top));
+	return Math.round(next * 10000) / 10000;
+}
+
+function px(value: number): string {
+	return String(Math.round(value * 10000) / 10000);
+}
+
+function factsBaseMargin(badges: HTMLElement): number {
+	const stored = badges.dataset.rvFactsBase;
+	if (stored != null && stored !== '') {
+		const parsed = Number(stored);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	const value = parseFloat(getComputedStyle(badges).marginTop);
+	const base = Number.isFinite(value) ? value : 0;
+	badges.dataset.rvFactsBase = String(base);
+	return base;
+}
+
+function factsScope(badges: HTMLElement): HTMLElement | null {
+	const scope = badges.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view');
+	if (scope instanceof HTMLElement) return scope;
+	return badges.parentElement;
+}
+
+/** Measure the badge row and set its margin-top. No transform and no timer. */
+function snapFactsRow(badges: HTMLElement): void {
+	const probe = badges.getBoundingClientRect();
+	if (probe.width < 1 || probe.height < 1) return;
+	const scope = factsScope(badges);
+	const key = String(Math.round(scope?.getBoundingClientRect().width || probe.width));
+	if (badges.dataset.rvFactsWidth === key && badges.style.marginTop !== '') return;
+	const base = factsBaseMargin(badges);
+	badges.style.marginTop = `${px(base)}px`;
+	const top = badges.getBoundingClientRect().top;
+	badges.style.marginTop = `${px(factsRowMargin(base, top))}px`;
+	badges.dataset.rvFactsWidth = key;
+}
+
+function armFactsRow(badges: HTMLElement): void {
+	snapFactsRow(badges);
+	if (badges.dataset.rvFactsWatch === '1' || typeof ResizeObserver === 'undefined') return;
+	const scope = factsScope(badges);
+	if (!scope) return;
+	badges.dataset.rvFactsWatch = '1';
+	const observer = new ResizeObserver(() => {
+		snapFactsRow(badges);
+	});
+	observer.observe(scope);
+}
+
 function paintFactsTitle(
 	title: HTMLElement,
 	path: string,
@@ -296,6 +360,7 @@ function paintFactsTitle(
 	const expectsBadges = /(?:^|\|)[upr]:/.test(signature);
 	if (badges.dataset.rvFacts === signature && (!expectsBadges || badges.childElementCount > 0)) {
 		if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+		armFactsRow(badges);
 		return;
 	}
 	badges.empty();
@@ -330,6 +395,7 @@ function paintFactsTitle(
 	}
 	badges.dataset.rvFacts = signature;
 	if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+	armFactsRow(badges);
 }
 
 function paintFactsBody(
