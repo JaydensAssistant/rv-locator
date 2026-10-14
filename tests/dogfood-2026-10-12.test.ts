@@ -405,7 +405,7 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.match(css, /\.rv-dashboard\.is-snoozed button\.rv-locator-urgency \{[^}]*border-style:\s*solid !important/);
 		const chrome = source('src/note-chrome.ts');
 		assert.match(chrome, /=== 'moon' \? SNOOZE_SLATE/);
-		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function snapBadgeRow'));
+		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function paintFactsBody'));
 		assert.doesNotMatch(facts, /is-ghost|setIcon\(/);
 		assert.match(source('src/glancable-view.ts'), /face\.icon !== 'moon'/);
 	});

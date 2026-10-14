@@ -218,10 +218,12 @@ describe('idle visit surface', () => {
 		assert.equal(button.style.getPropertyValue('border-width'), '2px');
 		assert.equal(button.style.getPropertyPriority('border-width'), 'important');
 		button.remove();
-		assert.doesNotMatch(
-			source('src/glancable-view.ts').slice(source('src/glancable-view.ts').indexOf('export function pinBadgeStroke')),
-			/requestAnimationFrame/,
+		const glance = source('src/glancable-view.ts');
+		const stroke = glance.slice(
+			glance.indexOf('export function pinBadgeStroke'),
+			glance.indexOf('export type BadgeIconName'),
 		);
+		assert.doesNotMatch(stroke, /requestAnimationFrame/);
 	});
 
 	it('leaves the visit card DOM alone when refreshVisitCards runs again', () => {

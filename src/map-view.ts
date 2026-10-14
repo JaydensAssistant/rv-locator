@@ -1,6 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
-import { appendBadge, mountUrgencyGlyph } from './glancable-view';
+import { appendBadge, mountUrgencyGlyph, snapBadgeRow } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
@@ -1028,6 +1028,7 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
+		snapBadgeRow(actions);
 		const nudge = (): void => {
 			const stage = this.stage;
 			if (!stage || !shell.isConnected) return;

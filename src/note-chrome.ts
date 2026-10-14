@@ -7,7 +7,7 @@ import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
-import { appendBadge, pinBadgeStroke } from './glancable-view';
+import { appendBadge, pinBadgeStroke, snapBadgeRow } from './glancable-view';
 import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
@@ -202,9 +202,6 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		pinBadgeStroke(node);
-		if (node.classList.contains('rv-locator-map-pin')) return;
-		setPaint(node, 'border-color', accent, true);
-		setPaint(node, 'color', accent, true);
 	});
 }
 
@@ -335,24 +332,6 @@ function paintFactsTitle(
 	badges.dataset.rvFacts = signature;
 	snapBadgeRow(badges);
 	if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
-}
-
-/** The badge row's flex position can land on a half pixel and shift every glyph. */
-function snapBadgeRow(row: HTMLElement): void {
-	const place = (): void => {
-		if (!row.isConnected) return;
-		row.style.transform = '';
-		const rect = row.getBoundingClientRect();
-		if (rect.width < 1 && rect.height < 1) return;
-		const dx = Math.round(rect.left) - rect.left;
-		const dy = Math.round(rect.top) - rect.top;
-		if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return;
-		const px = (value: number): string => String(Math.round(value * 100) / 100);
-		row.style.transform = `translate(${px(dx)}px, ${px(dy)}px)`;
-	};
-	place();
-	const view = row.ownerDocument.defaultView;
-	if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(place);
 }
 
 function paintFactsBody(

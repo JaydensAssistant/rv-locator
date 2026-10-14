@@ -583,6 +583,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				void this.plugin.openRoute(row.path);
 			});
 		}
+		snapBadgeRow(actions);
 	}
 
 	private noteFrontmatter(path: string): Record<string, unknown> | null {
@@ -1034,6 +1035,28 @@ export function appendBadge(parent: HTMLElement, face: BadgeFace): HTMLElement {
 	button.dataset.band = String(face.band);
 	mountUrgencyGlyph(button, face.glyphs);
 	return button;
+}
+
+/** A flex row can land on a half pixel and shift every glyph inside it. */
+export function snapBadgeRow(row: HTMLElement): void {
+	const place = (): void => {
+		if (!row.isConnected) return;
+		const badges = Array.from(row.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
+		const targets = badges.length > 0 ? badges : [row];
+		for (const badge of targets) badge.style.transform = '';
+		for (const badge of targets) {
+			const rect = badge.getBoundingClientRect();
+			if (rect.width < 1 && rect.height < 1) continue;
+			const dx = Math.round(rect.left) - rect.left;
+			const dy = Math.round(rect.top) - rect.top;
+			if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) continue;
+			const px = (value: number): string => String(Math.round(value * 100) / 100);
+			badge.style.transform = `translate(${px(dx)}px, ${px(dy)}px)`;
+		}
+	};
+	place();
+	const view = row.ownerDocument.defaultView;
+	if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(place);
 }
 
 function paintSnoozeBadge(button: HTMLElement): void {

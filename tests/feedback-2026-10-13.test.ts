@@ -48,7 +48,7 @@ describe('2026-10-13 feedback', () => {
 		assert.match(glance, /tagBadgeIcon\(button, face\.icon\)/);
 		assert.match(glance, /mountUrgencyGlyph\(button, face\.glyphs\)/);
 		const facts = source('src/note-chrome.ts');
-		const title = facts.slice(facts.indexOf('function paintFactsTitle'), facts.indexOf('function snapBadgeRow'));
+		const title = facts.slice(facts.indexOf('function paintFactsTitle'), facts.indexOf('function paintFactsBody'));
 		assert.match(title, /appendBadge\(badges,/);
 		assert.doesNotMatch(title, /setIcon\(|hourglass|is-ghost/);
 		assert.match(source('src/map-view.ts'), /appendBadge\(actions,/);
@@ -131,15 +131,22 @@ describe('2026-10-13 feedback', () => {
 		assert.match(css, /\.rv-qf-badges \{[^}]*gap:\s*6px/);
 		assert.match(css, /\.rv-qf-badges \{[^}]*width:\s*max-content/);
 		const chrome = source('src/note-chrome.ts');
-		assert.match(chrome, /Math\.round\(rect\.left\)/);
-		assert.match(chrome, /translate\(\$\{px\(dx\)\}px, \$\{px\(dy\)\}px\)/);
-		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function snapBadgeRow'));
+		const glance = source('src/glancable-view.ts');
+		assert.match(glance, /Math\.round\(rect\.left\)/);
+		assert.match(glance, /translate\(\$\{px\(dx\)\}px, \$\{px\(dy\)\}px\)/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-actions \{[^}]*justify-content:\s*center/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-actions \{[^}]*gap:\s*4px/);
+		assert.doesNotMatch(css, /justify-content:\s*space-evenly/);
+		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function paintFactsBody'));
 		assert.match(facts, /kind: 'urgency'/);
 		assert.match(facts, /icon: 'moon'/);
+		assert.match(facts, /snapBadgeRow\(badges\)/);
 		assert.doesNotMatch(facts, /icon: 'hourglass'|icon: 'ban'/);
-		const details = chrome.slice(chrome.indexOf('function paintUrgencyDetails'), chrome.indexOf('function setPaint'));
-		assert.match(details, /rv-locator-map-pin/);
-		assert.match(details, /classList\.contains\('rv-locator-map-pin'\)\) return/);
+		const details = chrome.slice(chrome.indexOf('.rv-locator-urgency, .rv-locator-map-pin'), chrome.indexOf('function setPaint'));
+		assert.match(details, /pinBadgeStroke\(node\)/);
+		assert.doesNotMatch(details, /setPaint|border-color|color'/);
+		assert.match(source('src/map-view.ts'), /snapBadgeRow\(actions\)/);
+		assert.match(glance, /snapBadgeRow\(actions\)/);
 
 		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 		const { window } = dom;
