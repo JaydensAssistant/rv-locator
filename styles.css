@@ -3896,12 +3896,20 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-gender-choice .setting-item-control button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 	min-width: 2rem;
 	min-height: 28px;
 	height: 28px;
 	padding: 0 8px;
 	font-size: 14px;
 	line-height: 1;
+}
+
+.rv-gender-choice .setting-item-control button svg {
+	width: 16px;
+	height: 16px;
 }
 
 .rv-suggest-option.is-highlighted {
@@ -6061,7 +6069,6 @@ body.rv-center-visit-notes .rv-older-heading {
 	max-width: none;
 	min-width: 0;
 	box-sizing: border-box;
-	color: var(--text-normal);
 }
 
 .theme-light .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line,
@@ -6806,7 +6813,8 @@ button.rv-locator-map-pin > svg,
 
 .rv-address-field > a.rv-address-link,
 .rv-dashboard p.rv-hub-owned a.rv-address-link:not([hidden]) {
-	color: var(--text-normal) !important;
+	color: var(--rv-urgency-accent, var(--text-accent)) !important;
+	-webkit-text-fill-color: var(--rv-urgency-accent, var(--text-accent));
 }
 
 a.rv-map-button,
@@ -8001,8 +8009,10 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 .markdown-rendered p.rv-hub-owned .rv-hub-chip,
 .rv-dashboard p.rv-hub-owned a.rv-address-link,
 .markdown-preview-view p.rv-hub-owned a.rv-address-link,
-.markdown-rendered p.rv-hub-owned a.rv-address-link {
+.markdown-rendered p.rv-hub-owned a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-address-line a.rv-address-link {
 	color: var(--rv-urgency-accent, var(--text-accent)) !important;
+	-webkit-text-fill-color: var(--rv-urgency-accent, var(--text-accent));
 	text-decoration-color: var(--rv-urgency-accent, var(--text-accent));
 }
 
@@ -8038,15 +8048,34 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	cursor: pointer;
 }
 
-/* The filled action sits on the right. Both buttons still share the row. */
+/* The filled action sits on the right. Every action button shares the row. */
 .modal.rv-locator-modal .setting-item.rv-modal-actions .setting-item-control,
 .modal.rv-locator-modal .rv-modal-actions,
 .modal.rv-locator-modal .modal-button-container {
+	display: flex !important;
 	flex-direction: row !important;
+	width: 100% !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-modal-actions button,
+.modal.rv-locator-modal .rv-modal-actions button,
+.modal.rv-locator-modal .modal-button-container button {
+	flex: 1 1 0 !important;
+	width: auto !important;
+	max-width: none !important;
+	min-width: 0 !important;
 }
 
 .modal.rv-locator-modal .setting-item.rv-modal-actions button.mod-cta,
 .modal.rv-locator-modal .rv-modal-actions button.mod-cta,
 .modal.rv-locator-modal .modal-button-container button.mod-cta {
 	order: 2;
+}
+
+.modal.rv-locator-modal .setting-item.rv-modal-actions button.rv-btn-outline,
+.modal.rv-locator-modal .rv-modal-actions button.rv-btn-outline {
+	background: transparent !important;
+	background-color: transparent !important;
+	color: var(--text-error) !important;
+	box-shadow: inset 0 0 0 1px var(--text-error) !important;
 }

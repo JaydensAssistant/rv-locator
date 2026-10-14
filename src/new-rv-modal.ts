@@ -1,4 +1,4 @@
-import { Modal, Setting, type App } from 'obsidian';
+import { Modal, Setting, setIcon, type App, type ButtonComponent } from 'obsidian';
 import { AddressSuggestController, type SuggestFetchResult } from './address-suggest';
 import { emptyShare, studyPrefill, type LessonSpec, type VisitShare } from './catalog';
 import { mountShareFields } from './catalog-fields';
@@ -98,20 +98,14 @@ export class NewRvIdentityModal extends Modal {
 		const gender = new Setting(contentEl).setName('Man / Woman');
 		gender.settingEl?.addClass('rv-gender-choice');
 		gender.addButton((button) => {
-			button.setButtonText('♂');
-			button.buttonEl.dataset.gender = 'Man';
-			button.setTooltip('Man');
-			if (this.gender === 'Man') button.buttonEl.addClass('is-selected');
+			mountGenderButton(button, 'Man', 'mars', this.gender === 'Man');
 			button.onClick(() => {
 				this.gender = 'Man';
 				this.paintGender(gender);
 			});
 		});
 		gender.addButton((button) => {
-			button.setButtonText('♀');
-			button.buttonEl.dataset.gender = 'Woman';
-			button.setTooltip('Woman');
-			if (this.gender === 'Woman') button.buttonEl.addClass('is-selected');
+			mountGenderButton(button, 'Woman', 'venus', this.gender === 'Woman');
 			button.onClick(() => {
 				this.gender = 'Woman';
 				this.paintGender(gender);
@@ -328,4 +322,14 @@ export class NewRvIdentityModal extends Modal {
 		if (!match) return;
 		this.selectCompanion(match.value);
 	}
+}
+
+function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon: 'mars' | 'venus', selected: boolean): void {
+	button.setButtonText('');
+	button.setTooltip(label);
+	const el = button.buttonEl;
+	el.dataset.gender = label;
+	el.setAttribute('aria-label', label);
+	el.classList.toggle('is-selected', selected);
+	setIcon(el, icon);
 }

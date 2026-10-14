@@ -79,7 +79,7 @@ export function mountStudyPanel(
 		const modes = host.createDiv('rv-study-modes');
 		for (const item of [
 			['partway', 'Partway', 'gauge'],
-			['finished', 'Finished', 'check'],
+			['finished', 'Finished', 'circle-check-big'],
 			['next', 'Next lesson', 'skip-forward'],
 		] as const) {
 			const button = modes.createEl('button', { attr: { type: 'button', 'aria-label': item[1] } });

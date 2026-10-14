@@ -160,7 +160,9 @@ export class VisitEditModal extends Modal {
 		if (this.options.onDelete) {
 			actions.addButton((button) => {
 				button.setButtonText('Delete visit');
-				button.setWarning();
+				button.setDestructive();
+				button.removeCta();
+				button.buttonEl?.addClass('rv-btn-outline');
 				button.onClick(() => {
 					this.close();
 					this.options.onDelete?.();
@@ -333,6 +335,7 @@ export class ConfirmActionModal extends Modal {
 		this.modalEl.addClass('rv-locator-modal');
 		this.contentEl.createEl('p', { cls: 'rv-locator-modal-copy', text: this.options.message });
 		new Setting(this.contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.close());

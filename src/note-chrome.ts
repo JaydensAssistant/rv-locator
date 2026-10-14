@@ -639,6 +639,46 @@ export function revealAttemptLog(root: HTMLElement): boolean {
 	return true;
 }
 
+/** Lisa and Bo render the callout a few hundred milliseconds after the note opens. */
+const ATTEMPT_LOG_WAIT_MS = 2_000;
+
+/**
+ * Expand the Attempt Log once it is in the note. A fixed delay misses notes
+ * whose callout arrives later, so this watches mutations and animation frames
+ * until the callout exists or about two seconds have passed.
+ */
+export function revealAttemptLogWhenReady(root: HTMLElement, timeoutMs = ATTEMPT_LOG_WAIT_MS): void {
+	const started = Date.now();
+	let settled = false;
+	let observer: MutationObserver | null = null;
+	const stop = (): void => {
+		observer?.disconnect();
+		observer = null;
+	};
+	const attempt = (): void => {
+		if (settled) return;
+		const found = attemptLogCallouts(root).length > 0;
+		if (!found && Date.now() - started < timeoutMs) return;
+		settled = true;
+		stop();
+		if (found) revealAttemptLog(root);
+	};
+	const view = root.ownerDocument?.defaultView;
+	const Observer = view?.MutationObserver ?? globalThis.MutationObserver;
+	if (typeof Observer === 'function') {
+		observer = new Observer(() => attempt());
+		observer.observe(root, { childList: true, subtree: true });
+	}
+	const tick = (): void => {
+		attempt();
+		if (settled) return;
+		const frame = view?.requestAnimationFrame ?? globalThis.requestAnimationFrame;
+		if (typeof frame === 'function') frame(tick);
+		else globalThis.setTimeout(tick, 16);
+	};
+	tick();
+}
+
 function revealJumpTarget(target: HTMLElement, root: HTMLElement): void {
 	const notes = root.querySelector('h3.rv-visit-notes-heading');
 	const host = notes?.parentElement;

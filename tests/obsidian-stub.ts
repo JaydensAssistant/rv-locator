@@ -95,6 +95,16 @@ class FakeButton {
 		return this;
 	}
 
+	setDestructive(): this {
+		this.warning = true;
+		return this;
+	}
+
+	removeCta(): this {
+		this.cta = false;
+		return this;
+	}
+
 	setDisabled(_disabled?: boolean): this { return this; }
 
 	onClick(fn: () => void): this {

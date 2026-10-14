@@ -3,7 +3,7 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { decorateAttemptLog, isLogCalloutTitle } from '../src/attempt-digest';
 import { stampAgeCount } from '../src/dates';
-import { applyLiveUrgency, decorateNoteChrome, type NoteChromeHost } from '../src/note-chrome';
+import { applyLiveUrgency, decorateNoteChrome, revealAttemptLogWhenReady, type NoteChromeHost } from '../src/note-chrome';
 import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
@@ -1434,6 +1434,36 @@ describe('smoke layout', () => {
 		assert.equal(svg?.getAttribute('height'), '16');
 		assert.equal(button.childElementCount, 1);
 		frame.remove();
+	});
+
+	it('expands the Attempt Log when the callout appears, not on a fixed delay', async () => {
+		const root = window.document.createElement('div');
+		root.className = 'markdown-preview-view';
+		window.document.body.appendChild(root);
+		revealAttemptLogWhenReady(root, 500);
+		await new Promise((resolve) => setTimeout(resolve, 40));
+		assert.equal(root.querySelector('.callout'), null);
+		const callout = window.document.createElement('div');
+		callout.className = 'callout is-collapsed';
+		callout.setAttribute('data-callout-fold', '-');
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		const inner = window.document.createElement('div');
+		inner.className = 'callout-title-inner';
+		inner.textContent = 'Attempt Log';
+		const fold = window.document.createElement('div');
+		fold.className = 'callout-fold is-collapsed';
+		title.append(inner, fold);
+		const content = window.document.createElement('div');
+		content.className = 'callout-content';
+		content.style.display = 'none';
+		callout.append(title, content);
+		root.appendChild(callout);
+		await new Promise((resolve) => setTimeout(resolve, 80));
+		assert.equal(callout.classList.contains('is-collapsed'), false);
+		assert.equal(callout.getAttribute('data-callout-fold'), '+');
+		assert.equal(content.style.display, '');
+		root.remove();
 	});
 
 	it('opens a collapsed Attempt Log the way Obsidian does', () => {

@@ -444,11 +444,7 @@ export class VisitConfirmModal extends Modal {
 			text: `Log a visit on “${this.displayName}”. Address is not changed.`,
 		});
 		new Setting(contentEl)
-			.addButton((button) => {
-				button.setButtonText('Home');
-				button.setCta();
-				button.onClick(() => this.finish('home'));
-			})
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Not home');
 				button.onClick(() => this.finish('miss'));
@@ -456,15 +452,21 @@ export class VisitConfirmModal extends Modal {
 			.addButton((button) => {
 				button.setButtonText('Log past visit');
 				button.onClick(() => this.finish('past'));
+			})
+			.addButton((button) => {
+				button.setButtonText('Home');
+				button.setCta();
+				button.onClick(() => this.finish('home'));
 			});
 		new Setting(contentEl)
-			.addButton((button) => {
-				button.setButtonText('Archive');
-				button.onClick(() => this.finish('archive'));
-			})
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.finish(null));
+			})
+			.addButton((button) => {
+				button.setButtonText('Archive');
+				button.onClick(() => this.finish('archive'));
 			});
 		iconizeModal(contentEl);
 	}

@@ -23,7 +23,7 @@ import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFract
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
-import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLog, type NoteChromeHost } from './note-chrome';
+import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
@@ -2418,14 +2418,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Open the note and scroll to the Attempt Log, expanded the way Obsidian opens a callout. */
 	openAttemptLog(path: string): void {
-		void this.openNoteThen(path, (root) => { revealAttemptLog(root); });
+		void this.openNoteThen(path, (root) => { revealAttemptLogWhenReady(root); }, 0);
 	}
 
 	private async openNoteDay(path: string, when: Date): Promise<void> {
 		await this.openNoteThen(path, (root) => { jumpToDayInRoot(root, when); });
 	}
 
-	private async openNoteThen(path: string, after: (root: HTMLElement) => void): Promise<void> {
+	private async openNoteThen(path: string, after: (root: HTMLElement) => void, delayMs = 60): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		const workspace = this.app.workspace as { getLeaf?: (split: boolean) => { openFile?: (file: TFile, openState?: OpenViewState) => Promise<void>; view?: { containerEl?: HTMLElement } } };
@@ -2433,10 +2433,21 @@ export default class RVLocatorPlugin extends Plugin {
 		const preview = { state: { mode: 'preview', source: false } };
 		if (leaf?.openFile) await leaf.openFile(file, preview);
 		else await this.app.workspace.openLinkText(path, path, false, preview);
-		window.setTimeout(() => {
+		const started = Date.now();
+		const deliver = (): boolean => {
 			const root = leaf?.view?.containerEl;
-			if (root instanceof HTMLElement) after(root);
-		}, 60);
+			if (!(root instanceof HTMLElement)) return false;
+			after(root);
+			return true;
+		};
+		if (delayMs > 0) {
+			window.setTimeout(() => { deliver(); }, delayMs);
+			return;
+		}
+		if (deliver()) return;
+		const timer = window.setInterval(() => {
+			if (deliver() || Date.now() - started >= 2_000) window.clearInterval(timer);
+		}, 16);
 	}
 
 	/** Met With / Taken only. Does not insert a visit. */
