@@ -1,5 +1,5 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
-import { glancableCardSlotPx } from './glancable-density';
+import { glanceGridOuterPx, glancableCardSlotPx, verticalScrollbarPx } from './glancable-density';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
@@ -1013,13 +1013,18 @@ export class RvMapView extends ItemView {
 	/**
 	 * The width one list card gets from the glancable grid in this leaf.
 	 * Fullscreen hides the list, so the live card is not measured.
-	 * A 1236px leaf is 400. A 400px leaf is 380.
+	 * The layout width already matches the list scroller: 400 from a 1236px
+	 * leaf, and 380 from a 412px leaf whose scrollbar is 12px.
 	 */
 	private popupCardWidth(): number {
 		const settings = this.host.settings;
 		const layout = this.host.glanceLayoutWidth?.() ?? 0;
-		const windowW = this.stage?.ownerDocument.defaultView?.innerWidth ?? 0;
-		const container = layout > 0 ? layout : windowW;
+		let container = layout;
+		if (!(container > 0)) {
+			const doc = this.stage?.ownerDocument;
+			const windowW = doc?.defaultView?.innerWidth ?? 0;
+			container = glanceGridOuterPx(windowW, verticalScrollbarPx(doc));
+		}
 		return glancableCardSlotPx(container, settings, settings.glancableFitCount);
 	}
 

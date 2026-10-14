@@ -39,6 +39,37 @@ const GRID_GAP_PX = 8;
 /** Horizontal padding on `.rv-locator-glancable .rv-locator-scroll` (`6px 10px 10px`). */
 export const GLANCE_SCROLL_PAD_X = 10;
 
+const scrollbarPxByDoc = new WeakMap<Document, number>();
+
+/**
+ * Width of a classic vertical scrollbar. Overlay scrollbars measure 0, so a
+ * desktop leaf is not narrowed. Cached per document.
+ */
+export function verticalScrollbarPx(doc: Document | null | undefined): number {
+	if (!doc?.documentElement) return 0;
+	const cached = scrollbarPxByDoc.get(doc);
+	if (cached !== undefined) return cached;
+	const probe = doc.createElement('div');
+	probe.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;overflow:scroll;visibility:hidden;pointer-events:none;';
+	doc.documentElement.appendChild(probe);
+	const width = probe.offsetWidth - probe.clientWidth;
+	probe.remove();
+	const px = Number.isFinite(width) && width > 0 ? width : 0;
+	scrollbarPxByDoc.set(doc, px);
+	return px;
+}
+
+/**
+ * Grid width the list uses. `outerPx` is the leaf. A classic scrollbar comes
+ * off, which is 400 in a 412px leaf with a 12px bar. An overlay bar of 0
+ * leaves the leaf unchanged, so 1236 stays 1236.
+ */
+export function glanceGridOuterPx(outerPx: number, scrollbarPx: number): number {
+	if (!Number.isFinite(outerPx) || outerPx <= 1) return 0;
+	const bar = Number.isFinite(scrollbarPx) && scrollbarPx > 0 ? scrollbarPx : 0;
+	return Math.max(0, outerPx - bar);
+}
+
 export interface DensityMeasure {
 	glancableFontScale: number;
 	glancablePaddingX: number;

@@ -36,6 +36,7 @@ import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
 import { paintNoteGlanceCard } from './glance-card';
+import { glanceGridOuterPx, verticalScrollbarPx } from './glancable-density';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import { listedUsCounties } from './us-county-index';
 import type { MapPin } from './map-pins';
@@ -133,6 +134,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private creatingNewRv = false;
 	private wizardOpen = false;
 	private unloaded = false;
+	private stopMetaBindSweep: (() => void) | null = null;
 	/** A setup notice is already on screen, so another view open does not stack a second one. */
 	private setupNudgeOpen = false;
 	private digestKeyApplied = '';
@@ -1159,6 +1161,8 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
+		this.stopMetaBindSweep?.();
+		this.stopMetaBindSweep = null;
 		clearVisitNoteCaches();
 		document.body.classList.remove('rv-hide-backlinks', 'rv-hide-note-status');
 		this.stopVisitFocus?.();
@@ -2318,7 +2322,8 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView)) continue;
-			const width = view.containerEl.clientWidth;
+			const outer = view.containerEl.clientWidth;
+			const width = glanceGridOuterPx(outer, verticalScrollbarPx(view.containerEl.ownerDocument));
 			if (width > best) best = width;
 		}
 		return best;
@@ -3486,66 +3491,104 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/**
 	 * A rename leaves the open preview on Meta Bind's unloaded placeholders.
-	 * Reopen the note and rebuild the preview so the fields bind to the new path.
+	 * Drop the leaf and open the note again so those children are not kept in
+	 * a hidden preview, then detach any `.mb-unloaded` node that is still hidden.
 	 */
 	private async reopenRenamedNote(file: TFile): Promise<void> {
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
 		let leaf = leaves.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
 		if (!leaf) leaf = this.app.workspace.getLeaf(false);
 		if (!leaf) return;
+		try {
+			await leaf.setViewState({ type: 'empty', state: {} });
+		} catch {
+			/* Opening the file below still replaces the view. */
+		}
 		await leaf.openFile(file, { active: true, state: { mode: 'preview', source: false } });
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
 		const preview = view.previewMode;
 		if (preview && typeof preview.rerender === 'function') preview.rerender(true);
-		const state = leaf.getViewState();
-		const inner = state.state && typeof state.state === 'object' ? state.state : {};
-		await leaf.setViewState({ ...state, state: { ...inner, mode: 'source', source: true } });
-		await leaf.setViewState({ ...state, state: { ...inner, mode: 'preview', source: false } });
 		this.openInReadingView(file, true);
 		const shown = leaf.view instanceof MarkdownView ? leaf.view.containerEl : view.containerEl;
-		const sweep = (afterLayout: boolean): void => { this.stripHiddenUnloaded(shown, afterLayout); };
-		sweep(false);
-		const win = shown.ownerDocument.defaultView;
-		if (win && typeof win.requestAnimationFrame === 'function') {
-			win.requestAnimationFrame(() => {
-				if (this.unloaded) return;
-				sweep(true);
-				win.requestAnimationFrame(() => {
-					if (!this.unloaded) sweep(true);
-				});
-			});
-		}
+		this.detachStaleMetaBind(this.leafHost(leaf, shown));
 	}
 
-	/** Hidden Meta Bind leftovers after a rename. A parent that only contains the token stays. */
-	private stripHiddenUnloaded(root: ParentNode, afterLayout: boolean): void {
-		const nodes = root.querySelectorAll('*');
-		for (const node of Array.from(nodes)) {
-			if (!(node instanceof HTMLElement) || !node.isConnected) continue;
-			let own = '';
-			for (const child of Array.from(node.childNodes)) {
-				if (child.nodeType === Node.TEXT_NODE) own += child.textContent ?? '';
+	/** The leaf holds a hidden preview the markdown view no longer owns. */
+	private leafHost(leaf: WorkspaceLeaf, fallback: HTMLElement): HTMLElement {
+		const boxed = leaf as unknown as { containerEl?: unknown };
+		return boxed.containerEl instanceof HTMLElement ? boxed.containerEl : fallback;
+	}
+
+	/**
+	 * Hidden `.mb-unloaded` nodes from the previous path. A placeholder Meta Bind
+	 * is about to hydrate stays while it is visible. The watch covers the
+	 * 0.5–3s window where a stale child can appear after the reopen.
+	 */
+	private detachStaleMetaBind(root: HTMLElement): void {
+		this.stopMetaBindSweep?.();
+		this.stopMetaBindSweep = null;
+		const drop = (afterLayout: boolean): void => {
+			if (this.unloaded || !root.isConnected) return;
+			const nodes = root.querySelectorAll('.mb-unloaded');
+			for (const node of Array.from(nodes)) {
+				if (!(node instanceof HTMLElement) || !node.isConnected) continue;
+				if (this.hiddenMetaBind(node, afterLayout)) node.remove();
 			}
-			if (own.trim() !== '[MB_UNLOADED]') continue;
-			const styleAttr = (node.getAttribute('style') ?? '').replace(/\s/g, '').toLowerCase();
-			const className = typeof node.className === 'string' ? node.className : '';
-			let hidden = node.hidden
-				|| node.getAttribute('aria-hidden') === 'true'
-				|| styleAttr.includes('display:none')
-				|| /unloaded|mb-hidden|is-hidden/i.test(className);
-			const view = node.ownerDocument.defaultView;
-			if (!hidden && view) {
-				try {
-					const style = view.getComputedStyle(node);
-					hidden = style.display === 'none' || style.visibility === 'hidden';
-					if (!hidden && afterLayout) hidden = node.getClientRects().length === 0;
-				} catch {
-					hidden = afterLayout && node.getClientRects().length === 0;
-				}
+		};
+		drop(false);
+		const win = root.ownerDocument.defaultView;
+		if (!win || typeof win.MutationObserver !== 'function' || typeof win.requestAnimationFrame !== 'function') return;
+		let stopped = false;
+		const observer = new win.MutationObserver(() => {
+			if (!stopped) drop(false);
+		});
+		observer.observe(root, {
+			childList: true,
+			subtree: true,
+			attributes: true,
+			attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'],
+		});
+		const started = Date.now();
+		const stop = (): void => {
+			if (stopped) return;
+			stopped = true;
+			observer.disconnect();
+			if (this.stopMetaBindSweep === stop) this.stopMetaBindSweep = null;
+		};
+		const tick = (): void => {
+			if (stopped) return;
+			if (this.unloaded || !root.isConnected || Date.now() - started >= 4000) {
+				if (!this.unloaded && root.isConnected) drop(true);
+				stop();
+				return;
 			}
-			if (hidden) node.remove();
+			drop(true);
+			win.requestAnimationFrame(tick);
+		};
+		this.stopMetaBindSweep = stop;
+		win.requestAnimationFrame(tick);
+	}
+
+	/** A `.mb-unloaded` node, or an ancestor, that is not on screen. */
+	private hiddenMetaBind(node: HTMLElement, afterLayout: boolean): boolean {
+		if (node.hidden || node.getAttribute('aria-hidden') === 'true') return true;
+		const styleAttr = (node.getAttribute('style') ?? '').replace(/\s/g, '').toLowerCase();
+		if (styleAttr.includes('display:none') || styleAttr.includes('visibility:hidden')) return true;
+		const view = node.ownerDocument.defaultView;
+		if (!view) return afterLayout && node.getClientRects().length === 0;
+		try {
+			let current: HTMLElement | null = node;
+			while (current) {
+				if (current.hidden) return true;
+				const style = view.getComputedStyle(current);
+				if (style.display === 'none' || style.visibility === 'hidden') return true;
+				current = current.parentElement;
+			}
+		} catch {
+			return afterLayout && node.getClientRects().length === 0;
 		}
+		return afterLayout && node.getClientRects().length === 0;
 	}
 
 	confirmArchive(file: TFile): void {
