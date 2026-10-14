@@ -2154,7 +2154,8 @@ body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv
 .rv-qf-badges {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35em;
+	gap: 6px;
+	width: max-content;
 	margin-left: auto;
 }
 
@@ -2165,7 +2166,7 @@ body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv
 }
 
 .rv-qf-badges {
-	margin-inline-end: 0.15em;
+	margin-inline-end: 2px;
 }
 
 .rv-qf-body {

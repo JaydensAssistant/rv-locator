@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, LINE_ICON_INK_BY_ICON, badgeLineOpticalKey, urgencyInkFraction, urgencyOpticalKey } from '../src/badge-glyph';
+import { appendBadge, type BadgeFace } from '../src/glancable-view';
 import { navigatingToFile, withReadingPreview } from '../src/reading-open';
 
 function source(file: string): string {
@@ -41,15 +43,16 @@ describe('2026-10-13 feedback', () => {
 		assert.equal(badgeLineOpticalKey('book'), null);
 		const glance = source('src/glancable-view.ts');
 		assert.match(glance, /var\(--rv-badge-ink, 0\.53\)/);
-		assert.match(glance, /pinBadgeStroke\(pill\)/);
-		assert.match(glance, /tagBadgeIcon\(urgencyButton, 'moon'\)/);
-		assert.match(glance, /tagBadgeIcon\(button, 'route'\)/);
-		assert.match(source('src/note-chrome.ts'), /pinBadgeStroke\(pill\)/);
-		assert.match(source('src/note-chrome.ts'), /tagBadgeIcon\(button, ghost\)/);
-		assert.match(source('src/note-chrome.ts'), /tagBadgeIcon\(route, 'route'\)/);
-		assert.match(source('src/map-view.ts'), /pinBadgeStroke\(priority\)/);
-		assert.match(source('src/map-view.ts'), /tagBadgeIcon\(urgency, pin\.stateIcon\)/);
-		assert.match(source('src/map-view.ts'), /tagBadgeIcon\(route, 'route'\)/);
+		assert.match(glance, /function appendBadge/);
+		assert.match(glance, /pinBadgeStroke\(button\)/);
+		assert.match(glance, /tagBadgeIcon\(button, face\.icon\)/);
+		assert.match(glance, /mountUrgencyGlyph\(button, face\.glyphs\)/);
+		const facts = source('src/note-chrome.ts');
+		const title = facts.slice(facts.indexOf('function paintFactsTitle'), facts.indexOf('function snapBadgeRow'));
+		assert.match(title, /appendBadge\(badges,/);
+		assert.doesNotMatch(title, /setIcon\(|hourglass|is-ghost/);
+		assert.match(source('src/map-view.ts'), /appendBadge\(actions,/);
+		assert.match(source('src/map-view.ts'), /setIcon\(head, pin\.stateIcon\)/);
 		assert.match(css, /stroke-width:\s*var\(--rv-badge-stroke\) !important/);
 		assert.match(css, /font-size:\s*calc\(var\(--rv-control-size, 28px\) \* var\(--rv-badge-ink\) \/ var\(--rv-digit-ink\) \* var\(--rv-opt-digit\)\) !important/);
 	});
@@ -91,9 +94,9 @@ describe('2026-10-13 feedback', () => {
 		const glance = source('src/glancable-view.ts');
 		const actions = glance.slice(glance.indexOf('private paintActions'), glance.indexOf('private noteFrontmatter'));
 		assert.match(actions, /ghostIconForCard\(row\.path\) === 'moon'/);
-		assert.match(actions, /setIcon\(urgencyButton, 'moon'\)/);
-		assert.doesNotMatch(actions, /setIcon\(urgencyButton, ghost\)/);
-		assert.match(source('src/map-view.ts'), /setIcon\(urgency, pin\.stateIcon\)/);
+		assert.match(actions, /icon: 'moon'/);
+		assert.doesNotMatch(actions, /setIcon\(urgencyButton, ghost\)|icon: 'hourglass'|icon: 'ban'/);
+		assert.match(source('src/map-view.ts'), /setIcon\(head, pin\.stateIcon\)/);
 	});
 
 	it('paints hub, address, and campaign icons in the text color and drops the label icons', () => {
@@ -121,5 +124,89 @@ describe('2026-10-13 feedback', () => {
 		assert.match(strip, /urgencyInkFor/);
 		assert.match(strip, /LINE_ICON_INK_BY_ICON/);
 		assert.doesNotMatch(strip, /urgencyInk\(/);
+	});
+
+	it('gives Quick Facts and cards the same badge markup and snaps the Quick Facts row', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-qf-badges \{[^}]*gap:\s*6px/);
+		assert.match(css, /\.rv-qf-badges \{[^}]*width:\s*max-content/);
+		const chrome = source('src/note-chrome.ts');
+		assert.match(chrome, /Math\.round\(rect\.left\)/);
+		assert.match(chrome, /translate\(\$\{px\(dx\)\}px, \$\{px\(dy\)\}px\)/);
+		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function snapBadgeRow'));
+		assert.match(facts, /kind: 'urgency'/);
+		assert.match(facts, /icon: 'moon'/);
+		assert.doesNotMatch(facts, /icon: 'hourglass'|icon: 'ban'/);
+		const details = chrome.slice(chrome.indexOf('function paintUrgencyDetails'), chrome.indexOf('function setPaint'));
+		assert.match(details, /rv-locator-map-pin/);
+		assert.match(details, /classList\.contains\('rv-locator-map-pin'\)\) return/);
+
+		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+		const { window } = dom;
+		const host = globalThis as typeof globalThis & Record<string, unknown>;
+		const previous = {
+			window: host.window,
+			document: host.document,
+			HTMLElement: host.HTMLElement,
+			SVGElement: host.SVGElement,
+			Element: host.Element,
+		};
+		host.window = window;
+		host.document = window.document;
+		host.HTMLElement = window.HTMLElement;
+		host.SVGElement = window.SVGElement;
+		host.Element = window.Element;
+		host.__rvSetIcon = (parent: unknown, id: string) => {
+			const node = parent as HTMLElement;
+			const svg = node.ownerDocument.createElementNS('http://www.w3.org/2000/svg', 'svg');
+			svg.setAttribute('data-icon', id);
+			svg.setAttribute('viewBox', '0 0 24 24');
+			node.appendChild(svg);
+		};
+		const visual = (node: HTMLElement): string => {
+			const copy = node.cloneNode(true) as HTMLElement;
+			copy.removeAttribute('aria-label');
+			return copy.outerHTML;
+		};
+		const faces: BadgeFace[] = [
+			{ kind: 'urgency', glyphs: '○', band: 0, label: 'Urgency' },
+			{ kind: 'urgency', glyphs: '!', band: 1, label: 'Urgency' },
+			{ kind: 'urgency', glyphs: '!!', band: 2, label: 'Urgency' },
+			{ kind: 'urgency', glyphs: '!!!', band: 3, label: 'Urgency' },
+			{ kind: 'urgency', glyphs: '—', band: 0, label: 'Urgency' },
+			{ kind: 'priority', rank: '5', label: 'Priority 5' },
+			{ kind: 'priority', rank: '0', label: 'Priority 0' },
+			{ kind: 'icon', icon: 'route', label: 'Directions' },
+			{ kind: 'icon', icon: 'moon', band: 1, label: 'Snoozed' },
+		];
+		try {
+			for (const face of faces) {
+				const quick = window.document.createElement('div');
+				const card = window.document.createElement('div');
+				window.document.body.append(quick, card);
+				const quickBadge = appendBadge(quick, face);
+				const cardBadge = appendBadge(card, { ...face, label: `${face.label} on card` });
+				assert.equal(visual(quickBadge), visual(cardBadge), `${face.kind} ${'glyphs' in face ? face.glyphs : ''} ${'icon' in face ? face.icon : ''} ${'rank' in face ? face.rank : ''}`);
+				quick.remove();
+				card.remove();
+			}
+			const ringParent = window.document.createElement('div');
+			const ring = appendBadge(ringParent, { kind: 'urgency', glyphs: '○', band: 0, label: 'Urgency' });
+			const svg = ring.querySelector('svg');
+			assert.equal(svg?.getAttribute('viewBox'), '0 0 28 28');
+			assert.equal(svg?.getAttribute('class'), 'rv-urgency-glyph');
+			assert.equal(ring.querySelector('[data-icon]'), null);
+			const route = appendBadge(window.document.createElement('div'), { kind: 'icon', icon: 'route', label: 'Directions' });
+			assert.equal(route.style.getPropertyValue('color'), '');
+			assert.equal(route.style.getPropertyValue('border-color'), '');
+			assert.equal(route.querySelector('svg')?.getAttribute('data-icon'), 'route');
+		} finally {
+			host.window = previous.window;
+			host.document = previous.document;
+			host.HTMLElement = previous.HTMLElement;
+			host.SVGElement = previous.SVGElement;
+			host.Element = previous.Element;
+			delete host.__rvSetIcon;
+		}
 	});
 });

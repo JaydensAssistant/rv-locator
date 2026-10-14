@@ -1,7 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
-import { mountUrgencyGlyph, pinBadgeStroke, tagBadgeIcon } from './glancable-view';
-import { SNOOZE_SLATE } from './snooze';
+import { appendBadge, mountUrgencyGlyph } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
@@ -1013,46 +1012,17 @@ export class RvMapView extends ItemView {
 		const ratio = pin.card.study ? pin.card.studyRatio : pin.card.visits;
 		if (ratio) this.cardSlot(foot, pin.card.study ? 'percent' : 'list-checks', ratio, false);
 		const actions = card.createSpan('rv-locator-card-actions');
-		const urgency = actions.createEl('button', {
-			cls: 'rv-locator-urgency',
-			attr: { type: 'button', 'data-band': String(marks.band), 'aria-label': 'Urgency' },
-		});
-		mountUrgencyGlyph(urgency, marks.glyphs);
-		if (pin.stateIcon) {
-			const snoozedPin = pin.snoozed === true || pin.stateIcon === 'moon';
-			if (!snoozedPin) urgency.addClass('is-ghost');
-			urgency.empty();
-			tagBadgeIcon(urgency, pin.stateIcon);
-			setIcon(urgency, pin.stateIcon);
-			pinBadgeStroke(urgency);
-			if (snoozedPin) {
-				urgency.style.setProperty('color', SNOOZE_SLATE, 'important');
-				urgency.style.setProperty('border-color', SNOOZE_SLATE, 'important');
-				urgency.querySelectorAll('svg').forEach((node) => {
-					if (!(node instanceof SVGElement)) return;
-					node.style.setProperty('color', SNOOZE_SLATE, 'important');
-					node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
-				});
-			}
-		}
+		const snoozedPin = pin.snoozed === true || pin.stateIcon === 'moon';
+		const urgency = snoozedPin
+			? appendBadge(actions, { kind: 'icon', icon: 'moon', band: marks.band, label: 'Urgency' })
+			: appendBadge(actions, { kind: 'urgency', glyphs: marks.glyphs, band: marks.band, label: 'Urgency' });
 		urgency.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
 			this.host.promptUrgencyMenu?.(pin.path, pin.name, event);
 		});
-		const priority = actions.createSpan({
-			cls: 'rv-locator-priority-pill',
-			text: String(pin.priority),
-			attr: { 'aria-label': `Priority ${pin.priority}` },
-		});
-		pinBadgeStroke(priority);
-		const route = actions.createEl('button', {
-			cls: 'rv-locator-map-pin',
-			attr: { type: 'button', 'aria-label': 'Directions' },
-		});
-		tagBadgeIcon(route, 'route');
-		setIcon(route, 'route');
-		pinBadgeStroke(route);
+		appendBadge(actions, { kind: 'priority', rank: String(pin.priority), label: `Priority ${pin.priority}` });
+		const route = appendBadge(actions, { kind: 'icon', icon: 'route', label: 'Directions' });
 		route.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();

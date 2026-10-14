@@ -7,7 +7,7 @@ import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
-import { mountUrgencyGlyph, pinBadgeStroke, tagBadgeIcon } from './glancable-view';
+import { appendBadge, pinBadgeStroke } from './glancable-view';
 import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
@@ -202,6 +202,7 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		pinBadgeStroke(node);
+		if (node.classList.contains('rv-locator-map-pin')) return;
 		setPaint(node, 'border-color', accent, true);
 		setPaint(node, 'color', accent, true);
 	});
@@ -289,42 +290,25 @@ function paintFactsTitle(
 		badges = title.createSpan('rv-qf-badges');
 	}
 	if (!(badges instanceof HTMLElement)) return;
-	const ghost = host.ghostIcon(path);
+	const snoozed = host.ghostIcon(path) === 'moon';
 	const signature = [
-		host.settings.showUrgencyBadge ? `u:${urgency ?? ''}:${priority ?? ''}:${ghost}` : '',
+		host.settings.showUrgencyBadge ? `u:${urgency ?? ''}:${priority ?? ''}:${snoozed ? 'moon' : ''}` : '',
 		host.settings.showPriorityBadge && priority != null ? `p:${priority}` : '',
 		host.settings.showRouteBadge ? 'r:1' : '',
 	].join('|');
 	const expectsBadges = /(?:^|\|)[upr]:/.test(signature);
 	if (badges.dataset.rvFacts === signature && (!expectsBadges || badges.childElementCount > 0)) {
 		if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+		snapBadgeRow(badges);
 		return;
 	}
 	badges.empty();
 	const name = path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
 	if (host.settings.showUrgencyBadge) {
 		const marks = urgencyMark(urgency, priority);
-		const button = badges.createEl('button', {
-			cls: 'rv-locator-urgency',
-			attr: { type: 'button', 'data-band': String(marks.band), 'aria-label': 'Urgency' },
-		});
-		mountUrgencyGlyph(button, marks.glyphs);
-		if (ghost) {
-			if (ghost !== 'moon') button.addClass('is-ghost');
-			button.empty();
-			tagBadgeIcon(button, ghost);
-			setIcon(button, ghost);
-			pinBadgeStroke(button);
-			if (ghost === 'moon') {
-				button.style.setProperty('color', SNOOZE_SLATE, 'important');
-				button.style.setProperty('border-color', SNOOZE_SLATE, 'important');
-				button.querySelectorAll('svg').forEach((node) => {
-					const styled = node as { style?: { setProperty?: (name: string, value: string, priority?: string) => void } };
-					styled.style?.setProperty?.('color', SNOOZE_SLATE, 'important');
-					styled.style?.setProperty?.('stroke', SNOOZE_SLATE, 'important');
-				});
-			}
-		}
+		const button = snoozed
+			? appendBadge(badges, { kind: 'icon', icon: 'moon', band: marks.band, label: 'Urgency' })
+			: appendBadge(badges, { kind: 'urgency', glyphs: marks.glyphs, band: marks.band, label: 'Urgency' });
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -332,12 +316,8 @@ function paintFactsTitle(
 		});
 	}
 	if (host.settings.showPriorityBadge && priority != null) {
-		const pill = badges.createEl('button', {
-			cls: 'rv-locator-priority-pill',
-			text: String(Math.max(0, Math.min(5, Math.round(priority)))),
-			attr: { type: 'button', 'aria-label': `Priority ${priority}` },
-		});
-		pinBadgeStroke(pill);
+		const rank = String(Math.max(0, Math.min(5, Math.round(priority))));
+		const pill = appendBadge(badges, { kind: 'priority', rank, label: `Priority ${priority}` });
 		pill.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -345,13 +325,7 @@ function paintFactsTitle(
 		});
 	}
 	if (host.settings.showRouteBadge) {
-		const route = badges.createEl('button', {
-			cls: 'rv-locator-map-pin',
-			attr: { type: 'button', 'aria-label': 'Directions' },
-		});
-		tagBadgeIcon(route, 'route');
-		setIcon(route, 'route');
-		pinBadgeStroke(route);
+		const route = appendBadge(badges, { kind: 'icon', icon: 'route', label: 'Directions' });
 		route.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -359,7 +333,26 @@ function paintFactsTitle(
 		});
 	}
 	badges.dataset.rvFacts = signature;
+	snapBadgeRow(badges);
 	if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+}
+
+/** The badge row's flex position can land on a half pixel and shift every glyph. */
+function snapBadgeRow(row: HTMLElement): void {
+	const place = (): void => {
+		if (!row.isConnected) return;
+		row.style.transform = '';
+		const rect = row.getBoundingClientRect();
+		if (rect.width < 1 && rect.height < 1) return;
+		const dx = Math.round(rect.left) - rect.left;
+		const dy = Math.round(rect.top) - rect.top;
+		if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return;
+		const px = (value: number): string => String(Math.round(value * 100) / 100);
+		row.style.transform = `translate(${px(dx)}px, ${px(dy)}px)`;
+	};
+	place();
+	const view = row.ownerDocument.defaultView;
+	if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(place);
 }
 
 function paintFactsBody(

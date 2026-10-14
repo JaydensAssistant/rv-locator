@@ -554,50 +554,35 @@ export class NearbyGlancableView extends NearbyBasesView {
 			parent.style.setProperty('--rv-control-size', `${size}px`);
 		}
 		const actions = parent.createSpan('rv-locator-card-actions');
-		const urgencyButton = actions.createEl('button', {
-			cls: 'rv-locator-urgency',
-			attr: {
-				type: 'button',
-				'data-band': String(marks.band),
-				'aria-label': urgencyTitle(urgency, priority),
-			},
-		});
-		mountUrgencyGlyph(urgencyButton, marks.glyphs);
-		if (this.plugin.ghostIconForCard(row.path) === 'moon') {
-			urgencyButton.empty();
-			tagBadgeIcon(urgencyButton, 'moon');
-			setIcon(urgencyButton, 'moon');
-			pinBadgeStroke(urgencyButton);
-			urgencyButton.style.setProperty('color', SNOOZE_SLATE, 'important');
-			urgencyButton.style.setProperty('border-color', SNOOZE_SLATE, 'important');
-			urgencyButton.querySelectorAll('svg').forEach((node) => {
-				if (!(node instanceof SVGElement)) return;
-				node.style.setProperty('color', SNOOZE_SLATE, 'important');
-				node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
-			});
-		}
+		const urgencyLabel = urgencyTitle(urgency, priority);
+		const urgencyButton = this.plugin.ghostIconForCard(row.path) === 'moon'
+			? appendBadge(actions, { kind: 'icon', icon: 'moon', band: marks.band, label: urgencyLabel })
+			: appendBadge(actions, { kind: 'urgency', glyphs: marks.glyphs, band: marks.band, label: urgencyLabel });
 		urgencyButton.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
 			this.plugin.promptUrgencyMenu(row.path, row.name, event);
 		});
 		if (showRank && rank) {
-			const pill = actions.createEl('button', {
-				cls: 'rv-locator-priority-pill',
-				text: rank,
-				attr: {
-					type: 'button',
-					'aria-label': `Priority ${rank}. Change priority`,
-				},
+			const pill = appendBadge(actions, {
+				kind: 'priority',
+				rank,
+				label: `Priority ${rank}. Change priority`,
 			});
-			pinBadgeStroke(pill);
 			pill.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
 				this.plugin.promptPriority(row.path, row.name);
 			});
 		}
-		if (showMap) this.renderRouteButton(actions, row.path);
+		if (showMap) {
+			const route = appendBadge(actions, { kind: 'icon', icon: 'route', label: 'Directions' });
+			route.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				void this.plugin.openRoute(row.path);
+			});
+		}
 	}
 
 	private noteFrontmatter(path: string): Record<string, unknown> | null {
@@ -666,21 +651,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const iconEl = slot.createSpan('rv-locator-slot-icon');
 		setIcon(iconEl, icon);
 		slot.createSpan({ cls: 'rv-locator-slot-text', text });
-	}
-
-	private renderRouteButton(parent: HTMLElement, path: string): void {
-		const button = parent.createEl('button', {
-			cls: 'rv-locator-map-pin',
-			attr: { type: 'button', 'aria-label': 'Directions' },
-		});
-		tagBadgeIcon(button, 'route');
-		setIcon(button, 'route');
-		pinBadgeStroke(button);
-		button.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			void this.plugin.openRoute(path);
-		});
 	}
 
 	private syncHubMap(): void {
@@ -1025,6 +995,54 @@ function applyBadgeStroke(host: HTMLElement, px: string): void {
 		mark.setAttribute('vector-effect', 'non-scaling-stroke');
 		mark.style.setProperty('vector-effect', 'non-scaling-stroke');
 		mark.style.setProperty('stroke-linecap', 'round');
+	});
+}
+
+export type BadgeIconName = 'route' | 'moon' | 'hourglass' | 'ban';
+
+export type BadgeFace =
+	| { kind: 'urgency'; glyphs: string; band: number; label: string }
+	| { kind: 'priority'; rank: string; label: string }
+	| { kind: 'icon'; icon: BadgeIconName; label: string; band?: number };
+
+/**
+ * One badge for Quick Facts, glancable cards, and the map popup.
+ * Same element, same SVG or digit, same optical factor, same stroke.
+ */
+export function appendBadge(parent: HTMLElement, face: BadgeFace): HTMLElement {
+	const button = parent.ownerDocument.createElement('button');
+	button.type = 'button';
+	button.setAttribute('aria-label', face.label);
+	parent.appendChild(button);
+	if (face.kind === 'priority') {
+		button.className = 'rv-locator-priority-pill';
+		button.textContent = face.rank;
+		pinBadgeStroke(button);
+		return button;
+	}
+	if (face.kind === 'icon') {
+		button.className = face.icon === 'route' ? 'rv-locator-map-pin' : 'rv-locator-urgency';
+		if (face.band != null) button.dataset.band = String(face.band);
+		if (face.icon !== 'route' && face.icon !== 'moon') button.classList.add('is-ghost');
+		tagBadgeIcon(button, face.icon);
+		setIcon(button, face.icon);
+		pinBadgeStroke(button);
+		if (face.icon === 'moon') paintSnoozeBadge(button);
+		return button;
+	}
+	button.className = 'rv-locator-urgency';
+	button.dataset.band = String(face.band);
+	mountUrgencyGlyph(button, face.glyphs);
+	return button;
+}
+
+function paintSnoozeBadge(button: HTMLElement): void {
+	button.style.setProperty('color', SNOOZE_SLATE, 'important');
+	button.style.setProperty('border-color', SNOOZE_SLATE, 'important');
+	button.querySelectorAll('svg').forEach((node) => {
+		if (!(node instanceof SVGElement)) return;
+		node.style.setProperty('color', SNOOZE_SLATE, 'important');
+		node.style.setProperty('stroke', SNOOZE_SLATE, 'important');
 	});
 }
 
