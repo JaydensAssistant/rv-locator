@@ -1062,34 +1062,41 @@ function px(value: number): string {
 }
 
 /**
- * Border-box height that keeps a centered badge stack on a whole pixel.
- * The stack is an even number of pixels for the 28px and 38px badges, so the
- * card height has to leave an even remainder after the border.
+ * Nearest border-box height that still centers an even badge stack.
+ * 100.39 stays 100. A parity nudge never adds a pixel past the nearer side.
  */
 export function wholeCardHeight(height: number, border: number, stack: number): number {
-	let next = Math.ceil(height - 1e-3);
-	if (!Number.isFinite(next) || next < 1) return Math.max(1, Math.round(height) || 1);
+	const nearest = Math.max(1, Math.round(height));
 	const edge = Math.round(border);
-	if (stack > 0) next = Math.max(next, edge + stack);
-	while (stack > 0 && (next - edge - stack) % 2 !== 0) next += 1;
-	return next;
+	const centered = (value: number): boolean => stack <= 0 || (value >= edge + stack && (value - edge - stack) % 2 === 0);
+	if (centered(nearest)) return nearest;
+	const lower = nearest - 1;
+	const upper = nearest + 1;
+	const lowerOk = lower >= 1 && centered(lower);
+	const upperOk = centered(upper);
+	if (lowerOk && upperOk) return Math.abs(height - lower) <= Math.abs(upper - height) ? lower : upper;
+	if (lowerOk) return lower;
+	if (upperOk) return upper;
+	return nearest;
 }
 
-/** Grow a block to a whole pixel and shift it with layout, never a transform. */
+/**
+ * Pin a card to the nearest whole pixel once per width.
+ * Clearing the pin on every resize pass would paint the fractional height,
+ * then grow it, so a later frame must not measure again at the same width.
+ */
 export function snapFlowBox(el: HTMLElement, card = false): void {
-	el.style.transform = '';
+	if (!card) return;
+	const widthNow = Math.round(el.getBoundingClientRect().width);
+	if (widthNow < 1) return;
+	if (el.dataset.rvSnapWidth === String(widthNow) && el.style.height) return;
+	el.style.height = '';
+	el.style.minHeight = '';
 	const rect = el.getBoundingClientRect();
-	if (rect.width < 1 || rect.height < 1) return;
-	if (card) {
-		const next = wholeCardHeight(rect.height, verticalBorder(el), badgeStack(el));
-		if (el.style.minHeight !== `${next}px`) el.style.minHeight = `${next}px`;
-	} else {
-		const next = Math.ceil(rect.height - 1e-3);
-		if (Math.abs(rect.height - next) >= 0.05 && el.style.minHeight !== `${next}px`) {
-			el.style.minHeight = `${next}px`;
-		}
-	}
-	nudgeToWholePixel(el);
+	if (rect.height < 1) return;
+	const next = wholeCardHeight(rect.height, verticalBorder(el), badgeStack(el));
+	el.style.height = `${next}px`;
+	el.dataset.rvSnapWidth = String(Math.round(el.getBoundingClientRect().width));
 	const actions = el.querySelector(':scope > .rv-locator-card-actions');
 	if (actions instanceof HTMLElement) snapActionsColumn(actions);
 }
@@ -1124,55 +1131,6 @@ function snapActionsColumn(actions: HTMLElement): void {
 	let height = Math.max(Math.round(rect.height), stack);
 	if (stack > 0 && (height - stack) % 2 !== 0) height += 1;
 	actions.style.height = `${height}px`;
-}
-
-/**
- * Round the margins and paddings above Quick Facts, then shift that callout
- * onto a whole pixel. The shift is layout (`top`/`left`), so the first paint
- * is already on the grid.
- */
-export function snapLayoutAbove(anchor: HTMLElement): void {
-	const preview = anchor.closest('.markdown-preview-view, .markdown-source-view, .markdown-reading-view');
-	if (preview instanceof HTMLElement) snapEdges(preview);
-	const chain: HTMLElement[] = [];
-	let node: HTMLElement | null = anchor;
-	while (node) {
-		chain.push(node);
-		const parent: HTMLElement | null = node.parentElement;
-		if (!(parent instanceof HTMLElement) || parent === preview) break;
-		node = parent;
-	}
-	for (const el of chain) {
-		const parent = el.parentElement;
-		if (!parent) continue;
-		for (const child of Array.from(parent.children)) {
-			if (child === el) break;
-			if (!(child instanceof HTMLElement)) continue;
-			snapEdges(child);
-			const height = child.getBoundingClientRect().height;
-			if (height < 1) continue;
-			const next = Math.ceil(height - 1e-3);
-			if (Math.abs(height - next) >= 0.05 && child.style.minHeight !== `${next}px`) {
-				child.style.minHeight = `${next}px`;
-			}
-		}
-		if (el !== anchor) snapEdges(el);
-	}
-	nudgeToWholePixel(anchor);
-}
-
-/** Move one element onto whole pixels with relative `top`/`left`, not a transform. */
-export function nudgeToWholePixel(el: HTMLElement): void {
-	const rect = el.getBoundingClientRect();
-	if (rect.width < 1 || rect.height < 1) return;
-	const dx = Math.round(rect.left) - rect.left;
-	const dy = Math.round(rect.top) - rect.top;
-	if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return;
-	const left = parseFloat(el.style.left) || 0;
-	const top = parseFloat(el.style.top) || 0;
-	if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
-	if (Math.abs(dx) >= 0.05) el.style.left = `${px(left + dx)}px`;
-	if (Math.abs(dy) >= 0.05) el.style.top = `${px(top + dy)}px`;
 }
 
 /** An absolute popup's own top and left, corrected onto the pixel grid. */

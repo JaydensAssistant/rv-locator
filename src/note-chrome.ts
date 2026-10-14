@@ -7,7 +7,7 @@ import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
-import { appendBadge, nudgeToWholePixel, pinBadgeStroke, snapLayoutAbove } from './glancable-view';
+import { appendBadge, pinBadgeStroke } from './glancable-view';
 import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
@@ -296,7 +296,6 @@ function paintFactsTitle(
 	const expectsBadges = /(?:^|\|)[upr]:/.test(signature);
 	if (badges.dataset.rvFacts === signature && (!expectsBadges || badges.childElementCount > 0)) {
 		if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
-		snapFacts(title, badges);
 		return;
 	}
 	badges.empty();
@@ -330,16 +329,7 @@ function paintFactsTitle(
 		});
 	}
 	badges.dataset.rvFacts = signature;
-	snapFacts(title, badges);
 	if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
-}
-
-/** The Quick Facts row sits on whole pixels because the blocks above it do. */
-function snapFacts(title: HTMLElement, badges: HTMLElement): void {
-	const callout = title.closest('.callout');
-	if (callout instanceof HTMLElement) snapLayoutAbove(callout);
-	nudgeToWholePixel(title);
-	nudgeToWholePixel(badges);
 }
 
 function paintFactsBody(

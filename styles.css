@@ -1703,7 +1703,7 @@ table.rv-locator-digest-table,
 	display: inline-flex;
 	flex-wrap: nowrap;
 	align-items: stretch;
-	gap: 0.4em;
+	gap: 6px;
 	box-sizing: border-box;
 	width: min(100%, var(--rv-dash-column, 100%));
 	max-width: 100%;
@@ -1732,8 +1732,8 @@ span.mb-button.rv-visit-btn {
 	width: 100%;
 	min-width: 0;
 	max-width: none;
-	height: 2rem;
-	min-height: 2rem;
+	height: 32px;
+	min-height: 32px;
 	margin: 0;
 	padding: 0;
 	border: 1px solid var(--rv-visit-btn-bg);
@@ -4830,7 +4830,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner {
-	font-size: 20.4px;
+	font-size: 20px;
 	font-weight: var(--font-semibold, 600);
 }
 
@@ -5437,8 +5437,8 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	gap: 6px;
 	min-width: 0;
 	max-width: 100%;
-	font-size: 20.4px;
-	line-height: 1.2;
+	font-size: 20px;
+	line-height: 32px;
 	white-space: nowrap;
 	overflow: hidden;
 }
@@ -6034,7 +6034,7 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner .rv-dash-name {
-	font-size: 20.4px;
+	font-size: 20px;
 	line-height: 32px;
 }
 
@@ -6273,7 +6273,7 @@ button.rv-locator-urgency.is-ghost {
 	white-space: nowrap !important;
 	overflow: hidden !important;
 	text-overflow: ellipsis !important;
-	line-height: 1.25;
+	line-height: 20px;
 	max-height: none;
 }
 
@@ -6288,7 +6288,7 @@ p.rv-hub-owned a.rv-address-link {
 	white-space: nowrap !important;
 	overflow: hidden !important;
 	text-overflow: ellipsis !important;
-	line-height: 1.25;
+	line-height: 20px;
 	max-height: none;
 }
 
@@ -6577,7 +6577,7 @@ button.rv-study-toggle {
 	overflow-wrap: normal !important;
 	word-break: normal !important;
 	text-overflow: ellipsis !important;
-	line-height: 1.25 !important;
+	line-height: 20px !important;
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-address-line > a.rv-map-button,
@@ -8004,4 +8004,129 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 
 body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-source-view, .markdown-embed, .internal-embed) .rv-locator-glancable.is-stacked .rv-locator-sortbar:has(> .rv-sort-close) {
 	height: 40px;
+}
+
+/*
+  Quick Facts lands on a whole pixel in the first layout. Every block above
+  its badge row uses a whole-pixel font size, line height, and vertical margin.
+*/
+.rv-dashboard .markdown-preview-section:has(~ .markdown-preview-section .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) :is(p, .el-p) {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 16px;
+	line-height: 24px;
+}
+
+.rv-dashboard .markdown-preview-section:has(~ .markdown-preview-section .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) h1 {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 26px;
+	line-height: 32px;
+}
+
+.rv-dashboard .markdown-preview-section:has(~ .markdown-preview-section .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) h2 {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 22px;
+	line-height: 28px;
+}
+
+.rv-dashboard .markdown-preview-section:has(~ .markdown-preview-section .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) h3 {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 19px;
+	line-height: 24px;
+}
+
+.rv-dashboard .markdown-preview-section:has(~ .markdown-preview-section .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) h4 {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 18px;
+	line-height: 22px;
+}
+
+.rv-dashboard .markdown-preview-section:has(~ .markdown-preview-section .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) :is(h5, h6) {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 16px;
+	line-height: 20px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	padding-top: 0;
+	padding-bottom: 0;
+	font-size: 16px;
+	line-height: 24px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-name {
+	box-sizing: border-box;
+	height: 32px;
+	min-height: 32px;
+	max-height: 32px;
+	margin-top: 0;
+	margin-bottom: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+	font-size: 20px;
+	line-height: 32px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+	padding-top: 0;
+	padding-bottom: 0;
+	font-size: 16px;
+	line-height: 24px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > :is(p, .el-p, .mb-button-group) {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	font-size: 16px;
+	line-height: 24px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content :is(h1, h2, h3, h4, h5, h6) {
+	margin-top: 16px;
+	margin-bottom: 8px;
+	font-size: 16px;
+	line-height: 24px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
+	margin-top: 16px;
+	margin-bottom: 16px;
+	padding-top: 0;
+	padding-bottom: 0;
+	font-size: 16px;
+	line-height: 24px;
+}
+
+.rv-dashboard .callout[data-callout="rv"] > .callout-title {
+	box-sizing: border-box;
+	height: 28px;
+	min-height: 28px;
+	max-height: 28px;
+	margin-top: 0;
+	margin-bottom: 0;
+	padding-top: 0;
+	padding-bottom: 0;
+	font-size: 16px;
+	line-height: 28px;
+}
+
+.rv-dashboard .rv-qf-badges {
+	height: 28px;
+	margin-top: 0;
+	margin-bottom: 0;
+}
+
+.rv-dashboard blockquote {
+	margin: 6px 0 10px;
+	padding: 3px 11px;
 }

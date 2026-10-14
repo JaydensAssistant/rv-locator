@@ -57,7 +57,7 @@ describe('next build helpers', () => {
 	it('ships the dashboard, ribbon, toast, and reading rules', () => {
 		const css = readFileSync('styles.css', 'utf8');
 		const main = readFileSync('src/main.ts', 'utf8');
-		assert.match(css, /font-size:\s*20\.4px/);
+		assert.match(css, /font-size:\s*20px/);
 		assert.match(css, /\.hide-props \.metadata-container/);
 		assert.match(css, /#6b7a99/);
 		assert.match(css, /\.rv-nh-toast \{[^}]*background:\s*transparent/);

@@ -126,7 +126,7 @@ describe('2026-10-13 feedback', () => {
 		assert.doesNotMatch(strip, /urgencyInk\(/);
 	});
 
-	it('gives Quick Facts and cards the same badge markup and snaps the Quick Facts row', () => {
+	it('gives Quick Facts and cards the same badge markup on a whole pixel', () => {
 		const css = source('styles.css');
 		assert.match(css, /\.rv-qf-badges \{[^}]*gap:\s*6px/);
 		assert.match(css, /\.rv-qf-badges \{[^}]*width:\s*max-content/);
@@ -135,16 +135,22 @@ describe('2026-10-13 feedback', () => {
 		const map = source('src/map-view.ts');
 		assert.match(glance, /Math\.round\(rect\.left\)/);
 		assert.doesNotMatch(glance, /style\.transform = `translate/);
+		assert.doesNotMatch(glance, /function snapLayoutAbove|function nudgeToWholePixel/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-actions \{[^}]*justify-content:\s*center/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-actions \{[^}]*gap:\s*4px/);
 		assert.match(css, /line-height:\s*round\(nearest, calc\(20px \* var\(--rv-font-scale, 1\) \* 1\.15\), 1px\)/);
 		assert.match(css, /\.rv-dashboard \.callout\[data-callout="rv"\] > \.callout-title \{[^}]*height:\s*28px/);
+		assert.match(css, /\.rv-dashboard \.callout\[data-callout="rv"\] > \.callout-title \{[^}]*line-height:\s*28px/);
+		assert.match(css, /\.rv-dashboard \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\) \{[^}]*margin-top:\s*16px/);
+		assert.match(css, /\.rv-dashboard \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\) \{[^}]*font-size:\s*16px/);
+		assert.match(css, /\.rv-dashboard \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\) \{[^}]*line-height:\s*24px/);
+		assert.match(css, /font-size:\s*20px;\s*\n\s*line-height:\s*32px/);
+		assert.doesNotMatch(css, /font-size:\s*20\.4px/);
 		assert.doesNotMatch(css, /justify-content:\s*space-evenly/);
 		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function paintFactsBody'));
 		assert.match(facts, /kind: 'urgency'/);
 		assert.match(facts, /icon: 'moon'/);
-		assert.match(facts, /snapFacts\(title, badges\)/);
-		assert.match(facts, /snapLayoutAbove\(callout\)/);
+		assert.doesNotMatch(facts, /snapFacts|snapLayoutAbove|nudgeToWholePixel/);
 		assert.doesNotMatch(facts, /icon: 'hourglass'|icon: 'ban'/);
 		assert.doesNotMatch(facts, /transform/);
 		const details = chrome.slice(chrome.indexOf('.rv-locator-urgency, .rv-locator-map-pin'), chrome.indexOf('function setPaint'));
@@ -155,10 +161,9 @@ describe('2026-10-13 feedback', () => {
 		assert.match(map, /snapAbsoluteOrigin\(shell\)/);
 		assert.match(map, /snapFlowBox\(card, true\)/);
 		assert.doesNotMatch(map, /snapBadgeRow/);
-		const height = wholeCardHeight(98.39, 2, 92);
-		assert.equal(height % 1, 0);
-		assert.ok(height >= 98.39);
-		assert.equal((height - 2 - 92) % 2, 0);
+		assert.equal(wholeCardHeight(100.39, 2, 92), 100);
+		assert.equal(wholeCardHeight(98.39, 2, 92), 98);
+		assert.equal((wholeCardHeight(100.39, 2, 92) - 2 - 92) % 2, 0);
 
 		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 		const { window } = dom;
