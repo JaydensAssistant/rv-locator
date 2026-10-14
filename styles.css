@@ -5810,6 +5810,12 @@ body.rv-center-visit-notes .rv-older-heading {
 	height: 40px;
 	overflow-x: auto;
 	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.rv-locator-glancable .rv-locator-sort-scroll::-webkit-scrollbar {
+	display: none;
+	height: 0;
 }
 
 .rv-locator-glancable .rv-locator-sort-pills {
@@ -8093,19 +8099,25 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	flex-direction: row !important;
 	flex-wrap: nowrap !important;
 	align-items: center !important;
+	box-sizing: border-box !important;
+	width: 100% !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
 	gap: 4px !important;
-	padding: 2px 4px 0 !important;
+	padding-top: 2px !important;
+	padding-right: 4px !important;
+	padding-left: 4px !important;
 	height: auto;
 }
 
 .rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) > .rv-locator-sort-scroll {
 	display: flex !important;
-	flex: 1 1 auto !important;
+	flex: 1 1 0 !important;
 	flex-wrap: nowrap !important;
 	align-items: center !important;
 	width: auto !important;
 	min-width: 0 !important;
-	max-width: 100% !important;
+	max-width: calc(100% - var(--rv-control-btn, 40px) - 4px) !important;
 	height: 40px !important;
 	margin: 0 !important;
 	padding: 0 !important;
@@ -8114,6 +8126,7 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	overflow-y: hidden !important;
 	touch-action: pan-x !important;
 	overscroll-behavior-x: contain;
+	scrollbar-width: none;
 }
 
 .rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) .rv-locator-sort-pills {
@@ -8151,4 +8164,15 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	max-width: var(--rv-control-btn, 40px) !important;
 	height: 40px !important;
 	margin: 0 !important;
+}
+
+/* Every control, including New RV, keeps a 1px border so the outer widths match. */
+.rv-locator-glancable .rv-locator-toolbar-actions > button {
+	box-sizing: border-box !important;
+	border-width: 1px !important;
+	border-style: solid !important;
+}
+
+.rv-locator-glancable .rv-locator-toolbar-actions > .rv-locator-new-rv {
+	border-color: transparent !important;
 }

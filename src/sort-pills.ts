@@ -86,6 +86,36 @@ export function horizontalScrollDelta(deltaX: number, deltaY: number, shiftKey =
 	return deltaY;
 }
 
+/** Sort labels start at the pill's 12px and can drop to 11px before they clip. */
+export const SORT_LABEL_FONT_MAX_PX = 12;
+export const SORT_LABEL_FONT_MIN_PX = 11;
+
+/**
+ * Font size that keeps a control-width pill. The label stays at {@link SORT_LABEL_FONT_MAX_PX}
+ * when it fits, scales down while it still clears {@link SORT_LABEL_FONT_MIN_PX}, and then clips.
+ */
+export function sortLabelFontPx(textWidth: number, available: number, max = SORT_LABEL_FONT_MAX_PX, min = SORT_LABEL_FONT_MIN_PX): number {
+	if (!(textWidth > 0) || !(available > 0) || textWidth <= available) return max;
+	const scaled = (available / textWidth) * max;
+	if (scaled >= max) return max;
+	if (scaled <= min) return min;
+	return Math.round(scaled * 100) / 100;
+}
+
+/** Shrink the label toward 11px when the control-width pill cannot hold 12px. */
+function fitSortLabel(pill: HTMLElement): void {
+	const label = pill.querySelector(':scope > .rv-sort-label');
+	if (!(label instanceof HTMLElement)) return;
+	const available = pill.clientWidth;
+	if (available <= 0) return;
+	label.style.setProperty('font-size', `${SORT_LABEL_FONT_MAX_PX}px`, 'important');
+	const style = getComputedStyle(pill);
+	const pad = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+	const inner = available - pad;
+	const size = sortLabelFontPx(label.scrollWidth, inner);
+	label.style.setProperty('font-size', `${size}px`, 'important');
+}
+
 /** Pin every sort pill to the control-button size of this bar. */
 export function applyControlSizedPills(bar: HTMLElement, pills: HTMLElement): void {
 	const style = getComputedStyle(bar);
@@ -103,6 +133,7 @@ export function applyControlSizedPills(bar: HTMLElement, pills: HTMLElement): vo
 		node.style.setProperty('max-width', size.width, 'important');
 		node.style.setProperty('height', size.height, 'important');
 		node.style.setProperty('min-height', size.height, 'important');
+		fitSortLabel(node);
 	});
 	const close = bar.querySelector(':scope > .rv-sort-close');
 	if (close instanceof HTMLElement) {

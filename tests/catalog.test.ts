@@ -29,7 +29,7 @@ import { formatLessonLine, partwayCopy } from '../src/lesson-stops';
 import { formatGlanceableCounter } from '../src/dates';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin, clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, orderByHubSort, pinStackZ, popupClearOfChrome, pinStateIcon, rankPinsFromRenderedList, zoomToRevealPin, type MapPin } from '../src/map-pins';
 import { SORT_PRESETS, visibleSortPresets } from '../src/active-layout';
-import { controlButtonWidth, equalPillWidth, glanceBarHeight, glancePillContentPx, glancePillsThatFit, horizontalScrollDelta, sortPillSize } from '../src/sort-pills';
+import { controlButtonWidth, equalPillWidth, glanceBarHeight, glancePillContentPx, glancePillsThatFit, horizontalScrollDelta, sortLabelFontPx, sortPillSize } from '../src/sort-pills';
 import { sideMapMinPx, stackedEmbedCap, stackedStageSplit } from '../src/hub-layout';
 import { filtersDifferFromDefault } from '../src/status';
 import { openDesktopDatePicker } from '../src/modal-chrome';
@@ -493,6 +493,16 @@ describe('glancable smart search', () => {
 		assert.match(css, /touch-action:\s*pan-x !important/);
 		assert.match(css, /\.rv-locator-sortbar:has\(> \.rv-sort-close\) \{\s*overflow:\s*visible !important/);
 		assert.match(css, /\.rv-locator-sort-pills \{\s*display:\s*flex !important;\s*flex:\s*0 0 auto !important;\s*flex-wrap:\s*nowrap !important/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-sort-scroll \{[^}]*scrollbar-width:\s*none/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-sort-scroll::-webkit-scrollbar \{[^}]*display:\s*none;[^}]*height:\s*0/);
+		assert.doesNotMatch(css, /\.rv-locator-sortbar:has\(> \.rv-sort-close\) \{[^}]*padding:\s*2px 4px 0 !important/);
+		assert.match(css, /padding-bottom:\s*calc\(var\(--navbar-height, 52px\) \+ var\(--navbar-bottom-offset, 34px\) \+ 8px\)/);
+		assert.match(css, /\.rv-locator-toolbar-actions > button \{[^}]*box-sizing:\s*border-box !important;[^}]*border-width:\s*1px !important/);
+		assert.match(css, /\.rv-locator-toolbar-actions > \.rv-locator-new-rv \{[^}]*border-color:\s*transparent !important/);
+		assert.equal(sortLabelFontPx(30, 40), 12);
+		assert.equal(sortLabelFontPx(40, 40), 12);
+		assert.equal(sortLabelFontPx(42, 40), 11.43);
+		assert.equal(sortLabelFontPx(80, 40), 11);
 	});
 
 	it('stacks phone labels, fills the hub, and keeps the map credit on the map edge', () => {
