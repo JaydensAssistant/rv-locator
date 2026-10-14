@@ -3,7 +3,7 @@ import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_
 import { deleteCustom, rememberCustom } from './catalog';
 import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
-import { normalizeCounty, parseHomeCountyLines } from './home-base';
+import { normalizeCounty } from './home-base';
 import { mountAlwaysChevron } from './suggest-field';
 import { cacheStats, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import {
@@ -151,23 +151,31 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Home counties')
-			.setDesc('One county per line. Empty means every match asks you to confirm. A fully confident hit is saved only when it is the only hit in one of these counties.')
-			.addTextArea((text) => {
-				text.inputEl.rows = 4;
-				text.setPlaceholder('Orange\nLake');
-				text.setValue(this.plugin.settings.homeCounties.join('\n'));
-				text.onChange(async (value) => {
-					this.plugin.settings.homeCounties = parseHomeCountyLines(value);
-					this.plugin.warmCountySuggest(value.split('\n').pop() ?? '');
-					await this.plugin.saveSettings();
+			.setDesc('Pick each county from the list. A chip that is not a known county stays marked. Empty means every match asks you to confirm. A fully confident hit is saved only when it is the only hit in one of these counties.')
+			.addText((text) => {
+				text.setPlaceholder('Add a county');
+				text.setValue('');
+				const control = text.inputEl.parentElement;
+				if (control instanceof HTMLElement) mountHomeCountyChips(control, text.inputEl, this.plugin);
+				const commitCounty = (raw: string): void => {
+					void addHomeCounty(this.plugin, raw).then(() => {
+						if (control instanceof HTMLElement) paintHomeCountyChips(control, this.plugin);
+					});
+					text.setValue('');
+					if (control instanceof HTMLElement) paintHomeCountyChips(control, this.plugin);
+				};
+				mountAlwaysChevron(text.inputEl, () => this.plugin.knownCounties(text.inputEl.value), (picked) => {
+					commitCounty(picked);
 				});
-				mountAlwaysChevron(text.inputEl, () => this.plugin.knownCounties(text.inputEl.value.split('\n').pop() ?? ''), (picked) => {
-					const lines = parseHomeCountyLines(text.inputEl.value);
-					if (!lines.some((line) => normalizeCounty(line) === normalizeCounty(picked))) lines.push(picked);
-					const next = lines.join('\n');
-					text.setValue(next);
-					this.plugin.settings.homeCounties = lines;
-					void this.plugin.saveSettings();
+				text.inputEl.addEventListener('keydown', (event) => {
+					if (event.key !== 'Enter') return;
+					event.preventDefault();
+					commitCounty(text.inputEl.value);
+				});
+				text.inputEl.addEventListener('input', () => {
+					void this.plugin.warmCountySuggest(text.inputEl.value).then(() => {
+						if (control instanceof HTMLElement) paintHomeCountyChips(control, this.plugin);
+					});
 				});
 			});
 
@@ -697,6 +705,22 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 				});
 			});
 
+		new Setting(containerEl)
+			.setName('Full-width base embed')
+			.setDesc('A note that embeds this base stays a normal embed. Add the cssclass rv-locator-full-base to one note and that embed becomes a full-width copy of the standalone base: the inline title and properties are hidden, and anything else in the note stays. Other embeds of the same base are unchanged.')
+			.addButton((button) => {
+				button.setButtonText('Copy class');
+				button.setTooltip('Copy rv-locator-full-base');
+				button.onClick(() => {
+					const text = 'rv-locator-full-base';
+					const write = navigator.clipboard?.writeText(text);
+					if (write && typeof write.then === 'function') {
+						void write.then(() => new Notice(`Copied ${text}`));
+						return;
+					}
+					new Notice(text);
+				});
+			});
 		new Setting(containerEl)
 			.setName('Hide the status bar on the standalone base')
 			.setDesc('Hides Obsidian’s backlinks and properties bar while a base is open on its own. A hub note can do the same with the cssclass rv-hide-statusbar. Removing that class brings the bar back.')
@@ -1270,4 +1294,54 @@ async function ensureVaultFolder(app: App, filePath: string): Promise<void> {
 		if (app.vault.getAbstractFileByPath(current)) continue;
 		await app.vault.createFolder(current);
 	}
+}
+
+function addHomeCounty(plugin: RVLocatorPlugin, raw: string): Promise<void> {
+	const name = raw.replace(/\s+/g, ' ').trim();
+	if (!name || name.includes('\u0000')) return Promise.resolve();
+	const lines = [...plugin.settings.homeCounties];
+	if (!lines.some((line) => normalizeCounty(line) === normalizeCounty(name))) {
+		lines.push(name);
+		plugin.settings.homeCounties = lines;
+		void plugin.saveSettings();
+	}
+	return plugin.warmCountySuggest(name);
+}
+
+function mountHomeCountyChips(control: HTMLElement, input: HTMLInputElement, plugin: RVLocatorPlugin): void {
+	const chips = control.ownerDocument.createElement('div');
+	chips.className = 'rv-county-chips';
+	const note = control.ownerDocument.createElement('div');
+	note.className = 'rv-county-note';
+	control.insertBefore(chips, input);
+	control.appendChild(note);
+	paintHomeCountyChips(control, plugin);
+}
+
+function paintHomeCountyChips(control: HTMLElement, plugin: RVLocatorPlugin): void {
+	const chips = control.querySelector('.rv-county-chips');
+	const note = control.querySelector('.rv-county-note');
+	if (!(chips instanceof HTMLElement) || !(note instanceof HTMLElement)) return;
+	const known = new Set(plugin.knownCounties('').map((name) => normalizeCounty(name)));
+	chips.replaceChildren();
+	let invalid = false;
+	for (const name of plugin.settings.homeCounties) {
+		const bad = !known.has(normalizeCounty(name));
+		if (bad) invalid = true;
+		const chip = chips.createSpan({ cls: `rv-county-chip${bad ? ' is-invalid' : ''}` });
+		chip.createSpan({ text: name });
+		if (bad) chip.setAttribute('aria-label', `${name} is not a known county`);
+		const remove = chip.createEl('button', {
+			cls: 'rv-county-x',
+			text: '×',
+			attr: { type: 'button', 'aria-label': `Remove ${name}` },
+		});
+		remove.addEventListener('click', () => {
+			plugin.settings.homeCounties = plugin.settings.homeCounties.filter((line) => normalizeCounty(line) !== normalizeCounty(name));
+			void plugin.saveSettings();
+			paintHomeCountyChips(control, plugin);
+		});
+	}
+	note.textContent = invalid ? 'A marked county is not in the known list. Pick a suggested county.' : '';
+	note.toggleAttribute('hidden', !invalid);
 }

@@ -416,6 +416,17 @@ function isVisitTextArea(node: EventTarget | null | undefined): node is HTMLText
  * Obsidian puts focus on the note title after a new file opens. That is not
  * the user leaving the visit note.
  */
+/** The inline title is contenteditable. A keystroke there renames the note. */
+export function blurNoteTitle(doc: Document): void {
+	const active = doc.activeElement;
+	if (!(active instanceof HTMLElement)) return;
+	const title = active.classList.contains('inline-title')
+		|| active.classList.contains('view-header-title')
+		|| (typeof active.closest === 'function' && active.closest('.inline-title, .view-header-title') != null);
+	if (!title) return;
+	active.blur();
+}
+
 export function isFocusThief(node: EventTarget | null | undefined): boolean {
 	if (!(node instanceof Element)) return true;
 	const tag = node.tagName;
@@ -532,8 +543,15 @@ export function armVisitNoteFocus(root: HTMLElement): () => void {
 	const docObserver = new MutationObserver(() => { focusArea(); });
 	const watch = doc.documentElement ?? doc.body;
 	if (watch) docObserver.observe(watch, { childList: true, subtree: true });
-	const onFocus = (): void => { focusArea(); };
+	const onFocus = (event: Event): void => {
+		if (!promptOpen()) blurNoteTitle(doc);
+		if (event.target instanceof HTMLElement && isFocusThief(event.target) && !promptOpen()) {
+			event.target.blur();
+		}
+		focusArea();
+	};
 	doc.addEventListener('focusin', onFocus, true);
+	if (!promptOpen()) blurNoteTitle(doc);
 	focusArea();
 	return () => {
 		stop = true;
@@ -548,6 +566,7 @@ export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: n
 	const matched = stamp ? notesBoxAfterStamp(root, stamp, ordinal) : null;
 	const found = root.querySelector('textarea');
 	const area = matched ?? (isVisitTextArea(found) ? found : null);
+	blurNoteTitle(root.ownerDocument);
 	if (!area) return null;
 	try {
 		area.focus({ preventScroll: true });

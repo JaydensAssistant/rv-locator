@@ -13,7 +13,7 @@ import { SUGGEST_MATCH_LIMIT, mountAlwaysChevron, suggestionListenerCount } from
 import { expandCallout } from '../src/callout-fold';
 import { emptyShare } from '../src/catalog';
 import { LiteraturePromptModal } from '../src/visit-modals';
-import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
+import { armVisitNoteFocus, blurNoteTitle, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
@@ -1298,6 +1298,19 @@ describe('smoke layout', () => {
 		root.remove();
 	});
 
+	it('blurs the inline title before the visit textarea exists', () => {
+		const title = window.document.createElement('div');
+		title.className = 'inline-title';
+		title.contentEditable = 'true';
+		title.tabIndex = 0;
+		window.document.body.appendChild(title);
+		title.focus();
+		assert.equal(window.document.activeElement, title);
+		blurNoteTitle(window.document);
+		assert.notEqual(window.document.activeElement, title);
+		title.remove();
+	});
+
 	it('moves focus from the note title onto the visit textarea', async () => {
 		hostGlobals.MutationObserver = window.MutationObserver;
 		const root = window.document.createElement('div');
@@ -1318,7 +1331,9 @@ describe('smoke layout', () => {
 
 	it('wraps the address in the callout and stacks the note map from the leaf width', () => {
 		const css = readFileSync('styles.css', 'utf8');
-		assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\) 28px !important/);
+		assert.match(css, /grid-template-columns: max-content minmax\(0, 1fr\) 40px !important/);
+		assert.match(css, /grid-template-columns: subgrid !important/);
+		assert.match(css, /column-gap: 8px !important/);
 		assert.match(css, /a\.rv-address-link:not\(\[hidden\]\) \{[^}]*white-space: nowrap !important/);
 		assert.match(css, /a\.rv-address-link:not\(\[hidden\]\) \{[^}]*overflow: hidden !important/);
 		assert.match(css, /a\.rv-address-link:not\(\[hidden\]\) \{[^}]*text-overflow: ellipsis !important/);
@@ -1342,7 +1357,7 @@ describe('smoke layout', () => {
 		assert.match(activate, /setActiveLeaf/);
 		assert.match(activate, /await this\.openInReadingView/);
 		assert.match(main, /source: false/);
-		assert.match(css, /--rv-pair-label: 72px/);
+		assert.match(css, /--rv-pair-label: max-content/);
 		assert.match(css, /padding: 8px !important/);
 		assert.match(css, /> \.callout-content \{[^}]*padding: 0 !important/);
 		assert.match(css, /input\.rv-address-input\[hidden\],\s*a\.rv-address-link\[hidden\] \{\s*display: none !important;/);

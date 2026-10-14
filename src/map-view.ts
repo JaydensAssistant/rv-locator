@@ -25,6 +25,8 @@ export interface MapHost {
 	notifyMapCleared?(): void;
 	hideSplitMap?(): void;
 	promptUrgencyMenu?(path: string, name: string, event: MouseEvent): void;
+	/** Paint the Glancable list card into the popup. False when that view is not mounted. */
+	paintGlanceCard?(parent: HTMLElement, path: string): boolean;
 	tileCacheEpoch?: number;
 	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
 }
@@ -954,7 +956,6 @@ export class RvMapView extends ItemView {
 		const cardHeight = Math.min(320, Math.max(120, frame.height - 16));
 		shell.style.width = `${cardWidth}px`;
 		shell.style.maxHeight = `${cardHeight}px`;
-		shell.style.overflow = 'auto';
 		const origin = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
 			width: cardWidth,
 			height: cardHeight,
@@ -962,6 +963,43 @@ export class RvMapView extends ItemView {
 		shell.style.left = `${Math.round(origin.left)}px`;
 		shell.style.top = `${Math.round(origin.top)}px`;
 		shell.style.zIndex = String(pinUrgencyZ(pin.urgency, true) + 1);
+		shell.addEventListener('click', (event) => {
+			event.stopPropagation();
+		});
+		const painted = this.host.paintGlanceCard?.(shell, pin.path) === true;
+		if (!painted) this.paintFallbackCard(shell, pin);
+		const card = shell.querySelector('.rv-locator-card');
+		const placeShell = (): void => {
+			snapAbsoluteOrigin(shell);
+			if (card instanceof HTMLElement) snapFlowBox(card, true);
+		};
+		placeShell();
+		const nudge = (): void => {
+			const stage = this.stage;
+			if (!stage || !shell.isConnected) return;
+			const rect = shell.getBoundingClientRect();
+			if (rect.width < 1 || rect.height < 1) return;
+			const nextFrame = this.visibleFrame();
+			const nextStage = {
+				width: stage.clientWidth || nextFrame.width,
+				height: stage.clientHeight || nextFrame.height,
+			};
+			const limit = Math.max(80, nextFrame.height - 8);
+			if (rect.height > limit) shell.style.maxHeight = `${limit}px`;
+			const fitted = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
+				width: rect.width,
+				height: Math.min(rect.height, limit),
+			}, nextStage, nextFrame);
+			shell.style.left = `${Math.round(fitted.left)}px`;
+			shell.style.top = `${Math.round(fitted.top)}px`;
+			placeShell();
+		};
+		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(nudge);
+		else nudge();
+	}
+
+	/** Used only when the Glancable view is not mounted to paint the same card. */
+	private paintFallbackCard(shell: HTMLElement, pin: MapPin): void {
 		const marks = urgencyMark(pin.urgency, pin.priority);
 		const card = shell.createDiv('rv-locator-card has-actions');
 		card.style.setProperty('--rv-urgency-accent', pin.color);
@@ -969,13 +1007,6 @@ export class RvMapView extends ItemView {
 		card.style.setProperty('--rv-badge-count', '3');
 		card.style.setProperty('--rv-font-scale', '1');
 		card.style.setProperty('--rv-icon-scale', '1.2');
-		card.style.setProperty('--rv-control-size', `${MAP_POPUP_BADGE_PX}px`);
-		card.addEventListener('click', (event) => {
-			const target = event.target;
-			if (target instanceof Element && target.closest('a, button')) return;
-			event.preventDefault();
-			event.stopPropagation();
-		});
 		const openNote = (): void => { this.host.openMapNote(pin.path); };
 		const name = card.createDiv('rv-locator-card-name');
 		const link = name.createEl('a', {
@@ -1028,33 +1059,6 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
-		const placeShell = (): void => {
-			snapAbsoluteOrigin(shell);
-			snapFlowBox(card, true);
-		};
-		placeShell();
-		const nudge = (): void => {
-			const stage = this.stage;
-			if (!stage || !shell.isConnected) return;
-			const rect = shell.getBoundingClientRect();
-			if (rect.width < 1 || rect.height < 1) return;
-			const nextFrame = this.visibleFrame();
-			const nextStage = {
-				width: stage.clientWidth || nextFrame.width,
-				height: stage.clientHeight || nextFrame.height,
-			};
-			const limit = Math.max(80, nextFrame.height - 8);
-			if (rect.height > limit) shell.style.maxHeight = `${limit}px`;
-			const fitted = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
-				width: rect.width,
-				height: Math.min(rect.height, limit),
-			}, nextStage, nextFrame);
-			shell.style.left = `${Math.round(fitted.left)}px`;
-			shell.style.top = `${Math.round(fitted.top)}px`;
-			placeShell();
-		};
-		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(nudge);
-		else nudge();
 	}
 
 	private dateSlot(parent: HTMLElement, date: { icon: string; dow: string; time: string; rest: string; days: string }): void {
@@ -1125,12 +1129,9 @@ export class RvMapView extends ItemView {
 	}
 }
 
-/** Fullscreen popup badges. Larger than the 28px hub badges; card text stays at font scale 1. */
-export const MAP_POPUP_BADGE_PX = 38;
-
 /**
  * Map pin diameter. 15% over the original 42px pin, before the 50% enlargement.
- * Popup badges stay {@link MAP_POPUP_BADGE_PX}. Hub badges stay 28px.
+ * Popup badges use the Glancable card's control size. Hub badges stay 28px.
  */
 export const MAP_PIN_PX = 48;
 

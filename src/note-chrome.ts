@@ -86,9 +86,9 @@ function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<
 		node.createSpan({ cls: 'rv-dash-name', text: host.noteTitle(path) });
 		const more = node.createEl('button', {
 			cls: 'rv-dash-rename clickable-icon',
-			attr: { type: 'button', 'aria-label': 'Rename' },
+			attr: { type: 'button', 'aria-label': 'Edit attributes' },
 		});
-		setIcon(more, 'more-horizontal');
+		setIcon(more, 'sliders-horizontal');
 		more.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -731,6 +731,7 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		const addressLabel = labeledStrong(paragraph, 'address');
 		if (!hubLabel && !addressLabel) continue;
 		paragraph.addClass('rv-hub-owned');
+		pinSharedPairGrid(paragraph);
 		if (!hubLabel) {
 			decorateAddress(paragraph, path, data, host);
 			continue;
@@ -753,11 +754,7 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		hubLabel.textContent = 'Hub:';
 		pinPairLabel(hubLabel);
 		if (!(line instanceof HTMLElement)) continue;
-		line.style.setProperty('display', 'grid', 'important');
-		line.style.setProperty('grid-template-columns', 'var(--rv-pair-label) minmax(0, 1fr) 40px', 'important');
-		line.style.setProperty('column-gap', '4px', 'important');
-		line.style.setProperty('align-items', 'center', 'important');
-		line.style.setProperty('width', '100%', 'important');
+		pinSharedLine(line);
 		const hubs = hubRefs(readProperty(data, 'Hub'));
 		const returnHub = host.settings.returnHubNote;
 		hubs.forEach((hub, index) => {
@@ -870,14 +867,9 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (link instanceof HTMLElement) field.append(link);
 	if (earth instanceof HTMLElement) line.append(earth);
 	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
-	line.style.setProperty('display', 'grid', 'important');
-	line.style.setProperty('grid-template-columns', 'var(--rv-pair-label) minmax(0, 1fr) 40px', 'important');
+	pinSharedLine(line);
 	line.style.setProperty('grid-template-rows', 'auto', 'important');
-	line.style.setProperty('grid-column', '1 / -1', 'important');
-	line.style.setProperty('column-gap', '4px', 'important');
-	line.style.setProperty('align-items', 'center', 'important');
 	line.style.setProperty('justify-items', 'stretch', 'important');
-	line.style.setProperty('width', '100%', 'important');
 	line.style.setProperty('max-width', 'none', 'important');
 	line.style.setProperty('min-width', '0', 'important');
 	line.style.setProperty('box-sizing', 'border-box', 'important');
@@ -962,15 +954,34 @@ function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 	link.addEventListener('pointercancel', cancel);
 }
 
+/** Hub and Address share one grid so both text boxes stay the same width. */
+function pinSharedPairGrid(paragraph: HTMLElement): void {
+	paragraph.style.setProperty('display', 'grid', 'important');
+	paragraph.style.setProperty('grid-template-columns', 'max-content minmax(0, 1fr) 40px', 'important');
+	paragraph.style.setProperty('column-gap', '8px', 'important');
+	paragraph.style.setProperty('row-gap', '8px', 'important');
+	paragraph.style.setProperty('align-items', 'center', 'important');
+	paragraph.style.setProperty('width', '100%', 'important');
+}
+
+function pinSharedLine(line: HTMLElement): void {
+	line.style.setProperty('display', 'grid', 'important');
+	line.style.setProperty('grid-column', '1 / -1', 'important');
+	line.style.setProperty('grid-template-columns', 'subgrid', 'important');
+	line.style.setProperty('column-gap', '8px', 'important');
+	line.style.setProperty('align-items', 'center', 'important');
+	line.style.setProperty('width', '100%', 'important');
+}
+
 function pinPairLabel(label: HTMLElement): void {
 	label.style.setProperty('display', 'inline-flex', 'important');
 	label.style.setProperty('align-items', 'center', 'important');
 	label.style.setProperty('align-self', 'center', 'important');
 	label.style.setProperty('height', '40px', 'important');
 	label.style.setProperty('gap', '0', 'important');
-	label.style.setProperty('width', 'var(--rv-pair-label)', 'important');
-	label.style.setProperty('min-width', 'var(--rv-pair-label)', 'important');
-	label.style.setProperty('max-width', 'var(--rv-pair-label)', 'important');
+	label.style.setProperty('width', 'max-content', 'important');
+	label.style.setProperty('min-width', 'max-content', 'important');
+	label.style.setProperty('max-width', 'none', 'important');
 	label.style.setProperty('margin', '0', 'important');
 	label.style.setProperty('white-space', 'nowrap', 'important');
 	label.style.setProperty('font-size', '14px', 'important');

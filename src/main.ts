@@ -30,7 +30,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from './visit-display';
+import { armVisitNoteFocus, blurNoteTitle, layoutVisitNotes, placeVisitNoteFocus } from './visit-display';
 import { watchVisitSurface } from './visit-surface';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
@@ -39,7 +39,7 @@ import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import type { MapPin } from './map-pins';
 import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './map-pins';
 import { shadeHeats } from './map-shade';
-import { NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
+import { EditAttributesModal, NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
@@ -147,6 +147,9 @@ export default class RVLocatorPlugin extends Plugin {
 	private readonly visitSurfaces = new WeakSet<HTMLElement>();
 	/** Picked Geoapify hit whose formatted address was submitted unchanged. */
 	private verifiedNewRvHit: GeocodeHit | null = null;
+	/** The next geocode of a note this plugin just created stays quiet. */
+	private quietCreateGeocode = false;
+	private glancePainters = new Set<(parent: HTMLElement, path: string) => boolean>();
 	/** Set while Add a housemate is creating a note. The template skips geocode. */
 	housemateSourcePath: string | null = null;
 	private homeBiasKey = '';
@@ -1001,6 +1004,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!identity || this.unloaded) return;
 		this.newRvDraft = identity;
 		this.housemateSourcePath = null;
+		this.quietCreateGeocode = true;
 		const verified = identity.verifiedHit;
 		this.verifiedNewRvHit = verified && addressesMatchOneForOne(identity.address, verified.formattedAddress)
 			? verified
@@ -1082,13 +1086,17 @@ export default class RVLocatorPlugin extends Plugin {
 			const template = pluginPresent ? findTemplateFile(this.app, looked) : null;
 			const message = newRvLaunchError(pluginPresent, template != null, looked);
 			if (message || !template || !create || !templater?.templater) {
+				this.quietCreateGeocode = false;
 				new Notice(message ?? 'Templater could not start New RV.');
 				return;
 			}
 			const sourcePath = this.housemateSourcePath;
 			const draft = this.newRvDraft;
 			const created = await create.call(templater.templater, template);
-			if (!created) new Notice('Templater did not create the New RV note.');
+			if (!created) {
+				this.quietCreateGeocode = false;
+				new Notice('Templater did not create the New RV note.');
+			}
 			else if (created instanceof TFile) {
 				try {
 					await this.suffixCollidingName(created);
@@ -1101,8 +1109,9 @@ export default class RVLocatorPlugin extends Plugin {
 				}
 				this.pendingNewRvPath = created.path;
 				await this.activateNewRvNote(created);
-			}
+			} else this.quietCreateGeocode = false;
 		} catch (error) {
+			this.quietCreateGeocode = false;
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
 			new Notice(reason);
 		} finally {
@@ -1613,7 +1622,7 @@ export default class RVLocatorPlugin extends Plugin {
 				return cardPersonTitle(file?.basename ?? path, true);
 			},
 			openReturn: (path, name) => { void this.suggestReturnFor(path, name); },
-			renameNote: (path) => { this.promptRename(path); },
+			renameNote: (path) => { this.promptAttributes(path); },
 			mapOpen: () => this.hubMapOpen,
 			ghostIcon: (path) => this.ghostIconForCard(path),
 		};
@@ -2270,6 +2279,18 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
+	registerGlancePainter(paint: (parent: HTMLElement, path: string) => boolean): () => void {
+		this.glancePainters.add(paint);
+		return () => { this.glancePainters.delete(paint); };
+	}
+
+	paintGlanceCard(parent: HTMLElement, path: string): boolean {
+		for (const paint of this.glancePainters) {
+			if (paint(parent, path)) return true;
+		}
+		return false;
+	}
+
 	listMapPins(): MapPin[] {
 		const colors = urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors);
 		const rows = this.app.vault.getMarkdownFiles().map((file) => {
@@ -2735,6 +2756,8 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async geocodeCurrent(): Promise<void> {
+		const quiet = this.quietCreateGeocode;
+		this.quietCreateGeocode = false;
 		if (this.housemateSourcePath) return;
 		const file = this.app.workspace.getActiveFile();
 		if (!file || file.extension !== 'md') {
@@ -2753,14 +2776,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 		const cached = getCached(this.geocodeCache, address);
 		if (cached) {
-			await this.presentHits(file, address, cached, true);
+			await this.presentHits(file, address, cached, true, quiet);
 			return;
 		}
 
 		const notice = new Notice('Looking up address…', 0);
 		try {
 			const hits = await this.lookupAddress(address, true);
-			await this.presentHits(file, address, hits, false);
+			await this.presentHits(file, address, hits, false, quiet);
 		} catch (error) {
 			new Notice(this.friendlyError(error));
 		} finally {
@@ -2768,20 +2791,20 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): Promise<void> {
+	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean, quiet = false): Promise<void> {
 		const verified = this.verifiedNewRvHit;
 		this.verifiedNewRvHit = null;
 		if (verified && addressesMatchOneForOne(address, verified.formattedAddress)) {
 			const fresh = hits.find((hit) => addressesMatchOneForOne(hit.formattedAddress, verified.formattedAddress));
-			await this.writeHit(file, address, fresh ?? verified, fresh ? hits : [verified, ...hits]);
+			await this.writeHit(file, address, fresh ?? verified, fresh ? hits : [verified, ...hits], !quiet);
 			return;
 		}
 		const decision = decideGeocodePick(hits, this.settings.homeCounties);
 		if (decision.hit) {
-			await this.writeHit(file, address, decision.hit, hits);
+			await this.writeHit(file, address, decision.hit, hits, !quiet);
 			return;
 		}
-		this.openPicker(file, address, hits, fromCache);
+		this.openPicker(file, address, hits, fromCache, quiet);
 	}
 
 	promptVisit(path: string, displayName: string): void {
@@ -3038,17 +3061,17 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** Fill the county cache when an API key is set. The chevron reads the cache. */
-	warmCountySuggest(query: string): void {
+	warmCountySuggest(query: string): Promise<void> {
 		const apiKey = this.settings.geoapifyApiKey.trim();
 		const text = query.trim();
-		if (!apiKey || text.length < 3) return;
+		if (!apiKey || text.length < 3) return Promise.resolve();
 		const url = buildCountySuggestUrl(text, apiKey, this.settings.geoapifyRegion);
-		void fetch(url).then(async (response) => {
+		return fetch(url).then(async (response) => {
 			if (!response.ok) return;
 			const hits = parseGeocodeBody(await response.json());
 			const next = hits.map((hit) => hit.county || hit.formattedAddress).filter((name) => name.trim().length > 0);
 			if (next.length > 0) this.countySuggestCache = next;
-		}).catch(() => undefined);
+		}).then(() => undefined, () => undefined);
 	}
 
 	/** In-note Home. Same write as the card, including literature, media, and lessons. */
@@ -3374,31 +3397,34 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private promptRename(path: string): void {
+	private promptAttributes(path: string): void {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		const current = stripFilenameStamp(file.basename);
 		const suffix = file.basename.slice(current.length);
-		const modal = new Modal(this.app);
-		modal.onOpen = () => {
-			modal.setTitle('Rename');
-			modal.modalEl.addClass('rv-locator-modal');
-			modal.modalEl.addClass('rv-rename-modal');
-			const field = modal.contentEl.createDiv('rv-rename-field');
-			const input = field.createEl('input', { attr: { type: 'text', 'aria-label': 'Name' } });
-			input.value = current;
-			const bar = modal.contentEl.createDiv('rv-modal-actions');
-			const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
-			const save = bar.createEl('button', { text: 'Rename', cls: 'mod-cta', attr: { type: 'button' } });
-			cancel.addEventListener('click', () => modal.close());
-			save.addEventListener('click', () => {
-				const name = sanitizeNoteName(stripFilenameStamp(input.value));
-				modal.close();
-				if (!name || name === current) return;
-				void this.applyRename(file, `${name}${suffix}`, current, name);
+		const gender = sanitizeGender(readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender')) ?? 'Man';
+		new EditAttributesModal(this.app, { name: current, gender }, (next) => {
+			if (!next) return;
+			void this.applyAttributes(file, suffix, current, gender, next);
+		}).open();
+	}
+
+	private async applyAttributes(
+		file: TFile,
+		suffix: string,
+		current: string,
+		gender: 'Man' | 'Woman',
+		next: { name: string; gender: 'Man' | 'Woman' },
+	): Promise<void> {
+		if (next.gender !== gender) {
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				assignProperty(frontmatter as Record<string, unknown>, 'Gender', next.gender);
 			});
-		};
-		modal.open();
+		}
+		const name = sanitizeNoteName(stripFilenameStamp(next.name));
+		if (!name || name === current) return;
+		const renamed = this.app.vault.getFileByPath(file.path) ?? file;
+		await this.applyRename(renamed, `${name}${suffix}`, current, name);
 	}
 
 	private async applyRename(file: TFile, nextBase: string, oldDisplay: string, newDisplay: string): Promise<void> {
@@ -3492,6 +3518,7 @@ export default class RVLocatorPlugin extends Plugin {
 		for (let attempt = 0; attempt < FOCUS_ATTEMPTS; attempt += 1) {
 			if (this.unloaded) return;
 			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
+			blurNoteTitle(view.containerEl.ownerDocument);
 			const area = focusVisitNoteField(view.containerEl, name) ?? placeVisitNoteFocus(view.containerEl, stamp, ordinal);
 			if (!area) continue;
 			fitNotesBox(area);
@@ -3501,13 +3528,13 @@ export default class RVLocatorPlugin extends Plugin {
 		void ordinal;
 	}
 
-	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): void {
+	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean, quiet = false): void {
 		const modal = new GeocodeSuggestModal(
 			this.app,
 			hits,
 			fromCache,
 			(hit) => {
-				void this.writeHit(file, address, hit, hits).catch((error: unknown) => {
+				void this.writeHit(file, address, hit, hits, !quiet).catch((error: unknown) => {
 					new Notice(this.friendlyError(error));
 				});
 			},

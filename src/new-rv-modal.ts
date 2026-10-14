@@ -324,7 +324,7 @@ export class NewRvIdentityModal extends Modal {
 	}
 }
 
-function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon: 'mars' | 'venus', selected: boolean): void {
+export function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon: 'mars' | 'venus', selected: boolean): void {
 	button.setButtonText('');
 	button.setTooltip(label);
 	const el = button.buttonEl;
@@ -332,4 +332,79 @@ function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon
 	el.setAttribute('aria-label', label);
 	el.classList.toggle('is-selected', selected);
 	setIcon(el, icon);
+	el.createSpan({ cls: 'rv-gender-word', text: label });
+}
+
+export interface AttributeDraft {
+	name: string;
+	gender: RvGender;
+}
+
+/** Name and Man/Woman today. More fields can be added inside rv-attr-fields. */
+export class EditAttributesModal extends Modal {
+	private name: string;
+	private gender: RvGender;
+
+	constructor(
+		app: App,
+		current: AttributeDraft,
+		private onDone: (next: AttributeDraft | null) => void,
+	) {
+		super(app);
+		this.name = current.name;
+		this.gender = current.gender;
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-edit-attributes');
+		this.setTitle('Edit attributes');
+		const fields = this.contentEl.createDiv('rv-attr-fields');
+		const gender = new Setting(fields).setName('Man / Woman');
+		gender.settingEl?.addClass('rv-gender-choice');
+		const paint = (): void => {
+			const buttons = gender.settingEl?.querySelectorAll('button') ?? [];
+			buttons.forEach((button) => {
+				if (!(button instanceof HTMLButtonElement)) return;
+				button.classList.toggle('is-selected', button.dataset.gender === this.gender);
+			});
+		};
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Man', 'mars', this.gender === 'Man');
+			button.onClick(() => {
+				this.gender = 'Man';
+				paint();
+			});
+		});
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Woman', 'venus', this.gender === 'Woman');
+			button.onClick(() => {
+				this.gender = 'Woman';
+				paint();
+			});
+		});
+		new Setting(fields)
+			.setName('Name')
+			.addText((text) => {
+				text.setValue(this.name);
+				text.inputEl?.setAttribute('aria-label', 'Name');
+				text.onChange((value) => { this.name = value; });
+			});
+		const bar = this.contentEl.createDiv('rv-modal-actions');
+		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+		const save = bar.createEl('button', { text: 'Save', cls: 'mod-cta', attr: { type: 'button' } });
+		cancel.addEventListener('click', () => {
+			this.onDone(null);
+			this.close();
+		});
+		save.addEventListener('click', () => {
+			this.onDone({ name: this.name, gender: this.gender });
+			this.close();
+		});
+		iconizeModal(this.contentEl);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
 }

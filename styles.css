@@ -3285,28 +3285,27 @@ button.rv-suggest-chevron {
 }
 
 .rv-map-card.rv-locator-glancable {
-	--rv-control-size: 38px;
 	height: auto;
 	overflow: visible;
 	background: transparent;
 }
 
-/* Popup badges stay ~38px even if an app rule sizes svg as 1em. Hub badges stay on the 28px control. */
+/* Popup badges use the list card's control size. */
 .rv-map-card .rv-locator-urgency,
 .rv-map-card .rv-locator-priority-pill,
 .rv-map-card .rv-locator-map-pin {
-	width: 38px !important;
-	height: 38px !important;
+	width: var(--rv-control-size, 28px) !important;
+	height: var(--rv-control-size, 28px) !important;
 }
 
 .rv-map-card .rv-locator-urgency .rv-urgency-glyph {
-	width: calc(38px * 0.7) !important;
-	height: calc(38px * 0.7) !important;
+	width: calc(var(--rv-control-size, 28px) * 0.7) !important;
+	height: calc(var(--rv-control-size, 28px) * 0.7) !important;
 }
 
 .rv-map-card .rv-locator-map-pin svg {
-	width: calc(38px * 0.48) !important;
-	height: calc(38px * 0.48) !important;
+	width: calc(var(--rv-control-size, 28px) * 0.48) !important;
+	height: calc(var(--rv-control-size, 28px) * 0.48) !important;
 }
 
 .rv-map-card .rv-locator-card {
@@ -3899,10 +3898,17 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
+	gap: 6px;
 	min-width: 2rem;
-	min-height: 28px;
-	height: 28px;
-	padding: 0 8px;
+	min-height: 32px;
+	height: auto;
+	padding: 4px 10px;
+	font-size: 14px;
+	line-height: 1;
+	cursor: pointer;
+}
+
+.rv-gender-word {
 	font-size: 14px;
 	line-height: 1;
 }
@@ -4072,6 +4078,21 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	flex: 1 1 auto;
 	min-height: 70vh;
 	height: auto;
+}
+
+/* The 70vh floor above must not grow a second scroller. The list is the only one. */
+.view-content:has(.rv-locator-view.is-side-map),
+.workspace-leaf-content.rv-hub-fill:has(.rv-locator-view.is-side-map) {
+	overflow: hidden !important;
+}
+
+.rv-locator-view.is-side-map,
+.rv-locator-view.is-side-map .rv-locator-stage,
+.rv-locator-view.is-side-map .rv-hub-map,
+.rv-locator-view.is-side-map .rv-hub-map .rv-map,
+.rv-locator-view.is-side-map .rv-hub-map .rv-map-stage {
+	min-height: 0 !important;
+	max-height: 100%;
 }
 
 .rv-locator-view.is-hub-map.is-stacked .rv-hub-map {
@@ -4557,6 +4578,7 @@ body.rv-full-width-callout .rv-dashboard .callout[data-callout="quote"]:not(.rv-
 .rv-dash-rename {
 	width: 32px;
 	height: 32px;
+	cursor: pointer;
 }
 
 .rv-dashboard .rv-hub-add,
@@ -5318,7 +5340,7 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 
 .rv-map-card {
 	max-height: calc(100% - 16px);
-	overflow: auto;
+	overflow: visible;
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned .rv-hub-chip,
@@ -6546,10 +6568,10 @@ button.rv-study-toggle {
 .markdown-preview-view p.rv-hub-owned > .rv-address-line,
 .markdown-rendered p.rv-hub-owned > .rv-address-line {
 	display: grid !important;
-	grid-template-columns: max-content minmax(0, 1fr) 28px !important;
+	grid-template-columns: subgrid !important;
 	grid-column: 1 / -1;
-	column-gap: 4px !important;
-	gap: 4px !important;
+	column-gap: 8px !important;
+	gap: 8px !important;
 	align-items: center !important;
 	width: 100% !important;
 	max-width: 100% !important;
@@ -6636,7 +6658,7 @@ button.rv-study-toggle {
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
 	--callout-padding: 8px !important;
 	--rv-dash-pad: 0px;
-	--rv-pair-label: 72px;
+	--rv-pair-label: max-content;
 	padding: 8px !important;
 }
 
@@ -6649,21 +6671,29 @@ button.rv-study-toggle {
 	padding: 0 !important;
 }
 
-.markdown-preview-view p.rv-hub-owned > .rv-hub-line,
-.markdown-rendered p.rv-hub-owned > .rv-hub-line,
-.rv-dashboard p.rv-hub-owned > .rv-hub-line {
+.markdown-preview-view p.rv-hub-owned,
+.markdown-rendered p.rv-hub-owned,
+.rv-dashboard p.rv-hub-owned,
+.el-p > p.rv-hub-owned,
+.callout-content > .el-p > p.rv-hub-owned {
 	display: grid !important;
-	grid-template-columns: var(--rv-pair-label) minmax(0, 1fr) 40px !important;
-	column-gap: 4px !important;
-	gap: 4px !important;
-	align-items: center !important;
-	width: 100% !important;
+	grid-template-columns: max-content minmax(0, 1fr) 40px !important;
+	column-gap: 8px !important;
 }
 
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line,
+.rv-dashboard p.rv-hub-owned > .rv-hub-line,
 .markdown-preview-view p.rv-hub-owned > .rv-address-line,
 .markdown-rendered p.rv-hub-owned > .rv-address-line,
 .rv-dashboard p.rv-hub-owned > .rv-address-line {
-	grid-template-columns: var(--rv-pair-label) minmax(0, 1fr) 28px !important;
+	display: grid !important;
+	grid-column: 1 / -1 !important;
+	grid-template-columns: subgrid !important;
+	column-gap: 8px !important;
+	gap: 8px !important;
+	align-items: center !important;
+	width: 100% !important;
 }
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line > strong,
@@ -6677,9 +6707,9 @@ button.rv-study-toggle {
 	gap: 2px !important;
 	grid-column: 1 !important;
 	box-sizing: border-box !important;
-	width: var(--rv-pair-label) !important;
-	min-width: var(--rv-pair-label) !important;
-	max-width: var(--rv-pair-label) !important;
+	width: max-content !important;
+	min-width: max-content !important;
+	max-width: none !important;
 	margin: 0 !important;
 	font-size: 10px !important;
 	line-height: 1.15 !important;
@@ -7692,7 +7722,8 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 .rv-dashboard .callout[data-callout="rv"] > .callout-title .callout-title-inner,
 .callout.rv-locator-attempt-log > .callout-title,
 .callout.rv-locator-attempt-log > .callout-title .callout-title-inner {
-	font-size: var(--callout-title-size, var(--font-ui-small));
+	font-size: 16px;
+	line-height: 1.2;
 	font-weight: var(--bold-weight, 600);
 }
 
@@ -8175,4 +8206,67 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 
 .rv-locator-glancable .rv-locator-toolbar-actions > .rv-locator-new-rv {
 	border-color: transparent !important;
+}
+
+/* Log visit: section hairlines, including when Study stays under literature. */
+.rv-locator-modal .rv-study-optional {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
+.rv-locator-companion-modal .rv-locator-suggest-actions.rv-modal-actions {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
+.markdown-preview-view.rv-locator-full-base .inline-title,
+.markdown-reading-view.rv-locator-full-base .inline-title,
+.markdown-source-view.rv-locator-full-base .inline-title,
+.markdown-preview-view.rv-locator-full-base .metadata-container,
+.markdown-reading-view.rv-locator-full-base .metadata-container,
+.markdown-source-view.rv-locator-full-base .metadata-container {
+	display: none;
+}
+
+.rv-county-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	width: 100%;
+	margin-bottom: 6px;
+}
+
+.rv-county-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--background-modifier-hover);
+}
+
+.rv-county-chip.is-invalid {
+	color: var(--text-error);
+	box-shadow: inset 0 0 0 1px var(--text-error);
+}
+
+.rv-county-chip .rv-county-x {
+	border: 0;
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+	padding: 0 2px;
+}
+
+.rv-county-note {
+	width: 100%;
+	margin-top: 4px;
+	color: var(--text-error);
+	font-size: var(--font-ui-smaller);
+}
+
+.setting-item-control:has(.rv-county-chips) {
+	flex-wrap: wrap;
 }

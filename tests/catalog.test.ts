@@ -372,7 +372,8 @@ describe('in-note urgency chrome', () => {
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin:not\(\.is-drop\) svg \{[^}]*width: 21px !important;[^}]*height: 21px !important/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-pin\.is-drop \.rv-pin-shape svg \{[^}]*width: 42px !important;[^}]*height: 54px !important/);
-		assert.match(css, /\.rv-map-card\.rv-locator-glancable \{[^}]*--rv-control-size: 38px/);
+		assert.doesNotMatch(css, /\.rv-map-card\.rv-locator-glancable \{[^}]*--rv-control-size: 38px/);
+		assert.match(css, /\.rv-map-card \.rv-locator-urgency,\s*\n\.rv-map-card \.rv-locator-priority-pill,\s*\n\.rv-map-card \.rv-locator-map-pin \{[^}]*width: var\(--rv-control-size, 28px\)/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background-color: var\(--background-secondary\);/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster \{[^}]*background: linear-gradient\(color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\), color-mix\(in srgb, var\(--pin-color, var\(--interactive-accent\)\) 13%, transparent\)\), var\(--background-secondary\);/);
 		assert.match(css, /\.rv-map \.rv-map-pins > button\.rv-map-cluster\.is-fresh \{[^}]*border: 2\.5px dotted var\(--pin-color/);
@@ -402,12 +403,12 @@ describe('in-note urgency chrome', () => {
 		const map = readFileSync(path.join(process.cwd(), 'src/map-view.ts'), 'utf8');
 		assert.doesNotMatch(map, /file-text/);
 		assert.match(map, /openMapNote\(pin\.path\)/);
-		assert.match(map, /export const MAP_POPUP_BADGE_PX = 38/);
 		assert.match(map, /export const MAP_PIN_PX = 48/);
 		assert.match(map, /export const MAP_PIN_GLYPH_PX = 29\.4/);
 		assert.match(map, /export const MAP_CLUSTER_PX = 53/);
 		assert.match(map, /sizePinGlyph\(head,/);
-		assert.match(map, /setProperty\('--rv-control-size', `\$\{MAP_POPUP_BADGE_PX\}px`\)/);
+		assert.match(map, /paintGlanceCard\?\.\(shell, pin\.path\)/);
+		assert.doesNotMatch(map, /MAP_POPUP_BADGE_PX/);
 		assert.doesNotMatch(map, /getPropertyValue\('--rv-control-size'\)/);
 		assert.equal(48, Math.round(42 * 1.15));
 		assert.equal(21, Math.round(18 * 1.15));
@@ -428,7 +429,7 @@ describe('in-note urgency chrome', () => {
 		assert.match(css, /width: 48px/);
 		assert.match(css, /width: 21px !important/);
 		assert.match(css, /width: 53px/);
-		assert.match(css, /--rv-control-size: 38px/);
+		assert.doesNotMatch(css, /--rv-control-size: 38px/);
 	});
 
 	it('keeps the leftmost visit button on the accent and floors the darkest step', () => {
@@ -615,5 +616,62 @@ describe('glancable smart search', () => {
 			body: '##### Tue, 4pm — Oct 6, 2026 · «book» «Enjoy Life Forever Brochure»',
 		});
 		assert.equal(matchesGlanceQuery(record, parseGlanceQuery(query, now)), true);
+	});
+});
+
+describe('round 1.3.5 callouts, embeds, and modals', () => {
+	const read = (file: string): string => readFileSync(path.join(process.cwd(), file), 'utf8');
+
+	it('paints the map popup with the glancable card and keeps one list scroller', () => {
+		const map = read('src/map-view.ts');
+		const glance = read('src/glancable-view.ts');
+		const css = read('styles.css');
+		assert.match(glance, /paintCardForPath/);
+		assert.match(glance, /registerGlancePainter/);
+		assert.match(map, /paintGlanceCard/);
+		assert.match(css, /\.rv-locator-view\.is-side-map \.rv-hub-map \{[^}]*min-height:\s*70vh/);
+		assert.match(css, /\.rv-locator-view\.is-side-map,\s*\n\.rv-locator-view\.is-side-map \.rv-locator-stage[\s\S]*min-height:\s*0 !important/);
+		assert.match(css, /\.view-content:has\(\.rv-locator-view\.is-side-map\)/);
+		assert.doesNotMatch(glance, /padding-right', '0'/);
+	});
+
+	it('shows Man and Woman, edits attributes, and keeps a normal embed unless the class is set', () => {
+		const modal = read('src/new-rv-modal.ts');
+		const chrome = read('src/note-chrome.ts');
+		const glance = read('src/glancable-view.ts');
+		const settings = read('src/settings-tab.ts');
+		const css = read('styles.css');
+		const mount = modal.slice(modal.indexOf('export function mountGenderButton'), modal.indexOf('export interface AttributeDraft'));
+		assert.match(mount, /setIcon\(el, icon\)/);
+		assert.match(mount, /rv-gender-word/);
+		assert.ok(mount.indexOf('setIcon(el, icon)') < mount.indexOf('rv-gender-word'));
+		assert.match(modal, /setTitle\('Edit attributes'\)/);
+		assert.match(modal, /rv-attr-fields/);
+		assert.match(chrome, /aria-label': 'Edit attributes'/);
+		assert.match(chrome, /sliders-horizontal/);
+		assert.doesNotMatch(chrome, /aria-label': 'Rename'/);
+		assert.match(glance, /rv-locator-full-base/);
+		assert.match(glance, /wideHubFrame/);
+		assert.match(settings, /Copy class/);
+		assert.match(settings, /rv-locator-full-base/);
+		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base \.inline-title/);
+		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base \.metadata-container/);
+	});
+
+	it('marks unknown home counties, enlarges callout titles, and pads the study block', () => {
+		const settings = read('src/settings-tab.ts');
+		const css = read('styles.css');
+		const main = read('src/main.ts');
+		const chrome = read('src/note-chrome.ts');
+		assert.match(settings, /rv-county-chip/);
+		assert.match(settings, /is-invalid/);
+		assert.match(css, /\.rv-county-chip\.is-invalid/);
+		assert.match(css, /font-size: 16px;\s*\n\tline-height: 1\.2/);
+		assert.match(css, /\.rv-locator-modal \.rv-study-optional \{[^}]*border-top: 1px solid var\(--background-modifier-border\)/);
+		assert.match(css, /\.rv-locator-companion-modal \.rv-locator-suggest-actions\.rv-modal-actions \{[^}]*padding-top: 12px/);
+		assert.match(main, /quietCreateGeocode/);
+		assert.match(chrome, /column-gap', '8px'/);
+		assert.match(chrome, /grid-template-columns', 'subgrid'/);
+		assert.match(chrome, /width', 'max-content'/);
 	});
 });

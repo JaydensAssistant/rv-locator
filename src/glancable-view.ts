@@ -57,6 +57,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		super(controller, parentEl, plugin, 'glancable', scope);
 		this.type = viewType;
 		this.quietBanner = true;
+		this.register(this.plugin.registerGlancePainter((parent, path) => this.paintCardForPath(parent, path)));
 	}
 
 	override onunload(): void {
@@ -323,6 +324,27 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.bodiesLoading = false;
 			if (this.glanceQuery.trim()) this.renderBody();
 		});
+	}
+
+	/** The map popup asks for the list card. Density comes from this view, not a separate scale. */
+	paintCardForPath(parent: HTMLElement, path: string): boolean {
+		let found: RowModel | null = null;
+		for (const group of this.groups) {
+			const row = group.rows.find((item) => item.path === path);
+			if (row) {
+				found = row;
+				break;
+			}
+		}
+		if (!found) return false;
+		const font = this.root.style.getPropertyValue('--rv-font-scale') || '1';
+		const icon = this.root.style.getPropertyValue('--rv-icon-scale') || String(this.plugin.settings.glancableIconScale);
+		const size = this.root.style.getPropertyValue('--rv-control-size');
+		parent.style.setProperty('--rv-font-scale', font);
+		parent.style.setProperty('--rv-icon-scale', icon);
+		if (size) parent.style.setProperty('--rv-control-size', size);
+		this.paintCard(parent, found, `map:${path}`);
+		return true;
 	}
 
 	private paintCard(parent: HTMLElement, row: RowModel, key: string): void {
@@ -687,11 +709,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private sizeEmbedFrame(): void {
 		const embed = this.root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
 		if (!(embed instanceof HTMLElement)) return;
-		if (!this.stackedLayout) {
+		const release = (): void => {
 			embed.classList.remove('is-embed-capped');
 			embed.style.removeProperty('--rv-embed-cap');
 			embed.style.removeProperty('height');
 			embed.style.removeProperty('max-height');
+		};
+		if (!this.wideHubFrame() || !this.stackedLayout) {
+			release();
 			return;
 		}
 		const view = this.root.ownerDocument.defaultView;
@@ -701,12 +726,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const top = rect ? rect.top : 0;
 		const fromFrame = top > 1 ? Math.round(viewport - Math.max(0, top)) : stackedEmbedCap(viewport, chrome);
 		const cap = Math.max(160, fromFrame);
-		const preview = embed.closest('.markdown-preview-view, .cm-scroller');
-		if (preview instanceof HTMLElement) {
-			preview.style.setProperty('scrollbar-gutter', 'auto', 'important');
-			preview.style.setProperty('padding-right', '0', 'important');
-			preview.style.setProperty('overflow', 'hidden', 'important');
-		}
 		embed.style.setProperty('width', '100%', 'important');
 		embed.style.setProperty('scrollbar-gutter', 'auto', 'important');
 		if (embed.dataset.rvCapScroll !== '1') {
@@ -856,13 +875,26 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.hubFillNodes = [];
 	}
 
+	/**
+	 * A base opened on its own, or a note whose cssclass is rv-locator-full-base.
+	 * Any other embed keeps Obsidian's normal base frame.
+	 */
+	private wideHubFrame(): boolean {
+		if (typeof this.root.closest !== 'function') return true;
+		const embed = this.root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
+		if (!(embed instanceof HTMLElement)) return true;
+		const host = embed.closest('.markdown-preview-view, .markdown-source-view, .markdown-reading-view, .workspace-leaf-content');
+		return host instanceof HTMLElement && host.classList.contains('rv-locator-full-base');
+	}
+
 	private syncBasesChrome(): void {
 		const host = basesChromeHost(this.root);
 		if (this.chromeHost && this.chromeHost !== host) this.clearBasesChrome();
 		this.chromeHost = host;
 		if (!host) return;
 		host.classList.add('rv-glancable-host');
-		this.fillHubToFrame();
+		if (this.wideHubFrame()) this.fillHubToFrame();
+		else this.clearHubFill();
 		const flags = this.plugin.settings.glancableChrome;
 		for (const piece of CHROME_PIECES) {
 			host.toggleAttribute(hideAttr(piece), hidePiece(flags, piece));
