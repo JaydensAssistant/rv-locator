@@ -246,12 +246,17 @@ export function mountVisitNotesInSection(
 export function focusVisitNoteField(root: HTMLElement, key: string): HTMLTextAreaElement | null {
 	const area = root.querySelector(`textarea.rv-native-notes-area[data-rv-notes-key="${key}"]`);
 	if (!(area instanceof HTMLTextAreaElement)) return null;
-	try {
-		area.focus({ preventScroll: true });
-	} catch {
-		area.focus();
-	}
+	area.tabIndex = 0;
 	const end = area.value.length;
+	try {
+		area.focus();
+	} catch {
+		try {
+			area.focus({ preventScroll: true });
+		} catch {
+			/* The box cannot take focus yet. */
+		}
+	}
 	try {
 		area.setSelectionRange(end, end);
 	} catch {

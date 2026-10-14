@@ -3280,7 +3280,8 @@ button.rv-suggest-chevron {
 .rv-map-card {
 	position: absolute;
 	z-index: 4;
-	width: min(20rem, calc(100vw - 24px));
+	width: auto;
+	max-width: calc(100vw - 24px);
 	text-align: start;
 }
 
@@ -3398,7 +3399,7 @@ button.rv-suggest-chevron {
 	height: 1em;
 }
 
-.rv-map-open {
+.rv-dashboard .rv-map-open {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.3em;
@@ -5709,8 +5710,8 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .rv-modal-section {
 	border-top: 1px solid var(--background-modifier-border);
-	margin-top: 10px;
-	padding-top: 10px;
+	margin-top: 12px;
+	padding-top: 12px;
 }
 
 .rv-modal-actions.is-footer {
@@ -5772,8 +5773,14 @@ body.rv-center-visit-notes .rv-older-heading {
 	font-size: 13px;
 }
 
+.rv-locator-modal .rv-share-list {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 12px;
+	padding-top: 12px;
+}
+
 .rv-share-list + .rv-share-list {
-	margin-top: 14px;
+	margin-top: 12px;
 }
 
 .rv-study-change-modal {
@@ -6707,6 +6714,9 @@ button.rv-study-toggle {
 	gap: 2px !important;
 	grid-column: 1 !important;
 	box-sizing: border-box !important;
+	justify-self: end !important;
+	justify-content: flex-end !important;
+	text-align: right !important;
 	width: max-content !important;
 	min-width: max-content !important;
 	max-width: none !important;
@@ -8219,6 +8229,36 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	border-top: 1px solid var(--background-modifier-border);
 	margin-top: 12px;
 	padding-top: 12px;
+}
+
+.rv-edit-attributes .rv-attr-fields > .setting-item {
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+}
+
+.rv-edit-attributes .rv-attr-fields > .setting-item.rv-gender-choice {
+	margin-top: 12px !important;
+}
+
+.markdown-preview-view.rv-locator-full-base,
+.markdown-reading-view.rv-locator-full-base,
+.markdown-source-view.rv-locator-full-base {
+	--file-line-width: 100%;
+}
+
+.markdown-preview-view.rv-locator-full-base .markdown-preview-sizer,
+.markdown-reading-view.rv-locator-full-base .markdown-preview-sizer,
+.markdown-source-view.rv-locator-full-base.is-readable-line-width .markdown-preview-sizer,
+.markdown-preview-view.rv-locator-full-base.is-readable-line-width .markdown-preview-sizer,
+.markdown-source-view.rv-locator-full-base .cm-sizer,
+.markdown-source-view.rv-locator-full-base .cm-contentContainer,
+.markdown-source-view.rv-locator-full-base.is-readable-line-width .cm-sizer,
+.markdown-source-view.rv-locator-full-base.is-readable-line-width .cm-contentContainer {
+	max-width: none !important;
+	width: 100% !important;
+	margin-left: 0 !important;
+	margin-right: 0 !important;
 }
 
 .markdown-preview-view.rv-locator-full-base .inline-title,

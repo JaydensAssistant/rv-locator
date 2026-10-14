@@ -25,7 +25,7 @@ export function decideGeocodePick(
 	hits: readonly GeocodeHit[],
 	homeCounties: readonly string[],
 ): GeocodePick {
-	const homes = homeCounties.map(normalizeCounty).filter((name) => name.length > 0);
+	const homes = homeCounties.map(countyNameKey).filter((name) => name.length > 0);
 	if (homes.length === 0) return { hit: null };
 	const inHome = hits.filter((hit) => inHomeCounty(hit, homes));
 	if (inHome.length !== 1) return { hit: null };
@@ -35,8 +35,13 @@ export function decideGeocodePick(
 }
 
 function inHomeCounty(hit: GeocodeHit, homes: readonly string[]): boolean {
-	const county = hit.county ? normalizeCounty(hit.county) : '';
-	return county.length > 0 && homes.includes(county);
+	const county = hit.county ? countyNameKey(hit.county) : '';
+	return county.length > 0 && homes.some((home) => countyNameKey(home) === county);
+}
+
+/** "Citrus", "Citrus County", and "Citrus County, FL" share one county name. */
+export function countyNameKey(value: string): string {
+	return normalizeCounty((value.split(',')[0] ?? value).trim());
 }
 
 /** "Orange" and "Orange County" are the same home-base entry. */
@@ -78,9 +83,9 @@ export function mergeHomeFirst<T extends { formattedAddress?: string; lat?: numb
 
 /** True when the hit's county is one of the home counties. */
 export function hitInHomeCounties(hit: { county?: string }, homeCounties: readonly string[]): boolean {
-	const homes = homeCounties.map(normalizeCounty).filter((name) => name.length > 0);
+	const homes = homeCounties.map(countyNameKey).filter((name) => name.length > 0);
 	if (homes.length === 0) return false;
-	const county = hit.county ? normalizeCounty(hit.county) : '';
+	const county = hit.county ? countyNameKey(hit.county) : '';
 	return county.length > 0 && homes.includes(county);
 }
 
@@ -143,7 +148,7 @@ export function normalizeCountyList(value: unknown): string[] {
 	const source = Array.isArray(value) ? value : [value];
 	for (const item of source) {
 		if (typeof item !== 'string') continue;
-		for (const part of item.split(/[\n,]/)) chunks.push(part);
+		for (const part of item.split(/\n/)) chunks.push(part);
 	}
 	const seen = new Set<string>();
 	const names: string[] = [];

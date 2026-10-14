@@ -58,6 +58,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.type = viewType;
 		this.quietBanner = true;
 		this.register(this.plugin.registerGlancePainter((parent, path) => this.paintCardForPath(parent, path)));
+		this.register(this.plugin.registerGlanceWidth(() => this.listCardWidth()));
 	}
 
 	override onunload(): void {
@@ -324,6 +325,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.bodiesLoading = false;
 			if (this.glanceQuery.trim()) this.renderBody();
 		});
+	}
+
+	/** Painted width of a list card in this view. The map popup copies it. */
+	listCardWidth(): number {
+		const card = this.scrollEl?.querySelector('.rv-locator-card');
+		if (!(card instanceof HTMLElement) || typeof card.getBoundingClientRect !== 'function') return 0;
+		const width = card.getBoundingClientRect().width;
+		return width > 1 ? Math.round(width) : 0;
 	}
 
 	/** The map popup asks for the list card. Density comes from this view, not a separate scale. */

@@ -35,7 +35,9 @@ import { watchVisitSurface } from './visit-surface';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
+import { paintNoteGlanceCard } from './glance-card';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
+import { listedUsCounties } from './us-county-index';
 import type { MapPin } from './map-pins';
 import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './map-pins';
 import { shadeHeats } from './map-shade';
@@ -103,7 +105,7 @@ const AGE_REFRESH_DELAYS_MS = [0, 250, 1_000] as const;
 /** Meta Bind mounts its textAreas after the section renders, sometimes well after. */
 const NOTES_FIT_DELAYS_MS = [0, 250, 1_000, 2_500] as const;
 /** How long to look for a new visit's notes box after the note re-renders. */
-const FOCUS_ATTEMPTS = 40;
+const FOCUS_ATTEMPTS = 80;
 const FOCUS_STEP_MS = 100;
 /**
  * The note's Home button is still dispatching its click when Templater asks
@@ -150,6 +152,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** The next geocode of a note this plugin just created stays quiet. */
 	private quietCreateGeocode = false;
 	private glancePainters = new Set<(parent: HTMLElement, path: string) => boolean>();
+	private glanceWidths = new Set<() => number>();
 	/** Set while Add a housemate is creating a note. The template skips geocode. */
 	housemateSourcePath: string | null = null;
 	private homeBiasKey = '';
@@ -2284,11 +2287,26 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.glancePainters.delete(paint); };
 	}
 
+	registerGlanceWidth(read: () => number): () => void {
+		this.glanceWidths.add(read);
+		return () => { this.glanceWidths.delete(read); };
+	}
+
+	/** Width of a mounted list card, so the map popup can match it. */
+	glanceCardWidth(): number {
+		let best = 0;
+		for (const read of this.glanceWidths) {
+			const width = read();
+			if (width > best) best = width;
+		}
+		return best;
+	}
+
 	paintGlanceCard(parent: HTMLElement, path: string): boolean {
 		for (const paint of this.glancePainters) {
 			if (paint(parent, path)) return true;
 		}
-		return false;
+		return paintNoteGlanceCard(parent, path, this);
 	}
 
 	listMapPins(): MapPin[] {
@@ -3037,27 +3055,9 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private countySuggestCache: string[] = [];
 
-	/** Vault counties, plus any county names the last Geoapify lookup returned. */
+	/** Bundled US counties ("Citrus County, FL"), filtered by what was typed. */
 	knownCounties(query = ''): string[] {
-		const needle = query.trim().toLowerCase();
-		const seen = new Set<string>();
-		const names: string[] = [];
-		const push = (text: string): void => {
-			const trimmed = text.trim();
-			if (!trimmed) return;
-			const key = trimmed.toLowerCase();
-			if (seen.has(key)) return;
-			if (needle && !key.includes(needle)) return;
-			seen.add(key);
-			names.push(trimmed);
-		};
-		for (const cached of this.countySuggestCache) push(cached);
-		for (const file of this.app.vault.getMarkdownFiles()) {
-			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-			const raw = readProperty(frontmatter, 'County') ?? readProperty(frontmatter, 'county');
-			if (typeof raw === 'string') push(raw);
-		}
-		return names.sort((a, b) => a.localeCompare(b));
+		return listedUsCounties(query);
 	}
 
 	/** Fill the county cache when an API key is set. The chevron reads the cache. */
@@ -3438,6 +3438,28 @@ export default class RVLocatorPlugin extends Plugin {
 			const line = `> - ${formatVisitStamp(new Date())} — name ${oldDisplay} → ${newDisplay}`;
 			return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
 		});
+		await this.reopenRenamedNote(renamed);
+	}
+
+	/**
+	 * A rename leaves the open preview on Meta Bind's unloaded placeholders.
+	 * Reopen the note and rebuild the preview so the fields bind to the new path.
+	 */
+	private async reopenRenamedNote(file: TFile): Promise<void> {
+		const leaves = this.app.workspace.getLeavesOfType('markdown');
+		let leaf = leaves.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
+		if (!leaf) leaf = this.app.workspace.getLeaf(false);
+		if (!leaf) return;
+		await leaf.openFile(file, { active: true, state: { mode: 'preview', source: false } });
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView)) return;
+		const preview = view.previewMode;
+		if (preview && typeof preview.rerender === 'function') preview.rerender(true);
+		const state = leaf.getViewState();
+		const inner = state.state && typeof state.state === 'object' ? state.state : {};
+		await leaf.setViewState({ ...state, state: { ...inner, mode: 'source', source: true } });
+		await leaf.setViewState({ ...state, state: { ...inner, mode: 'preview', source: false } });
+		this.openInReadingView(file, true);
 	}
 
 	confirmArchive(file: TFile): void {
@@ -3513,7 +3535,10 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
+		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 		this.openInReadingView(file, true);
+		this.stopVisitFocus?.();
+		this.stopVisitFocus = armVisitNoteFocus(view.containerEl, name ?? '');
 		if (!name || fieldAt < 1) return;
 		for (let attempt = 0; attempt < FOCUS_ATTEMPTS; attempt += 1) {
 			if (this.unloaded) return;

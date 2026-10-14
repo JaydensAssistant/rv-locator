@@ -88,7 +88,7 @@ function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<
 			cls: 'rv-dash-rename clickable-icon',
 			attr: { type: 'button', 'aria-label': 'Edit attributes' },
 		});
-		setIcon(more, 'sliders-horizontal');
+		setIcon(more, 'more-horizontal');
 		more.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
@@ -981,6 +981,9 @@ function pinPairLabel(label: HTMLElement): void {
 	label.style.setProperty('gap', '0', 'important');
 	label.style.setProperty('width', 'max-content', 'important');
 	label.style.setProperty('min-width', 'max-content', 'important');
+	label.style.setProperty('justify-self', 'end', 'important');
+	label.style.setProperty('justify-content', 'flex-end', 'important');
+	label.style.setProperty('text-align', 'right', 'important');
 	label.style.setProperty('max-width', 'none', 'important');
 	label.style.setProperty('margin', '0', 'important');
 	label.style.setProperty('white-space', 'nowrap', 'important');

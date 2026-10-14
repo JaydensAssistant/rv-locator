@@ -360,7 +360,15 @@ export class EditAttributesModal extends Modal {
 		this.modalEl.addClass('rv-edit-attributes');
 		this.setTitle('Edit attributes');
 		const fields = this.contentEl.createDiv('rv-attr-fields');
-		const gender = new Setting(fields).setName('Man / Woman');
+		new Setting(fields)
+			.setClass('rv-attr-name')
+			.setName('Name')
+			.addText((text) => {
+				text.setValue(this.name);
+				text.inputEl?.setAttribute('aria-label', 'Name');
+				text.onChange((value) => { this.name = value; });
+			});
+		const gender = new Setting(fields);
 		gender.settingEl?.addClass('rv-gender-choice');
 		const paint = (): void => {
 			const buttons = gender.settingEl?.querySelectorAll('button') ?? [];
@@ -383,13 +391,6 @@ export class EditAttributesModal extends Modal {
 				paint();
 			});
 		});
-		new Setting(fields)
-			.setName('Name')
-			.addText((text) => {
-				text.setValue(this.name);
-				text.inputEl?.setAttribute('aria-label', 'Name');
-				text.onChange((value) => { this.name = value; });
-			});
 		const bar = this.contentEl.createDiv('rv-modal-actions');
 		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 		const save = bar.createEl('button', { text: 'Save', cls: 'mod-cta', attr: { type: 'button' } });

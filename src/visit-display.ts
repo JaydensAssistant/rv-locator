@@ -502,13 +502,18 @@ export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
  * the title (or the body) takes the caret. The watcher stays until the caller
  * stops it, so a later preview remount can still find the new textarea.
  */
-export function armVisitNoteFocus(root: HTMLElement): () => void {
+export function armVisitNoteFocus(root: HTMLElement, notesKey = ''): () => void {
 	let stop = false;
 	let won = false;
 	const doc = root.ownerDocument;
+	const until = Date.now() + 8000;
 	const promptOpen = (): boolean => doc.querySelector('input.templater-prompt-input, textarea.templater-prompt-input, .modal-container') != null;
 	const visitArea = (): HTMLTextAreaElement | null => {
-		const found = root.querySelector('textarea');
+		if (notesKey) {
+			const named = root.querySelector(`textarea.rv-native-notes-area[data-rv-notes-key="${notesKey}"]`);
+			if (named instanceof HTMLTextAreaElement && named.isConnected) return named;
+		}
+		const found = root.querySelector('textarea.rv-native-notes-area') ?? root.querySelector('textarea');
 		if (!isVisitTextArea(found) || !found.isConnected) return null;
 		return found;
 	};
@@ -534,7 +539,8 @@ export function armVisitNoteFocus(root: HTMLElement): () => void {
 		// Leave the Templater prompt and any other field alone so Enter still submits.
 		if (editingElsewhere(active instanceof Element ? active : null)) return false;
 		if (won && active instanceof Element && !isFocusThief(active)) return false;
-		placeVisitNoteFocus(root, '', 0);
+		revealForFocus(area);
+		placeCaret(area);
 		won = doc.activeElement === area || doc.activeElement === visitArea();
 		return won;
 	};
@@ -553,6 +559,13 @@ export function armVisitNoteFocus(root: HTMLElement): () => void {
 	doc.addEventListener('focusin', onFocus, true);
 	if (!promptOpen()) blurNoteTitle(doc);
 	focusArea();
+	const tick = (): void => {
+		if (stop || !root.isConnected || Date.now() > until) return;
+		focusArea();
+		const view = doc.defaultView;
+		if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(tick);
+	};
+	tick();
 	return () => {
 		stop = true;
 		observer.disconnect();
@@ -568,18 +581,38 @@ export function placeVisitNoteFocus(root: HTMLElement, stamp: string, ordinal: n
 	const area = matched ?? (isVisitTextArea(found) ? found : null);
 	blurNoteTitle(root.ownerDocument);
 	if (!area) return null;
-	try {
-		area.focus({ preventScroll: true });
-	} catch {
-		area.focus();
+	revealForFocus(area);
+	placeCaret(area);
+	return area;
+}
+
+/** Drop folds that would keep the notes box from taking the caret. */
+function revealForFocus(area: HTMLElement): void {
+	let node: HTMLElement | null = area;
+	while (node) {
+		if (node.classList.contains('is-collapsed')) node.classList.remove('is-collapsed');
+		node = node.parentElement;
 	}
+}
+
+/** Focus the notes box and leave the caret in it. */
+function placeCaret(area: HTMLTextAreaElement): void {
+	area.tabIndex = 0;
 	const end = area.value.length;
+	try {
+		area.focus();
+	} catch {
+		try {
+			area.focus({ preventScroll: true });
+		} catch {
+			/* The box cannot take focus yet. */
+		}
+	}
 	try {
 		area.setSelectionRange(end, end);
 	} catch {
 		/* The box is not editable yet. */
 	}
-	return area;
 }
 
 function ensureSuggestionStop(preview: HTMLElement): void {

@@ -1,4 +1,5 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { estimatedGlancableCardPx, glancableColumns } from './glancable-density';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
@@ -27,6 +28,8 @@ export interface MapHost {
 	promptUrgencyMenu?(path: string, name: string, event: MouseEvent): void;
 	/** Paint the Glancable list card into the popup. False when that view is not mounted. */
 	paintGlanceCard?(parent: HTMLElement, path: string): boolean;
+	/** Painted width of the list card in the current base, or 0 when no base is open. */
+	glanceCardWidth?(): number;
 	tileCacheEpoch?: number;
 	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
 }
@@ -952,9 +955,11 @@ export class RvMapView extends ItemView {
 			width: this.stage?.clientWidth || frame.width,
 			height: this.stage?.clientHeight || frame.height,
 		};
-		const cardWidth = Math.min(280, Math.max(120, frame.width - 24));
+		const cardWidth = this.popupCardWidth(frame);
 		const cardHeight = Math.min(320, Math.max(120, frame.height - 16));
 		shell.style.width = `${cardWidth}px`;
+		shell.style.minWidth = `${cardWidth}px`;
+		shell.style.maxWidth = `${cardWidth}px`;
 		shell.style.maxHeight = `${cardHeight}px`;
 		const origin = popupClearOfChrome({ x: point.x, y: point.y - 8 }, {
 			width: cardWidth,
@@ -998,6 +1003,21 @@ export class RvMapView extends ItemView {
 		else nudge();
 	}
 
+	/** Same width as the list card in this window. A mounted base wins; otherwise the column the list would use. */
+	private popupCardWidth(frame: { width: number }): number {
+		const listed = this.host.glanceCardWidth?.() ?? 0;
+		const windowW = this.stage?.ownerDocument.defaultView?.innerWidth ?? frame.width;
+		const settings = this.host.settings;
+		const columns = settings.glancableFitCount >= 2
+			? settings.glancableFitCount
+			: glancableColumns(windowW, settings);
+		const gaps = Math.max(0, columns - 1) * 8;
+		const slot = columns > 0 ? (windowW - gaps) / columns : estimatedGlancableCardPx(settings);
+		const preferred = listed > 0 ? listed : slot;
+		const cap = Math.max(120, frame.width - 24);
+		return Math.round(Math.min(Math.max(120, preferred), cap));
+	}
+
 	/** Used only when the Glancable view is not mounted to paint the same card. */
 	private paintFallbackCard(shell: HTMLElement, pin: MapPin): void {
 		const marks = urgencyMark(pin.urgency, pin.priority);
@@ -1026,17 +1046,19 @@ export class RvMapView extends ItemView {
 			const city = card.createDiv('rv-locator-place');
 			this.cardSlot(city, 'building-2', pin.card.city, false);
 		}
-		const when = card.createDiv('rv-locator-when');
-		const dates = pin.card.driveDates ?? [];
-		if (dates.length > 0) {
-			for (const date of dates) this.dateSlot(when, date);
-		} else {
-			if (pin.card.study) this.cardSlot(when, 'book-marked', pin.card.studied ? `Studied ${pin.card.studied}` : 'Studied —', !pin.card.studied);
-			else {
-				if (pin.card.spoke) this.cardSlot(when, 'message-circle', `Spoke ${pin.card.spoke}`, false);
-				if (pin.card.attempted) this.cardSlot(when, 'clock', `Attempted ${pin.card.attempted}`, false);
-			}
-			if (pin.card.met) this.cardSlot(when, 'home', `Met ${pin.card.met}`, false);
+		const lines = this.host.settings.glancableLines;
+		const lineOn = (id: keyof typeof lines): boolean => lines[id] !== false;
+		const study = pin.card.study;
+		const compact = this.host.settings.compactMode !== false;
+		const showSpoke = lineOn('last-spoke') && (!study || this.host.settings.studyShowSpoke);
+		const showAttempted = lineOn('last-attempted') && (!study || this.host.settings.studyShowAttempted);
+		const showMet = lineOn('met');
+		if (study || showSpoke || showAttempted || showMet) {
+			const when = card.createDiv(compact ? 'rv-locator-when is-compact' : 'rv-locator-when');
+			if (study) this.cardSlot(when, 'book-marked', pin.card.studied || '—', !pin.card.studied);
+			if (showSpoke) this.cardSlot(when, 'message-circle', pin.card.spoke || '—', !pin.card.spoke);
+			if (showAttempted) this.cardSlot(when, 'clock', pin.card.attempted || '—', !pin.card.attempted);
+			if (showMet) this.cardSlot(when, 'home', pin.card.met || '—', !pin.card.met);
 		}
 		const foot = card.createDiv('rv-locator-card-foot');
 		this.cardSlot(foot, 'user', pin.card.metWith || '—', !pin.card.metWith);
@@ -1059,18 +1081,6 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
-	}
-
-	private dateSlot(parent: HTMLElement, date: { icon: string; dow: string; time: string; rest: string; days: string }): void {
-		const slot = parent.createSpan('rv-locator-slot is-dated');
-		const iconEl = slot.createSpan('rv-locator-slot-icon');
-		setIcon(iconEl, date.icon);
-		const wrap = slot.createSpan('rv-locator-date');
-		const clock = wrap.createSpan('rv-locator-clock');
-		clock.createSpan({ cls: 'rv-locator-dow', text: date.dow });
-		if (date.time) clock.createSpan({ cls: 'rv-locator-time', text: `, ${date.time}` });
-		if (date.rest) wrap.createSpan({ cls: 'rv-locator-cal', text: date.rest });
-		if (date.days) slot.createSpan({ cls: 'rv-locator-days', text: date.days });
 	}
 
 	private cardSlot(parent: HTMLElement, icon: string, text: string, empty: boolean): void {

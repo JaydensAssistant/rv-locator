@@ -4,6 +4,7 @@ import { deleteCustom, rememberCustom } from './catalog';
 import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
 import { normalizeCounty } from './home-base';
+import { isListedUsCounty } from './us-county-index';
 import { mountAlwaysChevron } from './suggest-field';
 import { cacheStats, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import {
@@ -1322,11 +1323,10 @@ function paintHomeCountyChips(control: HTMLElement, plugin: RVLocatorPlugin): vo
 	const chips = control.querySelector('.rv-county-chips');
 	const note = control.querySelector('.rv-county-note');
 	if (!(chips instanceof HTMLElement) || !(note instanceof HTMLElement)) return;
-	const known = new Set(plugin.knownCounties('').map((name) => normalizeCounty(name)));
 	chips.replaceChildren();
 	let invalid = false;
 	for (const name of plugin.settings.homeCounties) {
-		const bad = !known.has(normalizeCounty(name));
+		const bad = !isListedUsCounty(name);
 		if (bad) invalid = true;
 		const chip = chips.createSpan({ cls: `rv-county-chip${bad ? ' is-invalid' : ''}` });
 		chip.createSpan({ text: name });
