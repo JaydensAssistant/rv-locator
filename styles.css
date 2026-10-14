@@ -8079,3 +8079,76 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	color: var(--text-error) !important;
 	box-shadow: inset 0 0 0 1px var(--text-error) !important;
 }
+
+/*
+  Open sort row. Each pill is one control button wide and does not shrink.
+  The track scrolls; the X stays outside it. Padding and gap match the control row.
+*/
+.rv-locator-glancable:has(> .rv-locator-sortbar > .rv-sort-close) {
+	overflow-x: visible !important;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) {
+	overflow: visible !important;
+	flex-direction: row !important;
+	flex-wrap: nowrap !important;
+	align-items: center !important;
+	gap: 4px !important;
+	padding: 2px 4px 0 !important;
+	height: auto;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) > .rv-locator-sort-scroll {
+	display: flex !important;
+	flex: 1 1 auto !important;
+	flex-wrap: nowrap !important;
+	align-items: center !important;
+	width: auto !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	height: 40px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	gap: 0 !important;
+	overflow-x: auto !important;
+	overflow-y: hidden !important;
+	touch-action: pan-x !important;
+	overscroll-behavior-x: contain;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) .rv-locator-sort-pills {
+	display: flex !important;
+	flex: 0 0 auto !important;
+	flex-wrap: nowrap !important;
+	align-items: center !important;
+	justify-content: flex-start !important;
+	width: max-content !important;
+	min-width: max-content !important;
+	max-width: none !important;
+	height: 40px !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	gap: 4px !important;
+	overflow: visible !important;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) .rv-locator-sort-pills .rv-locator-sort-preset {
+	flex: 0 0 var(--rv-control-btn, 40px) !important;
+	flex-basis: var(--rv-control-btn, 40px) !important;
+	width: var(--rv-control-btn, 40px) !important;
+	min-width: var(--rv-control-btn, 40px) !important;
+	max-width: var(--rv-control-btn, 40px) !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	max-height: 40px !important;
+	margin: 0 !important;
+}
+
+.rv-locator-glancable .rv-locator-sortbar:has(> .rv-sort-close) > .rv-sort-close {
+	flex: 0 0 var(--rv-control-btn, 40px) !important;
+	width: var(--rv-control-btn, 40px) !important;
+	min-width: var(--rv-control-btn, 40px) !important;
+	max-width: var(--rv-control-btn, 40px) !important;
+	height: 40px !important;
+	margin: 0 !important;
+}

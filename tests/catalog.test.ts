@@ -29,7 +29,7 @@ import { formatLessonLine, partwayCopy } from '../src/lesson-stops';
 import { formatGlanceableCounter } from '../src/dates';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin, clusterAppearance, mapPressIsClick, MAP_CLICK_SLOP_PX, orderByHubSort, pinStackZ, popupClearOfChrome, pinStateIcon, rankPinsFromRenderedList, zoomToRevealPin, type MapPin } from '../src/map-pins';
 import { SORT_PRESETS, visibleSortPresets } from '../src/active-layout';
-import { equalPillWidth, glanceBarHeight, glancePillContentPx, glancePillsThatFit } from '../src/sort-pills';
+import { controlButtonWidth, equalPillWidth, glanceBarHeight, glancePillContentPx, glancePillsThatFit, horizontalScrollDelta, sortPillSize } from '../src/sort-pills';
 import { sideMapMinPx, stackedEmbedCap, stackedStageSplit } from '../src/hub-layout';
 import { filtersDifferFromDefault } from '../src/status';
 import { openDesktopDatePicker } from '../src/modal-chrome';
@@ -476,6 +476,23 @@ describe('glancable smart search', () => {
 		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('Spoke yesterday', now)), false);
 		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('', now)), true);
 		assert.equal(matchesGlanceQuery(person(), parseGlanceQuery('Austin', now)), true);
+	});
+
+	it('sizes each sort pill to one control button', () => {
+		const control = controlButtonWidth(260);
+		const pill = sortPillSize(control);
+		assert.equal(pill.width, `${control}px`);
+		assert.equal(pill.minWidth, pill.width);
+		assert.equal(pill.flexBasis, pill.width);
+		assert.equal(pill.height, '40px');
+		assert.equal(pill.flex, `0 0 ${control}px`);
+		assert.equal(horizontalScrollDelta(0, 48, false), 48);
+		assert.equal(horizontalScrollDelta(30, 4, false), 30);
+		assert.equal(horizontalScrollDelta(0, 48, true), 48);
+		const css = readFileSync(path.join(process.cwd(), 'styles.css'), 'utf8');
+		assert.match(css, /touch-action:\s*pan-x !important/);
+		assert.match(css, /\.rv-locator-sortbar:has\(> \.rv-sort-close\) \{\s*overflow:\s*visible !important/);
+		assert.match(css, /\.rv-locator-sort-pills \{\s*display:\s*flex !important;\s*flex:\s*0 0 auto !important;\s*flex-wrap:\s*nowrap !important/);
 	});
 
 	it('stacks phone labels, fills the hub, and keeps the map credit on the map edge', () => {

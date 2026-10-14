@@ -1,6 +1,6 @@
 import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { equalizeSortPills } from './sort-pills';
+import { applyControlSizedPills, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
 import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
@@ -27,6 +27,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	/** Glancable search sits in the sort bar and replaces the pills while it is open. */
 	protected searchSlot: HTMLElement | null = null;
 	private sortMenuOpen = false;
+	private sortSizeObserver: ResizeObserver | null = null;
 	/** Sort chips live here so they can scroll without moving the New button. */
 	protected sortButtonsEl!: HTMLElement;
 	protected groups: GroupModel[] = [];
@@ -80,6 +81,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	override onunload(): void {
+		this.releaseSortSize();
 		this.stopLiveUpdates();
 	}
 
@@ -442,6 +444,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	private paintSortPresets(): void {
+		this.releaseSortSize();
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		const search = this.searchSlot;
 		if (search?.parentElement === this.sortEl) search.remove();
@@ -538,6 +541,36 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		equalizeSortPills(pillHost);
 		if (search) this.sortEl.appendChild(search);
 		this.sortButtonsEl.scrollLeft = savedScroll;
+		if (glancable && this.sortMenuOpen) {
+			this.bindSortWheel(this.sortButtonsEl);
+			this.watchSortPillSize();
+		}
+	}
+
+	/** A vertical wheel scrolls the pill track. The track is only wider than the pane. */
+	private bindSortWheel(track: HTMLElement): void {
+		track.addEventListener('wheel', (event) => {
+			if (track.scrollWidth <= track.clientWidth) return;
+			const delta = horizontalScrollDelta(event.deltaX, event.deltaY, event.shiftKey);
+			if (!delta) return;
+			event.preventDefault();
+			track.scrollLeft += delta;
+		}, { passive: false });
+	}
+
+	private watchSortPillSize(): void {
+		const pills = this.sortButtonsEl.querySelector('.rv-locator-sort-pills');
+		if (!(pills instanceof HTMLElement)) return;
+		const apply = (): void => { applyControlSizedPills(this.sortEl, pills); };
+		apply();
+		if (typeof ResizeObserver !== 'function') return;
+		this.sortSizeObserver = new ResizeObserver(() => apply());
+		this.sortSizeObserver.observe(this.sortEl);
+	}
+
+	private releaseSortSize(): void {
+		this.sortSizeObserver?.disconnect();
+		this.sortSizeObserver = null;
 	}
 
 	protected paintSortExtras(): void {
