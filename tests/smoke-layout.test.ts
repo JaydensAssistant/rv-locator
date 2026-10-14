@@ -9,7 +9,10 @@ import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, stripContentBudget, visitLayoutMissing } from '../src/visit-controls';
 import { clearVisitNoteCaches, mountVisitNotesInSection, setActiveVisitNote } from '../src/visit-notes-field';
-import { mountAlwaysChevron } from '../src/suggest-field';
+import { SUGGEST_MATCH_LIMIT, mountAlwaysChevron, suggestionListenerCount } from '../src/suggest-field';
+import { expandCallout } from '../src/callout-fold';
+import { emptyShare } from '../src/catalog';
+import { LiteraturePromptModal } from '../src/visit-modals';
 import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
 import { placeGlanceStage } from '../src/hub-layout';
@@ -1431,6 +1434,75 @@ describe('smoke layout', () => {
 		assert.equal(svg?.getAttribute('height'), '16');
 		assert.equal(button.childElementCount, 1);
 		frame.remove();
+	});
+
+	it('opens a collapsed Attempt Log the way Obsidian does', () => {
+		const callout = window.document.createElement('div');
+		callout.className = 'callout is-collapsed';
+		callout.setAttribute('data-callout-fold', '-');
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		const fold = window.document.createElement('div');
+		fold.className = 'callout-fold is-collapsed';
+		title.appendChild(fold);
+		const content = window.document.createElement('div');
+		content.className = 'callout-content';
+		content.style.display = 'none';
+		content.style.overflow = 'hidden';
+		callout.append(title, content);
+		const seen: string[] = [];
+		const host = globalThis as typeof globalThis & { __rvSetIcon?: (parent: unknown, id: string) => void };
+		host.__rvSetIcon = (_parent, id) => { seen.push(id); };
+		expandCallout(callout);
+		delete host.__rvSetIcon;
+		assert.equal(callout.classList.contains('is-collapsed'), false);
+		assert.equal(callout.getAttribute('data-callout-fold'), '+');
+		assert.equal(fold.classList.contains('is-collapsed'), false);
+		assert.deepEqual(seen, ['chevron-down']);
+		assert.equal(content.style.display, '');
+		assert.equal(content.style.overflow, '');
+	});
+
+	it('renders at most 50 suggestion rows', () => {
+		const host = window.document.createElement('div');
+		const input = window.document.createElement('input');
+		host.appendChild(input);
+		window.document.body.appendChild(host);
+		const titles = Array.from({ length: 80 }, (_, index) => `Title ${index}`);
+		mountAlwaysChevron(input, () => titles, () => {});
+		host.querySelector('button')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		assert.equal(host.querySelectorAll('.rv-suggest-option').length, SUGGEST_MATCH_LIMIT);
+		host.remove();
+	});
+
+	it('drops suggestion listeners after the log-visit modal closes', async () => {
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const before = suggestionListenerCount();
+		for (let turn = 0; turn < 20; turn += 1) {
+			const modal = new LiteraturePromptModal({} as never, {
+				publications: ['Tract'],
+				media: ['Video'],
+				customLessons: [],
+				lessons: [],
+				showLiterature: true,
+				showLesson: false,
+				initial: emptyShare(),
+			}, () => {});
+			const shell = window.document.createElement('div');
+			shell.className = 'modal';
+			const content = window.document.createElement('div');
+			shell.appendChild(content);
+			window.document.body.appendChild(shell);
+			const live = modal as unknown as { contentEl: HTMLElement; modalEl: HTMLElement };
+			live.contentEl = content;
+			live.modalEl = shell;
+			modal.open();
+			assert.ok(suggestionListenerCount() > before);
+			modal.close();
+			assert.equal(suggestionListenerCount(), before);
+			shell.remove();
+		}
+		assert.equal(suggestionListenerCount(), before);
 	});
 
 });

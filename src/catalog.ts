@@ -45,20 +45,44 @@ const TITLE_SUFFIXES = [
 	'Study',
 ] as const;
 
+const quoteCache = new Map<string, string>();
+
 /** Straight, curly, and guillemet quotes around a displayed title. The file is not rewritten. */
 export function stripTitleQuotes(title: string): string {
-	return title.replace(/^[\s"'“”«»]+|[\s"'“”«»]+$/g, '').trim();
+	const cached = quoteCache.get(title);
+	if (cached !== undefined) return cached;
+	const clean = title.replace(/^[\s"'“”«»]+|[\s"'“”«»]+$/g, '').trim();
+	quoteCache.set(title, clean);
+	return clean;
+}
+
+const suffixCache = new Map<string, { text: string; suffix: string }>();
+let suffixByTitle: Map<string, string> | null = null;
+
+function knownSuffix(title: string, clean: string): string {
+	if (!suffixByTitle) {
+		suffixByTitle = new Map();
+		for (const entry of [...PUBLICATION_ENTRIES, ...MEDIA_ENTRIES]) {
+			if (!entry.suffix) continue;
+			suffixByTitle.set(entry.title, entry.suffix);
+			const bare = entry.title.replace(/^[\s"'“”«»]+|[\s"'“”«»]+$/g, '').trim();
+			suffixByTitle.set(bare, entry.suffix);
+		}
+	}
+	return suffixByTitle.get(title) ?? suffixByTitle.get(clean) ?? '';
 }
 
 /** Title text and the type suffix that stays visible when the row truncates. */
 export function splitTitleSuffix(title: string): { text: string; suffix: string } {
+	const cached = suffixCache.get(title);
+	if (cached) return cached;
 	const clean = stripTitleQuotes(title);
-	const known = [...PUBLICATION_ENTRIES, ...MEDIA_ENTRIES].find((entry) => stripTitleQuotes(entry.title) === clean || entry.title === title);
-	const suffix = known?.suffix
-		|| TITLE_SUFFIXES.find((item) => clean.endsWith(` ${item}`))
-		|| '';
-	if (!suffix || !clean.endsWith(suffix)) return { text: clean, suffix: '' };
-	return { text: clean.slice(0, -suffix.length).trimEnd(), suffix };
+	const suffix = knownSuffix(title, clean) || TITLE_SUFFIXES.find((item) => clean.endsWith(` ${item}`)) || '';
+	const result = !suffix || !clean.endsWith(suffix)
+		? { text: clean, suffix: '' }
+		: { text: clean.slice(0, -suffix.length).trimEnd(), suffix };
+	suffixCache.set(title, result);
+	return result;
 }
 
 export type StudyRatioOrder = 'lessons-studies' | 'studies-lessons';

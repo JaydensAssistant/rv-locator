@@ -155,16 +155,24 @@ describe('logged paths', () => {
 });
 
 describe('directions', () => {
-	it('builds Google, Apple, and Waze links from coordinates or an address', () => {
+	it('builds Google, Apple, and Waze links from the address, never coordinates', () => {
+		const google = directionsUrl('google', { lat: 28.55496, lon: -81.36444, address: '1 Main St', city: 'Orlando' });
+		assert.equal(google, `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('1 Main St, Orlando')}`);
+		assert.equal(google.includes('28.55496'), false);
 		assert.equal(
 			directionsUrl('google', { lat: 28.5, lon: -81.4, address: '1 Main' }),
-			'https://www.google.com/maps/dir/?api=1&destination=28.5%2C-81.4',
+			`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent('1 Main')}`,
 		);
-		assert.match(directionsUrl('google', { address: '1 Main St', city: 'Orlando' }), /google\.com\/maps\/dir/);
-		assert.equal(directionsUrl('apple', { lat: 28.5, lon: -81.4 }), 'https://maps.apple.com/?daddr=28.5,-81.4');
-		assert.match(directionsUrl('apple', { address: '1 Main St' }), /^https:\/\/maps\.apple\.com\/\?daddr=/);
-		assert.equal(directionsUrl('waze', { lat: 28.5, lon: -81.4 }), 'https://waze.com/ul?ll=28.5,-81.4&navigate=yes');
-		assert.match(directionsUrl('waze', { address: '1 Main St' }), /^https:\/\/waze\.com\/ul\?q=/);
+		const apple = directionsUrl('apple', { lat: 28.5, lon: -81.4, address: '1 Main St', city: 'Orlando' });
+		assert.equal(apple, `https://maps.apple.com/?daddr=${encodeURIComponent('1 Main St, Orlando')}`);
+		assert.equal(apple.includes('28.5'), false);
+		const waze = directionsUrl('waze', { lat: 28.5, lon: -81.4, address: '1 Main St' });
+		assert.equal(waze, `https://waze.com/ul?q=${encodeURIComponent('1 Main St')}&navigate=yes`);
+		assert.equal(waze.includes('28.5'), false);
+		const open = readFileSync('src/main.ts', 'utf8');
+		const route = open.slice(open.indexOf('async openRoute'), open.indexOf('openCampaignModal'));
+		assert.match(route, /openExternalUrl/);
+		assert.doesNotMatch(route, /noopener|lat:|lon:/);
 	});
 });
 

@@ -519,7 +519,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				cls: 'rv-locator-toolbar-quiet',
 				attr: { type: 'button', 'aria-label': 'Campaign', title: 'Campaign' },
 			});
-			setIcon(campaign, 'book-alert');
+			setIcon(campaign, 'flag');
 			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
 			this.paintFilterButton(actionHost);
 			const create = actionHost.createEl('button', {
@@ -564,7 +564,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			const menu = new Menu();
 			menu.addItem((item) => item
 				.setTitle(CAMPAIGN_LIST_LABEL[campaignFilter])
-				.setIcon('book-alert')
+				.setIcon('flag')
 				.onClick(() => { void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter)); }));
 			menu.addItem((item) => item
 				.setTitle(RETURN_SCOPE_LABEL[scope])
@@ -727,7 +727,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		setIcon(icon, iconForColumn(column, sample?.sortKeys[column.id]));
 		button.createSpan({ cls: 'rv-locator-th-label', text: column.displayName });
 		const sortIcon = button.createSpan('rv-locator-th-sort');
-		setIcon(sortIcon, direction === 'ASC' ? 'chevron-up' : 'chevron-down');
+		setIcon(sortIcon, direction === 'ASC' ? 'arrow-up' : 'arrow-down');
 		if (!direction) sortIcon.addClass('is-idle');
 		button.addEventListener('click', () => this.cycleColumn(column.id));
 		const aria = direction === 'ASC' ? 'ascending' : direction === 'DESC' ? 'descending' : 'none';

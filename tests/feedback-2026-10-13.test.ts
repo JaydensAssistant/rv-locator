@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, LINE_ICON_INK_BY_ICON, badgeLineOpticalKey, urgencyInkFraction, urgencyOpticalKey } from '../src/badge-glyph';
 import { appendBadge, wholeCardHeight, type BadgeFace } from '../src/glancable-view';
+import { splitTitleSuffix } from '../src/catalog';
 import { factsRowMargin } from '../src/note-chrome';
 import { navigatingToFile, withReadingPreview } from '../src/reading-open';
 
@@ -238,5 +239,31 @@ describe('2026-10-13 feedback', () => {
 			host.Element = previous.Element;
 			delete host.__rvSetIcon;
 		}
+	});
+
+	it('jumps the card return line into the note and keeps the filled modal action on the right', () => {
+		const glance = source('src/glancable-view.ts');
+		const foot = glance.slice(glance.indexOf('rv-locator-override-label'), glance.indexOf('private paintCampaignMark'));
+		assert.match(foot, /openAttemptLog/);
+		assert.doesNotMatch(foot, /suggestReturnFor/);
+		const css = source('styles.css');
+		assert.match(css, /button\.mod-cta \{\s*order:\s*2;/);
+		assert.match(css, /\.rv-locator-map-pin \{[\s\S]*cursor:\s*pointer;/);
+		assert.match(css, /p\.rv-hub-owned a\.rv-address-link,\s*\.markdown-preview-view p\.rv-hub-owned a\.rv-address-link,\s*\.markdown-rendered p\.rv-hub-owned a\.rv-address-link \{\s*color:\s*var\(--rv-urgency-accent/);
+		const chrome = source('src/modal-chrome.ts');
+		assert.match(chrome, /daypart\$\/i, 'sun'/);
+		assert.match(chrome, /day\$\/i, 'calendar'/);
+		const override = source('src/override-modal.ts');
+		assert.ok(override.indexOf("setButtonText('Avoid')") < override.indexOf("setButtonText('Try')"));
+		const fold = source('src/callout-fold.ts');
+		assert.match(fold, /data-callout-fold', '\+'/);
+		assert.match(fold, /setIcon\(fold, 'chevron-down'\)/);
+		assert.match(fold, /classList\.remove\('is-collapsed'\)/);
+		const left = splitTitleSuffix('Hello Tract');
+		assert.equal(splitTitleSuffix('Hello Tract'), left);
+		const fields = source('src/catalog-fields.ts');
+		const share = fields.slice(fields.indexOf('export function mountShareFields'), fields.indexOf('function mountDisclosure'));
+		assert.equal(share.match(/publicationAliasIndex\(\)/g)?.length, 1);
+		assert.equal(share.match(/mediaAliasIndex\(\)/g)?.length, 1);
 	});
 });

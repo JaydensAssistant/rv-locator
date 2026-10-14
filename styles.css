@@ -843,6 +843,7 @@
 	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 13%, transparent);
 	color: var(--rv-urgency-accent, var(--text-faint));
 	text-decoration: none;
+	cursor: pointer;
 }
 
 :is(.rv-locator-view, .rv-qf-badges, .rv-map-card) .rv-locator-map-pin svg {
@@ -6536,7 +6537,7 @@ button.rv-study-toggle {
 	grid-column: 1 / -1;
 	column-gap: 4px !important;
 	gap: 4px !important;
-	align-items: start !important;
+	align-items: center !important;
 	width: 100% !important;
 	max-width: 100% !important;
 	min-width: 0 !important;
@@ -6571,13 +6572,13 @@ button.rv-study-toggle {
 .rv-dashboard p.rv-hub-owned > .rv-address-line > a.rv-map-button {
 	grid-column: 3 !important;
 	grid-row: 1 !important;
-	align-self: start !important;
+	align-self: center !important;
 	justify-self: center !important;
 	position: static !important;
 	inset: auto !important;
 	transform: none !important;
 	margin: 0 !important;
-	margin-top: calc((1.25em - 28px) / 2) !important;
+	margin-top: 0 !important;
 	flex: 0 0 28px !important;
 	box-sizing: border-box !important;
 	width: 28px !important;
@@ -7989,4 +7990,63 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 
 body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-source-view, .markdown-embed, .internal-embed) .rv-locator-glancable.is-stacked .rv-locator-sortbar:has(> .rv-sort-close) {
 	height: 40px;
+}
+
+/* Underlined hub and address text is a link, so it uses the note's urgency colour. */
+.rv-dashboard p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned .rv-hub-chip-label,
+.rv-dashboard p.rv-hub-owned .rv-hub-chip-ellipsis,
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip,
+.markdown-preview-view p.rv-hub-owned .rv-hub-chip-label,
+.markdown-rendered p.rv-hub-owned .rv-hub-chip,
+.rv-dashboard p.rv-hub-owned a.rv-address-link,
+.markdown-preview-view p.rv-hub-owned a.rv-address-link,
+.markdown-rendered p.rv-hub-owned a.rv-address-link {
+	color: var(--rv-urgency-accent, var(--text-accent)) !important;
+	text-decoration-color: var(--rv-urgency-accent, var(--text-accent));
+}
+
+/* Hub and Address labels sit on the same midline as their 40px boxes. */
+.rv-dashboard p.rv-hub-owned > .rv-hub-line,
+.rv-dashboard p.rv-hub-owned > .rv-address-line,
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line,
+.markdown-rendered p.rv-hub-owned > .rv-hub-line,
+.markdown-rendered p.rv-hub-owned > .rv-address-line {
+	align-items: center !important;
+}
+
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > strong,
+.rv-dashboard p.rv-hub-owned > .rv-address-line > strong,
+.markdown-preview-view p.rv-hub-owned > .rv-hub-line > strong,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > strong {
+	align-self: center !important;
+	display: inline-flex !important;
+	align-items: center !important;
+	height: 40px !important;
+}
+
+/* Clickable badges and day pills use the pointer, including the Quick Facts route badge. */
+:is(.rv-qf-badges, .rv-locator-card-actions, .rv-map-card) :is(button, a),
+.rv-stamp-ago,
+.rv-stamp-count,
+.rv-stamp-date,
+.rv-locator-override-label,
+.rv-locator-return-bucket,
+.rv-qf-when,
+.rv-locator-slot.is-dated {
+	cursor: pointer;
+}
+
+/* The filled action sits on the right. Both buttons still share the row. */
+.modal.rv-locator-modal .setting-item.rv-modal-actions .setting-item-control,
+.modal.rv-locator-modal .rv-modal-actions,
+.modal.rv-locator-modal .modal-button-container {
+	flex-direction: row !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-modal-actions button.mod-cta,
+.modal.rv-locator-modal .rv-modal-actions button.mod-cta,
+.modal.rv-locator-modal .modal-button-container button.mod-cta {
+	order: 2;
 }

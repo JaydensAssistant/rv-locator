@@ -1,5 +1,6 @@
 import { Menu, setIcon } from 'obsidian';
 import { attemptLogCallouts, isLogCalloutTitle } from './attempt-digest';
+import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
 import { pickDayJump, type DayJumpCandidate } from './day-jump';
 import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
@@ -578,7 +579,7 @@ export function jumpToDayInRoot(root: HTMLElement, when: Date): boolean {
 	if (!pick) return false;
 	const target = pick.kind === 'notes' ? visitNotesTarget(pick.el) : pick.el;
 	revealJumpTarget(target, root);
-	target.scrollIntoView({ block: 'center' });
+	scrollPreviewTarget(target);
 	target.classList.add('rv-day-flash');
 	window.setTimeout(() => target.classList.remove('rv-day-flash'), 1600);
 	return true;
@@ -627,16 +628,23 @@ function visitNotesTarget(stamp: HTMLElement): HTMLElement {
 	return stamp;
 }
 
+/** Open the Attempt Log and scroll to it. Used by the card return line. */
+export function revealAttemptLog(root: HTMLElement): boolean {
+	const callout = attemptLogCallouts(root)[0];
+	if (!callout) return false;
+	expandFoldedHost(callout, root);
+	scrollPreviewTarget(callout);
+	callout.classList.add('rv-day-flash');
+	window.setTimeout(() => callout.classList.remove('rv-day-flash'), 1600);
+	return true;
+}
+
 function revealJumpTarget(target: HTMLElement, root: HTMLElement): void {
-	let node: HTMLElement | null = target;
-	while (node && node !== root) {
-		if (node.classList.contains('callout')) node.classList.remove('is-collapsed');
-		if (node.style?.display === 'none') node.style.removeProperty('display');
-		node = node.parentElement;
-	}
 	const notes = root.querySelector('h3.rv-visit-notes-heading');
 	const host = notes?.parentElement;
-	if (notes instanceof HTMLElement && host instanceof HTMLElement && host.classList.contains('is-collapsed') && !host.contains(target)) {
+	const notesWereCollapsed = host instanceof HTMLElement && host.classList.contains('is-collapsed');
+	expandFoldedHost(target, root);
+	if (notes instanceof HTMLElement && host instanceof HTMLElement && notesWereCollapsed && !host.contains(target)) {
 		let inRecent = false;
 		let cursor = host.nextElementSibling;
 		while (cursor instanceof HTMLElement) {
@@ -827,7 +835,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	line.style.setProperty('grid-template-rows', 'auto', 'important');
 	line.style.setProperty('grid-column', '1 / -1', 'important');
 	line.style.setProperty('column-gap', '4px', 'important');
-	line.style.setProperty('align-items', 'start', 'important');
+	line.style.setProperty('align-items', 'center', 'important');
 	line.style.setProperty('justify-items', 'stretch', 'important');
 	line.style.setProperty('width', '100%', 'important');
 	line.style.setProperty('max-width', 'none', 'important');
@@ -917,6 +925,8 @@ function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 function pinPairLabel(label: HTMLElement): void {
 	label.style.setProperty('display', 'inline-flex', 'important');
 	label.style.setProperty('align-items', 'center', 'important');
+	label.style.setProperty('align-self', 'center', 'important');
+	label.style.setProperty('height', '40px', 'important');
 	label.style.setProperty('gap', '0', 'important');
 	label.style.setProperty('width', 'var(--rv-pair-label)', 'important');
 	label.style.setProperty('min-width', 'var(--rv-pair-label)', 'important');
@@ -1047,7 +1057,7 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 		if (index > 0) {
 			menu.addItem((item) => {
 				item.setTitle('Move Left');
-				item.setIcon('arrow-left');
+				item.setIcon('chevrons-left');
 				item.onClick(() => host.moveHub(path, hub.label));
 			});
 		}

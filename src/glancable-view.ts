@@ -489,7 +489,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			bucket.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				void this.plugin.suggestReturnFor(row.path, row.name);
+				this.plugin.openAttemptLog(row.path);
 			});
 		}
 		if (snoozed) {
@@ -506,7 +506,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			overrideEl.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				void this.plugin.suggestReturnFor(row.path, row.name);
+				this.plugin.openAttemptLog(row.path);
 			});
 		}
 		const lines: CompactLineKind[] = [];

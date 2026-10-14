@@ -69,13 +69,13 @@ export class SlotOverrideModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
+				button.setButtonText('Avoid');
+				button.onClick(() => this.save('avoid'));
+			})
+			.addButton((button) => {
 				button.setButtonText('Try');
 				button.setCta();
 				button.onClick(() => this.save('try'));
-			})
-			.addButton((button) => {
-				button.setButtonText('Avoid');
-				button.onClick(() => this.save('avoid'));
 			});
 		if (this.current.length === 0) {
 			contentEl.createEl('p', { cls: 'rv-locator-modal-copy', text: 'No overrides on this note.' });

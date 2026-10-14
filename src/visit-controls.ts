@@ -1,5 +1,6 @@
 import { addIcon, displayTooltip, getIcon, setIcon } from 'obsidian';
 import { attemptLogCallouts } from './attempt-digest';
+import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter, stripStampAge, visibleStampText } from './dates';
 import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
@@ -809,13 +810,8 @@ function jumpStampToAttempt(heading: HTMLElement, when: Date): void {
 		}
 	}
 	if (!match) return;
-	let node: HTMLElement | null = match;
-	while (node && node !== root) {
-		node.classList.remove('is-collapsed');
-		if (node.style.display === 'none') node.style.removeProperty('display');
-		node = node.parentElement;
-	}
-	match.scrollIntoView({ block: 'center' });
+	expandFoldedHost(match, root);
+	scrollPreviewTarget(match);
 	match.classList.add('rv-day-flash');
 	const flashed = match;
 	window.setTimeout(() => flashed.classList.remove('rv-day-flash'), 1600);

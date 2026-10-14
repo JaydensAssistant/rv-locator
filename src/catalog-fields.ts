@@ -49,6 +49,8 @@ export function mountShareFields(
 	onChange: (share: VisitShare) => void,
 ): VisitShare {
 	const share: VisitShare = { ...options.initial };
+	const publicationAliases = publicationAliasIndex();
+	const mediaAliases = mediaAliasIndex();
 	const publish = (next: Partial<VisitShare>): void => {
 		Object.assign(share, next);
 		onChange({ ...share });
@@ -65,7 +67,7 @@ export function mountShareFields(
 				'What literature did you leave?',
 				'',
 				shareTitles(share.publications, share.publicationList),
-				(query) => catalogSuggestions(options.publications, [], query, publicationAliasIndex()),
+				(query) => catalogSuggestions(options.publications, [], query, publicationAliases),
 				(values) => publish({ publications: values[0] ?? '', publicationList: values }),
 				'Tract or book (optional)',
 			);
@@ -74,7 +76,7 @@ export function mountShareFields(
 				'What media did you show?',
 				'',
 				shareTitles(share.media, share.mediaList),
-				(query) => catalogSuggestions(options.media, [], query, mediaAliasIndex()),
+				(query) => catalogSuggestions(options.media, [], query, mediaAliases),
 				(values) => publish({ media: values[0] ?? '', mediaList: values }),
 				'Video (optional)',
 			);

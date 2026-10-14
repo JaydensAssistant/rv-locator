@@ -103,24 +103,46 @@ export function buildCountySuggestUrl(text: string, apiKey: string, region: Geoa
 	return url.toString();
 }
 
+/**
+ * Turn-by-turn from the note's Address and City text.
+ * Location coordinates are for distance only. A coordinate pin is a worse
+ * destination than the address Google, Apple, or Waze would look up themselves.
+ */
 export function directionsUrl(
 	provider: RouteProvider,
 	input: { lat?: number | null; lon?: number | null; address?: string | null; city?: string | null },
 ): string {
-	const lat = input.lat;
-	const lon = input.lon;
-	const point = typeof lat === 'number' && typeof lon === 'number' && Number.isFinite(lat) && Number.isFinite(lon);
-	const query = mapsSearchQuery(input.address ?? '', input.city);
-	if (provider === 'apple') {
-		if (point) return `https://maps.apple.com/?daddr=${lat},${lon}`;
-		return `https://maps.apple.com/?daddr=${encodeURIComponent(query)}`;
+	const address = input.address ?? '';
+	const city = input.city;
+	const query = mapsSearchQuery(address, city);
+	if (provider === 'apple') return `https://maps.apple.com/?daddr=${encodeURIComponent(query)}`;
+	if (provider === 'waze') return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+	return googleMapsDirectionsLink(address, city);
+}
+
+/**
+ * Open a web URL in the system browser.
+ * `window.open(url, '_blank', 'noopener')` stays on about:blank in Obsidian's
+ * Electron shell, so Maps never loads. Desktop uses `shell.openExternal`.
+ */
+export function openExternalUrl(url: string): void {
+	const target = url.trim();
+	if (!target) return;
+	if (openWithElectron(target)) return;
+	const opened = window.open(target, '_blank');
+	if (opened) opened.opener = null;
+}
+
+function openWithElectron(url: string): boolean {
+	try {
+		const requireFn = (globalThis as { require?: (id: string) => { shell?: { openExternal?: (target: string) => void } } }).require;
+		const open = requireFn?.('electron')?.shell?.openExternal;
+		if (typeof open !== 'function') return false;
+		open(url);
+		return true;
+	} catch {
+		return false;
 	}
-	if (provider === 'waze') {
-		if (point) return `https://waze.com/ul?ll=${lat},${lon}&navigate=yes`;
-		return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
-	}
-	if (point) return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(`${lat},${lon}`)}`;
-	return googleMapsDirectionsLink(input.address ?? '', input.city);
 }
 
 /** Same characters, one for one, after trimming and collapsing whitespace. */

@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
@@ -23,7 +23,7 @@ import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFract
 import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
-import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, type NoteChromeHost } from './note-chrome';
+import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLog, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
@@ -2367,22 +2367,19 @@ export default class RVLocatorPlugin extends Plugin {
 	async openRoute(path: string): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
-		const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
 		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
 		const cityName = this.settings.cityProperty.trim() || 'City';
 		const city = readProperty(frontmatter, cityName);
 		const cityText = typeof city === 'string' ? city : '';
-		if (!point && !address.trim()) {
+		if (!address.trim()) {
 			new Notice('This note has no address to open directions.');
 			return;
 		}
 		const url = directionsUrl(this.settings.routeProvider, {
-			lat: point?.lat,
-			lon: point?.lon,
 			address,
 			city: cityText,
 		});
-		window.open(url, '_blank', 'noopener');
+		openExternalUrl(url);
 	}
 
 	openCampaignModal(): void {
@@ -2419,7 +2416,16 @@ export default class RVLocatorPlugin extends Plugin {
 		void this.openNoteDay(path, when);
 	}
 
+	/** Open the note and scroll to the Attempt Log, expanded the way Obsidian opens a callout. */
+	openAttemptLog(path: string): void {
+		void this.openNoteThen(path, (root) => { revealAttemptLog(root); });
+	}
+
 	private async openNoteDay(path: string, when: Date): Promise<void> {
+		await this.openNoteThen(path, (root) => { jumpToDayInRoot(root, when); });
+	}
+
+	private async openNoteThen(path: string, after: (root: HTMLElement) => void): Promise<void> {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		const workspace = this.app.workspace as { getLeaf?: (split: boolean) => { openFile?: (file: TFile, openState?: OpenViewState) => Promise<void>; view?: { containerEl?: HTMLElement } } };
@@ -2429,7 +2435,7 @@ export default class RVLocatorPlugin extends Plugin {
 		else await this.app.workspace.openLinkText(path, path, false, preview);
 		window.setTimeout(() => {
 			const root = leaf?.view?.containerEl;
-			if (root instanceof HTMLElement) jumpToDayInRoot(root, when);
+			if (root instanceof HTMLElement) after(root);
 		}, 60);
 	}
 

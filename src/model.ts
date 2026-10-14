@@ -585,9 +585,9 @@ function looksLikeDateOnly(text: string): boolean {
 }
 
 export function iconForColumn(column: ColumnModel, sample: Sortable | undefined): string {
-	if (column.isDistance) return 'locate';
+	if (column.isDistance) return 'ruler';
 	if (column.isFileName) return 'file-text';
-	if (column.isDate || column.weekday || sample?.kind === 'date') return 'clock';
+	if (column.isDate || column.weekday || sample?.kind === 'date') return 'calendar';
 	if (sample?.kind === 'number') return 'hash';
 	if (/address/i.test(column.name) || /address/i.test(column.displayName)) return 'map-pin';
 	if (/link|url|map/i.test(column.name) || /link|url|map/i.test(column.displayName)) return 'link';

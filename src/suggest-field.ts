@@ -29,6 +29,43 @@ export const SUGGEST_PENDING = '\u0000pending';
 /** About five suggestion rows, then the list scrolls inside the box. */
 export const SUGGEST_VISIBLE_ROWS = 5;
 
+/** Paint this many matches. The rest stay searchable by typing. */
+export const SUGGEST_MATCH_LIMIT = 50;
+
+let suggestionListeners = 0;
+
+/** Live document and viewport listeners owned by open suggestion fields. */
+export function suggestionListenerCount(): number {
+	return suggestionListeners;
+}
+
+interface SuggestionMount {
+	input: HTMLElement;
+	dispose: () => void;
+}
+
+const suggestionMounts = new Set<SuggestionMount>();
+
+function trackListener(target: EventTarget | null | undefined, type: string, handler: EventListener): () => void {
+	if (!target || typeof target.addEventListener !== 'function') return () => {};
+	target.addEventListener(type, handler);
+	suggestionListeners += 1;
+	let dropped = false;
+	return () => {
+		if (dropped) return;
+		dropped = true;
+		target.removeEventListener(type, handler);
+		suggestionListeners -= 1;
+	};
+}
+
+/** Drop listeners for suggestion fields inside `root`. Called when a modal closes. */
+export function releaseSuggestionFields(root: ParentNode): void {
+	for (const mount of suggestionMounts) {
+		if (mount.input === root || (typeof root.contains === 'function' && root.contains(mount.input))) mount.dispose();
+	}
+}
+
 export interface SuggestPlacementInput {
 	anchorTop: number;
 	anchorBottom: number;
@@ -114,7 +151,7 @@ export function mountAlwaysChevron(
 
 	const paint = (): void => {
 		panel.replaceChildren();
-		const items = suggestions().filter((item) => item.trim());
+		const items = suggestions().map((item) => item.trim()).filter(Boolean).slice(0, SUGGEST_MATCH_LIMIT);
 		const typed = 'value' in input ? String((input as HTMLInputElement).value ?? '') : '';
 		const emptyQuery = !typed.trim();
 		if (items.length === 0 && !emptyQuery) {
@@ -240,22 +277,47 @@ export function mountAlwaysChevron(
 		panel.hidden = true;
 		highlighted = -1;
 	});
-	input.ownerDocument.addEventListener('pointerdown', (event) => {
+	const doc = input.ownerDocument;
+	const view = doc.defaultView;
+	const onPointerDown = (event: Event): void => {
 		const target = event.target;
 		if (target instanceof Node && parent.contains(target)) return;
 		panel.hidden = true;
-	});
-	const view = input.ownerDocument.defaultView;
+	};
 	const onViewport = (): void => {
 		if (!input.isConnected) {
-			view?.visualViewport?.removeEventListener('resize', onViewport);
-			view?.visualViewport?.removeEventListener('scroll', onViewport);
-			view?.removeEventListener('resize', onViewport);
+			dispose();
 			return;
 		}
 		if (!panel.hidden) place();
 	};
-	view?.visualViewport?.addEventListener('resize', onViewport);
-	view?.visualViewport?.addEventListener('scroll', onViewport);
-	view?.addEventListener('resize', onViewport);
+	const stops = [
+		trackListener(doc, 'pointerdown', onPointerDown),
+		trackListener(view?.visualViewport, 'resize', onViewport),
+		trackListener(view?.visualViewport, 'scroll', onViewport),
+		trackListener(view, 'resize', onViewport),
+	];
+	let disposed = false;
+	let observer: MutationObserver | null = null;
+	const dispose = (): void => {
+		if (disposed) return;
+		disposed = true;
+		for (const stop of stops) stop();
+		observer?.disconnect();
+		observer = null;
+		suggestionMounts.delete(mount);
+	};
+	const mount: SuggestionMount = { input, dispose };
+	suggestionMounts.add(mount);
+	const watch = input.closest('.modal') ?? doc.body;
+	if (watch && typeof MutationObserver === 'function') {
+		try {
+			observer = new MutationObserver(() => {
+				if (!input.isConnected) dispose();
+			});
+			observer.observe(watch, { childList: true, subtree: true });
+		} catch {
+			observer = null;
+		}
+	}
 }

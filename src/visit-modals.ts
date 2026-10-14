@@ -2,7 +2,7 @@ import { Modal, Notice, Setting, SuggestModal, type App } from 'obsidian';
 import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { iconizeModal } from './modal-chrome';
-import { mountAlwaysChevron } from './suggest-field';
+import { mountAlwaysChevron, releaseSuggestionFields } from './suggest-field';
 import { mountCampaignChoice } from './campaign-choice';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { coverageQuestion } from './modals';
@@ -181,6 +181,7 @@ export class VisitEditModal extends Modal {
 	}
 
 	onClose(): void {
+		releaseSuggestionFields(this.contentEl);
 		this.contentEl.empty();
 	}
 
@@ -279,6 +280,7 @@ export class LiteraturePromptModal extends Modal {
 	}
 
 	onClose(): void {
+		releaseSuggestionFields(this.contentEl);
 		if (!this.settled) this.onDone(false);
 		this.contentEl.empty();
 	}
