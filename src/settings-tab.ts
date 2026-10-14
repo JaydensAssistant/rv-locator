@@ -3,7 +3,7 @@ import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_
 import { deleteCustom, rememberCustom } from './catalog';
 import { iconizeModal } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
-import { normalizeCounty } from './home-base';
+import { normalizeCounty, normalizeCountyList } from './home-base';
 import { isListedUsCounty } from './us-county-index';
 import { mountAlwaysChevron } from './suggest-field';
 import { cacheStats, HOME_PAD_DEG, loadTileIndex } from './tile-index';
@@ -152,7 +152,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName('Home counties')
-			.setDesc('Pick each county from the list. A chip that is not a known county stays marked. Empty means every match asks you to confirm. A fully confident hit is saved only when it is the only hit in one of these counties.')
+			.setDesc('Pick each county from the list. A chip that is not a known county stays marked. Empty means every match asks you to confirm. One fully confident hit is saved. Several hits still ask.')
 			.addText((text) => {
 				text.setPlaceholder('Add a county');
 				text.setValue('');
@@ -1300,12 +1300,10 @@ async function ensureVaultFolder(app: App, filePath: string): Promise<void> {
 function addHomeCounty(plugin: RVLocatorPlugin, raw: string): Promise<void> {
 	const name = raw.replace(/\s+/g, ' ').trim();
 	if (!name || name.includes('\u0000')) return Promise.resolve();
-	const lines = [...plugin.settings.homeCounties];
-	if (!lines.some((line) => normalizeCounty(line) === normalizeCounty(name))) {
-		lines.push(name);
-		plugin.settings.homeCounties = lines;
-		void plugin.saveSettings();
-	}
+	const before = plugin.settings.homeCounties.join('\n');
+	const next = normalizeCountyList([...plugin.settings.homeCounties, name]);
+	plugin.settings.homeCounties = next;
+	if (next.join('\n') !== before) void plugin.saveSettings();
 	return plugin.warmCountySuggest(name);
 }
 

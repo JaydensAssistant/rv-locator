@@ -8241,10 +8241,25 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	margin-top: 12px !important;
 }
 
+.modal.rv-edit-attributes .rv-modal-actions {
+	margin-top: 12px !important;
+}
+
 .markdown-preview-view.rv-locator-full-base,
 .markdown-reading-view.rv-locator-full-base,
 .markdown-source-view.rv-locator-full-base {
 	--file-line-width: 100%;
+	--file-margins: 0px;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	scrollbar-gutter: auto !important;
+	scrollbar-width: none;
+}
+
+.markdown-preview-view.rv-locator-full-base::-webkit-scrollbar,
+.markdown-reading-view.rv-locator-full-base::-webkit-scrollbar {
+	width: 0 !important;
+	height: 0 !important;
 }
 
 .markdown-preview-view.rv-locator-full-base .markdown-preview-sizer,
@@ -8259,6 +8274,19 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	width: 100% !important;
 	margin-left: 0 !important;
 	margin-right: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+}
+
+.markdown-preview-view.rv-locator-full-base .markdown-preview-section,
+.markdown-reading-view.rv-locator-full-base .markdown-preview-section,
+.markdown-preview-view.rv-locator-full-base :is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base),
+.markdown-reading-view.rv-locator-full-base :is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base) {
+	margin-left: 0 !important;
+	margin-right: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	max-width: none !important;
 }
 
 .markdown-preview-view.rv-locator-full-base .inline-title,

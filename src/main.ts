@@ -153,6 +153,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private quietCreateGeocode = false;
 	private glancePainters = new Set<(parent: HTMLElement, path: string) => boolean>();
 	private glanceWidths = new Set<() => number>();
+	private glanceLayouts = new Set<{ read: () => number; root: HTMLElement | null }>();
 	/** Set while Add a housemate is creating a note. The template skips geocode. */
 	housemateSourcePath: string | null = null;
 	private homeBiasKey = '';
@@ -2076,7 +2077,7 @@ export default class RVLocatorPlugin extends Plugin {
 			this.stopVisitFocus?.();
 			this.armedNewRvPath = current.path;
 			this.armedNewRvEl = view.containerEl;
-			this.stopVisitFocus = armVisitNoteFocus(view.containerEl);
+			this.stopVisitFocus = armVisitNoteFocus(view.containerEl, '', () => this.markdownRoot(current.path));
 		}
 		placeVisitNoteFocus(view.containerEl, '', 0);
 	}
@@ -2290,6 +2291,47 @@ export default class RVLocatorPlugin extends Plugin {
 	registerGlanceWidth(read: () => number): () => void {
 		this.glanceWidths.add(read);
 		return () => { this.glanceWidths.delete(read); };
+	}
+
+	/** Leaf width for the map popup. The list card is hidden while the map is fullscreen. */
+	registerGlanceLayout(read: () => number, root?: HTMLElement | null): () => void {
+		const entry = { read, root: root ?? null };
+		this.glanceLayouts.add(entry);
+		return () => { this.glanceLayouts.delete(entry); };
+	}
+
+	/**
+	 * Width the glancable grid uses. A fullscreen hub reports its own leaf.
+	 * A note with no base falls back to the markdown leaf.
+	 */
+	glanceLayoutWidth(): number {
+		let fullscreen = 0;
+		let best = 0;
+		for (const entry of this.glanceLayouts) {
+			const width = entry.read();
+			if (!(width > 1)) continue;
+			if (entry.root?.classList.contains('is-map-fullscreen') && width > fullscreen) fullscreen = width;
+			if (width > best) best = width;
+		}
+		if (fullscreen > 0) return fullscreen;
+		if (best > 0) return best;
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView)) continue;
+			const width = view.containerEl.clientWidth;
+			if (width > best) best = width;
+		}
+		return best;
+	}
+
+	/** Test point while desktop distance testing is on, otherwise the latest GPS fix. */
+	distanceFix(): { lat: number; lon: number } | null {
+		return this.currentMapFix() ?? this.liveFix;
+	}
+
+	rememberLiveFix(fix: { lat: number; lon: number } | null): void {
+		if (this.settings.distanceTest || !fix) return;
+		this.liveFix = fix;
 	}
 
 	/** Width of a mounted list card, so the map popup can match it. */
@@ -2820,6 +2862,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const decision = decideGeocodePick(hits, this.settings.homeCounties);
 		if (decision.hit) {
 			await this.writeHit(file, address, decision.hit, hits, !quiet);
+			if (quiet || this.pendingNewRvPath === file.path) this.armSettledVisitFocus(file);
 			return;
 		}
 		this.openPicker(file, address, hits, fromCache, quiet);
@@ -3460,6 +3503,49 @@ export default class RVLocatorPlugin extends Plugin {
 		await leaf.setViewState({ ...state, state: { ...inner, mode: 'source', source: true } });
 		await leaf.setViewState({ ...state, state: { ...inner, mode: 'preview', source: false } });
 		this.openInReadingView(file, true);
+		const shown = leaf.view instanceof MarkdownView ? leaf.view.containerEl : view.containerEl;
+		const sweep = (afterLayout: boolean): void => { this.stripHiddenUnloaded(shown, afterLayout); };
+		sweep(false);
+		const win = shown.ownerDocument.defaultView;
+		if (win && typeof win.requestAnimationFrame === 'function') {
+			win.requestAnimationFrame(() => {
+				if (this.unloaded) return;
+				sweep(true);
+				win.requestAnimationFrame(() => {
+					if (!this.unloaded) sweep(true);
+				});
+			});
+		}
+	}
+
+	/** Hidden Meta Bind leftovers after a rename. A parent that only contains the token stays. */
+	private stripHiddenUnloaded(root: ParentNode, afterLayout: boolean): void {
+		const nodes = root.querySelectorAll('*');
+		for (const node of Array.from(nodes)) {
+			if (!(node instanceof HTMLElement) || !node.isConnected) continue;
+			let own = '';
+			for (const child of Array.from(node.childNodes)) {
+				if (child.nodeType === Node.TEXT_NODE) own += child.textContent ?? '';
+			}
+			if (own.trim() !== '[MB_UNLOADED]') continue;
+			const styleAttr = (node.getAttribute('style') ?? '').replace(/\s/g, '').toLowerCase();
+			const className = typeof node.className === 'string' ? node.className : '';
+			let hidden = node.hidden
+				|| node.getAttribute('aria-hidden') === 'true'
+				|| styleAttr.includes('display:none')
+				|| /unloaded|mb-hidden|is-hidden/i.test(className);
+			const view = node.ownerDocument.defaultView;
+			if (!hidden && view) {
+				try {
+					const style = view.getComputedStyle(node);
+					hidden = style.display === 'none' || style.visibility === 'hidden';
+					if (!hidden && afterLayout) hidden = node.getClientRects().length === 0;
+				} catch {
+					hidden = afterLayout && node.getClientRects().length === 0;
+				}
+			}
+			if (hidden) node.remove();
+		}
 	}
 
 	confirmArchive(file: TFile): void {
@@ -3538,7 +3624,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 		this.openInReadingView(file, true);
 		this.stopVisitFocus?.();
-		this.stopVisitFocus = armVisitNoteFocus(view.containerEl, name ?? '');
+		this.stopVisitFocus = armVisitNoteFocus(view.containerEl, name ?? '', () => this.markdownRoot(file.path));
 		if (!name || fieldAt < 1) return;
 		for (let attempt = 0; attempt < FOCUS_ATTEMPTS; attempt += 1) {
 			if (this.unloaded) return;
@@ -3553,7 +3639,25 @@ export default class RVLocatorPlugin extends Plugin {
 		void ordinal;
 	}
 
+	/** The markdown leaf for `path`, after a preview remount replaces the old root. */
+	private markdownRoot(path: string): HTMLElement | null {
+		const leaf = this.app.workspace.getLeavesOfType('markdown')
+			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === path);
+		const view = leaf?.view;
+		return view instanceof MarkdownView ? view.containerEl : null;
+	}
+
+	/** Pull the caret into the visit textarea once the note's preview has settled. */
+	private armSettledVisitFocus(file: TFile, notesKey = ''): void {
+		const root = this.markdownRoot(file.path);
+		if (!root) return;
+		this.stopVisitFocus?.();
+		this.stopVisitFocus = armVisitNoteFocus(root, notesKey, () => this.markdownRoot(file.path));
+		placeVisitNoteFocus(root, '', 0);
+	}
+
 	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean, quiet = false): void {
+		const settleNotes = (): void => { this.armSettledVisitFocus(file); };
 		const modal = new GeocodeSuggestModal(
 			this.app,
 			hits,
@@ -3561,7 +3665,7 @@ export default class RVLocatorPlugin extends Plugin {
 			(hit) => {
 				void this.writeHit(file, address, hit, hits, !quiet).catch((error: unknown) => {
 					new Notice(this.friendlyError(error));
-				});
+				}).finally(settleNotes);
 			},
 			async () => {
 				const notice = new Notice('Looking up address…', 0);
@@ -3576,6 +3680,7 @@ export default class RVLocatorPlugin extends Plugin {
 					notice.hide();
 				}
 			},
+			() => { settleNotes(); },
 		);
 		modal.open();
 	}

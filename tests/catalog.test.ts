@@ -630,7 +630,9 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(glance, /registerGlancePainter/);
 		assert.match(map, /paintGlanceCard/);
 		assert.match(map, /popupCardWidth/);
-		assert.match(map, /glanceCardWidth/);
+		assert.match(map, /glanceLayoutWidth/);
+		assert.match(map, /glancableCardSlotPx/);
+		assert.doesNotMatch(map, /frame\.width - 24/);
 		assert.doesNotMatch(map, /private dateSlot\(/);
 		assert.match(css, /\.rv-map-card \{[^}]*width:\s*auto/);
 		assert.doesNotMatch(css, /min\(20rem/);
@@ -676,7 +678,9 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(main, /FOCUS_ATTEMPTS = 80/);
 		const focus = main.slice(main.indexOf('private async focusVisitNotes'), main.indexOf('private openPicker'));
 		assert.match(focus, /setActiveLeaf\(leaf, \{ focus: true \}\)/);
-		assert.match(focus, /armVisitNoteFocus\(view\.containerEl, name \?\? ''\)/);
+		assert.match(focus, /armVisitNoteFocus\(view\.containerEl, name \?\? ''/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-modal-actions \{[^}]*margin-top:\s*12px !important/);
+		assert.match(css, /--file-margins:\s*0px/);
 		const visit = read('src/visit-display.ts');
 		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));
 		assert.match(arm, /requestAnimationFrame/);

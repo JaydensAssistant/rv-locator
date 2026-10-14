@@ -36,6 +36,8 @@ const DEFAULT_TEXT_CHARS = 34;
 const CHAR_PX = 7.4;
 const ACTION_RAIL_PX = 64;
 const GRID_GAP_PX = 8;
+/** Horizontal padding on `.rv-locator-glancable .rv-locator-scroll` (`6px 10px 10px`). */
+export const GLANCE_SCROLL_PAD_X = 10;
 
 export interface DensityMeasure {
 	glancableFontScale: number;
@@ -69,6 +71,20 @@ export function fittedFontScale(containerPx: number, settings: DensityMeasure, c
 	if (!Number.isFinite(card) || card <= 0 || !Number.isFinite(slot) || slot <= 0) return base;
 	const fitted = base * (slot / card);
 	return Math.min(2.5, Math.max(0.4, Math.round(fitted * 100) / 100));
+}
+
+/**
+ * Width one list card gets from the glancable grid.
+ * `containerPx` is the view width. Scroll padding and the column gap come off
+ * before the columns share what's left, which is 400 in a 1236px leaf and 380
+ * in a 400px one.
+ */
+export function glancableCardSlotPx(containerPx: number, settings: DensityMeasure, fitCount = 0): number {
+	const columns = fitCount >= 2 ? fitCount : glancableColumns(containerPx, settings);
+	const content = Math.max(0, containerPx - GLANCE_SCROLL_PAD_X * 2);
+	const gaps = Math.max(0, columns - 1) * GRID_GAP_PX;
+	if (columns < 1 || content <= 0) return estimatedGlancableCardPx(settings);
+	return (content - gaps) / columns;
 }
 
 /** How many cards fit side by side. A wide pane is not capped at two. */

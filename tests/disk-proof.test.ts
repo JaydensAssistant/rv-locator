@@ -335,7 +335,7 @@ describe('disk proof', () => {
 				before: note(MESSY),
 				hits: [hit({ confidence: 1, county: 'Lake County' })],
 				choice: 'dismiss',
-				modal: true,
+				modal: false,
 			},
 		];
 
@@ -361,7 +361,7 @@ describe('disk proof', () => {
 			const decision = decideGeocodePick(noteFile.hits, settings.homeCounties);
 			assert.equal(decision.hit == null, noteFile.modal, noteFile.name);
 			if (decision.hit) {
-				assert.equal(noteFile.name, 'autopick-messy.md');
+				assert.ok(noteFile.name === 'autopick-messy.md' || noteFile.name === 'out-of-county.md');
 				assert.notEqual(item.address, decision.hit.formattedAddress);
 				assert.equal(decision.hit.confidence, 1);
 				const next = commitGeocode(readFileSync(noteFile.file, 'utf8'), decision.hit, settings);
@@ -397,7 +397,7 @@ describe('disk proof', () => {
 			console.log(`\n----- BULK ${item.file} changed=${disk !== item.before} -----\n${disk}`);
 		}
 
-		assert.deepEqual(changed.sort(), ['accept-modal.md', 'autopick-messy.md']);
+		assert.deepEqual(changed.sort(), ['accept-modal.md', 'autopick-messy.md', 'out-of-county.md']);
 		assert.deepEqual(unchangedLocated, ['already-located.md']);
 		assert.equal(updated, changed.length);
 		assert.equal(skipped, unchangedLocated.length);
@@ -407,7 +407,6 @@ describe('disk proof', () => {
 			'dismiss-modal.md',
 			'low-confidence.md',
 			'missing-confidence.md',
-			'out-of-county.md',
 			'two-home.md',
 		]);
 		const summary = `Updated ${updated} (0 from saved lookups). Skipped ${skipped}. Picker skipped ${passed}. No match 0. Failed 0. Filled Successful Visits on 0. Filled City on 0.`;

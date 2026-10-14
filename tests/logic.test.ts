@@ -19,8 +19,9 @@ import { getCached, rememberResults, trimCache } from '../src/cache';
 import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
 import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatGlancableStampFromRaw, formatGlancableVisitStamp, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
-import { countyNameKey, decideGeocodePick, hitInHomeCounties, isFullConfidence, parseHomeCountyLines, preferHomeRegion } from '../src/home-base';
-import { isListedUsCounty, listedUsCounties } from '../src/us-county-index';
+import { countyFilterParam, countyNameKey, decideGeocodePick, hitInHomeCounties, isFullConfidence, normalizeCountyList, parseHomeCountyLines, preferHomeRegion } from '../src/home-base';
+import { canonicalUsCounty, isListedUsCounty, listedUsCounties } from '../src/us-county-index';
+import { glancableCardSlotPx } from '../src/glancable-density';
 import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
@@ -903,6 +904,12 @@ describe('home base pick', () => {
 		assert.equal(only.hit?.street, 'Maple Street');
 		const decimal = decideGeocodePick([{ ...maple, confidence: 1.0 }], ['Orange']);
 		assert.equal(decimal.hit?.street, 'Maple Street');
+		const outside = decideGeocodePick([{ ...maple, county: 'Seminole County' }], ['Orange']);
+		assert.equal(outside.hit?.street, 'Maple Street');
+		assert.equal(decideGeocodePick(
+			[{ ...maple, county: 'Seminole County' }, { ...hammock, county: 'Lake County' }],
+			['Orange'],
+		).hit, null);
 		const low = decideGeocodePick(
 			[{ ...maple, county: 'Seminole County' }, { ...hammock, confidence: 0.2 }],
 			['Orange'],
@@ -914,11 +921,17 @@ describe('home base pick', () => {
 		assert.equal(decideGeocodePick([maple], []).hit, null);
 		assert.equal(decideGeocodePick([{ ...hammock, confidence: undefined }], ['Orange']).hit, null);
 		assert.equal(decideGeocodePick([{ ...hammock, confidence: 0.99 }], ['Orange']).hit, null);
-		assert.equal(decideGeocodePick([{ ...maple, county: 'Seminole County' }], ['Orange']).hit, null);
 		assert.equal(decideGeocodePick([maple, hammock], ['Orange County']).hit, null);
 		const citrus = decideGeocodePick([{ ...maple, county: 'Citrus' }], ['Citrus County, FL']);
 		assert.equal(citrus.hit?.street, 'Maple Street');
 		assert.equal(countyNameKey('Citrus County, FL'), 'citrus');
+		assert.equal(canonicalUsCounty('Citrus'), 'Citrus County, FL');
+		assert.equal(canonicalUsCounty('Citrus County, FL'), 'Citrus County, FL');
+		assert.equal(canonicalUsCounty('Marion'), null);
+		assert.deepEqual(normalizeCountyList(['Citrus', 'Citrus County, FL']), ['Citrus County, FL']);
+		assert.equal(countyFilterParam(['Citrus County, FL', 'Marion County, FL']), 'Citrus County|Marion County');
+		assert.equal(glancableCardSlotPx(1236, DEFAULT_SETTINGS), 400);
+		assert.equal(glancableCardSlotPx(400, DEFAULT_SETTINGS), 380);
 		assert.equal(hitInHomeCounties({ county: 'Marion' }, ['Marion County, FL']), true);
 		assert.equal(isListedUsCounty('Citrus'), true);
 		assert.equal(isListedUsCounty('Citrus County'), true);

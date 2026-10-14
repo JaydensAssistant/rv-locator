@@ -264,18 +264,16 @@ export function mountAlwaysChevron(
 			markHighlight();
 			return;
 		}
-		const picked = rows[highlighted];
+		const picked = highlighted >= 0 ? rows[highlighted] : undefined;
 		if (picked instanceof HTMLElement && picked.classList.contains('is-highlighted')) {
 			event.preventDefault();
-			event.stopPropagation();
+			event.stopImmediatePropagation();
 			onPick(picked.dataset.value || picked.textContent || '');
 			panel.hidden = true;
 			highlighted = -1;
 			return;
 		}
-		event.preventDefault();
-		panel.hidden = true;
-		highlighted = -1;
+		// Nothing highlighted: the field's own Enter handler adds the typed text.
 	});
 	const doc = input.ownerDocument;
 	const view = doc.defaultView;

@@ -1,6 +1,6 @@
 import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { applyControlSizedPills, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
+import { applyControlSizedPills, containSortRow, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
 import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
@@ -544,6 +544,13 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (glancable && this.sortMenuOpen) {
 			this.bindSortWheel(this.sortButtonsEl);
 			this.watchSortPillSize();
+		}
+		if (glancable) {
+			const bar = this.sortEl;
+			const fit = (): void => { if (bar.isConnected) containSortRow(bar); };
+			fit();
+			const view = bar.ownerDocument.defaultView;
+			if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(fit);
 		}
 	}
 

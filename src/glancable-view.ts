@@ -5,6 +5,7 @@ import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
 import { domInstanceOf } from './dom';
 import { compactBadgePx, fittedFontScale, glancableColumns, type CompactLineKind } from './glancable-density';
+import { containSortRow } from './sort-pills';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
@@ -59,6 +60,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.quietBanner = true;
 		this.register(this.plugin.registerGlancePainter((parent, path) => this.paintCardForPath(parent, path)));
 		this.register(this.plugin.registerGlanceWidth(() => this.listCardWidth()));
+		this.register(this.plugin.registerGlanceLayout(() => {
+			const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
+			return width > 1 ? width : 0;
+		}, this.root));
 	}
 
 	override onunload(): void {
@@ -856,6 +861,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (this.plugin.settings.glancableFitCount !== 0) this.applyDensity();
 			this.syncHubMapMount();
 			this.snapCardFrames();
+			if (this.sortEl) containSortRow(this.sortEl);
 		});
 		this.layoutObserver.observe(this.scrollEl);
 		this.layoutObserver.observe(this.root);

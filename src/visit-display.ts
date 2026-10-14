@@ -502,20 +502,60 @@ export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
  * the title (or the body) takes the caret. The watcher stays until the caller
  * stops it, so a later preview remount can still find the new textarea.
  */
-export function armVisitNoteFocus(root: HTMLElement, notesKey = ''): () => void {
+export function armVisitNoteFocus(
+	root: HTMLElement,
+	notesKey = '',
+	currentRoot?: () => HTMLElement | null,
+): () => void {
 	let stop = false;
-	let won = false;
 	const doc = root.ownerDocument;
 	const until = Date.now() + 8000;
-	const promptOpen = (): boolean => doc.querySelector('input.templater-prompt-input, textarea.templater-prompt-input, .modal-container') != null;
-	const visitArea = (): HTMLTextAreaElement | null => {
-		if (notesKey) {
-			const named = root.querySelector(`textarea.rv-native-notes-area[data-rv-notes-key="${notesKey}"]`);
-			if (named instanceof HTMLTextAreaElement && named.isConnected) return named;
+	const observer = new MutationObserver(() => { focusArea(); });
+	let observed: HTMLElement | null = null;
+	const hostNow = (): HTMLElement | null => {
+		if (currentRoot) {
+			try {
+				const next = currentRoot();
+				if (next instanceof HTMLElement && next.isConnected) return next;
+			} catch {
+				/* The leaf went away. */
+			}
 		}
-		const found = root.querySelector('textarea.rv-native-notes-area') ?? root.querySelector('textarea');
-		if (!isVisitTextArea(found) || !found.isConnected) return null;
+		return root.isConnected ? root : null;
+	};
+	const watchHost = (host: HTMLElement): void => {
+		if (observed === host) return;
+		observer.disconnect();
+		observed = host;
+		observer.observe(host, { childList: true, subtree: true });
+	};
+	const promptOpen = (): boolean => doc.querySelector('input.templater-prompt-input, textarea.templater-prompt-input, .modal-container') != null;
+	const shown = (area: HTMLElement): boolean => {
+		if (!area.isConnected || area.hidden) return false;
+		try {
+			const style = area.ownerDocument.defaultView?.getComputedStyle(area);
+			if (style && (style.display === 'none' || style.visibility === 'hidden')) return false;
+		} catch {
+			/* Treat an unreadable box as visible. */
+		}
+		return true;
+	};
+	const lastShown = (nodes: NodeListOf<Element>): HTMLTextAreaElement | null => {
+		let found: HTMLTextAreaElement | null = null;
+		for (const node of Array.from(nodes)) {
+			if (!isVisitTextArea(node) || !shown(node)) continue;
+			found = node;
+		}
 		return found;
+	};
+	const visitArea = (host: HTMLElement): HTMLTextAreaElement | null => {
+		if (notesKey) {
+			const key = notesKey.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+			const named = lastShown(host.querySelectorAll(`textarea.rv-native-notes-area[data-rv-notes-key="${key}"]`));
+			if (named) return named;
+		}
+		return lastShown(host.querySelectorAll('textarea.rv-native-notes-area'))
+			?? lastShown(host.querySelectorAll('textarea'));
 	};
 	const editingElsewhere = (node: Element | null): boolean => {
 		if (!(node instanceof HTMLElement)) return false;
@@ -528,24 +568,22 @@ export function armVisitNoteFocus(root: HTMLElement, notesKey = ''): () => void 
 		return !isVisitTextArea(node);
 	};
 	const focusArea = (): boolean => {
-		if (stop || !root.isConnected || promptOpen()) return false;
-		const area = visitArea();
+		if (stop || promptOpen()) return false;
+		const host = hostNow();
+		if (!host) return false;
+		watchHost(host);
+		const area = visitArea(host);
 		if (!area) return false;
 		const active = doc.activeElement;
-		if (active === area) {
-			won = true;
-			return true;
-		}
+		if (active === area) return true;
 		// Leave the Templater prompt and any other field alone so Enter still submits.
 		if (editingElsewhere(active instanceof Element ? active : null)) return false;
-		if (won && active instanceof Element && !isFocusThief(active)) return false;
 		revealForFocus(area);
 		placeCaret(area);
-		won = doc.activeElement === area || doc.activeElement === visitArea();
-		return won;
+		return doc.activeElement === area;
 	};
-	const observer = new MutationObserver(() => { focusArea(); });
-	observer.observe(root, { childList: true, subtree: true });
+	const initial = hostNow();
+	if (initial) watchHost(initial);
 	const docObserver = new MutationObserver(() => { focusArea(); });
 	const watch = doc.documentElement ?? doc.body;
 	if (watch) docObserver.observe(watch, { childList: true, subtree: true });
@@ -560,7 +598,7 @@ export function armVisitNoteFocus(root: HTMLElement, notesKey = ''): () => void 
 	if (!promptOpen()) blurNoteTitle(doc);
 	focusArea();
 	const tick = (): void => {
-		if (stop || !root.isConnected || Date.now() > until) return;
+		if (stop || Date.now() > until) return;
 		focusArea();
 		const view = doc.defaultView;
 		if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(tick);

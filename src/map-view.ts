@@ -1,5 +1,5 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
-import { estimatedGlancableCardPx, glancableColumns } from './glancable-density';
+import { glancableCardSlotPx } from './glancable-density';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
@@ -28,8 +28,13 @@ export interface MapHost {
 	promptUrgencyMenu?(path: string, name: string, event: MouseEvent): void;
 	/** Paint the Glancable list card into the popup. False when that view is not mounted. */
 	paintGlanceCard?(parent: HTMLElement, path: string): boolean;
-	/** Painted width of the list card in the current base, or 0 when no base is open. */
-	glanceCardWidth?(): number;
+	/**
+	 * Width the list would use for its card grid. Fullscreen hides the cards,
+	 * so this is the view width, not a measurement of a hidden card.
+	 */
+	glanceLayoutWidth?(): number;
+	/** Keep the note-map distance in step with this map's GPS fix. */
+	rememberLiveFix?(fix: { lat: number; lon: number } | null): void;
 	tileCacheEpoch?: number;
 	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
 }
@@ -350,6 +355,7 @@ export class RvMapView extends ItemView {
 		if (typeof navigator === 'undefined' || !navigator.geolocation) return;
 		this.watchId = navigator.geolocation.watchPosition((position) => {
 			this.user = { lat: position.coords.latitude, lon: position.coords.longitude };
+			this.host.rememberLiveFix?.(this.user);
 			if (!this.host.mapFocusPath) {
 				this.centerLat = this.user.lat;
 				this.centerLon = this.user.lon;
@@ -955,7 +961,7 @@ export class RvMapView extends ItemView {
 			width: this.stage?.clientWidth || frame.width,
 			height: this.stage?.clientHeight || frame.height,
 		};
-		const cardWidth = this.popupCardWidth(frame);
+		const cardWidth = this.popupCardWidth();
 		const cardHeight = Math.min(320, Math.max(120, frame.height - 16));
 		shell.style.width = `${cardWidth}px`;
 		shell.style.minWidth = `${cardWidth}px`;
@@ -971,6 +977,7 @@ export class RvMapView extends ItemView {
 		shell.addEventListener('click', (event) => {
 			event.stopPropagation();
 		});
+		this.host.rememberLiveFix?.(this.user);
 		const painted = this.host.paintGlanceCard?.(shell, pin.path) === true;
 		if (!painted) this.paintFallbackCard(shell, pin);
 		const card = shell.querySelector('.rv-locator-card');
@@ -1003,19 +1010,17 @@ export class RvMapView extends ItemView {
 		else nudge();
 	}
 
-	/** Same width as the list card in this window. A mounted base wins; otherwise the column the list would use. */
-	private popupCardWidth(frame: { width: number }): number {
-		const listed = this.host.glanceCardWidth?.() ?? 0;
-		const windowW = this.stage?.ownerDocument.defaultView?.innerWidth ?? frame.width;
+	/**
+	 * The width one list card gets from the glancable grid in this leaf.
+	 * Fullscreen hides the list, so the live card is not measured.
+	 * A 1236px leaf is 400. A 400px leaf is 380.
+	 */
+	private popupCardWidth(): number {
 		const settings = this.host.settings;
-		const columns = settings.glancableFitCount >= 2
-			? settings.glancableFitCount
-			: glancableColumns(windowW, settings);
-		const gaps = Math.max(0, columns - 1) * 8;
-		const slot = columns > 0 ? (windowW - gaps) / columns : estimatedGlancableCardPx(settings);
-		const preferred = listed > 0 ? listed : slot;
-		const cap = Math.max(120, frame.width - 24);
-		return Math.round(Math.min(Math.max(120, preferred), cap));
+		const layout = this.host.glanceLayoutWidth?.() ?? 0;
+		const windowW = this.stage?.ownerDocument.defaultView?.innerWidth ?? 0;
+		const container = layout > 0 ? layout : windowW;
+		return glancableCardSlotPx(container, settings, settings.glancableFitCount);
 	}
 
 	/** Used only when the Glancable view is not mounted to paint the same card. */

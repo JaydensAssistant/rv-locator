@@ -116,6 +116,38 @@ function fitSortLabel(pill: HTMLElement): void {
 	label.style.setProperty('font-size', `${size}px`, 'important');
 }
 
+/**
+ * Pull the sort row back inside the window. A flex remainder of 1px leaves
+ * the last button past the edge at 1280, 700, and 400. One correction per
+ * window width, so a border that will not move cannot shrink the row away.
+ */
+export function containSortRow(bar: HTMLElement): void {
+	const view = bar.ownerDocument.defaultView;
+	if (!view || typeof bar.getBoundingClientRect !== 'function') return;
+	let right = bar.getBoundingClientRect().right;
+	bar.querySelectorAll('button').forEach((node) => {
+		if (!(node instanceof HTMLElement) || typeof node.getBoundingClientRect !== 'function') return;
+		const edge = node.getBoundingClientRect().right;
+		if (edge > right) right = edge;
+	});
+	const over = right - view.innerWidth;
+	const stamp = String(view.innerWidth);
+	if (over <= 0.5) {
+		const cap = Number.parseFloat(bar.style.maxWidth);
+		if (bar.dataset.rvSortContain && Number.isFinite(cap) && view.innerWidth > cap + 8) {
+			bar.style.maxWidth = '';
+			delete bar.dataset.rvSortContain;
+		}
+		return;
+	}
+	if (bar.dataset.rvSortContain === stamp) return;
+	const width = bar.getBoundingClientRect().width;
+	const next = Math.max(0, width - Math.ceil(over - 1e-6));
+	if (!(next > 0) || next >= width) return;
+	bar.dataset.rvSortContain = stamp;
+	bar.style.maxWidth = `${next}px`;
+}
+
 /** Pin every sort pill to the control-button size of this bar. */
 export function applyControlSizedPills(bar: HTMLElement, pills: HTMLElement): void {
 	const style = getComputedStyle(bar);

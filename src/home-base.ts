@@ -1,4 +1,5 @@
 import type { GeocodeHit } from './types';
+import { canonicalUsCounty, countyStorageKey } from './us-county-index';
 
 export interface GeocodePick {
 	/** The one in-home hit that may be saved without asking. Absent means show the picker. */
@@ -16,10 +17,10 @@ export function isFullConfidence(confidence: number | undefined): boolean {
 }
 
 /**
- * Auto-pick only when the home-base list is non-empty, exactly one result is in
- * that set, and that result's Geoapify `rank.confidence` is 1.00.
- * Zero or two-or-more in-home hits, a missing confidence, or an empty home list
- * stays on the confirm modal. Street text is not compared.
+ * Auto-pick when the home list is non-empty and one result has Geoapify
+ * `rank.confidence` 1.00. A single fully confident hit is that address even
+ * when its county string does not match the home list. Two or more hits, a
+ * missing confidence, or an empty home list stays on the confirm modal.
  */
 export function decideGeocodePick(
 	hits: readonly GeocodeHit[],
@@ -28,10 +29,12 @@ export function decideGeocodePick(
 	const homes = homeCounties.map(countyNameKey).filter((name) => name.length > 0);
 	if (homes.length === 0) return { hit: null };
 	const inHome = hits.filter((hit) => inHomeCounty(hit, homes));
-	if (inHome.length !== 1) return { hit: null };
-	const only = inHome[0];
-	if (!only || !isFullConfidence(only.confidence)) return { hit: null };
-	return { hit: only };
+	if (inHome.length === 1 && isFullConfidence(inHome[0]?.confidence)) return { hit: inHome[0] ?? null };
+	// One fully confident result is the address. A county string that does not
+	// share the home list's spelling must not open the picker for that lone hit.
+	const only = hits.length === 1 ? hits[0] : null;
+	if (only && isFullConfidence(only.confidence)) return { hit: only };
+	return { hit: null };
 }
 
 function inHomeCounty(hit: GeocodeHit, homes: readonly string[]): boolean {
@@ -91,7 +94,9 @@ export function hitInHomeCounties(hit: { county?: string }, homeCounties: readon
 
 /** Pipe-joined Geoapify county filter, or null when no counties are set. */
 export function countyFilterParam(homeCounties: readonly string[]): string | null {
-	const names = homeCounties.map((line) => line.trim()).filter((line) => line.length > 0);
+	const names = homeCounties
+		.map((line) => (line.split(',')[0] ?? line).trim())
+		.filter((line) => line.length > 0);
 	if (names.length === 0) return null;
 	return names.join('|');
 }
@@ -155,10 +160,11 @@ export function normalizeCountyList(value: unknown): string[] {
 	for (const item of chunks) {
 		const trimmed = item.trim();
 		if (!trimmed) continue;
-		const key = normalizeCounty(trimmed);
+		const stored = canonicalUsCounty(trimmed) ?? trimmed;
+		const key = countyStorageKey(stored);
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
-		names.push(trimmed);
+		names.push(stored);
 	}
 	return names;
 }

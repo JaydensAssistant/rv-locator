@@ -2,7 +2,9 @@ import { TFile, setIcon, type App } from 'obsidian';
 import { displayCity, parseDisplayAddress } from './address-display';
 import { formatStudyFraction } from './catalog';
 import { calendarDaysSince, formatDriveDate, formatGlanceableCounter } from './dates';
+import { formatDistance, haversineMeters, latLonFromUnknown } from './distance';
 import { readProperty } from './frontmatter';
+import { cardReturnLead } from './schedule';
 import { appendBadge, type BadgeIconName } from './glancable-view';
 import { compactBadgePx, fittedFontScale, type CompactLineKind } from './glancable-density';
 import { cardPersonTitle } from './note-name';
@@ -26,6 +28,11 @@ export interface NoteGlanceHost {
 	openRoute(path: string): Promise<void>;
 	promptUrgencyMenu(path: string, name: string, event: MouseEvent): void;
 	promptPriority(path: string, name: string): void;
+	/** Device GPS, or the desktop test point. Null when neither is known. */
+	distanceFix(): { lat: number; lon: number } | null;
+	cardReturnBucket(path: string): 'Try' | 'Avoid' | 'Unsure' | 'Untried';
+	cardOverrideLabel(path: string): string | null;
+	openAttemptLog(path: string): void;
 }
 
 /**
@@ -102,7 +109,15 @@ export function paintNoteGlanceCard(parent: HTMLElement, path: string, host: Not
 		setIcon(earth, 'earth');
 		if (showStreet && street) place.createSpan({ cls: 'rv-locator-card-street', text: street });
 		if (showCity && city) place.createSpan({ cls: 'rv-locator-city-lg', text: city });
-		if (showDistance) place.createSpan({ cls: 'rv-locator-distance-lg is-missing', text: '· —' });
+		if (showDistance) {
+			const distance = distanceLabel(host, note, settings);
+			const live = distance !== '—';
+			place.createSpan({
+				cls: `rv-locator-distance-lg${live ? ' is-live' : ' is-missing'}`,
+				text: live ? `· ${distance}` : '· —',
+				attr: { 'aria-label': live ? `Distance ${distance}` : 'Distance unavailable' },
+			});
+		}
 	}
 	const compact = settings.compactMode !== false;
 	const showSpoke = show('last-spoke') && (!study || settings.studyShowSpoke);
@@ -125,12 +140,51 @@ export function paintNoteGlanceCard(parent: HTMLElement, path: string, host: Not
 		const metWith = textOf(readProperty(note, 'Met With'));
 		plainSlot(foot, 'user', metWith || '—', !metWith);
 	}
-	if (show('visits')) {
-		const ratio = study
-			? formatStudyFraction(lessonCount(readProperty(note, 'Lessons Studied')), finite(readProperty(note, 'Studies')) ?? 0, settings.studyRatio).ratio
-			: `${finite(readProperty(note, 'Successful Visits')) ?? '—'}/${finite(readProperty(note, 'Visits')) ?? '—'}`;
-		const ratioEl = foot.createSpan({ cls: 'rv-locator-slot rv-locator-visits' });
-		ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio}` });
+	const ratio = show('visits') ? visitRatioText(note, study, settings.studyRatio) : null;
+	const overrideLabel = settings.showCardReturnStatus && !snoozed ? host.cardOverrideLabel(path) : null;
+	if (overrideLabel) {
+		foot.createSpan({
+			cls: 'rv-locator-slot rv-locator-override-label',
+			text: overrideLabel,
+			attr: { 'aria-label': `Return override ${overrideLabel}` },
+		});
+	} else if (ratio && !settings.showCardReturnStatus) {
+		const ratioEl = foot.createSpan({
+			cls: 'rv-locator-slot rv-locator-visits',
+			attr: { 'aria-label': ratio.title },
+		});
+		ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
+	}
+	if ((!overrideLabel || snoozed) && ratio && settings.showCardReturnStatus) {
+		const line = foot.createSpan('rv-locator-return-inline');
+		line.createSpan({
+			cls: 'rv-locator-return-visits',
+			text: `# ${ratio.text}`,
+			attr: { 'aria-label': ratio.title },
+		});
+		line.createSpan({
+			cls: 'rv-locator-return-when',
+			text: cardReturnLead(new Date(), settings.cardReturnFormat),
+		});
+		const bucket = line.createSpan({
+			cls: 'rv-locator-return-bucket',
+			text: host.cardReturnBucket(path),
+		});
+		bucket.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openAttemptLog(path);
+		});
+	}
+	if (overrideLabel) {
+		const overrideEl = foot.querySelector('.rv-locator-override-label');
+		if (overrideEl instanceof HTMLElement) {
+			overrideEl.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				host.openAttemptLog(path);
+			});
+		}
 	}
 	if (show('met-with') || show('visits')) compactLines.push('foot');
 	paintActions(card, host, path, file.basename, priority, urgency, address, compact ? compactLines : null, fitted, snoozed);
@@ -189,6 +243,38 @@ function paintActions(
 			void host.openRoute(path);
 		});
 	}
+}
+
+function distanceLabel(
+	host: NoteGlanceHost,
+	note: Record<string, unknown> | null,
+	settings: NoteGlanceHost['settings'],
+): string {
+	const fix = host.distanceFix();
+	const point = latLonFromUnknown(readProperty(note, settings.locationProperty.trim() || 'Location'));
+	if (!fix || !point) return '—';
+	return formatDistance(haversineMeters(fix, point), settings.distanceUnit);
+}
+
+function visitRatioText(
+	note: Record<string, unknown> | null,
+	study: boolean,
+	order: NoteGlanceHost['settings']['studyRatio'],
+): { text: string; title: string } {
+	if (study) {
+		const fraction = formatStudyFraction(lessonCount(readProperty(note, 'Lessons Studied')), finite(readProperty(note, 'Studies')) ?? 0, order);
+		const label = order === 'studies-lessons' ? 'Studies/Lessons' : 'Lessons/Studies';
+		return { text: fraction.ratio, title: `${label} ${fraction.withDecimal}` };
+	}
+	const home = countLabel(readProperty(note, 'Successful Visits'));
+	const total = countLabel(readProperty(note, 'Visits'));
+	return { text: `${home}/${total}`, title: `${home} Successful Visits of ${total} Visits` };
+}
+
+function countLabel(value: unknown): string {
+	const count = finite(value);
+	if (count == null) return '—';
+	return Number.isInteger(count) ? String(count) : String(count);
 }
 
 function dateSlot(parent: HTMLElement, icon: string, label: string, raw: string, compact: boolean): void {
