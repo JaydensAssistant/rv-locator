@@ -112,7 +112,7 @@ describe('2026-10-13 feedback', () => {
 
 	it('lifts the mobile sort bar above the floating navbar and leaves embeds alone', () => {
 		const css = source('styles.css');
-		assert.match(css, /body\.is-mobile \.workspace-leaf-content \.rv-locator-glancable\.is-stacked \.rv-locator-sortbar \{[^}]*padding-bottom:\s*calc\(env\(safe-area-inset-bottom, 0px\) \+ 48px\)/);
+		assert.match(css, /body\.is-mobile \.workspace-leaf-content \.rv-locator-glancable\.is-stacked \.rv-locator-sortbar \{[^}]*padding-bottom:\s*calc\(var\(--navbar-height, 52px\) \+ var\(--navbar-bottom-offset, 34px\) \+ 8px\)/);
 		assert.match(css, /body\.is-mobile \.workspace-leaf-content :is\(\.markdown-preview-view, \.markdown-source-view, \.markdown-embed, \.internal-embed\) \.rv-locator-glancable\.is-stacked \.rv-locator-sortbar \{[^}]*padding-bottom:\s*env\(safe-area-inset-bottom, 0px\)/);
 	});
 

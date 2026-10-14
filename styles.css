@@ -7819,7 +7819,7 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	--rv-digit-ink: 0.72;
 	--rv-badge-stroke: 2px;
 	--rv-opt-digit: 0.92;
-	--rv-opt-bang: 0.9;
+	--rv-opt-bang: 0.94;
 	--rv-opt-ring: 1.06;
 	--rv-opt-dash: 0.94;
 	--rv-opt-route: 1.08;
@@ -7966,12 +7966,12 @@ button.rv-locator-map-pin > svg:not(.rv-urgency-glyph) {
 
 /*
   Phone base: the stacked sort/search bar is the last row of the leaf, and
-  that leaf runs under Obsidian's floating navbar. The navbar is about 48px
-  plus the safe area. Embeds already reserve that chrome, so they keep only
-  the safe area and do not pick up a second gap.
+  that leaf runs under Obsidian's floating navbar. The navbar sits above the
+  bottom of the screen, so the bar clears its height plus that offset.
+  Embeds already reserve that chrome and keep only the safe area.
 */
 body.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar {
-	padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 48px);
+	padding-bottom: calc(var(--navbar-height, 52px) + var(--navbar-bottom-offset, 34px) + 8px);
 }
 
 body.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar:has(> .rv-sort-close) {

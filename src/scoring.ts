@@ -84,7 +84,7 @@ export interface UrgencyBangShape {
  * Priority 0 is a dash. Stroke weight is CSS, not these coordinates.
  *
  * Insets match the default optical factors in `BADGE_OPTICAL` (ink 0.53, stroke 2px):
- * bang 0.9 → 2.1, dash 0.94 → 2.01, ring 1.06 → 1.78. Center gap 8.4 keeps a
+ * bang 0.94 → 2.1, dash 0.94 → 2.01, ring 1.06 → 1.78. Center gap 8.4 keeps a
  * visible gap between 2px bang stems at that bang size.
  */
 export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {

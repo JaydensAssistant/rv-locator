@@ -29,7 +29,7 @@ export const DIGIT_CAP_INK = 0.72;
  */
 export const BADGE_OPTICAL = {
 	digit: 0.92,
-	bang: 0.9,
+	bang: 0.94,
 	ring: 1.06,
 	dash: 0.94,
 	route: 1.08,
