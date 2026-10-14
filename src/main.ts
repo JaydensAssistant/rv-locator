@@ -3567,9 +3567,9 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * A rename leaves a Reading preview on Meta Bind's unloaded placeholders.
-	 * Reading view is emptied and opened again. Live Preview and Source keep
-	 * the mode, source flag, and scroll they had before the rename.
+	 * Reading view is emptied and opened again so hidden Meta Bind leftovers go away.
+	 * Live Preview is detached and opened in a new leaf, the same as closing the
+	 * note and opening it, so the buttons hydrate. Mode, source, and scroll come back.
 	 */
 	private async reopenRenamedNote(
 		file: TFile,
@@ -3581,6 +3581,11 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!leaf) return;
 		const mode = held?.mode ?? 'preview';
 		const source = held?.source ?? false;
+		const livePreview = mode === 'source' && source === false;
+		if (livePreview && held) {
+			await this.reopenDetachedLeaf(leaf, file, held);
+			return;
+		}
 		const reading = mode === 'preview';
 		this.keepRenameMode = true;
 		try {
@@ -3618,6 +3623,41 @@ export default class RVLocatorPlugin extends Plugin {
 			win.requestAnimationFrame(() => {
 				if (!this.unloaded) this.applyHeldScroll(leaf, held);
 			});
+		}
+	}
+
+	/**
+	 * Close the Live Preview leaf, then open the note again with the saved
+	 * mode, source flag, and scroll. A fresh leaf is what lets Meta Bind mount.
+	 */
+	private async reopenDetachedLeaf(
+		leaf: WorkspaceLeaf,
+		file: TFile,
+		held: { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number },
+	): Promise<void> {
+		this.keepRenameMode = true;
+		try {
+			leaf.detach();
+			const active = this.app.workspace.getActiveViewOfType(MarkdownView);
+			const occupied = active?.file != null && active.file.path !== file.path;
+			const next = occupied ? this.app.workspace.getLeaf('tab') : this.app.workspace.getLeaf(false);
+			await next.openFile(file, { active: true, state: { mode: held.mode, source: held.source } });
+			const state = next.getViewState();
+			const inner = state.state && typeof state.state === 'object' ? { ...state.state } : {};
+			inner.mode = held.mode;
+			inner.source = held.source;
+			inner.file = file.path;
+			await next.setViewState({ ...state, state: inner }, held.ephemeral);
+			this.applyHeldScroll(next, held);
+			const view = next.view;
+			const win = view instanceof MarkdownView ? view.containerEl.ownerDocument.defaultView : null;
+			if (win && typeof win.requestAnimationFrame === 'function') {
+				win.requestAnimationFrame(() => {
+					if (!this.unloaded) this.applyHeldScroll(next, held);
+				});
+			}
+		} finally {
+			this.keepRenameMode = false;
 		}
 	}
 
