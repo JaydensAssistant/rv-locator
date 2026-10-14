@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { BADGE_INK, BADGE_OPTICAL, DIGIT_CAP_INK, LINE_ICON_INK, LINE_ICON_INK_BY_ICON, badgeLineOpticalKey, urgencyInkFraction, urgencyOpticalKey } from '../src/badge-glyph';
-import { appendBadge, type BadgeFace } from '../src/glancable-view';
+import { appendBadge, wholeCardHeight, type BadgeFace } from '../src/glancable-view';
 import { navigatingToFile, withReadingPreview } from '../src/reading-open';
 
 function source(file: string): string {
@@ -132,21 +132,33 @@ describe('2026-10-13 feedback', () => {
 		assert.match(css, /\.rv-qf-badges \{[^}]*width:\s*max-content/);
 		const chrome = source('src/note-chrome.ts');
 		const glance = source('src/glancable-view.ts');
+		const map = source('src/map-view.ts');
 		assert.match(glance, /Math\.round\(rect\.left\)/);
-		assert.match(glance, /translate\(\$\{px\(dx\)\}px, \$\{px\(dy\)\}px\)/);
+		assert.doesNotMatch(glance, /style\.transform = `translate/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-actions \{[^}]*justify-content:\s*center/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-actions \{[^}]*gap:\s*4px/);
+		assert.match(css, /line-height:\s*round\(nearest, calc\(20px \* var\(--rv-font-scale, 1\) \* 1\.15\), 1px\)/);
+		assert.match(css, /\.rv-dashboard \.callout\[data-callout="rv"\] > \.callout-title \{[^}]*height:\s*28px/);
 		assert.doesNotMatch(css, /justify-content:\s*space-evenly/);
 		const facts = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function paintFactsBody'));
 		assert.match(facts, /kind: 'urgency'/);
 		assert.match(facts, /icon: 'moon'/);
-		assert.match(facts, /snapBadgeRow\(badges\)/);
+		assert.match(facts, /snapFacts\(title, badges\)/);
+		assert.match(facts, /snapLayoutAbove\(callout\)/);
 		assert.doesNotMatch(facts, /icon: 'hourglass'|icon: 'ban'/);
+		assert.doesNotMatch(facts, /transform/);
 		const details = chrome.slice(chrome.indexOf('.rv-locator-urgency, .rv-locator-map-pin'), chrome.indexOf('function setPaint'));
 		assert.match(details, /pinBadgeStroke\(node\)/);
 		assert.doesNotMatch(details, /setPaint|border-color|color'/);
-		assert.match(source('src/map-view.ts'), /snapBadgeRow\(actions\)/);
-		assert.match(glance, /snapBadgeRow\(actions\)/);
+		assert.match(map, /Math\.round\(origin\.left\)/);
+		assert.match(map, /Math\.round\(origin\.top\)/);
+		assert.match(map, /snapAbsoluteOrigin\(shell\)/);
+		assert.match(map, /snapFlowBox\(card, true\)/);
+		assert.doesNotMatch(map, /snapBadgeRow/);
+		const height = wholeCardHeight(98.39, 2, 92);
+		assert.equal(height % 1, 0);
+		assert.ok(height >= 98.39);
+		assert.equal((height - 2 - 92) % 2, 0);
 
 		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 		const { window } = dom;

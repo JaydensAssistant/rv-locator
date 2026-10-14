@@ -282,8 +282,10 @@
 }
 
 .rv-locator-group-label {
+	box-sizing: border-box;
 	padding: 12px 14px 4px;
 	font-size: var(--font-ui-small);
+	line-height: 16px;
 }
 
 .rv-locator-sortbar {
@@ -642,6 +644,7 @@
 .rv-locator-glancable .rv-locator-card {
 	position: relative;
 	display: flex;
+	box-sizing: border-box;
 	flex-direction: column;
 	align-items: stretch;
 	gap: 3px;
@@ -658,7 +661,7 @@
 
 .rv-locator-glancable .rv-locator-card.has-actions {
 	padding-right: calc(var(--rv-pad-x, 10px) + var(--rv-control-size, 28px) + 14px);
-	min-height: calc(var(--rv-badge-count, 1) * var(--rv-control-size, 28px) + (var(--rv-badge-count, 1) + 1) * 0.45em);
+	min-height: calc(var(--rv-badge-count, 1) * var(--rv-control-size, 28px) + (var(--rv-badge-count, 1) + 1) * 8px);
 }
 
 /* Compact mode sizes the badges to the text stack. The min-height above would add a blank line. */
@@ -688,7 +691,7 @@
 	color: var(--text-normal);
 	font-size: calc(20px * var(--rv-font-scale, 1));
 	max-width: var(--rv-line-max, 100%);
-	line-height: 1.15;
+	line-height: round(nearest, calc(20px * var(--rv-font-scale, 1) * 1.15), 1px);
 	font-weight: 700;
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -727,7 +730,7 @@
 	color: var(--text-normal);
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 700;
-	line-height: 1.25;
+	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
@@ -739,7 +742,7 @@
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 600;
 	font-variant-numeric: tabular-nums;
-	line-height: 1.25;
+	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
 }
 
 .rv-locator-glancable .rv-locator-distance-lg.is-missing {
@@ -754,9 +757,9 @@
 	margin: 0;
 	overflow: hidden;
 	color: var(--text-muted);
-	font-size: calc(12px * 0.72 * var(--rv-font-scale, 1));
+	font-size: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1)), 1px);
 	font-weight: 400;
-	line-height: 1.15;
+	line-height: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1) * 1.15), 1px);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
@@ -781,7 +784,7 @@
 	display: flex;
 	flex-wrap: nowrap;
 	align-items: center;
-	gap: 0.35em;
+	gap: 4px;
 	max-width: 100%;
 	margin: 0;
 	min-width: 0;
@@ -798,7 +801,7 @@
 	overflow: hidden;
 	color: var(--text-muted);
 	font-size: calc(12px * var(--rv-font-scale, 1));
-	line-height: 1.2;
+	line-height: round(nearest, calc(12px * var(--rv-font-scale, 1) * 1.2), 1px);
 	white-space: nowrap;
 	max-width: var(--rv-line-max, 100%);
 }
@@ -814,8 +817,8 @@
 }
 
 .rv-locator-glancable .rv-locator-slot-icon svg {
-	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
-	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	width: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
+	height: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
 }
 
 .rv-locator-glancable .rv-locator-slot-text,
@@ -872,7 +875,7 @@
 	display: inline-flex;
 	flex: 1 1 auto;
 	align-items: baseline;
-	gap: 0.4em;
+	gap: 5px;
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
@@ -890,16 +893,16 @@
 	min-width: 0;
 	overflow: hidden;
 	color: var(--text-muted);
-	font-size: 0.72em;
+	font-size: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1)), 1px);
 	font-weight: 400;
-	line-height: 1.15;
+	line-height: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1) * 1.15), 1px);
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
 .rv-locator-days {
 	flex: 0 0 auto;
-	margin-left: 0.35em;
+	margin-left: 4px;
 	color: var(--rv-urgency-accent, var(--rv-locator-days-color, var(--text-accent)));
 	font-size: 1em;
 	font-weight: 700;
@@ -2163,7 +2166,12 @@ body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv
 .rv-dashboard .callout[data-callout="rv"] > .callout-title {
 	display: flex;
 	align-items: center;
-	gap: 0.4em;
+	box-sizing: border-box;
+	height: 28px;
+	min-height: 28px;
+	padding-top: 0;
+	padding-bottom: 0;
+	gap: 6px;
 }
 
 .rv-qf-badges {
@@ -2577,8 +2585,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	align-items: center;
 	justify-content: center;
 	box-sizing: border-box;
-	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
-	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	width: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
+	height: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
 	margin: 0;
 }
 
@@ -2592,22 +2600,22 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 .rv-locator-glancable .rv-locator-status-icon svg,
 .rv-locator-glancable .rv-locator-place-earth svg {
-	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
-	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	width: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
+	height: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
 }
 
 .rv-locator-glancable .rv-locator-return-line {
 	display: flex;
 	flex-wrap: nowrap;
 	align-items: baseline;
-	gap: 0.35em;
+	gap: 4px;
 	width: 100%;
 	margin-top: 2px;
 	overflow: hidden;
 	color: var(--text-normal);
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 600;
-	line-height: 1.25;
+	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
 	white-space: nowrap;
 }
 
@@ -2619,7 +2627,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	flex-direction: row;
 	flex-wrap: nowrap;
 	align-items: center;
-	gap: 0.65em;
+	gap: 8px;
 }
 
 .rv-locator-glancable .rv-locator-when > .rv-locator-slot,
@@ -2656,7 +2664,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	flex: 0 0 auto;
 	flex-wrap: nowrap;
 	align-items: baseline;
-	gap: 0.35em;
+	gap: 4px;
 	width: auto;
 	max-width: 100%;
 	margin: 0;
@@ -2664,7 +2672,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	color: var(--text-normal);
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 600;
-	line-height: 1.25;
+	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
 	white-space: nowrap;
 }
 
@@ -2686,9 +2694,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	min-width: 0;
 	overflow: hidden;
 	color: var(--text-muted);
-	font-size: calc(12px * 0.72 * var(--rv-font-scale, 1));
+	font-size: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1)), 1px);
 	font-weight: 400;
-	line-height: 1.15;
+	line-height: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1) * 1.15), 1px);
 	text-overflow: ellipsis;
 }
 
@@ -4194,7 +4202,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	margin: 10px 4px 14px;
 	color: var(--text-muted);
 	font-size: var(--font-ui-smaller);
-	line-height: 1.35;
+	line-height: 18px;
 }
 
 .rv-locator-view.is-map-fullscreen .rv-locator-scroll,
@@ -5613,12 +5621,12 @@ body.rv-center-visit-notes .rv-older-heading {
 .rv-snooze-tiny {
 	display: flex;
 	align-items: baseline;
-	gap: 0.4em;
+	gap: 4px;
 	min-width: 0;
 	color: var(--text-muted);
-	font-size: calc(12px * 0.72 * var(--rv-font-scale, 1));
+	font-size: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1)), 1px);
 	font-weight: 400;
-	line-height: 1.15;
+	line-height: round(nearest, calc(12px * 0.72 * var(--rv-font-scale, 1) * 1.15), 1px);
 }
 
 .rv-snooze-tiny {
@@ -6015,9 +6023,19 @@ body.rv-center-visit-notes .rv-older-heading {
   Smoke cascade. These selectors are at least as specific as the earlier
   rules they replace, and they come last, so the used value is the one below.
 */
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title {
+	box-sizing: border-box;
+	height: 32px;
+	min-height: 32px;
+	padding-top: 0;
+	padding-bottom: 0;
+	line-height: 32px;
+}
+
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner .rv-dash-name {
 	font-size: 20.4px;
+	line-height: 32px;
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line,

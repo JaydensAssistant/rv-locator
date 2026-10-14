@@ -69,6 +69,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.syncBasesChrome();
 		this.ensureSearchField();
 		this.syncHubMapMount();
+		this.snapCardFrames();
 	}
 
 	protected override afterChrome(): void {
@@ -209,6 +210,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		});
 		this.publishPinOrder(paths);
 		this.applyColumnSnap();
+		this.snapCardFrames();
 		this.watchLayout();
 	}
 
@@ -583,7 +585,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 				void this.plugin.openRoute(row.path);
 			});
 		}
-		snapBadgeRow(actions);
 	}
 
 	private noteFrontmatter(path: string): Record<string, unknown> | null {
@@ -788,11 +789,27 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.style.setProperty('--rv-pad-x', `${settings.glancablePaddingX}px`);
 		this.root.style.setProperty('--rv-font-scale', String(fitted));
 		this.root.style.setProperty('--rv-icon-scale', String(settings.glancableIconScale));
-		this.root.style.setProperty('--rv-control-size', `calc(28px * ${fitted})`);
+		this.root.style.setProperty('--rv-control-size', `${Math.round(28 * fitted)}px`);
 		this.root.style.setProperty(
 			'--rv-line-max',
 			settings.glancableMaxLineChars > 0 ? `${settings.glancableMaxLineChars}ch` : '100%',
 		);
+	}
+
+	/** Card rows and the blocks above them land on whole pixels, with no badge transform. */
+	private snapCardFrames(): void {
+		if (!this.scrollEl) return;
+		snapEdges(this.scrollEl);
+		for (const node of Array.from(this.scrollEl.children)) {
+			if (!(node instanceof HTMLElement)) continue;
+			if (node.classList.contains('rv-locator-card-grid')) {
+				for (const card of Array.from(node.children)) {
+					if (card instanceof HTMLElement) snapFlowBox(card, true);
+				}
+				continue;
+			}
+			snapFlowBox(node, false);
+		}
 	}
 
 	private applyColumnSnap(): void {
@@ -810,6 +827,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.applyColumnSnap();
 			if (this.plugin.settings.glancableFitCount !== 0) this.applyDensity();
 			this.syncHubMapMount();
+			this.snapCardFrames();
 		});
 		this.layoutObserver.observe(this.scrollEl);
 		this.layoutObserver.observe(this.root);
@@ -1037,26 +1055,167 @@ export function appendBadge(parent: HTMLElement, face: BadgeFace): HTMLElement {
 	return button;
 }
 
-/** A flex row can land on a half pixel and shift every glyph inside it. */
-export function snapBadgeRow(row: HTMLElement): void {
-	const place = (): void => {
-		if (!row.isConnected) return;
-		const badges = Array.from(row.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
-		const targets = badges.length > 0 ? badges : [row];
-		for (const badge of targets) badge.style.transform = '';
-		for (const badge of targets) {
-			const rect = badge.getBoundingClientRect();
-			if (rect.width < 1 && rect.height < 1) continue;
-			const dx = Math.round(rect.left) - rect.left;
-			const dy = Math.round(rect.top) - rect.top;
-			if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) continue;
-			const px = (value: number): string => String(Math.round(value * 100) / 100);
-			badge.style.transform = `translate(${px(dx)}px, ${px(dy)}px)`;
+const SNAP_EDGES = ['margin-top', 'margin-bottom', 'padding-top', 'padding-bottom'] as const;
+
+function px(value: number): string {
+	return String(Math.round(value * 100) / 100);
+}
+
+/**
+ * Border-box height that keeps a centered badge stack on a whole pixel.
+ * The stack is an even number of pixels for the 28px and 38px badges, so the
+ * card height has to leave an even remainder after the border.
+ */
+export function wholeCardHeight(height: number, border: number, stack: number): number {
+	let next = Math.ceil(height - 1e-3);
+	if (!Number.isFinite(next) || next < 1) return Math.max(1, Math.round(height) || 1);
+	const edge = Math.round(border);
+	if (stack > 0) next = Math.max(next, edge + stack);
+	while (stack > 0 && (next - edge - stack) % 2 !== 0) next += 1;
+	return next;
+}
+
+/** Grow a block to a whole pixel and shift it with layout, never a transform. */
+export function snapFlowBox(el: HTMLElement, card = false): void {
+	el.style.transform = '';
+	const rect = el.getBoundingClientRect();
+	if (rect.width < 1 || rect.height < 1) return;
+	if (card) {
+		const next = wholeCardHeight(rect.height, verticalBorder(el), badgeStack(el));
+		if (el.style.minHeight !== `${next}px`) el.style.minHeight = `${next}px`;
+	} else {
+		const next = Math.ceil(rect.height - 1e-3);
+		if (Math.abs(rect.height - next) >= 0.05 && el.style.minHeight !== `${next}px`) {
+			el.style.minHeight = `${next}px`;
 		}
-	};
-	place();
-	const view = row.ownerDocument.defaultView;
-	if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(place);
+	}
+	nudgeToWholePixel(el);
+	const actions = el.querySelector(':scope > .rv-locator-card-actions');
+	if (actions instanceof HTMLElement) snapActionsColumn(actions);
+}
+
+/**
+ * The action rail is pinned to the card's right edge. A fractional card width
+ * leaves that edge off the pixel, so the rail's own top and left are rounded
+ * and its height is a whole pixel that still centers the stack.
+ */
+function snapActionsColumn(actions: HTMLElement): void {
+	actions.style.transform = '';
+	const rect = actions.getBoundingClientRect();
+	if (rect.width < 1 || rect.height < 1) return;
+	const dx = Math.round(rect.left) - rect.left;
+	const dy = Math.round(rect.top) - rect.top;
+	const heightOff = Math.abs(rect.height - Math.round(rect.height)) >= 0.05;
+	if (Math.abs(dx) >= 0.05) {
+		const current = parseFloat(actions.style.marginLeft) || 0;
+		actions.style.marginLeft = `${px(current + dx)}px`;
+	}
+	if (Math.abs(dy) < 0.05 && !heightOff) return;
+	const current = parseFloat(actions.style.top) || 0;
+	if (Math.abs(dy) >= 0.05) actions.style.top = `${px(current + dy)}px`;
+	actions.style.bottom = 'auto';
+	const badges = Array.from(actions.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
+	const gap = Math.round(parseFloat(getComputedStyle(actions).rowGap || getComputedStyle(actions).gap) || 4);
+	let stack = gap * Math.max(0, badges.length - 1);
+	for (const badge of badges) {
+		const height = badge.getBoundingClientRect().height;
+		stack += height > 0 ? Math.round(height) : 28;
+	}
+	let height = Math.max(Math.round(rect.height), stack);
+	if (stack > 0 && (height - stack) % 2 !== 0) height += 1;
+	actions.style.height = `${height}px`;
+}
+
+/**
+ * Round the margins and paddings above Quick Facts, then shift that callout
+ * onto a whole pixel. The shift is layout (`top`/`left`), so the first paint
+ * is already on the grid.
+ */
+export function snapLayoutAbove(anchor: HTMLElement): void {
+	const preview = anchor.closest('.markdown-preview-view, .markdown-source-view, .markdown-reading-view');
+	if (preview instanceof HTMLElement) snapEdges(preview);
+	const chain: HTMLElement[] = [];
+	let node: HTMLElement | null = anchor;
+	while (node) {
+		chain.push(node);
+		const parent: HTMLElement | null = node.parentElement;
+		if (!(parent instanceof HTMLElement) || parent === preview) break;
+		node = parent;
+	}
+	for (const el of chain) {
+		const parent = el.parentElement;
+		if (!parent) continue;
+		for (const child of Array.from(parent.children)) {
+			if (child === el) break;
+			if (!(child instanceof HTMLElement)) continue;
+			snapEdges(child);
+			const height = child.getBoundingClientRect().height;
+			if (height < 1) continue;
+			const next = Math.ceil(height - 1e-3);
+			if (Math.abs(height - next) >= 0.05 && child.style.minHeight !== `${next}px`) {
+				child.style.minHeight = `${next}px`;
+			}
+		}
+		if (el !== anchor) snapEdges(el);
+	}
+	nudgeToWholePixel(anchor);
+}
+
+/** Move one element onto whole pixels with relative `top`/`left`, not a transform. */
+export function nudgeToWholePixel(el: HTMLElement): void {
+	const rect = el.getBoundingClientRect();
+	if (rect.width < 1 || rect.height < 1) return;
+	const dx = Math.round(rect.left) - rect.left;
+	const dy = Math.round(rect.top) - rect.top;
+	if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return;
+	const left = parseFloat(el.style.left) || 0;
+	const top = parseFloat(el.style.top) || 0;
+	if (getComputedStyle(el).position === 'static') el.style.position = 'relative';
+	if (Math.abs(dx) >= 0.05) el.style.left = `${px(left + dx)}px`;
+	if (Math.abs(dy) >= 0.05) el.style.top = `${px(top + dy)}px`;
+}
+
+/** An absolute popup's own top and left, corrected onto the pixel grid. */
+export function snapAbsoluteOrigin(el: HTMLElement): void {
+	const rect = el.getBoundingClientRect();
+	if (rect.width < 1 || rect.height < 1) return;
+	const dx = Math.round(rect.left) - rect.left;
+	const dy = Math.round(rect.top) - rect.top;
+	const left = parseFloat(el.style.left) || 0;
+	const top = parseFloat(el.style.top) || 0;
+	if (Math.abs(dx) >= 0.05) el.style.left = `${px(left + dx)}px`;
+	if (Math.abs(dy) >= 0.05) el.style.top = `${px(top + dy)}px`;
+}
+
+function snapEdges(el: HTMLElement): void {
+	const style = getComputedStyle(el);
+	for (const name of SNAP_EDGES) {
+		const value = parseFloat(style.getPropertyValue(name));
+		if (!Number.isFinite(value) || Math.abs(value - Math.round(value)) < 0.05) continue;
+		const rounded = `${Math.round(value)}px`;
+		if (el.style.getPropertyValue(name) !== rounded) el.style.setProperty(name, rounded);
+	}
+}
+
+function verticalBorder(el: HTMLElement): number {
+	const style = getComputedStyle(el);
+	const top = parseFloat(style.borderTopWidth) || 0;
+	const bottom = parseFloat(style.borderBottomWidth) || 0;
+	return top + bottom;
+}
+
+function badgeStack(card: HTMLElement): number {
+	const actions = card.querySelector(':scope > .rv-locator-card-actions');
+	if (!(actions instanceof HTMLElement)) return 0;
+	const badges = Array.from(actions.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
+	if (badges.length === 0) return 0;
+	const gap = parseFloat(getComputedStyle(actions).rowGap || getComputedStyle(actions).gap) || 4;
+	let stack = Math.round(gap) * (badges.length - 1);
+	for (const badge of badges) {
+		const height = badge.getBoundingClientRect().height;
+		stack += height > 0 ? Math.round(height) : 28;
+	}
+	return stack;
 }
 
 function paintSnoozeBadge(button: HTMLElement): void {

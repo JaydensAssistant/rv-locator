@@ -7,10 +7,10 @@ const CARD_LINE_GAP_PX = 3;
 
 /** Rendered height of one glancable line before the font scale, from styles.css. */
 const COMPACT_LINE_PX: Record<CompactLineKind, number> = {
-	name: 20 * 1.15,
-	place: 13 * 1.25,
-	dates: 12 * 1.2,
-	foot: 13 * 1.25,
+	name: 23,
+	place: 17,
+	dates: 17,
+	foot: 17,
 };
 
 export type CompactLineKind = 'name' | 'place' | 'dates' | 'foot';
@@ -28,8 +28,8 @@ export function compactBadgePx(fontScale: number, padY: number, lines: readonly 
 	const natural = 28 * scale;
 	const slack = Math.max(0, count - 1) * 2;
 	const fit = (stack - slack) / count;
-	if (!Number.isFinite(fit) || fit <= 0) return Math.round(natural * 10) / 10;
-	return Math.round(Math.min(natural, Math.max(8, fit)) * 10) / 10;
+	if (!Number.isFinite(fit) || fit <= 0) return Math.round(natural);
+	return Math.round(Math.min(natural, Math.max(8, fit)));
 }
 
 const DEFAULT_TEXT_CHARS = 34;

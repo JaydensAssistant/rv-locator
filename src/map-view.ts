@@ -1,6 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
-import { appendBadge, mountUrgencyGlyph, snapBadgeRow } from './glancable-view';
+import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
@@ -959,8 +959,8 @@ export class RvMapView extends ItemView {
 			width: cardWidth,
 			height: cardHeight,
 		}, stageBox, frame);
-		shell.style.left = `${origin.left}px`;
-		shell.style.top = `${origin.top}px`;
+		shell.style.left = `${Math.round(origin.left)}px`;
+		shell.style.top = `${Math.round(origin.top)}px`;
 		shell.style.zIndex = String(pinUrgencyZ(pin.urgency, true) + 1);
 		const marks = urgencyMark(pin.urgency, pin.priority);
 		const card = shell.createDiv('rv-locator-card has-actions');
@@ -1028,7 +1028,11 @@ export class RvMapView extends ItemView {
 			event.stopPropagation();
 			void this.host.openRoute(pin.path);
 		});
-		snapBadgeRow(actions);
+		const placeShell = (): void => {
+			snapAbsoluteOrigin(shell);
+			snapFlowBox(card, true);
+		};
+		placeShell();
 		const nudge = (): void => {
 			const stage = this.stage;
 			if (!stage || !shell.isConnected) return;
@@ -1045,8 +1049,9 @@ export class RvMapView extends ItemView {
 				width: rect.width,
 				height: Math.min(rect.height, limit),
 			}, nextStage, nextFrame);
-			shell.style.left = `${fitted.left}px`;
-			shell.style.top = `${fitted.top}px`;
+			shell.style.left = `${Math.round(fitted.left)}px`;
+			shell.style.top = `${Math.round(fitted.top)}px`;
+			placeShell();
 		};
 		if (typeof requestAnimationFrame === 'function') requestAnimationFrame(nudge);
 		else nudge();
