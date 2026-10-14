@@ -36,7 +36,7 @@ import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live
 import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
 import { paintNoteGlanceCard } from './glance-card';
-import { glanceGridOuterPx, verticalScrollbarPx } from './glancable-density';
+import { elementScrollbarGutterPx } from './glancable-density';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import { listedUsCounties } from './us-county-index';
 import type { MapPin } from './map-pins';
@@ -135,6 +135,10 @@ export default class RVLocatorPlugin extends Plugin {
 	private wizardOpen = false;
 	private unloaded = false;
 	private stopMetaBindSweep: (() => void) | null = null;
+	/** True while a rename restores the mode the note already had. */
+	private keepRenameMode = false;
+	private glanceScrollbarKnown = false;
+	private glanceScrollbarPx = 0;
 	/** A setup notice is already on screen, so another view open does not stack a second one. */
 	private setupNudgeOpen = false;
 	private digestKeyApplied = '';
@@ -888,11 +892,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private previewStateFor(file: TFile, openState?: OpenViewState): OpenViewState | undefined {
+		if (this.keepRenameMode) return openState;
 		if (!this.noteOpensInReading(file)) return openState;
 		return withReadingPreview(openState);
 	}
 
 	private previewViewState(leaf: WorkspaceLeaf, viewState: ViewState): ViewState {
+		if (this.keepRenameMode) return viewState;
 		const nextPath = typeof viewState.state?.file === 'string' ? viewState.state.file : '';
 		const current = leaf.view instanceof MarkdownView ? leaf.view.file?.path ?? '' : '';
 		if (!navigatingToFile(current, nextPath)) return viewState;
@@ -2305,8 +2311,8 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Width the glancable grid uses. A fullscreen hub reports its own leaf.
-	 * A note with no base falls back to the markdown leaf.
+	 * Full leaf width. The registered root contains the side map, so this is
+	 * not the list column. A note with no base falls back to the markdown leaf.
 	 */
 	glanceLayoutWidth(): number {
 		let fullscreen = 0;
@@ -2322,11 +2328,58 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView)) continue;
-			const outer = view.containerEl.clientWidth;
-			const width = glanceGridOuterPx(outer, verticalScrollbarPx(view.containerEl.ownerDocument));
+			const width = view.containerEl.clientWidth;
 			if (width > best) best = width;
 		}
 		return best;
+	}
+
+	/** Scrollbar the list scroller reserves. Zero is a real overlay measurement. */
+	rememberGlanceScrollbar(px: number): void {
+		const gutter = Number.isFinite(px) && px > 0 ? px : 0;
+		this.glanceScrollbarPx = gutter;
+		this.glanceScrollbarKnown = true;
+	}
+
+	/** Full leaf for the base popup, or the note's own leaf for the note map. */
+	popupLeafPx(noteMap: boolean): number {
+		if (noteMap) {
+			const view = this.noteMapMarkdown();
+			const width = view?.containerEl.clientWidth ?? 0;
+			if (width > 1) return width;
+		}
+		return this.glanceLayoutWidth();
+	}
+
+	/**
+	 * Scrollbar shared with the list once the list has laid out.
+	 * A note map opened on its own measures that note's scroller.
+	 */
+	popupScrollbarPx(noteMap: boolean): number {
+		if (this.glanceScrollbarKnown) return this.glanceScrollbarPx;
+		if (!noteMap) return 0;
+		const view = this.noteMapMarkdown();
+		return view ? this.reservedScrollbarPx(view.containerEl) : 0;
+	}
+
+	private noteMapMarkdown(): MarkdownView | null {
+		const host = this.noteMapHost();
+		if (host) {
+			for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+				const view = leaf.view;
+				if (view instanceof MarkdownView && view.containerEl === host) return view;
+			}
+		}
+		return this.app.workspace.getActiveViewOfType(MarkdownView);
+	}
+
+	/** Scrollbar on the note's own preview or source scroller. A nested box is not the leaf gutter. */
+	private reservedScrollbarPx(root: HTMLElement): number {
+		for (const selector of ['.markdown-preview-view', '.cm-scroller', '.view-content']) {
+			const node = root.querySelector(selector);
+			if (node instanceof HTMLElement && node.clientWidth > 1) return elementScrollbarGutterPx(node);
+		}
+		return elementScrollbarGutterPx(root);
 	}
 
 	/** Test point while desktop distance testing is on, otherwise the latest GPS fix. */
@@ -3478,6 +3531,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private async applyRename(file: TFile, nextBase: string, oldDisplay: string, newDisplay: string): Promise<void> {
 		const parent = file.parent?.path ?? '';
 		const dest = parent && parent !== '/' ? `${parent}/${nextBase}.md` : `${nextBase}.md`;
+		const held = this.holdNoteView(file);
 		await this.app.fileManager.renameFile(file, dest);
 		const renamed = this.app.vault.getFileByPath(dest);
 		if (!renamed) return;
@@ -3486,32 +3540,97 @@ export default class RVLocatorPlugin extends Plugin {
 			const line = `> - ${formatVisitStamp(new Date())} — name ${oldDisplay} → ${newDisplay}`;
 			return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
 		});
-		await this.reopenRenamedNote(renamed);
+		await this.reopenRenamedNote(renamed, held);
+	}
+
+	/** Mode, source flag, and scroll from before the path changes. */
+	private holdNoteView(file: TFile): { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number } | null {
+		const leaf = this.app.workspace.getLeavesOfType('markdown')
+			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
+		if (!leaf || !(leaf.view instanceof MarkdownView)) return null;
+		const view = leaf.view;
+		const live = view.getState();
+		const leafState = leaf.getViewState().state;
+		const fromLeaf = leafState && typeof leafState === 'object' ? leafState : {};
+		const mode = typeof live.mode === 'string'
+			? live.mode
+			: typeof fromLeaf.mode === 'string' ? fromLeaf.mode : view.getMode();
+		const source = typeof live.source === 'boolean'
+			? live.source
+			: typeof fromLeaf.source === 'boolean' ? fromLeaf.source : false;
+		const raw = leaf.getEphemeralState();
+		const ephemeral = raw && typeof raw === 'object' ? { ...raw as Record<string, unknown> } : {};
+		const scroller = view.containerEl.querySelector('.markdown-preview-view, .cm-scroller');
+		const scrollTop = scroller instanceof HTMLElement ? scroller.scrollTop : 0;
+		if (typeof ephemeral.scroll !== 'number') ephemeral.scroll = scrollTop;
+		return { mode, source, ephemeral, scrollTop };
 	}
 
 	/**
-	 * A rename leaves the open preview on Meta Bind's unloaded placeholders.
-	 * Drop the leaf and open the note again so those children are not kept in
-	 * a hidden preview, then detach any `.mb-unloaded` node that is still hidden.
+	 * A rename leaves a Reading preview on Meta Bind's unloaded placeholders.
+	 * Reading view is emptied and opened again. Live Preview and Source keep
+	 * the mode, source flag, and scroll they had before the rename.
 	 */
-	private async reopenRenamedNote(file: TFile): Promise<void> {
+	private async reopenRenamedNote(
+		file: TFile,
+		held: { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number } | null,
+	): Promise<void> {
 		const leaves = this.app.workspace.getLeavesOfType('markdown');
 		let leaf = leaves.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
 		if (!leaf) leaf = this.app.workspace.getLeaf(false);
 		if (!leaf) return;
+		const mode = held?.mode ?? 'preview';
+		const source = held?.source ?? false;
+		const reading = mode === 'preview';
+		this.keepRenameMode = true;
 		try {
-			await leaf.setViewState({ type: 'empty', state: {} });
-		} catch {
-			/* Opening the file below still replaces the view. */
+			if (reading) {
+				try {
+					await leaf.setViewState({ type: 'empty', state: {} });
+				} catch {
+					/* Opening the file below still replaces the view. */
+				}
+			}
+			await leaf.openFile(file, { active: true, state: { mode, source } });
+			const opened = leaf.view;
+			if (reading && opened instanceof MarkdownView) {
+				const preview = opened.previewMode;
+				if (preview && typeof preview.rerender === 'function') preview.rerender(true);
+			}
+			if (held) {
+				const state = leaf.getViewState();
+				const inner = state.state && typeof state.state === 'object' ? { ...state.state } : {};
+				inner.mode = held.mode;
+				inner.source = held.source;
+				inner.file = file.path;
+				await leaf.setViewState({ ...state, state: inner }, held.ephemeral);
+				this.applyHeldScroll(leaf, held);
+			}
+		} finally {
+			this.keepRenameMode = false;
 		}
-		await leaf.openFile(file, { active: true, state: { mode: 'preview', source: false } });
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
-		const preview = view.previewMode;
-		if (preview && typeof preview.rerender === 'function') preview.rerender(true);
-		this.openInReadingView(file, true);
-		const shown = leaf.view instanceof MarkdownView ? leaf.view.containerEl : view.containerEl;
+		const shown = view.containerEl;
 		this.detachStaleMetaBind(this.leafHost(leaf, shown));
+		const win = shown.ownerDocument.defaultView;
+		if (held && win && typeof win.requestAnimationFrame === 'function') {
+			win.requestAnimationFrame(() => {
+				if (!this.unloaded) this.applyHeldScroll(leaf, held);
+			});
+		}
+	}
+
+	/** Put the saved scroll back on the leaf and on the preview or source scroller. */
+	private applyHeldScroll(
+		leaf: WorkspaceLeaf,
+		held: { ephemeral: Record<string, unknown>; scrollTop: number },
+	): void {
+		leaf.setEphemeralState(held.ephemeral);
+		const view = leaf.view;
+		if (!(view instanceof MarkdownView)) return;
+		const scroller = view.containerEl.querySelector('.markdown-preview-view, .cm-scroller');
+		if (scroller instanceof HTMLElement) scroller.scrollTop = held.scrollTop;
 	}
 
 	/** The leaf holds a hidden preview the markdown view no longer owns. */

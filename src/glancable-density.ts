@@ -39,35 +39,30 @@ const GRID_GAP_PX = 8;
 /** Horizontal padding on `.rv-locator-glancable .rv-locator-scroll` (`6px 10px 10px`). */
 export const GLANCE_SCROLL_PAD_X = 10;
 
-const scrollbarPxByDoc = new WeakMap<Document, number>();
-
 /**
- * Width of a classic vertical scrollbar. Overlay scrollbars measure 0, so a
- * desktop leaf is not narrowed. Cached per document.
+ * Scrollbar this element actually reserves (`offsetWidth - clientWidth`).
+ * Overlay scrollbars are 0. A column split is not a scrollbar, so anything
+ * past a real bar is ignored.
  */
-export function verticalScrollbarPx(doc: Document | null | undefined): number {
-	if (!doc?.documentElement) return 0;
-	const cached = scrollbarPxByDoc.get(doc);
-	if (cached !== undefined) return cached;
-	const probe = doc.createElement('div');
-	probe.style.cssText = 'position:absolute;top:-9999px;left:-9999px;width:100px;height:100px;overflow:scroll;visibility:hidden;pointer-events:none;';
-	doc.documentElement.appendChild(probe);
-	const width = probe.offsetWidth - probe.clientWidth;
-	probe.remove();
-	const px = Number.isFinite(width) && width > 0 ? width : 0;
-	scrollbarPxByDoc.set(doc, px);
-	return px;
+export function elementScrollbarGutterPx(el: HTMLElement | null | undefined): number {
+	if (!el) return 0;
+	const outer = el.offsetWidth;
+	const inner = el.clientWidth;
+	if (!(outer > 1) || !(inner >= 0) || outer + 0.5 < inner) return 0;
+	const bar = outer - inner;
+	if (!(bar > 0) || bar > 40) return 0;
+	return bar;
 }
 
 /**
- * Grid width the list uses. `outerPx` is the leaf. A classic scrollbar comes
- * off, which is 400 in a 412px leaf with a 12px bar. An overlay bar of 0
- * leaves the leaf unchanged, so 1236 stays 1236.
+ * Grid width the list uses. `leafPx` is the full leaf, as if no side map were
+ * open. A classic scrollbar comes off, which is 400 in a 412px leaf with a
+ * 12px bar. An overlay bar of 0 leaves the leaf unchanged, so 1236 stays 1236.
  */
-export function glanceGridOuterPx(outerPx: number, scrollbarPx: number): number {
-	if (!Number.isFinite(outerPx) || outerPx <= 1) return 0;
+export function glanceGridOuterPx(leafPx: number, scrollbarPx: number): number {
+	if (!Number.isFinite(leafPx) || leafPx <= 1) return 0;
 	const bar = Number.isFinite(scrollbarPx) && scrollbarPx > 0 ? scrollbarPx : 0;
-	return Math.max(0, outerPx - bar);
+	return Math.max(0, leafPx - bar);
 }
 
 export interface DensityMeasure {
@@ -116,6 +111,21 @@ export function glancableCardSlotPx(containerPx: number, settings: DensityMeasur
 	const gaps = Math.max(0, columns - 1) * GRID_GAP_PX;
 	if (columns < 1 || content <= 0) return estimatedGlancableCardPx(settings);
 	return (content - gaps) / columns;
+}
+
+/**
+ * One card width for the list, the base popup, and the note-map popup.
+ * `leafPx` is the full leaf (fullscreen ignores a side map). `gutterPx` is the
+ * scrollbar that leaf actually reserves.
+ */
+export function glancableCardWidthPx(leafPx: number, gutterPx: number, settings: DensityMeasure, fitCount = 0): number {
+	return glancableCardSlotPx(glanceGridOuterPx(leafPx, gutterPx), settings, fitCount);
+}
+
+/** Column count that shares {@link glancableCardWidthPx}'s grid width. */
+export function glancableCardColumns(leafPx: number, gutterPx: number, settings: DensityMeasure, fitCount = 0): number {
+	const grid = glanceGridOuterPx(leafPx, gutterPx);
+	return fitCount >= 2 ? fitCount : glancableColumns(grid, settings);
 }
 
 /** How many cards fit side by side. A wide pane is not capped at two. */

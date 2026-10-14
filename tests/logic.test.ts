@@ -21,7 +21,7 @@ import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, form
 import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
 import { countyFilterParam, countyNameKey, decideGeocodePick, hitInHomeCounties, isFullConfidence, normalizeCountyList, parseHomeCountyLines, preferHomeRegion } from '../src/home-base';
 import { canonicalUsCounty, isListedUsCounty, listedUsCounties } from '../src/us-county-index';
-import { glanceGridOuterPx, glancableCardSlotPx } from '../src/glancable-density';
+import { glancableCardSlotPx, glancableCardWidthPx } from '../src/glancable-density';
 import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
@@ -932,9 +932,10 @@ describe('home base pick', () => {
 		assert.equal(countyFilterParam(['Citrus County, FL', 'Marion County, FL']), 'Citrus County|Marion County');
 		assert.equal(glancableCardSlotPx(1236, DEFAULT_SETTINGS), 400);
 		assert.equal(glancableCardSlotPx(400, DEFAULT_SETTINGS), 380);
-		assert.equal(glancableCardSlotPx(glanceGridOuterPx(412, 12), DEFAULT_SETTINGS), 380);
-		assert.equal(glancableCardSlotPx(glanceGridOuterPx(1236, 0), DEFAULT_SETTINGS), 400);
-		assert.equal(glanceGridOuterPx(412, 0), 412);
+		assert.equal(glancableCardWidthPx(1236, 0, DEFAULT_SETTINGS), 400);
+		assert.equal(glancableCardWidthPx(1236, 12, DEFAULT_SETTINGS), 396);
+		assert.equal(glancableCardWidthPx(412, 0, DEFAULT_SETTINGS), 392);
+		assert.equal(glancableCardWidthPx(412, 12, DEFAULT_SETTINGS), 380);
 		assert.equal(hitInHomeCounties({ county: 'Marion' }, ['Marion County, FL']), true);
 		assert.equal(isListedUsCounty('Citrus'), true);
 		assert.equal(isListedUsCounty('Citrus County'), true);

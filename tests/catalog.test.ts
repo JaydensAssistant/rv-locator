@@ -631,10 +631,10 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(map, /paintGlanceCard/);
 		assert.match(map, /popupCardWidth/);
 		assert.match(map, /glanceLayoutWidth/);
-		assert.match(map, /glancableCardSlotPx/);
-		assert.match(map, /glanceGridOuterPx/);
-		assert.match(glance, /glanceGridOuterPx/);
-		assert.match(read('src/main.ts'), /glanceGridOuterPx/);
+		assert.match(map, /glancableCardWidthPx/);
+		assert.match(glance, /glancableCardWidthPx/);
+		assert.match(read('src/main.ts'), /popupLeafPx/);
+		assert.match(read('src/main.ts'), /popupScrollbarPx/);
 		assert.doesNotMatch(map, /frame\.width - 24/);
 		assert.doesNotMatch(read('src/sort-pills.ts'), /containSortRow/);
 		assert.doesNotMatch(glance, /containSortRow/);
@@ -682,6 +682,9 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(main, /preview\.rerender\(true\)/);
 		assert.match(main, /type: 'empty'/);
 		assert.match(main, /\.mb-unloaded/);
+		assert.match(main, /holdNoteView/);
+		assert.match(main, /getEphemeralState/);
+		assert.match(main, /keepRenameMode/);
 		assert.match(main, /FOCUS_ATTEMPTS = 80/);
 		const focus = main.slice(main.indexOf('private async focusVisitNotes'), main.indexOf('private openPicker'));
 		assert.match(focus, /setActiveLeaf\(leaf, \{ focus: true \}\)/);

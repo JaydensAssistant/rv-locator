@@ -1,5 +1,5 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
-import { glanceGridOuterPx, glancableCardSlotPx, verticalScrollbarPx } from './glancable-density';
+import { glancableCardWidthPx } from './glancable-density';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
@@ -29,10 +29,14 @@ export interface MapHost {
 	/** Paint the Glancable list card into the popup. False when that view is not mounted. */
 	paintGlanceCard?(parent: HTMLElement, path: string): boolean;
 	/**
-	 * Width the list would use for its card grid. Fullscreen hides the cards,
-	 * so this is the view width, not a measurement of a hidden card.
+	 * Full leaf width. Fullscreen uses this as if no side map were open,
+	 * not the list column beside the map.
 	 */
 	glanceLayoutWidth?(): number;
+	/** Full leaf for a base popup, or the note leaf for a note-map popup. */
+	popupLeafPx?(noteMap: boolean): number;
+	/** Scrollbar that leaf actually reserves. Overlay is 0. */
+	popupScrollbarPx?(noteMap: boolean): number;
 	/** Keep the note-map distance in step with this map's GPS fix. */
 	rememberLiveFix?(fix: { lat: number; lon: number } | null): void;
 	tileCacheEpoch?: number;
@@ -1011,21 +1015,17 @@ export class RvMapView extends ItemView {
 	}
 
 	/**
-	 * The width one list card gets from the glancable grid in this leaf.
-	 * Fullscreen hides the list, so the live card is not measured.
-	 * The layout width already matches the list scroller: 400 from a 1236px
-	 * leaf, and 380 from a 412px leaf whose scrollbar is 12px.
+	 * The same card width as the list: full leaf minus the real scrollbar,
+	 * through the Glancable grid rule. A side map does not narrow it.
 	 */
 	private popupCardWidth(): number {
 		const settings = this.host.settings;
-		const layout = this.host.glanceLayoutWidth?.() ?? 0;
-		let container = layout;
-		if (!(container > 0)) {
-			const doc = this.stage?.ownerDocument;
-			const windowW = doc?.defaultView?.innerWidth ?? 0;
-			container = glanceGridOuterPx(windowW, verticalScrollbarPx(doc));
-		}
-		return glancableCardSlotPx(container, settings, settings.glancableFitCount);
+		const note = this.contentEl?.classList.contains('rv-note-map') === true;
+		const leaf = this.host.popupLeafPx?.(note) ?? this.host.glanceLayoutWidth?.() ?? 0;
+		const gutter = this.host.popupScrollbarPx?.(note) ?? 0;
+		const windowW = this.stage?.ownerDocument.defaultView?.innerWidth ?? 0;
+		const width = leaf > 1 ? leaf : windowW;
+		return glancableCardWidthPx(width, leaf > 1 ? gutter : 0, settings, settings.glancableFitCount);
 	}
 
 	/** Used only when the Glancable view is not mounted to paint the same card. */

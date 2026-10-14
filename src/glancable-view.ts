@@ -4,7 +4,7 @@ import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
 import { domInstanceOf } from './dom';
-import { compactBadgePx, fittedFontScale, glanceGridOuterPx, glancableColumns, verticalScrollbarPx, type CompactLineKind } from './glancable-density';
+import { compactBadgePx, elementScrollbarGutterPx, fittedFontScale, glancableCardColumns, glancableCardWidthPx, type CompactLineKind } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
@@ -46,8 +46,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
 	private hubFillNodes: HTMLElement[] = [];
-	/** `root.clientWidth - scroll.clientWidth` while the list is on screen. */
-	private listGutterPx = 0;
 
 	constructor(
 		controller: QueryController,
@@ -61,7 +59,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.quietBanner = true;
 		this.register(this.plugin.registerGlancePainter((parent, path) => this.paintCardForPath(parent, path)));
 		this.register(this.plugin.registerGlanceWidth(() => this.listCardWidth()));
-		this.register(this.plugin.registerGlanceLayout(() => this.glanceGridWidth(), this.root));
+		this.register(this.plugin.registerGlanceLayout(() => {
+			this.rememberScrollbar();
+			const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
+			return width > 1 ? width : 0;
+		}, this.root));
 	}
 
 	override onunload(): void {
@@ -693,7 +695,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const map = this.hubMapEl;
 		const open = this.plugin.hubMapOpen && map != null;
 		const full = open && this.plugin.hubMapIsFullscreen();
-		if (full && !this.root.classList.contains('is-map-fullscreen')) this.rememberListGutter();
+		if (full && !this.root.classList.contains('is-map-fullscreen')) this.rememberScrollbar();
 		this.root.toggleClass('is-stacked', this.stackedLayout);
 		this.root.toggleClass('is-search-open', this.searchOpen);
 		this.root.toggleClass('is-hub-map', open);
@@ -844,37 +846,24 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 	}
 
-	/**
-	 * The list grid is the scrollport, which is the leaf minus a classic scrollbar.
-	 * Fullscreen hides that scroller, so the popup uses the gutter measured while
-	 * the list was visible, then a scrollbar probe when the list never laid out.
-	 */
-	private glanceGridWidth(): number {
-		const scroll = this.scrollEl;
-		const fullscreen = this.root.classList.contains('is-map-fullscreen');
-		if (!fullscreen && scroll && scroll.clientWidth > 1) {
-			this.rememberListGutter();
-			return scroll.clientWidth;
-		}
-		const outer = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
-		const bar = this.listGutterPx > 0 ? this.listGutterPx : verticalScrollbarPx(this.root.ownerDocument);
-		return glanceGridOuterPx(outer, bar);
-	}
-
-	/** Remember how much of the leaf the list scrollbar takes. A hidden scroller is not a measurement. */
-	private rememberListGutter(): void {
+	/** The list scroller's own scrollbar. A hidden scroller is not a measurement, and a side map is not a gutter. */
+	private rememberScrollbar(): void {
 		if (this.root.classList.contains('is-map-fullscreen')) return;
 		const scroll = this.scrollEl;
-		if (!scroll) return;
-		const outer = this.root.clientWidth;
-		const inner = scroll.clientWidth;
-		if (outer > 1 && inner > 1 && outer + 0.5 >= inner) this.listGutterPx = Math.max(0, outer - inner);
+		if (!scroll || scroll.clientWidth <= 1) return;
+		this.plugin.rememberGlanceScrollbar(elementScrollbarGutterPx(scroll));
 	}
 
 	private applyColumnSnap(): void {
-		this.rememberListGutter();
-		const fit = this.plugin.settings.glancableFitCount;
-		const columns = fit >= 2 ? fit : glancableColumns(this.scrollEl.clientWidth, this.plugin.settings);
+		this.rememberScrollbar();
+		const scroll = this.scrollEl;
+		const gutter = elementScrollbarGutterPx(scroll);
+		const column = scroll.offsetWidth > 1 ? scroll.offsetWidth : scroll.clientWidth + gutter;
+		const settings = this.plugin.settings;
+		const card = glancableCardWidthPx(column, gutter, settings, settings.glancableFitCount);
+		const columns = Number.isFinite(card)
+			? glancableCardColumns(column, gutter, settings, settings.glancableFitCount)
+			: 1;
 		const template = columns >= 2 ? `repeat(${columns}, minmax(0, 1fr))` : 'minmax(0, 1fr)';
 		for (const node of Array.from(this.scrollEl.querySelectorAll('.rv-locator-card-grid'))) {
 			(node as HTMLElement).style.gridTemplateColumns = template;
