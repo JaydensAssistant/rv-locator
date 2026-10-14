@@ -685,8 +685,13 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(main, /holdNoteView/);
 		assert.match(main, /getEphemeralState/);
 		assert.match(main, /keepRenameMode/);
-		assert.match(main, /reopenDetachedLeaf/);
-		assert.match(main, /leaf\.detach\(\)/);
+		assert.match(main, /reopenSameLeaf/);
+		assert.doesNotMatch(main, /reopenDetachedLeaf/);
+		assert.doesNotMatch(main, /leaf\.detach\(\)/);
+		const sameLeaf = main.slice(main.indexOf('private async reopenSameLeaf'), main.indexOf('private applyHeldScroll'));
+		assert.match(sameLeaf, /setViewState\(\{ type: 'empty', state: \{\} \}\)/);
+		assert.match(sameLeaf, /leaf\.openFile\(file/);
+		assert.doesNotMatch(sameLeaf, /getLeaf\('tab'\)/);
 		assert.match(main, /FOCUS_ATTEMPTS = 80/);
 		const focus = main.slice(main.indexOf('private async focusVisitNotes'), main.indexOf('private openPicker'));
 		assert.match(focus, /setActiveLeaf\(leaf, \{ focus: true \}\)/);
