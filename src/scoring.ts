@@ -1,0 +1,259 @@
+import type { PriorityBand, PriorityDays } from './types';
+import { defaultUrgencyColors } from './urgency-palette';
+
+/**
+ * Urgency is days since Last Spoke divided by the priority threshold.
+ * Under 3 days the ratio is multiplied by (days / 3) squared, so a high priority
+ * stays well below 1 around 2 days. At day 3 the ramp is 1 and the score is the raw ratio.
+ * There is no other urgency floor. The value keeps growing past 1.
+ *
+ * Ideality planner (the upcoming-slot ranking view, its toggle, and its command)
+ * was removed in 1.2.6. It may return later. Ideality as a score stays.
+ */
+export const URGENCY_RAMP_DAYS = 3;
+
+/** Squares the under-3-day fade so priority 5 is not near urgency 1 by about 2 days. */
+export const URGENCY_RAMP_POWER = 2;
+
+/** Chosen so P5 at 4 days at the territory span, and P1 at 6 weeks at 1 mile, both land near 1. */
+export const IDEALITY_ALPHA = 0.555;
+
+/** Same-point distance stays finite. About 80 meters. */
+const MIN_IDEALITY_MILES = 0.05;
+
+/**
+ * Strong homes may raise ideality a little. The cap stays modest so a lower-urgency RV
+ * does not leapfrog someone much more overdue just by being home.
+ */
+export const LIKELIHOOD_HOME_CAP = 1.25;
+
+/** Strong empties pull down harder than homes bump up. */
+export const LIKELIHOOD_EMPTY_FLOOR = 0.45;
+
+export function urgencyScore(days: number | null, priority: number | null, thresholds: PriorityDays): number | null {
+	if (days == null || !Number.isFinite(days) || days < 0) return null;
+	if (!isPriorityBand(priority)) return null;
+	const threshold = thresholds[priority];
+	if (!Number.isFinite(threshold) || threshold <= 0) return null;
+	const raw = days / threshold;
+	if (days < URGENCY_RAMP_DAYS) {
+		return raw * (days / URGENCY_RAMP_DAYS) ** URGENCY_RAMP_POWER;
+	}
+	return raw;
+}
+
+/**
+ * Three bands. Below 1 is band 0 (a green circle). 1 is yellow, 2 is orange, 3 and above is red.
+ */
+export function urgencyBand(urgency: number | null): 0 | 1 | 2 | 3 {
+	if (urgency == null || !Number.isFinite(urgency) || urgency < 1) return 0;
+	if (urgency < 2) return 1;
+	if (urgency < 3) return 2;
+	return 3;
+}
+
+export interface UrgencyMark {
+	glyphs: string;
+	band: 0 | 1 | 2 | 3;
+}
+
+/**
+ * Priority above 0 and urgency under 1 is band 0: a green circle plus an inner ring.
+ * Bands 1–3 are one to three heavy marks. The glyph size does not shrink as marks are added.
+ * Priority 0, an archived note, draws a dash instead of a circle or bangs.
+ */
+export function urgencyMark(urgency: number | null, priority: number | null): UrgencyMark {
+	const band = urgencyBand(urgency);
+	if (priority == null || priority <= 0) return { glyphs: '—', band: 0 };
+	if (band === 0) return { glyphs: '○', band: 0 };
+	if (band === 1) return { glyphs: '!', band: 1 };
+	if (band === 2) return { glyphs: '!!', band: 2 };
+	return { glyphs: '!!!', band: 3 };
+}
+
+export interface UrgencyBangShape {
+	kind: 'rect' | 'circle' | 'line';
+	attr: Record<string, string>;
+}
+
+/**
+ * Marks in a 28×28 viewBox. Paths sit inside the box by the stroke radius, so a
+ * non-scaling 2px stroke paints to the edge at a 28px badge. Sizing the SVG to
+ * `--rv-badge-ink` times the glyph's optical factor sizes that paint.
+ * One, two, or three bangs stay the same size. Band 0 is an inner ring.
+ * Priority 0 is a dash. Stroke weight is CSS, not these coordinates.
+ *
+ * Insets match the default optical factors in `BADGE_OPTICAL` (ink 0.53, stroke 2px):
+ * bang 0.94 → 2.1, dash 0.94 → 2.01, ring 1.06 → 1.78. Center gap 8.4 keeps a
+ * visible gap between 2px bang stems at that bang size.
+ */
+export function urgencyBangShapes(glyphs: string): UrgencyBangShape[] {
+	const box = 28;
+	if (glyphs === '—' || glyphs === '-') {
+		const inset = 2.01;
+		return [{
+			kind: 'line',
+			attr: {
+				class: 'is-dash',
+				x1: num(inset),
+				y1: num(box / 2),
+				x2: num(box - inset),
+				y2: num(box / 2),
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-linecap': 'round',
+			},
+		}];
+	}
+	if (glyphs === '○') {
+		const inset = 1.78;
+		return [{
+			kind: 'circle',
+			attr: {
+				class: 'is-ring',
+				cx: num(box / 2),
+				cy: num(box / 2),
+				r: num(box / 2 - inset),
+				fill: 'none',
+				stroke: 'currentColor',
+			},
+		}];
+	}
+	const count = glyphs === '!' ? 1 : glyphs === '!!' ? 2 : glyphs === '!!!' ? 3 : 0;
+	if (count === 0) return [];
+	const centerGap = 8.4;
+	const inset = 2.1;
+	const group = (count - 1) * centerGap;
+	const left = (box - group) / 2;
+	const dotY = box - inset;
+	const stemEnd = dotY - inset - 2.52 - inset;
+	const shapes: UrgencyBangShape[] = [];
+	for (let index = 0; index < count; index += 1) {
+		const x = left + index * centerGap;
+		shapes.push({
+			kind: 'line',
+			attr: {
+				class: 'is-stem',
+				x1: num(x),
+				y1: num(inset),
+				x2: num(x),
+				y2: num(stemEnd),
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-linecap': 'round',
+			},
+		});
+		shapes.push({
+			kind: 'line',
+			attr: {
+				class: 'is-dot',
+				x1: num(x),
+				y1: num(dotY - 0.01),
+				x2: num(x),
+				y2: num(dotY),
+				fill: 'none',
+				stroke: 'currentColor',
+				'stroke-linecap': 'round',
+			},
+		});
+	}
+	return shapes;
+}
+
+function num(value: number): string {
+	const rounded = Math.round(value * 100) / 100;
+	return String(rounded);
+}
+
+/** Markup form of {@link urgencyBangShapes}. The card mounts real SVG nodes instead of parsing this. */
+export function urgencyGlyphMarkup(glyphs: string): string {
+	const shapes = urgencyBangShapes(glyphs);
+	if (shapes.length === 0) return '';
+	const body = shapes
+		.map((shape) => {
+			const attrs = Object.entries(shape.attr)
+				.map(([key, value]) => `${key}="${value}"`)
+				.join(' ');
+			return `<${shape.kind} ${attrs}/>`;
+		})
+		.join('');
+	return `<svg viewBox="0 0 28 28" aria-hidden="true" focusable="false" fill="currentColor">${body}</svg>`;
+}
+
+/**
+ * One color per urgency band. The default is green below 1, then a distinct
+ * yellow, orange, and red. Priority 0 stays neutral grey.
+ */
+export function urgencyAccentColor(
+	urgency: number | null,
+	priority: number | null = 1,
+	colors: readonly string[] = defaultUrgencyColors(),
+): string {
+	if (priority == null || priority <= 0) return 'var(--text-faint)';
+	const band = urgencyBand(urgency);
+	return colors[band] ?? 'var(--text-faint)';
+}
+
+export function distanceWeight(miles: number, territorySpan: number, alpha = IDEALITY_ALPHA): number | null {
+	if (!Number.isFinite(miles) || miles < 0) return null;
+	if (!Number.isFinite(territorySpan) || territorySpan <= 0) return null;
+	if (!Number.isFinite(alpha)) return null;
+	const safe = Math.max(miles, MIN_IDEALITY_MILES);
+	return (territorySpan / safe) ** alpha;
+}
+
+/**
+ * Ideality is urgency times a distance weight. Inside a priority's floor window the score fades
+ * toward 0 (day 0) instead of dropping off a cliff. `holdDistance` forces the weight to 1.
+ */
+export function idealityScore(args: {
+	days: number | null;
+	priority: number | null;
+	miles: number | null;
+	thresholds: PriorityDays;
+	floors: PriorityDays;
+	territorySpan: number;
+	holdDistance?: boolean;
+}): number | null {
+	const urgency = urgencyScore(args.days, args.priority, args.thresholds);
+	if (urgency == null || args.days == null || !isPriorityBand(args.priority)) return null;
+	let weight = 1;
+	if (!args.holdDistance) {
+		if (args.miles == null) return null;
+		const weighted = distanceWeight(args.miles, args.territorySpan);
+		if (weighted == null) return null;
+		weight = weighted;
+	}
+	let score = urgency * weight;
+	if (insidePriorityFloor(args.days, args.priority, args.floors)) {
+		const floor = args.floors[args.priority];
+		score *= args.days / floor;
+	}
+	return score;
+}
+
+/** The ideality cliff. Inside this window a day is still "fresh" for that priority. */
+export function insidePriorityFloor(days: number, priority: number | null, floors: PriorityDays): boolean {
+	if (!isPriorityBand(priority)) return false;
+	const floor = floors[priority];
+	return Number.isFinite(floor) && floor > 0 && days < floor;
+}
+
+/**
+ * Maps the Laplace rate onto a multiplier around 1.
+ * No visits, and a thin sample, stay near 1. A real 50% rate stays 1.
+ * Full-confidence homes approach {@link LIKELIHOOD_HOME_CAP}. Full-confidence empties approach {@link LIKELIHOOD_EMPTY_FLOOR}.
+ */
+export function likelihoodMultiplier(homes: number, trials: number): number {
+	const n = Math.max(0, trials);
+	const h = Math.min(Math.max(0, homes), n);
+	const rate = (h + 1) / (n + 2);
+	const confidence = n / (n + 3);
+	const delta = rate - 0.5;
+	if (delta >= 0) return 1 + delta * 2 * (LIKELIHOOD_HOME_CAP - 1) * confidence;
+	return 1 + delta * 2 * (1 - LIKELIHOOD_EMPTY_FLOOR) * confidence;
+}
+
+export function isPriorityBand(priority: number | null): priority is PriorityBand {
+	return priority === 1 || priority === 2 || priority === 3 || priority === 4 || priority === 5;
+}

@@ -1,5 +1,13 @@
 import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder, Vault, type App } from 'obsidian';
+import { emptyShare, type VisitShare } from './catalog';
+import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
+import { mountCampaignChoice } from './campaign-choice';
+import { iconizeModal } from './modal-chrome';
+import { mountAlwaysChevron } from './suggest-field';
+import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
+import { companionChoices, exactCompanion, matchingCompanion, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
+import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
 import type RVLocatorPlugin from './main';
 
@@ -42,12 +50,17 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 			? `Showing a saved lookup. Look up again sends the address to Geoapify. ${PRIVACY_NOTICE}`
 			: PRIVACY_NOTICE);
 		this.modalEl.addClass('rv-locator-modal');
+		iconizeModal(this.modalEl);
 	}
 
 	onClose(): void {
 		this.closed = true;
 		super.onClose();
-		if (!this.chose) this.onDismiss();
+		schedulePickerDismiss(
+			() => this.chose,
+			() => this.onDismiss(),
+			(run) => { window.setTimeout(run, 0); },
+		);
 	}
 
 	getSuggestions(query: string): GeocodeHit[] {
@@ -114,6 +127,13 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 	onChooseItem(item: TFolder): void {
 		this.onPick(item);
 	}
+
+	onOpen(): void {
+		void super.onOpen();
+		this.setTitle('Choose a folder');
+		this.modalEl.addClass('rv-locator-modal');
+		iconizeModal(this.modalEl);
+	}
 }
 
 export interface BulkGeocodeChoice {
@@ -157,7 +177,15 @@ export class BulkGeocodeModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Notes with an address and no location are looked up. A folder includes its subfolders. Address is never written. A result is saved without this picker only when it is the only match in a home-base county and the street words agree with the typed address. Every other note opens this picker; closing it skips that note. Distance is not written. City is written from the result. If Successful Visits is missing and Visits is a number, that number is copied. Notes that already have Address and Location get City filled from the address when City is missing. Last Attempted is left alone.',
+			text: 'Notes with an address and no location.',
+		});
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'A lone 1.00 home hit saves. Else you pick.',
+		});
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'Fills a missing Successful Visits or City.',
 		});
 
 		new Setting(contentEl)
@@ -190,7 +218,8 @@ export class BulkGeocodeModal extends Modal {
 		}
 
 		new Setting(contentEl)
-			.setName('Re-geocode notes that already have a location')
+			.setName('Include located notes')
+			.setDesc('Looks them up again.')
 			.addToggle((toggle) => {
 				toggle.setValue(this.force);
 				toggle.onChange((value) => {
@@ -248,6 +277,7 @@ export class BulkGeocodeModal extends Modal {
 					this.close();
 				});
 			});
+		iconizeModal(contentEl);
 	}
 
 	private async refreshPreview(): Promise<void> {
@@ -307,7 +337,11 @@ export class SuccessfulVisitsModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
-			text: 'Copies Visits into Successful Visits when that property is missing. Notes that already have Successful Visits are left alone. This does not invent Last Attempted or change Visits. When City is missing and the note already has Address and Location, City is filled from the address. No geocode request is made.',
+			text: 'Fills Successful Visits only when it is missing.',
+		});
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: 'Fills a missing City from the address. No lookup.',
 		});
 
 		new Setting(contentEl)
@@ -384,8 +418,11 @@ export class SuccessfulVisitsModal extends Modal {
 					this.close();
 				});
 			});
+		iconizeModal(contentEl);
 	}
 }
+
+export type VisitMenuAnswer = 'home' | 'miss' | 'past' | 'archive';
 
 export class VisitConfirmModal extends Modal {
 	private answered = false;
@@ -393,13 +430,13 @@ export class VisitConfirmModal extends Modal {
 	constructor(
 		app: App,
 		private displayName: string,
-		private onAnswer: (answer: 'home' | 'miss' | null) => void,
+		private onAnswer: (answer: VisitMenuAnswer | null) => void,
 	) {
 		super(app);
 	}
 
 	onOpen(): void {
-		this.setTitle('Were they home?');
+		this.setTitle('Log a visit');
 		this.modalEl.addClass('rv-locator-modal');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
@@ -407,19 +444,31 @@ export class VisitConfirmModal extends Modal {
 			text: `Log a visit on “${this.displayName}”. Address is not changed.`,
 		});
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
-				button.setButtonText('Yes');
-				button.setCta();
-				button.onClick(() => this.finish('home'));
-			})
-			.addButton((button) => {
-				button.setButtonText('No');
+				button.setButtonText('Not home');
 				button.onClick(() => this.finish('miss'));
 			})
 			.addButton((button) => {
+				button.setButtonText('Log past visit');
+				button.onClick(() => this.finish('past'));
+			})
+			.addButton((button) => {
+				button.setButtonText('Home');
+				button.setCta();
+				button.onClick(() => this.finish('home'));
+			});
+		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.finish(null));
+			})
+			.addButton((button) => {
+				button.setButtonText('Archive');
+				button.onClick(() => this.finish('archive'));
 			});
+		iconizeModal(contentEl);
 	}
 
 	onClose(): void {
@@ -427,11 +476,183 @@ export class VisitConfirmModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	private finish(answer: 'home' | 'miss' | null): void {
+	private finish(answer: VisitMenuAnswer | null): void {
 		if (this.answered) return;
 		this.answered = true;
 		this.onAnswer(answer);
 		this.close();
+	}
+}
+
+export type CoverageDecision = 'yes' | 'no' | 'skip';
+
+export interface CompanionCampaignPrompt {
+	name: string;
+	/** him, her, or them. */
+	pronoun?: 'him' | 'her' | 'them';
+	onDecision: (decision: CoverageDecision) => void;
+}
+
+export function coveragePronoun(gender: unknown): 'him' | 'her' | 'them' {
+	const value = typeof gender === 'string' ? gender.trim().toLowerCase() : '';
+	if (!value || value === 'mixed' || value.includes('mixed')) return 'them';
+	if (value === 'man' || value === 'men' || value === 'male') return 'him';
+	if (value === 'woman' || value === 'women' || value === 'female') return 'her';
+	return 'them';
+}
+
+export function coverageQuestion(pronoun: 'him' | 'her' | 'them', campaign: string): string {
+	const label = campaign.trim();
+	if (!label) return `Did you cover ${pronoun} with the campaign yet?`;
+	return `Did you cover ${pronoun} with the '${label}' campaign yet?`;
+}
+
+/**
+ * Companion for an at-home visit. The field is the same companion dropdown
+ * as Log past visit. Picking a name does not log. The visit is logged when
+ * they press Log visit, after the coverage choice when a campaign is active.
+ * Cancel and a click outside do not log.
+ */
+export class CompanionSuggestModal extends Modal {
+	private readonly gate: CompanionPromptGate;
+	private covered = true;
+	private decided = false;
+	private companion = '';
+	private companionPicked = false;
+	private companionInput: { setValue: (value: string) => void; inputEl?: HTMLElement } | null = null;
+
+	private share: VisitShare = emptyShare();
+
+	constructor(
+		app: App,
+		private recent: readonly string[],
+		onDone: (name: string | null | false) => void,
+		private campaign: CompanionCampaignPrompt | null = null,
+		private literature: (ShareFieldOptions & { onShare: (share: VisitShare) => void }) | null = null,
+	) {
+		super(app);
+		this.gate = createCompanionPromptGate(onDone);
+		if (literature) {
+			this.share = {
+				...literature.initial,
+				lessonFrom: literature.initial.lessonFrom || literature.initial.lessonTo,
+			};
+		}
+	}
+
+	onOpen(): void {
+		this.setTitle('Log visit');
+		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
+		const { contentEl } = this;
+		new Setting(contentEl)
+			.setName('What publisher came with you?')
+			.addText((text) => {
+				text.setPlaceholder('Companion (optional)');
+				this.companionInput = text;
+				text.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
+					if (event.key !== 'Enter') return;
+					event.preventDefault();
+					this.commitCompanionMatch();
+				});
+				text.inputEl.addEventListener('blur', () => this.commitCompanionMatch());
+				text.onChange((value) => {
+					this.companion = value;
+					const match = matchingCompanion(this.getSuggestions(value), value);
+					this.markCompanion(match != null && match.value === value.trim());
+				});
+				mountAlwaysChevron(text.inputEl, () => this.getSuggestions(this.companion).map((item) => item.label), (picked) => {
+					const match = this.getSuggestions(this.companion).find((item) => item.label === picked || item.value === picked);
+					this.selectCompanion(match?.value ?? picked);
+				});
+			});
+		if (this.campaign) {
+			const pronoun = this.campaign.pronoun ?? 'them';
+			const campaign = contentEl.createDiv('rv-modal-section');
+			mountCampaignChoice(campaign, coverageQuestion(pronoun, this.campaign.name), this.covered, (covered) => {
+				this.covered = covered;
+			});
+		}
+		if (this.literature) {
+			mountShareFields(contentEl, this.literature, (next) => {
+				this.share = next;
+				this.literature?.onShare(next);
+			});
+		}
+		const bar = contentEl.createDiv('rv-locator-suggest-actions is-end rv-modal-actions');
+		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+		cancel.addEventListener('click', () => {
+			this.gate.cancel();
+			this.close();
+		});
+		const log = bar.createEl('button', { text: 'Log visit', attr: { type: 'button' } });
+		log.classList.add('mod-cta');
+		log.addEventListener('click', () => this.commitLog());
+		this.containerEl.addEventListener('pointerdown', (event: PointerEvent) => {
+			this.onDimPointerDown(event.target);
+		});
+		iconizeModal(contentEl);
+	}
+
+	/** A press on the dim layer behind the dialog cancels. A press inside the dialog does not. */
+	onDimPointerDown(target: EventTarget | null): void {
+		const modal = this.modalEl as unknown as { contains?: (node: EventTarget) => boolean };
+		if (target && modal.contains?.(target)) return;
+		this.gate.cancel();
+		this.close();
+	}
+
+	private finishCoverage(decision: CoverageDecision): void {
+		if (!this.campaign || this.decided) return;
+		this.decided = true;
+		this.campaign.onDecision(decision);
+	}
+
+	/**
+	 * Esc closes the dialog before a choice. The dismiss waits so a choice in
+	 * this turn still wins. A click outside cancels and does not log.
+	 */
+	onClose(): void {
+		this.gate.closed((run) => { window.setTimeout(run, 0); });
+		this.contentEl.empty();
+	}
+
+	getSuggestions(query: string): CompanionSuggestion[] {
+		return companionChoices(this.recent, query);
+	}
+
+	private markCompanion(picked: boolean): void {
+		this.companionPicked = picked;
+		this.companionInput?.inputEl?.classList.toggle('is-selected', picked);
+	}
+
+	private selectCompanion(value: string): void {
+		this.companion = value;
+		this.companionInput?.setValue(value);
+		this.markCompanion(true);
+	}
+
+	private commitCompanionMatch(): void {
+		if (this.companionPicked) return;
+		const match = exactCompanion(this.getSuggestions(this.companion), this.companion);
+		if (!match) return;
+		this.selectCompanion(match.value);
+	}
+
+	private commitLog(): void {
+		this.commitCompanionMatch();
+		this.finishCoverage(this.covered ? 'yes' : 'no');
+		this.literature?.onShare(this.share);
+		const name = this.companion.trim();
+		if (name) this.gate.choose(name);
+		else this.gate.skip();
+		this.close();
+	}
+
+	/** A finished choice. Highlighting a companion does not call this. */
+	onChooseSuggestion(choice: CompanionSuggestion): void {
+		this.companion = choice.value;
+		this.companionPicked = true;
+		this.commitLog();
 	}
 }
 
