@@ -570,9 +570,9 @@ function paintQuickList(
 	const extra = Math.max(0, all.length - shown);
 	if (labelEl instanceof HTMLElement) {
 		if (extra > 0) labelEl.createSpan({ cls: 'rv-qf-plus', text: `+${extra}` });
-		const chevron = labelEl.createEl('button', {
+		const chevron = labelEl.createSpan({
 			cls: 'rv-qf-chevron',
-			attr: { type: 'button', 'aria-label': `${label} list` },
+			attr: { role: 'button', tabindex: '0', 'aria-label': `${label} list` },
 		});
 		setIcon(chevron, 'chevron-down');
 		const drop = parent.createDiv('rv-qf-drop');
@@ -596,19 +596,28 @@ function paintQuickList(
 			const query = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : '';
 			for (const tr of rows) tr.hidden = query.length > 0 && !(tr.dataset.rvText ?? '').includes(query);
 		});
-		chevron.addEventListener('click', (event) => {
+		const toggle = (event: Event): void => {
 			event.preventDefault();
 			event.stopPropagation();
 			drop.hidden = !drop.hidden;
+		};
+		chevron.addEventListener('click', toggle);
+		chevron.addEventListener('keydown', (event) => {
+			if (!(event instanceof KeyboardEvent)) return;
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			toggle(event);
 		});
 	}
 	if (!(valueEl instanceof HTMLElement)) return row;
-	const visible = chips.filter((chip) => !chip.empty || chips.some((other) => other.met));
-	if (visible.length === 0 || visible.every((chip) => chip.empty)) {
+	const halves = limit === 2;
+	const visible = halves
+		? padSlots(chips, 2)
+		: chips.filter((chip) => !chip.empty);
+	if (!halves && visible.length === 0) {
 		valueEl.setText('—');
 		return row;
 	}
-	const host = valueEl.createSpan('rv-qf-chips');
+	const host = valueEl.createSpan(halves ? 'rv-qf-chips is-halves' : 'rv-qf-chips is-single');
 	for (const chip of visible) {
 		const el = host.createSpan({ cls: chip.met ? 'rv-qf-chip is-met' : chip.empty ? 'rv-qf-chip is-empty' : 'rv-qf-chip' });
 		if (chip.empty) continue;
@@ -617,9 +626,13 @@ function paintQuickList(
 		if (chip.type) group.createSpan({ cls: 'rv-qf-chip-type', text: chip.type });
 		armChipOverlay(el, chip.full);
 	}
-	const full = (all.length > 0 ? all : [metWith]).filter(Boolean).join(' · ');
-	if (full) valueEl.addEventListener('mouseenter', () => showTitlePopover(valueEl, full));
 	return row;
+}
+
+function padSlots(chips: readonly FactChip[], count: number): FactChip[] {
+	const next = chips.slice(0, count);
+	while (next.length < count) next.push({ title: '', type: '', full: '', met: false, empty: true });
+	return next;
 }
 
 function chipsFor(items: readonly string[], kind: ChipKind, limit: number, metWith: string): FactChip[] {
@@ -646,9 +659,28 @@ function chipParts(item: string, kind: ChipKind): { title: string; type: string;
 	return { title: item, type: '', full: item };
 }
 
+function chipTruncated(el: HTMLElement): boolean {
+	const title = el.querySelector('.rv-qf-chip-title');
+	if (!(title instanceof HTMLElement)) return false;
+	if (title.clientWidth <= 0) return true;
+	return title.scrollWidth > title.clientWidth + 1;
+}
+
+/** One chip's own text, sitting on that chip. The chevron table holds the whole list. */
+function showChipOverlay(el: HTMLElement, full: string): void {
+	if (!full || !chipTruncated(el)) return;
+	showTitlePopover(el, full);
+	const pop = el.ownerDocument.querySelector('.rv-title-popover');
+	if (!(pop instanceof HTMLElement)) return;
+	pop.classList.add('rv-chip-overlay');
+	const box = el.getBoundingClientRect();
+	pop.style.left = `${box.left}px`;
+	pop.style.top = `${box.top}px`;
+}
+
 function armChipOverlay(el: HTMLElement, full: string): void {
 	if (!full) return;
-	const show = (): void => { showTitlePopover(el, full); };
+	const show = (): void => { showChipOverlay(el, full); };
 	el.addEventListener('click', (event) => {
 		event.preventDefault();
 		event.stopPropagation();

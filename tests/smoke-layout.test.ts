@@ -1152,24 +1152,89 @@ describe('smoke layout', () => {
 		root.remove();
 	});
 
-	it('opens the Taken popover on mouse hover', () => {
+	it('shares Quick Facts pill edges and shows one chip in the overlay', () => {
 		const root = window.document.createElement('div');
+		root.className = 'rv-dashboard';
 		root.innerHTML = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Quick Facts</div></div><div class="callout-content"></div></div>';
 		const data = {
 			cssclasses: ['rv-dashboard'],
 			Status: 'Active',
 			Priority: 1,
-			Taken: ['Ada Publisher', 'Bea Publisher'],
+			'Last Spoke': '2026-10-14T09:00:00',
+			'Last Attempted': '2026-10-13T18:00:00',
+			Met: '2026-10-01T10:00:00',
+			'Left Publications': ['Another Tract', 'How Do You View the Bible? Tract'],
+			'Shared Media': ['What Happens at a Bible Study? Video'],
+			'Lessons Studied': ['Lesson 3 Pt 2', 'Lesson 3 Pt 1'],
+			Taken: ['Christopher', 'Ada Publisher'],
+			'Met With': 'Mom',
 		};
-		decorateNoteChrome(root, 'RVs/Ada.md', chromeHost(data, { count: 0 }));
-		const taken = root.querySelector('.rv-qf-companion .rv-qf-value');
-		assert.ok(taken instanceof window.HTMLElement);
-		taken.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+		decorateNoteChrome(root, 'RVs/Taken Five.md', chromeHost(data, { count: 0 }));
+		window.document.body.appendChild(root);
+		const row = (label: string): HTMLElement => {
+			const found = Array.from(root.querySelectorAll('.rv-qf-row')).find((node) =>
+				node.querySelector('.rv-qf-label')?.textContent?.startsWith(label));
+			assert.ok(found instanceof window.HTMLElement, label);
+			return found;
+		};
+		const pills = Array.from(root.querySelectorAll('.rv-qf-pill'));
+		assert.equal(pills.length, 3);
+		for (const pill of pills) {
+			assert.equal(pill.parentElement?.classList.contains('rv-qf-value'), true);
+			assert.ok(pill.querySelector('.rv-cal'));
+			assert.ok(pill.querySelector('.rv-stamp-ago'));
+			assert.equal(pill.querySelector('.rv-stamp-ago')?.classList.contains('rv-qf-pill'), false);
+		}
+		const lit = row('Literature');
+		assert.equal(lit.querySelectorAll('.rv-qf-chip').length, 1);
+		assert.ok(lit.querySelector('.rv-qf-chips.is-single'));
+		assert.ok(lit.querySelector('.rv-qf-plus'));
+		assert.equal(lit.querySelector('.rv-qf-chevron')?.tagName, 'SPAN');
+		assert.equal(root.querySelector('button.rv-qf-chevron'), null);
+		const lessons = row('Lessons').querySelectorAll('.rv-qf-chip');
+		const taken = row('Taken').querySelectorAll('.rv-qf-chip');
+		assert.equal(lessons.length, 2);
+		assert.equal(taken.length, 2);
+		assert.ok(row('Lessons').querySelector('.rv-qf-chips.is-halves'));
+		assert.ok(row('Taken').querySelector('.rv-qf-chips.is-halves'));
+		assert.equal(taken[0]?.classList.contains('is-met'), false);
+		assert.equal(taken[1]?.classList.contains('is-met'), true);
+		assert.match(taken[1]?.textContent ?? '', /Mom/);
+		assert.match(taken[0]?.textContent ?? '', /Christopher|Ada Publisher/);
+		const rows = Array.from(root.querySelectorAll('.rv-qf-row'));
+		assert.equal(rows[rows.length - 1], row('Taken'));
+
+		const chip = lit.querySelector('.rv-qf-chip');
+		assert.ok(chip instanceof window.HTMLElement);
+		const title = chip.querySelector('.rv-qf-chip-title');
+		assert.ok(title instanceof window.HTMLElement);
+		Object.defineProperty(title, 'clientWidth', { configurable: true, get: () => 40 });
+		Object.defineProperty(title, 'scrollWidth', { configurable: true, get: () => 220 });
+		chip.getBoundingClientRect = () => ({
+			left: 120, top: 40, right: 400, bottom: 64, width: 280, height: 24, x: 120, y: 40, toJSON() { return {}; },
+		});
+		chip.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
 		const pop = window.document.querySelector('.rv-title-popover');
-		assert.ok(pop);
-		assert.match(pop?.textContent ?? '', /Ada Publisher/);
-		assert.match(pop?.textContent ?? '', /Bea Publisher/);
-		pop?.remove();
+		assert.ok(pop instanceof window.HTMLElement);
+		assert.equal(pop.classList.contains('rv-chip-overlay'), true);
+		assert.equal(pop.style.left, '120px');
+		assert.equal(pop.style.top, '40px');
+		assert.match(pop.textContent ?? '', /How Do You View the Bible/);
+		assert.doesNotMatch(pop.textContent ?? '', /Another Tract/);
+		pop.remove();
+		lit.querySelector('.rv-qf-value')?.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+		assert.equal(window.document.querySelector('.rv-title-popover'), null);
+		Object.defineProperty(title, 'scrollWidth', { configurable: true, get: () => 40 });
+		chip.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+		assert.equal(window.document.querySelector('.rv-title-popover'), null);
+		const chevron = lit.querySelector('.rv-qf-chevron');
+		assert.ok(chevron instanceof window.HTMLElement);
+		chevron.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		const table = lit.parentElement?.querySelector('.rv-qf-drop:not([hidden])');
+		assert.ok(table);
+		assert.match(table?.textContent ?? '', /How Do You View the Bible/);
+		assert.match(table?.textContent ?? '', /Another Tract/);
+		root.remove();
 	});
 
 	it('turns strip overflow into a +n chip and keeps the campaign chip', () => {

@@ -167,6 +167,43 @@ describe('next build locks', () => {
 		assert.match(css, /\.rv-stamp-when \{[^}]*font-size:\s*15px;\s*font-weight:\s*400/);
 	});
 
+	it('smoke 603f8a1 pills, spacing, and gender stretch match the measured edges', () => {
+		const chrome = source('src/note-chrome.ts');
+		const meta = source('src/person-meta.ts');
+		// Title padding-right 6px + badge margin-inline-end 2px = the 8px the pills overshot the route ring.
+		const titleRight = Number(/\.rv-dashboard \.callout\[data-callout="rv"\] > \.callout-title \{[^}]*padding-right:\s*(\d+)px/.exec(css)?.[1]);
+		const badgeEnd = Number(/\.rv-qf-badges \{[^}]*margin-inline-end:\s*(\d+)px/.exec(css)?.[1]);
+		assert.equal(titleRight + badgeEnd, 8);
+		assert.match(css, /\.rv-qf-body \{[^}]*--rv-qf-route-inset:\s*8px/);
+		assert.match(css, /\.rv-qf-body \{[^}]*padding-right:\s*var\(--rv-qf-route-inset\)/);
+		assert.match(css, /\.rv-qf-body \{[^}]*grid-template-columns:\s*1\.25em max-content minmax\(0, 1fr\)/);
+		assert.match(css, /\.rv-qf-body > \.rv-qf-row \{[^}]*grid-template-columns:\s*subgrid/);
+		assert.match(css, /\.rv-qf-body \.rv-qf-value \{[^}]*justify-self:\s*stretch/);
+		assert.match(css, /\.rv-qf-body \.rv-qf-value \{[^}]*width:\s*100%/);
+		assert.match(css, /\.rv-qf-chips\.is-single > \.rv-qf-chip \{[^}]*width:\s*100%/);
+		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*flex:\s*1 1 0/);
+		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*width:\s*50%/);
+		const ago = css.match(/\.rv-qf-pill \.rv-stamp-ago \{[^}]*\}/)?.[0] ?? '';
+		assert.match(ago, /border:\s*0/);
+		assert.match(ago, /box-shadow:\s*none/);
+		assert.match(ago, /14%/);
+		assert.doesNotMatch(ago, /inset/);
+		assert.match(css, /\.rv-qf-row:not\(:has\(~ \.rv-qf-row\)\) \{\s*border-bottom:\s*0/);
+		assert.match(css, /h5\.rv-visit-stamp \+ \.rv-item-strip \{\s*margin-top:\s*8px !important/);
+		assert.match(css, /\.markdown-preview-section:has\(\.rv-visit-notes-host\) ~ \.markdown-preview-section:has\(> h5\.rv-visit-stamp\)[^}]*margin-top:\s*24px !important/);
+		assert.match(css, /\.cm-s-obsidian \.cm-line\.rv-lp-notes ~ \.cm-line\.rv-lp-visit-heading \{[^}]*padding-top:\s*24px !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes\.rv-locator-modal \.setting-item\.rv-gender-choice \{[^}]*flex-direction:\s*column !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes\.rv-locator-modal \.setting-item\.rv-gender-choice \.setting-item-control button \{[^}]*flex:\s*1 1 0 !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?background-color:\s*var\(--rv-modal-accent\) !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?box-shadow:\s*none !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-gender-choice \.setting-item-control button svg \{[^}]*width:\s*16px !important[^}]*height:\s*16px !important/);
+		assert.match(meta, /M9 21\.5l3-9 3 9/);
+		assert.match(meta, /M12 6\.5L9 21\.5h6z/);
+		assert.match(chrome, /function showChipOverlay/);
+		assert.doesNotMatch(chrome, /valueEl\.addEventListener\('mouseenter'/);
+		assert.doesNotMatch(chrome, /createEl\('button'[\s\S]{0,80}rv-qf-chevron/);
+	});
+
 	it('22 the priority badge still opens the slider after the priority row is gone', () => {
 		const chrome = source('src/note-chrome.ts');
 		const title = chrome.slice(chrome.indexOf('function paintFactsTitle'), chrome.indexOf('function paintFactsBody'));

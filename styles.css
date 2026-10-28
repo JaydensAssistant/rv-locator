@@ -8654,3 +8654,185 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 .modal.rv-campaign .rv-date-line input[type="date"] {
 	width: 100%;
 }
+
+/*
+  Smoke of 603f8a1. Quick Facts values are full-width pills.
+  The route ring sits 6px (title padding) + 2px (badge margin) = 8px
+  inside the callout. The body padding pulls every pill's right edge
+  back by that 8px so pillR equals routeR.
+*/
+.rv-qf-body {
+	--rv-qf-route-inset: 8px;
+	display: grid;
+	grid-template-columns: 1.25em max-content minmax(0, 1fr);
+	box-sizing: border-box;
+	padding-right: var(--rv-qf-route-inset);
+}
+
+.rv-qf-body > .rv-qf-row {
+	grid-column: 1 / -1;
+	grid-template-columns: subgrid;
+}
+
+.rv-qf-body .rv-qf-value {
+	justify-self: stretch;
+	width: 100%;
+	min-width: 0;
+	text-align: center;
+}
+
+.rv-qf-body .rv-qf-value > .rv-qf-pill,
+.rv-qf-body .rv-qf-value > .rv-qf-chips {
+	width: 100%;
+	max-width: 100%;
+}
+
+.rv-qf-pill {
+	justify-content: center;
+}
+
+.rv-qf-pill .rv-stamp-ago {
+	margin-left: 0;
+	border: 0;
+	box-shadow: none;
+	background: color-mix(in srgb, var(--rv-urgency-accent, var(--text-faint)) 14%, var(--background-primary));
+	color: var(--rv-urgency-ink, var(--text-normal));
+}
+
+.rv-qf-chips.is-single > .rv-qf-chip {
+	flex: 1 1 100%;
+	width: 100%;
+	max-width: 100%;
+}
+
+.rv-qf-chips.is-halves > .rv-qf-chip {
+	flex: 1 1 0;
+	width: 50%;
+	max-width: 50%;
+}
+
+.rv-qf-label .rv-qf-plus,
+.rv-qf-label .rv-qf-chevron {
+	border: 0;
+	background: transparent;
+	box-shadow: none;
+	padding: 0;
+	color: var(--text-muted);
+	font-weight: 400;
+}
+
+.rv-qf-label .rv-qf-chevron svg {
+	width: 12px;
+	height: 12px;
+}
+
+.rv-qf-row:not(:has(~ .rv-qf-row)) {
+	border-bottom: 0;
+}
+
+.rv-title-popover.rv-chip-overlay {
+	width: max-content;
+	max-width: min(420px, calc(100vw - 16px));
+	white-space: nowrap;
+	padding: 2px 8px;
+}
+
+/* Stamp to the note card is 8px. The heading's 6px margin was the measured gap. */
+h5.rv-visit-stamp,
+.markdown-rendered h5.rv-visit-stamp,
+.markdown-preview-view h5.rv-visit-stamp,
+.markdown-reading-view h5.rv-visit-stamp,
+.rv-lp-stamp .rv-visit-stamp {
+	margin-bottom: 0 !important;
+}
+
+h5.rv-visit-stamp + .rv-item-strip {
+	margin-top: 8px !important;
+	margin-bottom: 0 !important;
+}
+
+.markdown-preview-view .markdown-preview-section:has(.rv-visit-notes-host),
+.markdown-reading-view .markdown-preview-section:has(.rv-visit-notes-host),
+.markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host),
+.markdown-preview-section:has(.rv-visit-notes-host) > :is(p, .el-p, div),
+.el-p:has(.rv-visit-notes-host),
+.el-p:has(.rv-visit-notes-host) > p,
+.cm-s-obsidian .cm-line.rv-lp-notes,
+.cm-s-obsidian .cm-line:has(> .rv-lp-notes),
+.cm-s-obsidian .cm-line.rv-lp-gap,
+.rv-lp-notes,
+.rv-lp-notes textarea.rv-native-notes-area {
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+}
+
+.markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:not(:has(h3, h5, .callout)),
+.markdown-rendered .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:not(:has(h3, h5, .callout)),
+.markdown-reading-view .markdown-preview-section:has(.rv-visit-notes-host) + .markdown-preview-section:not(:has(h3, h5, .callout)) {
+	height: 0 !important;
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+	line-height: 0 !important;
+	border: 0 !important;
+}
+
+/* Consecutive visits, Recent Notes and Older Visits: 24px, nothing else stacked on it. */
+.markdown-preview-section:has(.rv-visit-notes-host) ~ .markdown-preview-section:has(> h5.rv-visit-stamp),
+.el-p:has(.rv-visit-notes-host) ~ .el-h5:has(> h5.rv-visit-stamp) {
+	margin-top: 24px !important;
+	margin-bottom: 0 !important;
+	padding-top: 0 !important;
+}
+
+.cm-s-obsidian .cm-line.rv-lp-notes ~ .cm-line.rv-lp-visit-heading {
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
+	padding-top: 24px !important;
+	padding-bottom: 0 !important;
+}
+
+/* Edit attributes: Man / Woman label sits above two equal buttons. */
+.modal.rv-edit-attributes.rv-locator-modal .setting-item.rv-gender-choice {
+	flex-direction: column !important;
+	align-items: stretch !important;
+}
+
+.modal.rv-edit-attributes.rv-locator-modal .setting-item.rv-gender-choice .setting-item-info {
+	width: 100% !important;
+	flex: none !important;
+	margin: 0 0 6px !important;
+}
+
+.modal.rv-edit-attributes.rv-locator-modal .setting-item.rv-gender-choice .setting-item-control {
+	width: 100% !important;
+	flex: 1 1 auto !important;
+	margin-left: 0 !important;
+	display: flex !important;
+	gap: 8px;
+}
+
+.modal.rv-edit-attributes.rv-locator-modal .setting-item.rv-gender-choice .setting-item-control button {
+	flex: 1 1 0 !important;
+	width: 0 !important;
+	min-width: 0 !important;
+}
+
+.modal.rv-edit-attributes .rv-gender-choice .setting-item-control button svg {
+	width: 16px !important;
+	height: 16px !important;
+	flex: 0 0 16px;
+}
+
+.modal.rv-edit-attributes .rv-age-choice button.is-selected,
+.modal.rv-edit-attributes .rv-age-choice button.is-selected:focus,
+.modal.rv-edit-attributes .rv-age-choice button.is-selected:focus-visible {
+	background-color: var(--rv-modal-accent) !important;
+	color: var(--rv-modal-ink, #fff) !important;
+	border-color: var(--rv-modal-accent) !important;
+	box-shadow: none !important;
+	outline: none !important;
+}

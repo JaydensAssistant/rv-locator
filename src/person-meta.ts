@@ -6,7 +6,8 @@ export const RESTROOM_MAN = 'rv-restroom-man';
 export const RESTROOM_WOMAN = 'rv-restroom-woman';
 
 const MAN_PATHS = '<circle cx="12" cy="4.5" r="2"/><path d="M12 6.5v6M9 21.5l3-9 3 9"/>';
-const WOMAN_PATHS = '<circle cx="12" cy="4.5" r="2"/><path d="M12 6.5l-4.5 14h9z"/>';
+/** Same head and the same foot line as the man (y 2.5–21.5, x 9–15), so the figure is not a tiny triangle. */
+const WOMAN_PATHS = '<circle cx="12" cy="4.5" r="2"/><path d="M12 6.5L9 21.5h6z"/>';
 
 function iconBody(paths: string): string {
 	return `<g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
