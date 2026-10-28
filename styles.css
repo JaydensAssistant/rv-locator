@@ -9014,8 +9014,8 @@ h5.rv-visit-stamp + .rv-item-strip {
 	order: 2;
 }
 
-.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-age-choice) .setting-item-control > button:not(.mod-cta),
-.modal.rv-locator-modal .rv-modal-actions button:not(.mod-cta),
+.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-age-choice):not(.rv-priority-nudge) .setting-item-control > button:not(.mod-cta),
+.modal.rv-locator-modal .rv-modal-actions:not(.rv-priority-nudge) button:not(.mod-cta),
 .modal.rv-locator-modal .modal-button-container button:not(.mod-cta),
 .rv-locator-setup-actions button:not(.mod-cta) {
 	background: transparent !important;
@@ -9060,4 +9060,79 @@ h5.rv-visit-stamp + .rv-item-strip {
 	color: var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
 	border-color: transparent !important;
 	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
+}
+
+/* Priority nudge is the one menu with no filled button. Fixed outlines, not urgency ink. */
+.modal.rv-locator-modal .setting-item.rv-priority-nudge {
+	width: 100% !important;
+	max-width: 100% !important;
+	box-sizing: border-box !important;
+	margin-left: 0 !important;
+	margin-right: 0 !important;
+	padding-left: 0 !important;
+	padding-right: 0 !important;
+	border-top: 1px solid var(--background-modifier-border) !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-priority-nudge .setting-item-control {
+	display: flex !important;
+	flex-direction: row !important;
+	flex-wrap: nowrap !important;
+	align-items: stretch !important;
+	justify-content: stretch !important;
+	width: 100% !important;
+	max-width: 100% !important;
+	min-width: 0 !important;
+	box-sizing: border-box !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	gap: 8px !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-priority-nudge .setting-item-control > button {
+	flex: 1 1 0 !important;
+	width: auto !important;
+	max-width: none !important;
+	min-width: 0 !important;
+	height: 40px !important;
+	min-height: 40px !important;
+	max-height: 40px !important;
+	box-sizing: border-box !important;
+	border-radius: 4px !important;
+	border-style: solid !important;
+	border-width: 1px !important;
+	background: transparent !important;
+	background-color: transparent !important;
+	box-shadow: none !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-priority-nudge .setting-item-control > button .rv-modal-icon,
+.modal.rv-locator-modal .setting-item.rv-priority-nudge .setting-item-control > button .rv-modal-icon svg {
+	color: inherit !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-lower,
+.modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-lower:disabled {
+	color: #d63c3c !important;
+	border-color: #d63c3c !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay,
+.modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay:disabled,
+.theme-dark .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay,
+.theme-dark .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay:disabled {
+	color: #8a8a8a !important;
+	border-color: #8a8a8a !important;
+}
+
+.theme-light .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay,
+.theme-light .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay:disabled {
+	color: #8f8f8f !important;
+	border-color: #8f8f8f !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-raise,
+.modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-raise:disabled {
+	color: #1f8a4c !important;
+	border-color: #1f8a4c !important;
 }

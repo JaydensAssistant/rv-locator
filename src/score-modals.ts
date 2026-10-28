@@ -147,8 +147,11 @@ export class PriorityNudgeModal extends Modal {
 			text: 'Lower, stay, or raise it.',
 		});
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.setClass('rv-priority-nudge')
 			.addButton((button) => {
 				button.setButtonText('−1');
+				button.buttonEl.addClass('rv-nudge-lower');
 				button.setDisabled(this.current <= 0);
 				button.onClick(() => {
 					this.onChoose(Math.max(0, this.current - 1));
@@ -157,10 +160,12 @@ export class PriorityNudgeModal extends Modal {
 			})
 			.addButton((button) => {
 				button.setButtonText('Stay');
+				button.buttonEl.addClass('rv-nudge-stay');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
 				button.setButtonText('+1');
+				button.buttonEl.addClass('rv-nudge-raise');
 				button.setDisabled(this.current >= 5);
 				button.onClick(() => {
 					this.onChoose(Math.min(5, this.current + 1));

@@ -328,4 +328,31 @@ describe('location picker and return times', () => {
 		assert.match(source('src/schedule.ts'), /export function currentReturnBucket/);
 		assert.match(source('src/schedule.ts'), /export function cardReturnLead/);
 	});
+
+	it('locks the Priority nudge buttons to equal red, grey, and green outlines', () => {
+		const scores = source('src/score-modals.ts');
+		const modal = scores.slice(scores.indexOf('class PriorityNudgeModal'));
+		assert.match(modal, /setClass\('rv-modal-actions'\)/);
+		assert.match(modal, /setClass\('rv-priority-nudge'\)/);
+		assert.match(modal, /setButtonText\('−1'\)/);
+		assert.match(modal, /buttonEl\.addClass\('rv-nudge-lower'\)/);
+		assert.match(modal, /setButtonText\('Stay'\)/);
+		assert.match(modal, /buttonEl\.addClass\('rv-nudge-stay'\)/);
+		assert.match(modal, /setButtonText\('\+1'\)/);
+		assert.match(modal, /buttonEl\.addClass\('rv-nudge-raise'\)/);
+		assert.equal(modal.includes('setCta'), false);
+		const chrome = source('src/modal-chrome.ts');
+		assert.equal(chrome.includes("[/^stay$/i, 'equal']"), true);
+		assert.equal(chrome.includes("[/^[−+-]1$/i, 'chevrons-up-down']"), true);
+		const css = source('styles.css');
+		const rule = css.slice(css.indexOf('.setting-item.rv-priority-nudge'));
+		assert.match(rule, /\.setting-item\.rv-priority-nudge \.setting-item-control \{[^}]*gap:\s*8px !important;/);
+		assert.match(rule, /button \{[^}]*flex:\s*1 1 0 !important;[^}]*min-width:\s*0 !important;[^}]*height:\s*40px !important;[^}]*border-radius:\s*4px !important;[^}]*background:\s*transparent !important;/);
+		assert.match(rule, /button\.rv-nudge-lower[^}]*color:\s*#d63c3c !important;[^}]*border-color:\s*#d63c3c !important;/);
+		assert.match(rule, /\.theme-dark[^}]*button\.rv-nudge-stay[^}]*color:\s*#8a8a8a !important;/);
+		assert.match(rule, /\.theme-light[^}]*button\.rv-nudge-stay[^}]*color:\s*#8f8f8f !important;/);
+		assert.match(rule, /button\.rv-nudge-raise[^}]*color:\s*#1f8a4c !important;[^}]*border-color:\s*#1f8a4c !important;/);
+		assert.equal(rule.includes('var(--rv-menu-ink'), false);
+		assert.match(css, /\.rv-modal-actions:not\(\.rv-priority-nudge\) button:not\(\.mod-cta\)/);
+	});
 });
