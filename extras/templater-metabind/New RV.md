@@ -90,7 +90,7 @@ actions:
 > 
 > `BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`
 >
-> > [!rv]- Quick Facts
+> > [!rv]- Visit Facts
 > >
 > >**Status**
 > > `INPUT[inlineSelect(option(Study), option(Active), option(Inactive)):Status]`

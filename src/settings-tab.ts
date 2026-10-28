@@ -1,7 +1,7 @@
 import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, setIcon, type App, type TextComponent } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
 import { deleteCustom, rememberCustom } from './catalog';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
 import { normalizeCounty, normalizeCountyList } from './home-base';
 import { isListedUsCounty } from './us-county-index';
@@ -1068,6 +1068,7 @@ class CatalogRenameModal extends Modal {
 		this.setTitle('Rename');
 		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-rename-modal');
+		markModalTone(this.modalEl, 'general');
 		new Setting(this.contentEl)
 			.setName('Name')
 			.addText((text) => {
@@ -1075,6 +1076,7 @@ class CatalogRenameModal extends Modal {
 				text.onChange((value) => { this.nextName = value; });
 			});
 		new Setting(this.contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.close());
@@ -1106,6 +1108,8 @@ class ExtrasSyncConfirmModal extends Modal {
 
 	onOpen(): void {
 		this.setTitle('Update templates and scripts');
+		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
 		this.contentEl.createEl('p', {
 			text: `Tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked.`,
 		});
@@ -1143,6 +1147,7 @@ class ExtrasSyncConfirmModal extends Modal {
 			paint();
 		});
 		new Setting(this.contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
 				button.onClick(() => this.close());

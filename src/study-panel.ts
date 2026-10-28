@@ -282,6 +282,14 @@ function openChange(
 	host.ownerDocument.querySelectorAll('.rv-study-change-modal').forEach((node) => node.remove());
 	const panel = host.ownerDocument.createElement('div');
 	panel.className = 'rv-study-change-modal';
+	const modal = host.closest('.modal');
+	if (modal instanceof HTMLElement) {
+		for (const name of ['--rv-menu-ink', '--rv-modal-accent', '--rv-modal-ink'] as const) {
+			const value = modal.style.getPropertyValue(name);
+			if (value) panel.style.setProperty(name, value);
+		}
+	}
+	if (!panel.style.getPropertyValue('--rv-menu-ink')) panel.style.setProperty('--rv-menu-ink', '#1f8a4c');
 	host.ownerDocument.body.appendChild(panel);
 	panel.createEl('p', { cls: 'rv-study-change-title', text: 'Change study' });
 	const input = panel.createEl('input', { attr: { type: 'search', placeholder: 'Search lessons' } });

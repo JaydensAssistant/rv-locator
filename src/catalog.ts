@@ -33,6 +33,24 @@ export const LESSONS: readonly LessonSpec[] = LESSON_ENTRIES.map((entry) => (
 		: { title: entry.title, review: entry.review }
 ));
 
+/**
+ * Visit Facts lesson pills: number then title (`02 The Bible Gives Hope`).
+ * A stored `Lesson 2` uses the catalog title. A title that already starts with the number stays.
+ */
+export function lessonPillLabel(raw: string): string {
+	const text = raw.replace(/^["']|["']$/g, '').trim();
+	const numbered = /^(\d{1,2})\s+(\S.*)$/.exec(text);
+	const numberedLead = numbered?.[1];
+	const numberedRest = numbered?.[2];
+	if (numberedLead && numberedRest) return `${numberedLead.padStart(2, '0')} ${numberedRest}`;
+	const lesson = /^Lesson\s+(\d+)(?:,\s*(.*))?$/i.exec(text);
+	const lessonNumber = lesson?.[1];
+	if (!lessonNumber) return text;
+	const number = lessonNumber.padStart(2, '0');
+	const found = LESSONS.find((item) => item.title.startsWith(`${number} `));
+	return found ? found.title : text;
+}
+
 const TITLE_SUFFIXES = [
 	'Become Jehovah’s Friend',
 	'Tiny Tract',

@@ -20,6 +20,7 @@ import {
 	visitNotesField,
 	assignLaterStamp,
 	visitPhrase,
+	writeShareProperty,
 } from './visit-log';
 
 /** What one visit recorded: when, whether they were home, and who was taken. */
@@ -299,13 +300,59 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	shiftCount(frontmatter, 'Successful Visits', (added?.home ? 1 : 0) - (removed?.home ? 1 : 0));
 	moveLatest(frontmatter, 'Last Attempted', removed, after);
 	moveLatest(frontmatter, 'Last Spoke', removed?.home ? removed : null, after.filter((visit) => visit.home));
-	if (added?.publications?.trim()) assignProperty(frontmatter, 'Left Publications', added.publications.trim());
-	if (added?.media?.trim()) assignProperty(frontmatter, 'Shared Media', added.media.trim());
+	applyShareHistory(frontmatter, 'Left Publications', change, 'publications');
+	applyShareHistory(frontmatter, 'Shared Media', change, 'media');
 	applyLessonChange(frontmatter, change);
 	updateTaken(frontmatter, removed, added, after);
 	syncMet(frontmatter, after, new Date());
 	const property = change.removedNotesProperty?.trim();
 	if (removed?.home && property && !added?.home) removeProperty(frontmatter, property);
+}
+
+function shareNames(visit: VisitFacts | null | undefined, kind: 'publications' | 'media'): string[] {
+	if (!visit) return [];
+	const list = kind === 'publications' ? visit.publicationList : visit.mediaList;
+	const single = kind === 'publications' ? visit.publications : visit.media;
+	const many = (list ?? []).map((item) => item.trim()).filter(Boolean);
+	if (many.length > 0) return many;
+	const one = single?.trim() ?? '';
+	return one ? [one] : [];
+}
+
+/** Keep every tract still on a visit. Drop one only when the removed visit was its last record. */
+function applyShareHistory(
+	frontmatter: Record<string, unknown>,
+	name: string,
+	change: VisitChange,
+	kind: 'publications' | 'media',
+): void {
+	const added = shareNames(change.added, kind);
+	const removed = shareNames(change.removed, kind);
+	if (added.length === 0 && removed.length === 0) return;
+	const kept = new Set(
+		[...change.remaining, ...(change.added ? [change.added] : [])]
+			.flatMap((visit) => shareNames(visit, kind))
+			.map((title) => title.toLowerCase()),
+	);
+	const removedKeys = new Set(removed.map((title) => title.toLowerCase()));
+	const list = shareNameList(readProperty(frontmatter, name));
+	for (const title of added) {
+		if (!list.some((item) => item.toLowerCase() === title.toLowerCase())) list.push(title);
+	}
+	const next = list.filter((title) => kept.has(title.toLowerCase()) || !removedKeys.has(title.toLowerCase()));
+	writeShareProperty(frontmatter, name, next);
+}
+
+function shareNameList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (!text || names.some((name) => name.toLowerCase() === text.toLowerCase())) continue;
+		names.push(text);
+	}
+	return names;
 }
 
 function lessonTitles(visit: VisitFacts | null | undefined): string[] {
@@ -457,6 +504,8 @@ export function visitFacts(entry: VisitFacts): VisitFacts {
 		companion: entry.companion,
 		publications: entry.publications,
 		media: entry.media,
+		publicationList: entry.publicationList,
+		mediaList: entry.mediaList,
 		lesson: entry.lesson,
 		lessonFrom: entry.lessonFrom,
 		lessonTo: entry.lessonTo,

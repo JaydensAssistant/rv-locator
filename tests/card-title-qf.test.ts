@@ -131,11 +131,11 @@ describe('glancable title and Quick Facts layout', () => {
 		assert.equal(new Set(content).size, 1, JSON.stringify(rows));
 		assert.ok((data.gap as number) > 0);
 		const half = data.half as { borderRadius: string; borderLeftWidth: string; height: string };
-		assert.equal(half.borderRadius, '6px');
+		assert.equal(half.borderRadius, '5px');
 		assert.equal(half.borderLeftWidth, '1px');
 		assert.equal(half.height, '24px');
 		const single = data.single as { borderRadius: string; borderLeftWidth: string; height: string };
-		assert.equal(single.borderRadius, '6px');
+		assert.equal(single.borderRadius, '5px');
 		assert.equal(single.borderLeftWidth, '1px');
 		assert.equal(single.height, '24px');
 		const pill = data.pill as { display: string; height: string };
@@ -163,7 +163,7 @@ describe('glancable title and Quick Facts layout', () => {
 		assert.equal(man.gender.height, 16);
 		const stroke = data.stroke as { strokeWidth: string; vectorEffect: string };
 		const womanStroke = data.womanStroke as { strokeWidth: string; vectorEffect: string };
-		assert.equal(stroke.strokeWidth, '2px');
+		assert.equal(stroke.strokeWidth, '1.5px');
 		assert.equal(stroke.vectorEffect, 'non-scaling-stroke');
 		assert.equal(womanStroke.vectorEffect, 'non-scaling-stroke');
 
@@ -178,9 +178,9 @@ describe('glancable title and Quick Facts layout', () => {
 		const dashGender = data.dashGender as { width: string; height: string };
 		const dashStroke = data.dashStroke as { vectorEffect: string };
 		assert.equal(dashAge.fontSize, '20.4px');
-		assert.equal(dashGender.width, '18px');
-		assert.equal(dashGender.height, '18px');
-		assert.equal(dashStroke.vectorEffect, 'none');
+		assert.equal(dashGender.width, '16px');
+		assert.equal(dashGender.height, '16px');
+		assert.equal(dashStroke.vectorEffect, 'non-scaling-stroke');
 
 		const street = data.street as { fontSize: string; color: string; fontWeight: string };
 		assert.equal(street.fontSize, '9px');

@@ -8126,8 +8126,8 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 .modal.rv-locator-modal .rv-modal-actions button.rv-btn-outline {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--text-error) !important;
-	box-shadow: inset 0 0 0 1px var(--text-error) !important;
+	color: var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
 }
 
 /*
@@ -8360,15 +8360,11 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	color: var(--text-muted);
 }
 
-.rv-dashboard .rv-title-gender {
-	width: 18px;
-	height: 18px;
-}
-
+.rv-dashboard .rv-title-gender,
 .rv-locator-glancable .rv-title-gender,
 .rv-map .rv-title-gender {
-	width: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
-	height: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
+	width: 16px;
+	height: 16px;
 }
 
 .rv-title-gender svg {
@@ -8401,17 +8397,54 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 .rv-qf-head {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35em;
+	gap: 0;
 	min-width: 0;
 	color: var(--text-muted);
 	font-weight: 400;
+}
+
+.rv-qf-head-label {
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 13px;
+}
+
+.rv-qf-head-dot {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex: 0 0 auto;
+	margin-inline: 6px;
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 13px;
+	height: 13px;
 }
 
 .rv-qf-head-count,
 .rv-qf-head-icon {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.2em;
+	gap: 4px;
+	font-size: 11px;
+	font-weight: 400;
+	line-height: 12px;
+}
+
+.theme-dark .rv-qf-head-count,
+.theme-dark .rv-qf-head-icon {
+	color: #666;
+}
+
+.theme-light .rv-qf-head-count,
+.theme-light .rv-qf-head-icon {
+	color: #ababab;
+}
+
+.rv-qf-head-icon svg {
+	display: block;
+	width: 12px;
+	height: 12px;
 }
 
 .rv-qf-row {
@@ -8479,7 +8512,7 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
-	border-radius: 6px;
+	border-radius: var(--pill-r, 5px);
 	background: var(--background-secondary);
 	border: 1px solid var(--background-modifier-border);
 	color: var(--text-normal);
@@ -8495,7 +8528,7 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 .rv-qf-pill .rv-cal {
 	width: 18px;
 	height: 18px;
-	border-radius: 4px;
+	border-radius: var(--pill-r, 5px);
 }
 
 .rv-qf-pill .rv-cal-month {
@@ -8514,21 +8547,8 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 
 .rv-qf-chips > .rv-qf-chip {
 	flex: 1 1 0;
-	border-radius: 0;
-}
-
-.rv-qf-chips > .rv-qf-chip:first-child {
-	border-top-left-radius: 6px;
-	border-bottom-left-radius: 6px;
-}
-
-.rv-qf-chips > .rv-qf-chip:last-child {
-	border-top-right-radius: 6px;
-	border-bottom-right-radius: 6px;
-}
-
-.rv-qf-chips > .rv-qf-chip + .rv-qf-chip {
-	border-left-width: 0;
+	border-radius: var(--pill-r, 5px);
+	border-left-width: 1px;
 }
 
 .rv-qf-chip.is-met {
@@ -8632,16 +8652,13 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	flex: 1 1 0;
 }
 
-.modal.rv-modal-general button.mod-cta,
-.modal.rv-modal-general .rv-gender-choice button.is-selected {
+.modal.rv-modal-general button.mod-cta {
 	background-color: #1f8a4c !important;
 	color: #ffffff !important;
 	box-shadow: none !important;
 }
 
-.modal.rv-modal-rv button.mod-cta,
-.modal.rv-edit-attributes .rv-gender-choice button.is-selected,
-.modal.rv-edit-attributes .rv-status-choice button.is-selected {
+.modal.rv-modal-rv button.mod-cta {
 	background-color: var(--rv-modal-accent) !important;
 	color: var(--rv-modal-ink, #fff) !important;
 	box-shadow: none !important;
@@ -8665,6 +8682,7 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
   back by that 8px so pillR equals routeR.
 */
 .rv-qf-body {
+	--pill-r: 5px;
 	--rv-qf-route-inset: 8px;
 	display: grid;
 	grid-template-columns: 1.25em max-content minmax(0, 1fr);
@@ -8714,6 +8732,8 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 }
 
 .rv-qf-chips.is-halves {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
 	gap: 6px;
 }
 
@@ -8722,7 +8742,7 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	width: auto;
 	max-width: none;
 	min-width: 0;
-	border-radius: 6px;
+	border-radius: var(--pill-r, 5px);
 	border-left-width: 1px;
 }
 
@@ -8845,19 +8865,19 @@ h5.rv-visit-stamp + .rv-item-strip {
 .modal.rv-edit-attributes .rv-age-choice button.is-selected,
 .modal.rv-edit-attributes .rv-age-choice button.is-selected:focus,
 .modal.rv-edit-attributes .rv-age-choice button.is-selected:focus-visible {
-	background-color: var(--rv-modal-accent) !important;
-	color: var(--rv-modal-ink, #fff) !important;
-	border-color: var(--rv-modal-accent) !important;
-	box-shadow: none !important;
+	background-color: transparent !important;
+	color: var(--rv-menu-ink, var(--rv-modal-accent)) !important;
+	border-color: transparent !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent)) !important;
 	outline: none !important;
 }
 
 /*
   Glancable card title only. Age is the secondary caption (13px, muted).
-  The restroom figure matches that caption and keeps a 2px stroke.
+  The restroom figure is B3: 16px with a 1.5px stroke.
   The dashboard title does not use this selector.
   The name row uses the card width. A long name fills up to the age.
-  A short name stays max-content, so the age remains 6px after it.
+  A short name stays max-content, so the age stays 8px after it.
 */
 .rv-locator-glancable .rv-locator-card-name {
 	width: 100%;
@@ -8866,7 +8886,7 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 .rv-locator-glancable .rv-locator-card-name .rv-title-age {
 	flex: 0 0 auto;
-	margin-inline-start: 4px;
+	margin-inline-start: 6px;
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 400;
 	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
@@ -8875,8 +8895,8 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 .rv-locator-glancable .rv-locator-card-name .rv-title-gender {
 	flex: 0 0 auto;
-	width: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
-	height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
+	width: 16px;
+	height: 16px;
 	color: var(--text-muted);
 }
 
@@ -8884,9 +8904,152 @@ h5.rv-visit-stamp + .rv-item-strip {
 	overflow: visible;
 }
 
-.rv-locator-glancable .rv-locator-card-name .rv-title-gender svg :is(circle, path, line, polyline) {
-	stroke-width: 2px;
+.rv-title-gender svg :is(circle, path, line, polyline) {
+	stroke-width: 1.5px;
 	vector-effect: non-scaling-stroke;
 	stroke-linecap: round;
 	stroke-linejoin: round;
+}
+
+/* In-note title: 6px row gap plus 2px puts the age 8px after the name. The name shrinks first. */
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner > .rv-title-age {
+	flex: 0 0 auto;
+	margin-inline-start: 2px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner > .rv-title-gender,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner > .rv-dash-rename {
+	flex: 0 0 auto;
+}
+
+/* Expanded Visit Facts: the collapsed pills stay, then the rest, then search. */
+.rv-qf-body .rv-qf-value > .rv-qf-stack {
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+	width: 100%;
+	min-width: 0;
+}
+
+.rv-qf-stack:not(.is-open) > .rv-qf-chips:not(:first-child) {
+	display: none;
+}
+
+.rv-qf-chip[hidden],
+.rv-qf-chips[hidden] {
+	display: none !important;
+}
+
+.rv-qf-search-wrap {
+	display: none;
+	align-items: center;
+	gap: 6px;
+	box-sizing: border-box;
+	width: 100%;
+	height: 24px;
+	margin-top: 6px;
+	padding: 0 8px;
+	overflow: hidden;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--pill-r, 5px);
+	background: var(--background-secondary);
+	color: var(--text-muted);
+}
+
+.rv-qf-value.is-open .rv-qf-search-wrap {
+	display: flex;
+}
+
+.rv-qf-search-icon {
+	display: inline-flex;
+	flex: 0 0 auto;
+	align-items: center;
+	justify-content: center;
+	width: 14px;
+	height: 14px;
+	color: var(--text-muted);
+}
+
+.rv-qf-search-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.rv-qf-search {
+	flex: 1 1 auto;
+	width: auto;
+	min-width: 0;
+	height: 22px;
+	margin: 0;
+	padding: 0;
+	border: 0;
+	border-radius: var(--pill-r, 5px);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-normal);
+	font: inherit;
+	font-size: 13px;
+	font-weight: 400;
+}
+
+.rv-qf-search:focus {
+	outline: none;
+	box-shadow: none;
+}
+
+.rv-qf-dash {
+	color: var(--text-muted);
+}
+
+/* One filled primary, on the right. Every other action and every selected chip is an outline. */
+.rv-locator-setup-actions button.mod-cta {
+	order: 2;
+}
+
+.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-age-choice) .setting-item-control > button:not(.mod-cta),
+.modal.rv-locator-modal .rv-modal-actions button:not(.mod-cta),
+.modal.rv-locator-modal .modal-button-container button:not(.mod-cta),
+.rv-locator-setup-actions button:not(.mod-cta) {
+	background: transparent !important;
+	background-color: transparent !important;
+	color: var(--rv-menu-ink, #1f8a4c) !important;
+	border-color: transparent !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+}
+
+.rv-study-change-modal .rv-modal-actions button:not(.mod-cta) {
+	background: transparent !important;
+	background-color: transparent !important;
+	color: var(--rv-menu-ink, #1f8a4c) !important;
+	border-color: transparent !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+}
+
+.rv-study-change-modal .rv-modal-actions button.mod-cta {
+	order: 2;
+	background-color: var(--rv-modal-accent, var(--rv-menu-ink, #1f8a4c)) !important;
+	color: var(--rv-modal-ink, #ffffff) !important;
+	box-shadow: none !important;
+}
+
+.rv-study-change-modal .rv-study-change-list > button.is-selected {
+	background: transparent !important;
+	background-color: transparent !important;
+	color: var(--rv-menu-ink, #1f8a4c) !important;
+	border-color: transparent !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+}
+
+.modal.rv-locator-modal button.is-selected,
+.modal.rv-locator-modal .rv-snooze-quick button.is-selected,
+.modal.rv-locator-modal .rv-study-modes button.is-selected,
+.modal.rv-locator-modal .rv-campaign-actions button.is-selected,
+.modal.rv-edit-attributes .rv-gender-choice button.is-selected,
+.modal.rv-edit-attributes .rv-status-choice button.is-selected,
+.modal.rv-edit-attributes .rv-age-choice button.is-selected {
+	background: transparent !important;
+	background-color: transparent !important;
+	color: var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
+	border-color: transparent !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
 }

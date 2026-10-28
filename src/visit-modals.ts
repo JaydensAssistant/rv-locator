@@ -69,6 +69,7 @@ export class VisitEditModal extends Modal {
 	onOpen(): void {
 		this.setTitle(this.options.title);
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-visit-editor');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
 
 		new Setting(contentEl)
@@ -293,6 +294,7 @@ export class LiteraturePromptModal extends Modal {
 
 /** Visits on one note, newest first, for editing or deleting from the command palette. */
 export class VisitPickModal extends SuggestModal<VisitEntry> {
+	buttonAccent = '';
 	constructor(app: App, private visits: readonly VisitEntry[], private onPick: (entry: VisitEntry) => void) {
 		super(app);
 		this.setPlaceholder('Choose a visit to edit or delete');
@@ -316,6 +318,7 @@ export class VisitPickModal extends SuggestModal<VisitEntry> {
 		void super.onOpen();
 		this.setTitle('Choose a visit');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		iconizeModal(this.modalEl);
 	}
 }
@@ -329,6 +332,7 @@ export interface ConfirmOptions {
 }
 
 export class ConfirmActionModal extends Modal {
+	buttonAccent = '';
 	constructor(app: App, private options: ConfirmOptions) {
 		super(app);
 	}
@@ -336,6 +340,7 @@ export class ConfirmActionModal extends Modal {
 	onOpen(): void {
 		this.setTitle(this.options.title);
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		this.contentEl.createEl('p', { cls: 'rv-locator-modal-copy', text: this.options.message });
 		new Setting(this.contentEl)
 			.setClass('rv-modal-actions')
@@ -345,8 +350,7 @@ export class ConfirmActionModal extends Modal {
 			})
 			.addButton((button) => {
 				button.setButtonText(this.options.confirmText);
-				if (this.options.warning) button.setWarning();
-				else button.setCta();
+				button.setCta();
 				button.onClick(() => {
 					this.close();
 					this.options.onConfirm();

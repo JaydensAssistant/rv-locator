@@ -228,11 +228,17 @@ export function markModalTone(modalEl: HTMLElement, tone: 'general' | 'rv', acce
 	const drop = tone === 'rv' ? 'rv-modal-general' : 'rv-modal-rv';
 	if (typeof modalEl.removeClass === 'function') modalEl.removeClass(drop);
 	else modalEl.classList.remove(drop);
-	if (tone !== 'rv') return;
+	if (typeof modalEl.style?.setProperty !== 'function') return;
+	if (tone !== 'rv') {
+		modalEl.style.setProperty('--rv-menu-ink', '#1f8a4c');
+		modalEl.style.setProperty('--rv-modal-ink', '#ffffff');
+		return;
+	}
 	const color = accent.trim();
-	if (!color || typeof modalEl.style?.setProperty !== 'function') return;
+	if (!color) return;
 	modalEl.style.setProperty('--rv-modal-accent', color);
 	modalEl.style.setProperty('--rv-modal-ink', urgencyInk(color));
+	modalEl.style.setProperty('--rv-menu-ink', color);
 }
 
 export function nameWithIcon(setting: Setting, icon: string, name: string): Setting {

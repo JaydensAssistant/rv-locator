@@ -12,6 +12,7 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 
 /** Mark one daypart Try or Avoid, whatever the Attempt Log computed. */
 export class SlotOverrideModal extends Modal {
+	buttonAccent = '';
 	private weekday = new Date().getDay();
 	private daypart: Daypart = 'evening';
 	private reason = '';
@@ -29,7 +30,7 @@ export class SlotOverrideModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Try or Avoid');
 		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		this.paint();
 	}
 

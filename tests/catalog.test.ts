@@ -19,6 +19,7 @@ import {
 	rememberCustom,
 	renameCustom,
 	emptyShare,
+	lessonPillLabel,
 	renameLabelInMarkdown,
 	shareFromNewRvDraft,
 	shareTitles,
@@ -82,6 +83,12 @@ describe('official catalogs', () => {
 		const parts = splitTitleSuffix('"Can We Enjoy Life Forever?" Tiny Tract');
 		assert.equal(parts.suffix, 'Tiny Tract');
 		assert.equal(parts.text.includes('Tiny Tract'), false);
+	});
+
+	it('shows a lesson pill as the number then the catalog title', () => {
+		assert.equal(lessonPillLabel('Lesson 2'), '02 The Bible Gives Hope');
+		assert.equal(lessonPillLabel('2 The Bible Gives Hope'), '02 The Bible Gives Hope');
+		assert.equal(lessonPillLabel('Lesson 3 Pt 2'), 'Lesson 3 Pt 2');
 	});
 
 	it('keeps a typed title and ranks an exact match ahead of a close one', () => {

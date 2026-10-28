@@ -12,6 +12,7 @@ import type { GeocodeHit } from './types';
 import type RVLocatorPlugin from './main';
 
 export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
+	buttonAccent = '';
 	private closed = false;
 	private lookingUp = false;
 	private chose = false;
@@ -50,6 +51,7 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 			? `Showing a saved lookup. Look up again sends the address to Geoapify. ${PRIVACY_NOTICE}`
 			: PRIVACY_NOTICE);
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		iconizeModal(this.modalEl);
 	}
 
@@ -239,6 +241,7 @@ export class BulkGeocodeModal extends Modal {
 
 		let dismissLabel: ((label: string) => void) | null = null;
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Start');
 				button.setCta();
@@ -381,6 +384,7 @@ export class SuccessfulVisitsModal extends Modal {
 
 		let dismissLabel: ((label: string) => void) | null = null;
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Fill');
 				button.setCta();

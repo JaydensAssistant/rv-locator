@@ -13,7 +13,7 @@ import { isRvDashboardNote } from './rv-note-view';
 import { resolveStatus, sanitizeGender, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
-import { formatStudyFraction } from './catalog';
+import { formatStudyFraction, lessonPillLabel } from './catalog';
 import { paintUrgencyInk } from './color-math';
 import { SNOOZE_SLATE } from './snooze';
 import { displayTitle, fitEndEllipsis, showTitlePopover } from './title-fit';
@@ -277,7 +277,8 @@ function quickFactsCallout(root: HTMLElement): HTMLElement | null {
 	for (const node of list) {
 		if (!(node instanceof HTMLElement)) continue;
 		const title = node.querySelector(':scope > .callout-title');
-		if ((title?.textContent ?? '').includes('Quick Facts')) return node;
+		const text = title?.textContent ?? '';
+		if (text.includes('Visit Facts') || text.includes('Quick Facts')) return node;
 	}
 	return null;
 }
@@ -349,12 +350,12 @@ function armFactsRow(badges: HTMLElement): void {
 function mountQuickFactsHead(inner: HTMLElement, ratio: string): void {
 	inner.replaceChildren();
 	inner.addClass('rv-qf-head');
-	inner.createSpan({ cls: 'rv-qf-head-label', text: 'Quick Facts' });
+	inner.createSpan({ cls: 'rv-qf-head-label', text: 'Visit Facts' });
 	inner.createSpan({ cls: 'rv-qf-head-dot', text: '·' });
 	const count = inner.createSpan('rv-qf-head-count');
 	const icon = count.createSpan('rv-qf-head-icon');
 	setIcon(icon, 'list-checks');
-	count.createSpan({ text: ` ${ratio}` });
+	count.createSpan({ cls: 'rv-qf-head-ratio', text: ratio });
 }
 
 function paintFactsTitle(
@@ -528,7 +529,7 @@ function factDateRow(parent: HTMLElement, icon: string, label: string, value: un
 	const raw = value instanceof Date ? value.toISOString() : textOf(value);
 	const display = formatDriveDate(raw);
 	if (display.empty || !display.rest) {
-		valueEl.setText('—');
+		valueEl.createSpan({ cls: 'rv-qf-pill rv-qf-dash', text: '—' });
 		return;
 	}
 	const days = calendarDaysSince(raw, new Date());
@@ -565,41 +566,60 @@ function paintQuickList(
 	const labelEl = row.querySelector('.rv-qf-label');
 	const valueEl = row.querySelector('.rv-qf-value');
 	const all = items.map((item) => item.trim()).filter((item) => item.length > 0);
-	const chips = chipsFor(all, kind, limit, metWith);
-	const shown = chips.filter((chip) => !chip.empty && !(kind === 'name' && chip.met && !all.some((item) => item.toLowerCase() === chip.full.toLowerCase()))).length;
+	const width = limit === 2 ? 2 : 1;
+	const ordered = orderedChips(all, kind, width, metWith);
+	const collapsed = chipsFor(all, kind, width, metWith);
+	const shown = collapsed.filter((chip) => !chip.empty && !(kind === 'name' && chip.met && !all.some((item) => item.toLowerCase() === chip.full.toLowerCase()))).length;
 	const extra = Math.max(0, all.length - shown);
-	if (labelEl instanceof HTMLElement) {
-		if (extra > 0) labelEl.createSpan({ cls: 'rv-qf-plus', text: `+${extra}` });
+	if (!(valueEl instanceof HTMLElement)) return row;
+	if (ordered.length === 0) {
+		valueEl.createSpan({ cls: 'rv-qf-pill rv-qf-dash', text: '—' });
+		return row;
+	}
+	const stack = valueEl.createSpan('rv-qf-stack');
+	const lines: HTMLElement[] = [];
+	for (let index = 0; index < ordered.length; index += width) {
+		const slice = ordered.slice(index, index + width);
+		const host = stack.createSpan(width === 2 ? 'rv-qf-chips is-halves' : 'rv-qf-chips is-single');
+		for (const chip of slice) paintFactChip(host, chip);
+		lines.push(host);
+	}
+	if (extra > 0 && labelEl instanceof HTMLElement) {
+		labelEl.createSpan({ cls: 'rv-qf-plus', text: `+${extra}` });
 		const chevron = labelEl.createSpan({
 			cls: 'rv-qf-chevron',
-			attr: { role: 'button', tabindex: '0', 'aria-label': `${label} list` },
+			attr: { role: 'button', tabindex: '0', 'aria-expanded': 'false', 'aria-label': `${label} list` },
 		});
 		setIcon(chevron, 'chevron-down');
-		const drop = parent.createDiv('rv-qf-drop');
-		drop.hidden = true;
-		const table = drop.createEl('table', { cls: 'rv-qf-table' });
-		const body = table.createEl('tbody');
-		const rows: HTMLElement[] = [];
-		const listed = all.length > 0 ? all : chips.filter((chip) => chip.full).map((chip) => chip.full);
-		for (const item of listed) {
-			const tr = body.createEl('tr');
-			const painted = chipParts(item, kind);
-			tr.dataset.rvText = painted.full.toLowerCase();
-			tr.createEl('td', { text: painted.full });
-			rows.push(tr);
-		}
-		const search = drop.createEl('input', {
+		const searchWrap = valueEl.createSpan('rv-qf-search-wrap');
+		const searchIcon = searchWrap.createSpan('rv-qf-search-icon');
+		setIcon(searchIcon, 'search');
+		const search = searchWrap.createEl('input', {
 			cls: 'rv-qf-search',
 			attr: { type: 'search', placeholder: 'Search', 'aria-label': `Search ${label}` },
 		});
 		search.addEventListener('input', () => {
 			const query = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : '';
-			for (const tr of rows) tr.hidden = query.length > 0 && !(tr.dataset.rvText ?? '').includes(query);
+			for (const line of lines) {
+				const chips = Array.from(line.querySelectorAll('.rv-qf-chip'));
+				let any = false;
+				for (const chip of chips) {
+					if (!(chip instanceof HTMLElement)) continue;
+					const hit = query.length === 0 || (chip.dataset.rvText ?? '').includes(query);
+					chip.hidden = !hit;
+					if (hit) any = true;
+				}
+				line.hidden = !any;
+			}
 		});
 		const toggle = (event: Event): void => {
 			event.preventDefault();
 			event.stopPropagation();
-			drop.hidden = !drop.hidden;
+			const open = !stack.classList.contains('is-open');
+			stack.classList.toggle('is-open', open);
+			valueEl.classList.toggle('is-open', open);
+			chevron.setAttr('aria-expanded', open ? 'true' : 'false');
+			setIcon(chevron, open ? 'chevron-up' : 'chevron-down');
 		};
 		chevron.addEventListener('click', toggle);
 		chevron.addEventListener('keydown', (event) => {
@@ -608,31 +628,32 @@ function paintQuickList(
 			toggle(event);
 		});
 	}
-	if (!(valueEl instanceof HTMLElement)) return row;
-	const halves = limit === 2;
-	const visible = halves
-		? padSlots(chips, 2)
-		: chips.filter((chip) => !chip.empty);
-	if (!halves && visible.length === 0) {
-		valueEl.setText('—');
-		return row;
-	}
-	const host = valueEl.createSpan(halves ? 'rv-qf-chips is-halves' : 'rv-qf-chips is-single');
-	for (const chip of visible) {
-		const el = host.createSpan({ cls: chip.met ? 'rv-qf-chip is-met' : chip.empty ? 'rv-qf-chip is-empty' : 'rv-qf-chip' });
-		if (chip.empty) continue;
-		const group = el.createSpan('rv-qf-chip-group');
-		group.createSpan({ cls: 'rv-qf-chip-title', text: chip.title });
-		if (chip.type) group.createSpan({ cls: 'rv-qf-chip-type', text: chip.type });
-		armChipOverlay(el, chip.full);
-	}
 	return row;
 }
 
-function padSlots(chips: readonly FactChip[], count: number): FactChip[] {
-	const next = chips.slice(0, count);
-	while (next.length < count) next.push({ title: '', type: '', full: '', met: false, empty: true });
-	return next;
+function paintFactChip(host: HTMLElement, chip: FactChip): void {
+	const el = host.createSpan({ cls: chip.met ? 'rv-qf-chip is-met' : 'rv-qf-chip' });
+	el.dataset.rvText = chip.full.toLowerCase();
+	const group = el.createSpan('rv-qf-chip-group');
+	group.createSpan({ cls: 'rv-qf-chip-title', text: chip.title });
+	if (chip.type) group.createSpan({ cls: 'rv-qf-chip-type', text: chip.type });
+	armChipOverlay(el, chip.full);
+}
+
+/** Collapsed pills first, then every later entry, in the same single or double shape. */
+function orderedChips(items: readonly string[], kind: ChipKind, limit: number, metWith: string): FactChip[] {
+	if (kind === 'name') {
+		const visible = chipsFor(items, kind, limit, metWith).filter((chip) => !chip.empty);
+		const used = new Set(visible.map((chip) => chip.full.toLowerCase()));
+		const rest = items
+			.filter((item) => !used.has(item.trim().toLowerCase()))
+			.map((item) => ({ ...chipParts(item, kind), met: false, empty: false }));
+		return [...visible, ...rest];
+	}
+	const recent = lastListEntries(items, limit);
+	const recentKeys = new Set(recent.map((item) => item.toLowerCase()));
+	const older = items.filter((item) => !recentKeys.has(item.toLowerCase()));
+	return [...recent, ...older].map((item) => ({ ...chipParts(item, kind), met: false, empty: false }));
 }
 
 function chipsFor(items: readonly string[], kind: ChipKind, limit: number, metWith: string): FactChip[] {
@@ -655,6 +676,10 @@ function chipParts(item: string, kind: ChipKind): { title: string; type: string;
 		const parts = displayTitle(item, kind);
 		const type = parts.suffix.trim();
 		return { title: parts.text, type, full: type ? `${parts.text} ${type}` : parts.text };
+	}
+	if (kind === 'lesson') {
+		const title = lessonPillLabel(item);
+		return { title, type: '', full: title };
 	}
 	return { title: item, type: '', full: item };
 }

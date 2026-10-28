@@ -95,6 +95,7 @@ export class SetupWizardModal extends Modal {
 	}
 
 	onOpen(): void {
+		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-locator-setup-wizard');
 		markModalTone(this.modalEl, 'general');
 		this.setTitle('RV Locator setup');
@@ -160,6 +161,7 @@ export class SetupWizardModal extends Modal {
 			);
 		}
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Save and continue');
 				button.setCta();
@@ -186,6 +188,7 @@ export class SetupWizardModal extends Modal {
 			(choice) => { this.colorsDraft = { palette: choice.palette, custom: [...choice.custom] }; },
 		);
 		new Setting(contentEl)
+			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Save and continue');
 				button.setCta();

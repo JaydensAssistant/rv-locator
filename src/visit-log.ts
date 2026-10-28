@@ -491,11 +491,42 @@ function lessonNames(value: unknown): string[] {
 	return names;
 }
 
-function assignShareList(frontmatter: Record<string, unknown>, name: string, titles: readonly string[]): void {
+function shareNameList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		if (typeof item !== 'string') continue;
+		const text = item.trim();
+		if (!text || names.some((name) => name.toLowerCase() === text.toLowerCase())) continue;
+		names.push(text);
+	}
+	return names;
+}
+
+/** Append titles. One title stays a string. Several stay a list. Blank incoming does not clear history. */
+export function mergeShareProperty(frontmatter: Record<string, unknown>, name: string, incoming: readonly string[]): void {
+	const titles = incoming.map((item) => item.trim()).filter(Boolean);
 	if (titles.length === 0) return;
-	const only = titles[0];
-	if (titles.length === 1 && only) assignProperty(frontmatter, name, only);
-	else assignProperty(frontmatter, name, [...titles]);
+	const list = shareNameList(readProperty(frontmatter, name));
+	for (const title of titles) {
+		if (!list.some((item) => item.toLowerCase() === title.toLowerCase())) list.push(title);
+	}
+	writeShareProperty(frontmatter, name, list);
+}
+
+export function writeShareProperty(frontmatter: Record<string, unknown>, name: string, list: readonly string[]): void {
+	const next = list.map((item) => item.trim()).filter(Boolean);
+	if (next.length === 0) {
+		removeProperty(frontmatter, name);
+		return;
+	}
+	const only = next[0];
+	if (next.length === 1 && only) assignProperty(frontmatter, name, only);
+	else assignProperty(frontmatter, name, [...next]);
+}
+
+function assignShareList(frontmatter: Record<string, unknown>, name: string, titles: readonly string[]): void {
+	mergeShareProperty(frontmatter, name, titles);
 }
 
 function bumpCount(frontmatter: Record<string, unknown>, name: string): void {

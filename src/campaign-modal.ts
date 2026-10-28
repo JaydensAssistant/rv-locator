@@ -113,6 +113,7 @@ export function askCampaignCovered(
 	app: App,
 	campaignName: string,
 	pronoun: 'him' | 'her' | 'them' = 'them',
+	accent = '',
 ): Promise<boolean> {
 	return new Promise((resolve) => {
 		const modal = new Modal(app);
@@ -126,7 +127,7 @@ export function askCampaignCovered(
 		modal.onOpen = () => {
 			modal.setTitle(campaignName);
 			modal.modalEl.addClass('rv-locator-modal');
-			markModalTone(modal.modalEl, 'general');
+			markModalTone(modal.modalEl, 'rv', accent);
 			mountCampaignChoice(
 				modal.contentEl,
 				coverageQuestion(pronoun, campaignName),

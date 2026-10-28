@@ -168,8 +168,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private homeBiasPoint: GeocodeBias | null = null;
 	/** Hub lists written before the metadata cache catches up, so the chip row updates immediately. */
 	private hubOverride = new Map<string, unknown>();
-	/** Dates written by a visit, used until the metadata cache catches up. */
-	private visitPaint = new Map<string, { attempted: unknown; spoke: unknown }>();
+	/** Visit Facts written by a visit, used until the metadata cache catches up. */
+	private visitPaint = new Map<string, VisitPaint>();
 	/** Frontmatter from metadataCache 'changed', not a read that raced the update. */
 	private cachedFrontmatter = new Map<string, Record<string, unknown>>();
 	/** New RV focus waits for the template prompt to close. No clock during the prompt. */
@@ -1654,6 +1654,14 @@ export default class RVLocatorPlugin extends Plugin {
 		this.visitPaint.set(path, {
 			attempted: readProperty(data, 'Last Attempted'),
 			spoke: readProperty(data, 'Last Spoke'),
+			studied: readProperty(data, 'Last Studied'),
+			met: readProperty(data, 'Met'),
+			publications: readProperty(data, 'Left Publications'),
+			media: readProperty(data, 'Shared Media'),
+			lessons: readProperty(data, 'Lessons Studied'),
+			taken: readProperty(data, 'Taken'),
+			visits: readProperty(data, 'Visits'),
+			successful: readProperty(data, 'Successful Visits'),
 		});
 	}
 
@@ -1680,15 +1688,13 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		const paint = this.visitPaint.get(path);
 		if (paint) {
-			const cachedAttempt = readProperty(data, 'Last Attempted');
-			const cachedSpoke = readProperty(data, 'Last Spoke');
-			const same = sameVisitStamp(cachedAttempt, paint.attempted) && sameVisitStamp(cachedSpoke, paint.spoke);
+			const fields = visitPaintRecord(paint);
+			const same = data != null && Object.entries(fields).every(([key, value]) => samePinned(readProperty(data, key), value));
 			if (same) this.visitPaint.delete(path);
 			else if (data) {
-				assignProperty(data, 'Last Attempted', paint.attempted);
-				assignProperty(data, 'Last Spoke', paint.spoke);
+				for (const [key, value] of Object.entries(fields)) assignProperty(data, key, value);
 			} else {
-				return { 'Last Attempted': paint.attempted, 'Last Spoke': paint.spoke };
+				return fields;
 			}
 		}
 		return data;
@@ -2644,7 +2650,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		if (decision === 'no' || decision === 'skip') return;
 		if (!this.shouldAskCoverage(path) || !this.campaign) return;
-		const yes = await askCampaignCovered(this.app, this.campaign.name, this.coveragePronounFor(path));
+		const yes = await askCampaignCovered(this.app, this.campaign.name, this.coveragePronounFor(path), this.buttonAccent(path));
 		if (yes) await this.markCovered(path);
 	}
 
@@ -2663,9 +2669,11 @@ export default class RVLocatorPlugin extends Plugin {
 	private openSlotOverride(path: string): void {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
-		new SlotOverrideModal(this.app, this.slotOverridesFor(file), (next) => {
+		const modal = new SlotOverrideModal(this.app, this.slotOverridesFor(file), (next) => {
 			void this.writeSlotOverrides(file, next);
-		}).open();
+		});
+		modal.buttonAccent = this.buttonAccent(path);
+		modal.open();
 	}
 
 	private async writeSlotOverrides(file: TFile, overrides: readonly SlotOverride[]): Promise<void> {
@@ -3434,7 +3442,9 @@ export default class RVLocatorPlugin extends Plugin {
 			new Notice(`No visits on “${file.basename}”.`);
 			return;
 		}
-		new VisitPickModal(this.app, list, (entry) => this.promptEditVisit(file, entry, hintFor(list, entry))).open();
+		const picker = new VisitPickModal(this.app, list, (entry) => this.promptEditVisit(file, entry, hintFor(list, entry)));
+		picker.buttonAccent = this.buttonAccent(file.path);
+		picker.open();
 	}
 
 	private promptEditVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
@@ -3471,7 +3481,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const parts = entry.home
 			? 'its stamp and notes, its Attempt Log line, and what it added to Visits, Successful Visits, Last Attempted, Last Spoke, and Taken'
 			: 'its Attempt Log line, and what it added to Visits and Last Attempted';
-		new ConfirmActionModal(this.app, {
+		const modal = new ConfirmActionModal(this.app, {
 			title: 'Delete visit',
 			message: `Delete ${describeVisit(entry)}? This removes ${parts}. Met becomes the earliest visit that is not in the future. Met With is not changed.`,
 			confirmText: 'Delete visit',
@@ -3479,7 +3489,9 @@ export default class RVLocatorPlugin extends Plugin {
 			onConfirm: () => {
 				void this.changeVisit(file, hint, null).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
-		}).open();
+		});
+		modal.buttonAccent = this.buttonAccent(file.path);
+		modal.open();
 	}
 
 	/** Edit (`facts`) or delete (`null`) one visit, body and frontmatter together. */
@@ -3514,6 +3526,7 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.restabilizeCompanions(file);
 		await this.syncEditedCoverage(file.path, applied);
 		await this.enqueueDigestRewrite(file);
+		this.scheduleOpenNoteRepaint();
 		for (const callback of this.viewRefreshers) callback();
 		new Notice(added ? `Saved ${describeVisit(added)}.` : `Deleted the visit on “${file.basename}”.`);
 	}
@@ -3838,7 +3851,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	confirmArchive(file: TFile): void {
 		const inactive = this.noteIsInactive(file);
-		new ConfirmActionModal(this.app, inactive ? {
+		const modal = new ConfirmActionModal(this.app, inactive ? {
 			title: 'Unarchive RV',
 			message: `Set “${file.basename}” back to Active with Priority 1? The note and its visits stay.`,
 			confirmText: 'Unarchive',
@@ -3854,7 +3867,9 @@ export default class RVLocatorPlugin extends Plugin {
 			onConfirm: () => {
 				void this.archiveRv(file, true).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
-		}).open();
+		});
+		modal.buttonAccent = this.buttonAccent(file.path);
+		modal.open();
 	}
 
 	private async archiveRv(file: TFile, archive: boolean): Promise<void> {
@@ -3970,6 +3985,7 @@ export default class RVLocatorPlugin extends Plugin {
 			},
 			() => { settleNotes(); },
 		);
+		modal.buttonAccent = this.buttonAccent(file.path);
 		modal.open();
 	}
 
@@ -4030,6 +4046,7 @@ export default class RVLocatorPlugin extends Plugin {
 				() => finish(null),
 			);
 			modal.heading = `Choose a location for ${file.basename}`;
+			modal.buttonAccent = this.buttonAccent(file.path);
 			modal.open();
 		});
 	}
@@ -4503,12 +4520,43 @@ function propertyDays(value: unknown): number | null {
 	return raw ? calendarDaysSince(raw) : null;
 }
 
-/** Calendar-day match. Empty on both sides counts as the cache having caught up. */
-function sameVisitStamp(cached: unknown, painted: unknown): boolean {
-	const left = dateTextFromUnknown(cached).slice(0, 10);
-	const right = dateTextFromUnknown(painted).slice(0, 10);
-	if (!left && !right) return true;
-	return left.length > 0 && left === right;
+interface VisitPaint {
+	attempted: unknown;
+	spoke: unknown;
+	studied: unknown;
+	met: unknown;
+	publications: unknown;
+	media: unknown;
+	lessons: unknown;
+	taken: unknown;
+	visits: unknown;
+	successful: unknown;
+}
+
+function visitPaintRecord(paint: VisitPaint): Record<string, unknown> {
+	return {
+		'Last Attempted': paint.attempted,
+		'Last Spoke': paint.spoke,
+		'Last Studied': paint.studied,
+		Met: paint.met,
+		'Left Publications': paint.publications,
+		'Shared Media': paint.media,
+		'Lessons Studied': paint.lessons,
+		Taken: paint.taken,
+		Visits: paint.visits,
+		'Successful Visits': paint.successful,
+	};
+}
+
+function pinnedText(value: unknown): string {
+	if (value == null) return '';
+	if (Array.isArray(value)) return value.map((item) => pinnedText(item)).join('\u0000');
+	if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString();
+	return String(value).trim();
+}
+
+function samePinned(cached: unknown, painted: unknown): boolean {
+	return pinnedText(cached) === pinnedText(painted);
 }
 
 function lessonList(value: unknown): string[] {

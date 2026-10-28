@@ -152,7 +152,8 @@ describe('next build locks', () => {
 		assert.match(chrome, /showTitlePopover\(el, full\)/);
 		assert.match(chrome, /LONG_PRESS_MS/);
 		assert.match(chrome, /cls: 'rv-qf-search'/);
-		assert.match(chrome, /tr\.hidden = query\.length > 0 && !\(tr\.dataset\.rvText/);
+		assert.match(chrome, /chip\.hidden = !hit/);
+		assert.doesNotMatch(chrome, /tr\.hidden/);
 		assert.match(chrome, /cls: 'rv-qf-chevron'/);
 	});
 
@@ -183,14 +184,14 @@ describe('next build locks', () => {
 		assert.match(css, /\.rv-qf-chips\.is-single > \.rv-qf-chip \{[^}]*width:\s*100%/);
 		assert.match(css, /\.rv-qf-chips\.is-halves \{[^}]*gap:\s*6px/);
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*flex:\s*1 1 0/);
-		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-radius:\s*6px/);
+		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-radius:\s*var\(--pill-r, 5px\)/);
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-left-width:\s*1px/);
 		assert.match(css, /\.rv-qf-body \.rv-qf-value > \.rv-qf-pill \{[^}]*display:\s*flex/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*1 1 auto/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*max-width:\s*max-content/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*font-size:\s*calc\(13px \* var\(--rv-font-scale, 1\)\)/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*flex:\s*0 0 auto/);
-		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-gender svg :is\(circle, path, line, polyline\) \{[^}]*stroke-width:\s*2px/);
+		assert.match(css, /\.rv-title-gender svg :is\(circle, path, line, polyline\) \{[^}]*stroke-width:\s*1\.5px/);
 		assert.doesNotMatch(css, /\.rv-dashboard[^{]*\.rv-title-age \{[^}]*font-size:\s*calc\(13px/);
 		const ago = css.match(/\.rv-qf-pill \.rv-stamp-ago \{[^}]*\}/)?.[0] ?? '';
 		assert.match(ago, /border:\s*0/);
@@ -203,8 +204,8 @@ describe('next build locks', () => {
 		assert.match(css, /\.cm-s-obsidian \.cm-line\.rv-lp-notes ~ \.cm-line\.rv-lp-visit-heading \{[^}]*padding-top:\s*24px !important/);
 		assert.match(css, /\.modal\.rv-edit-attributes\.rv-locator-modal \.setting-item\.rv-gender-choice \{[^}]*flex-direction:\s*column !important/);
 		assert.match(css, /\.modal\.rv-edit-attributes\.rv-locator-modal \.setting-item\.rv-gender-choice \.setting-item-control button \{[^}]*flex:\s*1 1 0 !important/);
-		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?background-color:\s*var\(--rv-modal-accent\) !important/);
-		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?box-shadow:\s*none !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?background-color:\s*transparent !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?box-shadow:\s*inset 0 0 0 1px var\(--rv-menu-ink, var\(--rv-modal-accent\)\) !important/);
 		assert.match(css, /\.modal\.rv-edit-attributes \.rv-gender-choice \.setting-item-control button svg \{[^}]*width:\s*16px !important[^}]*height:\s*16px !important/);
 		assert.match(meta, /<circle cx="12" cy="5" r="3"\/><path d="M8 10\.5h8"\/><path d="M12 8\.5v6\.5"\/><path d="m12 15-3\.5 7"\/><path d="m12 15 3\.5 7"\/>/);
 		assert.match(meta, /<circle cx="12" cy="5" r="3"\/><path d="M9\.5 8\.5h5"\/><path d="M9\.5 8\.5 5\.5 17h13L14\.5 8\.5"\/><path d="M10 17v5"\/><path d="M14 17v5"\/>/);

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { parseLogBullet } from '../src/schedule';
 import { notesBoxHeight } from '../src/notes-autosize';
+import { emptyShare } from '../src/catalog';
 import { applyVisitBody, applyVisitFrontmatter, ensureVisitButtons, iconizeVisitButtons } from '../src/visit-log';
 import {
 	applyVisitChangeFrontmatter,
@@ -340,6 +341,52 @@ describe('visit change frontmatter', () => {
 			remaining: [],
 		});
 		assert.equal(later['Last Studied'], '2026-10-13T16:40:00');
+	});
+
+	it('keeps literature and media across log, edit, and delete', () => {
+		const frontmatter: Record<string, unknown> = {};
+		const firstShare = { ...emptyShare(), publications: 'Enjoy Life Forever', media: 'What Happens at a Bible Study? Video' };
+		const secondShare = { ...emptyShare(), publications: 'Will Suffering Ever End?', media: 'Is Anyone Listening? Video' };
+		applyVisitFrontmatter(frontmatter, 'home', new Date(2026, 9, 1, 10), '', firstShare);
+		applyVisitFrontmatter(frontmatter, 'home', new Date(2026, 9, 8, 10), '', secondShare);
+		assert.deepEqual(frontmatter['Left Publications'], ['Enjoy Life Forever', 'Will Suffering Ever End?']);
+		assert.deepEqual(frontmatter['Shared Media'], ['What Happens at a Bible Study? Video', 'Is Anyone Listening? Video']);
+		const first = {
+			when: new Date(2026, 9, 1, 10),
+			home: true,
+			companion: '',
+			publications: 'Enjoy Life Forever',
+			publicationList: ['Enjoy Life Forever'],
+			media: 'What Happens at a Bible Study? Video',
+			mediaList: ['What Happens at a Bible Study? Video'],
+		};
+		const second = {
+			when: new Date(2026, 9, 8, 10),
+			home: true,
+			companion: '',
+			publications: 'Will Suffering Ever End?',
+			publicationList: ['Will Suffering Ever End?'],
+			media: 'Is Anyone Listening? Video',
+			mediaList: ['Is Anyone Listening? Video'],
+		};
+		applyVisitChangeFrontmatter(frontmatter, {
+			removed: first,
+			added: {
+				...first,
+				publications: 'Is Anyone Listening?',
+				publicationList: ['Is Anyone Listening?'],
+			},
+			remaining: [second],
+		});
+		assert.deepEqual(frontmatter['Left Publications'], ['Will Suffering Ever End?', 'Is Anyone Listening?']);
+		assert.deepEqual(frontmatter['Shared Media'], ['What Happens at a Bible Study? Video', 'Is Anyone Listening? Video']);
+		applyVisitChangeFrontmatter(frontmatter, { removed: second, remaining: [{
+			...first,
+			publications: 'Is Anyone Listening?',
+			publicationList: ['Is Anyone Listening?'],
+		}] });
+		assert.equal(frontmatter['Left Publications'], 'Is Anyone Listening?');
+		assert.equal(frontmatter['Shared Media'], 'What Happens at a Bible Study? Video');
 	});
 
 	it('reads stored local date-times', () => {

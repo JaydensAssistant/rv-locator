@@ -1186,13 +1186,21 @@ describe('smoke layout', () => {
 			assert.equal(pill.querySelector('.rv-stamp-ago')?.classList.contains('rv-qf-pill'), false);
 		}
 		const lit = row('Literature');
-		assert.equal(lit.querySelectorAll('.rv-qf-chip').length, 1);
+		const firstChips = (label: string): NodeListOf<Element> => {
+			const host = row(label).querySelector('.rv-qf-chips');
+			assert.ok(host);
+			return host.querySelectorAll('.rv-qf-chip');
+		};
+		assert.equal(firstChips('Literature').length, 1);
+		assert.equal(lit.querySelectorAll('.rv-qf-chip').length, 2);
 		assert.ok(lit.querySelector('.rv-qf-chips.is-single'));
 		assert.ok(lit.querySelector('.rv-qf-plus'));
+		assert.ok(lit.querySelector('.rv-qf-search'));
 		assert.equal(lit.querySelector('.rv-qf-chevron')?.tagName, 'SPAN');
 		assert.equal(root.querySelector('button.rv-qf-chevron'), null);
-		const lessons = row('Lessons').querySelectorAll('.rv-qf-chip');
-		const taken = row('Taken').querySelectorAll('.rv-qf-chip');
+		assert.equal(root.querySelector('.rv-qf-head-label')?.textContent, 'Visit Facts');
+		const lessons = firstChips('Lessons');
+		const taken = firstChips('Taken');
 		assert.equal(lessons.length, 2);
 		assert.equal(taken.length, 2);
 		assert.ok(row('Lessons').querySelector('.rv-qf-chips.is-halves'));
@@ -1230,10 +1238,31 @@ describe('smoke layout', () => {
 		const chevron = lit.querySelector('.rv-qf-chevron');
 		assert.ok(chevron instanceof window.HTMLElement);
 		chevron.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-		const table = lit.parentElement?.querySelector('.rv-qf-drop:not([hidden])');
-		assert.ok(table);
-		assert.match(table?.textContent ?? '', /How Do You View the Bible/);
-		assert.match(table?.textContent ?? '', /Another Tract/);
+		const stack = lit.querySelector('.rv-qf-stack');
+		assert.ok(stack instanceof window.HTMLElement);
+		assert.equal(stack.classList.contains('is-open'), true);
+		assert.equal(lit.querySelector('.rv-qf-drop'), null);
+		const listed = Array.from(stack.querySelectorAll('.rv-qf-chip')).map((chip) =>
+			chip instanceof window.HTMLElement ? chip.dataset.rvText ?? '' : '');
+		assert.ok(listed.some((text) => text.includes('how do you view the bible')));
+		assert.ok(listed.some((text) => text.includes('another tract')));
+		root.remove();
+	});
+
+	it('shows a dash pill when a Visit Facts list is empty', () => {
+		const root = window.document.createElement('div');
+		root.className = 'rv-dashboard';
+		root.innerHTML = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div><div class="callout-content"></div></div>';
+		decorateNoteChrome(root, 'RVs/Empty Media.md', chromeHost({
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			'Shared Media': [],
+		}, { count: 0 }));
+		const media = Array.from(root.querySelectorAll('.rv-qf-row')).find((node) =>
+			node.querySelector('.rv-qf-label')?.textContent?.startsWith('Media'));
+		assert.ok(media instanceof window.HTMLElement);
+		assert.equal(media.querySelector('.rv-qf-dash')?.textContent, '—');
+		assert.equal(media.querySelector('.rv-qf-chip'), null);
 		root.remove();
 	});
 

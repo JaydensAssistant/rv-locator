@@ -531,7 +531,7 @@ describe('disk proof', () => {
 		assert.equal(createdText.includes('VIEW[{["Map Link"]}]'), false);
 		assert.equal(createdText.includes('VIEW[{Map Link}]'), false);
 		assert.equal(createdText.includes('Map Link:'), false);
-		assert.equal(createdText.includes('> > [!rv]- Quick Facts'), true);
+		assert.equal(createdText.includes('> > [!rv]- Visit Facts'), true);
 		assert.equal(createdText.includes('> [!rv]- 👤 RV Dashboard'), false);
 		assert.equal(createdText.includes('> [!info]-'), false);
 		assert.equal(createdText.includes('Log visit'), false);
@@ -551,7 +551,7 @@ describe('disk proof', () => {
 		const addressInputAt = createdText.indexOf('>**Address:** `INPUT[text:Address]`');
 		const iconAt = createdText.indexOf(`[🗺️](${rv.mapUrl})`);
 		const buttonAt = createdText.indexOf('`BUTTON[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive]`');
-		const factsAt = createdText.indexOf('> > [!rv]- Quick Facts');
+		const factsAt = createdText.indexOf('> > [!rv]- Visit Facts');
 		const ruleAt = createdText.indexOf('\n---\n### Recent Notes:');
 		const stampAt = createdText.indexOf(`##### ${stamp}`);
 		const suggestionsAt = createdText.indexOf('> [!example] Return Suggestions');
@@ -568,7 +568,7 @@ describe('disk proof', () => {
 		assert.ok(callout.indexOf('**Last Attempted**') < callout.indexOf('**Met**'));
 		assert.ok(callout.indexOf('**Met**') < callout.indexOf('**Taken**'));
 		assert.equal(callout.includes('**Met With**'), false);
-		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive\]`\n>\n> > \[!rv\]- Quick Facts/);
+		assert.match(createdText, /`BUTTON\[rv-log-home, rv-log-miss, rv-log-past, rv-log-housemate, rv-archive\]`\n>\n> > \[!rv\]- Visit Facts/);
 		assert.equal(createdText.includes('Notes would go here'), false);
 		assert.match(createdText, /\n---\n\n```meta-bind-button\n/);
 		const archiveAt = createdText.indexOf('id: rv-archive');
