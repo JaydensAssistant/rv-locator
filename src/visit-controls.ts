@@ -317,6 +317,26 @@ function companionNear(heading: HTMLElement, when: Date): string {
 	return companionAtIndex(companionsAt(lines, when), newest);
 }
 
+/** Time and "with" share one normal space. The calendar and the day pill stay 8px away. */
+function stampWhenGroup(row: HTMLElement, doc: Document): HTMLElement {
+	const existing = row.querySelector(':scope > .rv-stamp-when-group');
+	if (existing instanceof HTMLElement) return existing;
+	const group = doc.createElement('span');
+	group.className = 'rv-stamp-when-group';
+	const whenEl = row.querySelector('.rv-stamp-when');
+	const withEl = row.querySelector('.rv-stamp-with');
+	if (whenEl) {
+		whenEl.replaceWith(group);
+		group.appendChild(whenEl);
+		if (withEl) group.appendChild(withEl);
+		return group;
+	}
+	const tile = row.querySelector('.rv-cal');
+	if (tile) tile.insertAdjacentElement('afterend', group);
+	else row.prepend(group);
+	return group;
+}
+
 /** Heading row and item strip. The markdown line is only restructured on screen. */
 function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string): void {
 	const source = headingSource(heading);
@@ -333,7 +353,8 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 		const tile = row.createSpan('rv-cal');
 		tile.createSpan({ cls: 'rv-cal-month', text: month });
 		tile.createSpan({ cls: 'rv-cal-day', text: day });
-		row.createSpan({ cls: 'rv-stamp-when', text: lead });
+		const group = row.createSpan('rv-stamp-when-group');
+		group.createSpan({ cls: 'rv-stamp-when', text: lead });
 		const pill = row.createSpan({ cls: 'rv-stamp-ago rv-stamp-count', text: count });
 		pill.dataset.rvJump = '1';
 	}
@@ -362,16 +383,18 @@ function reshapeVisitHeading(heading: HTMLElement, when: Date, covered: string):
 		if (monthEl) writeText(monthEl, month);
 		if (dayEl) writeText(dayEl, day);
 	}
+	if (!(row instanceof HTMLElement)) return;
 	const whenEl = row.querySelector('.rv-stamp-when');
 	if (whenEl) writeText(whenEl, lead);
+	const group = stampWhenGroup(row, doc);
 	const publisher = companionNear(heading, when);
-	let withEl = row.querySelector('.rv-stamp-with');
+	let withEl = group.querySelector('.rv-stamp-with');
 	if (publisher) {
 		const label = `with ${publisher}`;
 		if (!(withEl instanceof HTMLElement)) {
 			withEl = doc.createElement('span');
 			withEl.className = 'rv-stamp-with';
-			whenEl?.insertAdjacentElement('afterend', withEl);
+			group.appendChild(withEl);
 		}
 		writeText(withEl, label);
 	} else if (withEl) {

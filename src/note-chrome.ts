@@ -8,16 +8,17 @@ import { readProperty } from './frontmatter';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
-import { appendBadge, pinBadgeStroke } from './glancable-view';
+import { appendBadge, concealRawBaseEmbed, pinBadgeStroke } from './glancable-view';
 import { isRvDashboardNote } from './rv-note-view';
-import { resolveStatus, statusIcon, type RvStatus } from './status';
+import { resolveStatus, sanitizeGender, statusIcon, type RvStatus } from './status';
 import { lastListEntries } from './taken-row';
 import type { RVLocatorSettings } from './types';
 import { formatStudyFraction } from './catalog';
 import { paintUrgencyInk } from './color-math';
 import { SNOOZE_SLATE } from './snooze';
-import { fitEndEllipsis, showTitlePopover } from './title-fit';
+import { displayTitle, fitEndEllipsis, showTitlePopover } from './title-fit';
 import { cardPersonTitle } from './note-name';
+import { ageCaption, appendPersonMeta } from './person-meta';
 import { urgencyColorsFor } from './urgency-palette';
 
 export interface NoteChromeHost {
@@ -54,6 +55,10 @@ const URGENCY_READY_SELECTOR = '.workspace-leaf-content, .markdown-preview-view,
 export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteChromeHost): void {
 	const data = host.frontmatter(path);
 	if (!data) return;
+	const fullBase = root.classList.contains('rv-locator-full-base')
+		? root
+		: root.closest('.rv-locator-full-base');
+	if (fullBase instanceof HTMLElement) concealRawBaseEmbed(fullBase);
 	decorateNoteTitle(root, data);
 	decorateDashboardHeading(root, path, data, host);
 	decorateQuickFacts(root, path, data, host);
@@ -74,16 +79,21 @@ function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<
 		node.dataset.rvNamed = '1';
 		node.replaceChildren();
 		const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
-		const statusEl = node.createSpan('rv-dash-status');
-		setIcon(statusEl, statusIcon(status));
-		statusEl.setAttribute('aria-label', status);
 		const mark = host.campaignMark(path);
 		if (mark) {
 			const icon = node.createSpan('rv-dash-campaign');
 			setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
 			icon.setAttribute('aria-label', mark === 'covered' ? 'Covered this campaign' : 'Campaign');
 		}
+		const statusEl = node.createSpan('rv-dash-status');
+		setIcon(statusEl, statusIcon(status));
+		statusEl.setAttribute('aria-label', status);
 		node.createSpan({ cls: 'rv-dash-name', text: host.noteTitle(path) });
+		appendPersonMeta(
+			node,
+			ageCaption(readProperty(data, 'Age'), readProperty(data, 'Age Exact')),
+			sanitizeGender(readProperty(data, 'Gender')),
+		);
 		const more = node.createEl('button', {
 			cls: 'rv-dash-rename clickable-icon',
 			attr: { type: 'button', 'aria-label': 'Edit attributes' },
@@ -336,6 +346,17 @@ function armFactsRow(badges: HTMLElement): void {
 	observer.observe(scope);
 }
 
+function mountQuickFactsHead(inner: HTMLElement, ratio: string): void {
+	inner.replaceChildren();
+	inner.addClass('rv-qf-head');
+	inner.createSpan({ cls: 'rv-qf-head-label', text: 'Quick Facts' });
+	inner.createSpan({ cls: 'rv-qf-head-dot', text: '·' });
+	const count = inner.createSpan('rv-qf-head-count');
+	const icon = count.createSpan('rv-qf-head-icon');
+	setIcon(icon, 'list-checks');
+	count.createSpan({ text: ` ${ratio}` });
+}
+
 function paintFactsTitle(
 	title: HTMLElement,
 	path: string,
@@ -346,7 +367,11 @@ function paintFactsTitle(
 	host: NoteChromeHost,
 ): void {
 	const inner = title.querySelector('.callout-title-inner');
-	if (inner && inner.textContent !== 'Quick Facts') inner.textContent = 'Quick Facts';
+	if (inner instanceof HTMLElement) {
+		const successful = finiteNumber(readProperty(data, 'Successful Visits'));
+		const visits = finiteNumber(readProperty(data, 'Visits'));
+		mountQuickFactsHead(inner, visitsPercent(successful, visits));
+	}
 	let badges = title.querySelector(':scope > .rv-qf-badges');
 	if (!(badges instanceof HTMLElement)) {
 		badges = title.createSpan('rv-qf-badges');
@@ -409,66 +434,19 @@ function paintFactsBody(
 ): void {
 	content.empty();
 	content.addClass('rv-qf-body');
-	const statusRow = factRow(content, statusIcon(status), 'Status', '');
-	statusRow.addClass('is-status');
-	const statusValue = statusRow.querySelector('.rv-qf-value');
-	const select = (statusValue instanceof HTMLElement ? statusValue : statusRow).createEl('select', { cls: 'rv-qf-control' });
-	for (const option of ['Active', 'Study', 'Inactive'] as const) {
-		select.createEl('option', { text: option, value: option });
-	}
-	select.value = status;
-	select.addEventListener('change', () => {
-		host.setStatus(path, select.value === 'Study' || select.value === 'Inactive' ? select.value : 'Active');
-	});
-
-	const priorityRow = factRow(content, 'gauge', 'Priority', '');
-	const priorityValue = priorityRow.querySelector('.rv-qf-value');
-	if (priorityValue instanceof HTMLElement) {
-		const slider = priorityValue.createEl('input', {
-			cls: 'rv-qf-priority',
-			attr: { type: 'range', min: '0', max: '5', step: '1', 'aria-label': 'Priority' },
-		});
-		const shown = priority == null ? 0 : Math.max(0, Math.min(5, Math.round(priority)));
-		slider.value = String(shown);
-		const number = priorityValue.createSpan({ cls: 'rv-qf-priority-num', text: priority == null ? '—' : String(shown) });
-		slider.addEventListener('input', () => {
-			number.setText(slider.value);
-		});
-		slider.addEventListener('change', () => {
-			host.setPriority(path, Number(slider.value));
-		});
-	}
 	const study = status === 'Study';
-	if (study) {
-		const lessons = textList(readProperty(data, 'Lessons Studied')).length;
-		const studies = finiteNumber(readProperty(data, 'Studies')) ?? 0;
-		const fraction = formatStudyFraction(lessons, studies, host.settings.studyRatio);
-		const label = host.settings.studyRatio === 'studies-lessons' ? 'Studies/Lessons' : 'Lessons/Studies';
-		factRow(content, 'percent', label, fraction.withDecimal);
-	} else {
-		const successful = finiteNumber(readProperty(data, 'Successful Visits'));
-		const visits = finiteNumber(readProperty(data, 'Visits'));
-		factRow(content, 'list-checks', 'Visits', visitsPercent(successful, visits));
-	}
-
+	void priority;
 	if (study) factDateRow(content, 'book-marked', 'Studied', readProperty(data, 'Last Studied'));
 	if (!study || host.settings.studyShowSpoke) factDateRow(content, 'message-circle', 'Spoke', readProperty(data, 'Last Spoke'));
 	if (!study || host.settings.studyShowAttempted) factDateRow(content, 'clock', 'Attempted', readProperty(data, 'Last Attempted'));
 	factDateRow(content, 'home', 'Met', readProperty(data, 'Met'));
-	paintClampRow(content, 'book', 'Literature', textList(readProperty(data, 'Left Publications')));
-	paintClampRow(content, 'film', 'Media', textList(readProperty(data, 'Shared Media')));
-	const studiedLessons = textList(readProperty(data, 'Lessons Studied'));
-	if (studiedLessons.length > 0) paintClampRow(content, 'book-open', 'Lessons', studiedLessons);
-
+	paintQuickList(content, 'book', 'Literature', textList(readProperty(data, 'Left Publications')), 'literature', 1);
+	paintQuickList(content, 'film', 'Media', textList(readProperty(data, 'Shared Media')), 'media', 1);
+	paintQuickList(content, 'book-open', 'Lessons', textList(readProperty(data, 'Lessons Studied')), 'lesson', 2);
 	const taken = textList(readProperty(data, 'Taken'));
 	const metWith = textOf(readProperty(data, 'Met With'));
-	const row = factRow(content, 'users', 'Taken', '');
+	const row = paintQuickList(content, 'users', 'Taken', taken, 'name', 2, metWith);
 	bindCompanionOpen(row, path, host);
-	const valueEl = row.querySelector('.rv-qf-value');
-	if (valueEl instanceof HTMLElement) {
-		if (taken.length === 0 && !metWith) valueEl.setText('—');
-		else paintClampList(valueEl, taken.length > 0 ? taken : [metWith]);
-	}
 }
 
 function visitsPercent(successful: number | null, visits: number | null): string {
@@ -531,6 +509,18 @@ function bindCompanionOpen(row: HTMLElement, path: string, host: NoteChromeHost)
 	row.classList.add('rv-qf-companion');
 }
 
+const CAL_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+type ChipKind = 'literature' | 'media' | 'lesson' | 'name';
+
+interface FactChip {
+	title: string;
+	type: string;
+	full: string;
+	met: boolean;
+	empty: boolean;
+}
+
 function factDateRow(parent: HTMLElement, icon: string, label: string, value: unknown): void {
 	const row = factRow(parent, icon, label, '');
 	const valueEl = row.querySelector('.rv-qf-value');
@@ -542,20 +532,137 @@ function factDateRow(parent: HTMLElement, icon: string, label: string, value: un
 		return;
 	}
 	const days = calendarDaysSince(raw, new Date());
-	const when = valueEl.createSpan('rv-qf-when');
-	const lead = display.time ? `${display.dow}, ${display.time}` : (display.dow || display.text);
-	when.createSpan({ cls: 'rv-qf-when-lead', text: lead });
-	when.createSpan({ cls: 'rv-qf-when-date', text: display.rest });
-	if (days != null) when.createSpan({ cls: 'rv-qf-when-ago', text: formatGlanceableCounter(days) });
-	when.setAttr('title', display.title || raw);
 	const instant = parseDriveInstant(raw);
+	const lead = display.time ? `${display.dow}, ${display.time}` : (display.dow || display.text);
+	const pill = valueEl.createSpan('rv-qf-pill rv-qf-when');
+	if (instant) {
+		const tile = pill.createSpan('rv-cal');
+		tile.createSpan({ cls: 'rv-cal-month', text: CAL_MONTHS[instant.getMonth()] ?? '' });
+		tile.createSpan({ cls: 'rv-cal-day', text: String(instant.getDate()) });
+	}
+	pill.createSpan({ cls: 'rv-qf-when-lead', text: lead });
+	if (days != null) pill.createSpan({ cls: 'rv-stamp-ago', text: formatGlanceableCounter(days) });
+	pill.setAttr('title', display.title || raw);
 	if (!instant) return;
-	when.setAttr('role', 'link');
-	when.addEventListener('click', (event) => {
+	pill.setAttr('role', 'link');
+	pill.addEventListener('click', (event) => {
 		event.preventDefault();
 		event.stopPropagation();
-		jumpToQuickFactDay(when, instant);
+		jumpToQuickFactDay(pill, instant);
 	});
+}
+
+function paintQuickList(
+	parent: HTMLElement,
+	icon: string,
+	label: string,
+	items: readonly string[],
+	kind: ChipKind,
+	limit: number,
+	metWith = '',
+): HTMLElement {
+	const row = factRow(parent, icon, label, '');
+	const labelEl = row.querySelector('.rv-qf-label');
+	const valueEl = row.querySelector('.rv-qf-value');
+	const all = items.map((item) => item.trim()).filter((item) => item.length > 0);
+	const chips = chipsFor(all, kind, limit, metWith);
+	const shown = chips.filter((chip) => !chip.empty && !(kind === 'name' && chip.met && !all.some((item) => item.toLowerCase() === chip.full.toLowerCase()))).length;
+	const extra = Math.max(0, all.length - shown);
+	if (labelEl instanceof HTMLElement) {
+		if (extra > 0) labelEl.createSpan({ cls: 'rv-qf-plus', text: `+${extra}` });
+		const chevron = labelEl.createEl('button', {
+			cls: 'rv-qf-chevron',
+			attr: { type: 'button', 'aria-label': `${label} list` },
+		});
+		setIcon(chevron, 'chevron-down');
+		const drop = parent.createDiv('rv-qf-drop');
+		drop.hidden = true;
+		const table = drop.createEl('table', { cls: 'rv-qf-table' });
+		const body = table.createEl('tbody');
+		const rows: HTMLElement[] = [];
+		const listed = all.length > 0 ? all : chips.filter((chip) => chip.full).map((chip) => chip.full);
+		for (const item of listed) {
+			const tr = body.createEl('tr');
+			const painted = chipParts(item, kind);
+			tr.dataset.rvText = painted.full.toLowerCase();
+			tr.createEl('td', { text: painted.full });
+			rows.push(tr);
+		}
+		const search = drop.createEl('input', {
+			cls: 'rv-qf-search',
+			attr: { type: 'search', placeholder: 'Search', 'aria-label': `Search ${label}` },
+		});
+		search.addEventListener('input', () => {
+			const query = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : '';
+			for (const tr of rows) tr.hidden = query.length > 0 && !(tr.dataset.rvText ?? '').includes(query);
+		});
+		chevron.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			drop.hidden = !drop.hidden;
+		});
+	}
+	if (!(valueEl instanceof HTMLElement)) return row;
+	const visible = chips.filter((chip) => !chip.empty || chips.some((other) => other.met));
+	if (visible.length === 0 || visible.every((chip) => chip.empty)) {
+		valueEl.setText('—');
+		return row;
+	}
+	const host = valueEl.createSpan('rv-qf-chips');
+	for (const chip of visible) {
+		const el = host.createSpan({ cls: chip.met ? 'rv-qf-chip is-met' : chip.empty ? 'rv-qf-chip is-empty' : 'rv-qf-chip' });
+		if (chip.empty) continue;
+		const group = el.createSpan('rv-qf-chip-group');
+		group.createSpan({ cls: 'rv-qf-chip-title', text: chip.title });
+		if (chip.type) group.createSpan({ cls: 'rv-qf-chip-type', text: chip.type });
+		armChipOverlay(el, chip.full);
+	}
+	const full = (all.length > 0 ? all : [metWith]).filter(Boolean).join(' · ');
+	if (full) valueEl.addEventListener('mouseenter', () => showTitlePopover(valueEl, full));
+	return row;
+}
+
+function chipsFor(items: readonly string[], kind: ChipKind, limit: number, metWith: string): FactChip[] {
+	if (kind !== 'name') return lastListEntries(items, limit).map((item) => ({ ...chipParts(item, kind), met: false, empty: false }));
+	const met = metWith.trim();
+	const metKey = met.toLowerCase();
+	if (met) {
+		const others = items.filter((item) => item.toLowerCase() !== metKey);
+		const left = others.length > 0 ? others[others.length - 1] ?? '' : '';
+		return [
+			left ? { ...chipParts(left, 'name'), met: false, empty: false } : { title: '', type: '', full: '', met: false, empty: true },
+			{ ...chipParts(met, 'name'), met: true, empty: false },
+		];
+	}
+	return lastListEntries(items, limit).map((item) => ({ ...chipParts(item, 'name'), met: false, empty: false }));
+}
+
+function chipParts(item: string, kind: ChipKind): { title: string; type: string; full: string } {
+	if (kind === 'literature' || kind === 'media') {
+		const parts = displayTitle(item, kind);
+		const type = parts.suffix.trim();
+		return { title: parts.text, type, full: type ? `${parts.text} ${type}` : parts.text };
+	}
+	return { title: item, type: '', full: item };
+}
+
+function armChipOverlay(el: HTMLElement, full: string): void {
+	if (!full) return;
+	const show = (): void => { showTitlePopover(el, full); };
+	el.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		show();
+	});
+	el.addEventListener('mouseenter', show);
+	let timer = 0;
+	el.addEventListener('pointerdown', () => {
+		timer = window.setTimeout(show, LONG_PRESS_MS);
+	});
+	const clear = (): void => { window.clearTimeout(timer); };
+	el.addEventListener('pointerup', clear);
+	el.addEventListener('pointerleave', clear);
+	el.addEventListener('pointercancel', clear);
 }
 
 interface DayJumpTarget extends DayJumpCandidate {

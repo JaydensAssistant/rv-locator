@@ -1,5 +1,5 @@
 import { Modal, Setting, setIcon, type App } from 'obsidian';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { digestVoiceClass } from './attempt-digest';
 import { sliderToSnoozeDays, snoozeDaysToSlider } from './lesson-stops';
 import {
@@ -9,6 +9,7 @@ import {
 } from './snooze';
 
 export class ReturnSuggestModal extends Modal {
+	buttonAccent = '';
 	constructor(app: App, private displayName: string, private markdown: string) {
 		super(app);
 	}
@@ -16,6 +17,7 @@ export class ReturnSuggestModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Return times');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
 		contentEl.createDiv({ cls: 'rv-locator-modal-copy', text: this.displayName });
 		const host = contentEl.createDiv('rv-locator-return-digest');
@@ -60,6 +62,7 @@ export interface SnoozeModalState {
  * Footer is always Clear | Cancel | Snooze, or Update while a snooze is already set.
  */
 export class UrgencySnoozeModal extends Modal {
+	buttonAccent = '';
 	private days: number;
 	private label: string;
 	private readonly openedDays: number;
@@ -84,6 +87,7 @@ export class UrgencySnoozeModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Snooze');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		this.modalEl.addClass('rv-snooze-modal');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
@@ -165,6 +169,7 @@ export class UrgencySnoozeModal extends Modal {
 }
 
 export class PriorityNudgeModal extends Modal {
+	buttonAccent = '';
 	constructor(
 		app: App,
 		private current: number,
@@ -176,6 +181,7 @@ export class PriorityNudgeModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Priority');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',

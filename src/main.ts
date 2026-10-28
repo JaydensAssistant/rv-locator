@@ -63,11 +63,13 @@ import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './sc
 import { fillToastText, watchBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
-import { SNOOZE_LABEL_PROPERTY, SNOOZE_START_PROPERTY, URGENCY_SNOOZE_PROPERTY, formatSnoozeStart, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, snoozeDaysLeft, type SnoozeChoice, type SnoozeWrite } from './snooze';
+import { SNOOZE_LABEL_PROPERTY, SNOOZE_SLATE, SNOOZE_START_PROPERTY, URGENCY_SNOOZE_PROPERTY, formatSnoozeStart, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, snoozeDaysLeft, type SnoozeChoice, type SnoozeWrite } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { latLonFromUnknown, validLatLon } from './distance';
-import { idealityScore, insidePriorityFloor } from './scoring';
+import { idealityScore, insidePriorityFloor, urgencyAccentColor } from './scoring';
+import { displayedUrgency } from './row-score';
+import { ageYears, registerRestroomIcons, replacePersonName } from './person-meta';
 import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -186,6 +188,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private coverageDecisions = new Map<string, CoverageDecision>();
 
 	async onload(): Promise<void> {
+		registerRestroomIcons();
 		await this.loadPluginData();
 		this.installReadingModeOpen();
 		this.addSettingTab(new RVLocatorSettingTab(this.app, this));
@@ -1261,6 +1264,7 @@ export default class RVLocatorPlugin extends Plugin {
 					},
 				} : null,
 			);
+			if (path) modal.buttonAccent = this.buttonAccent(path);
 			modal.open();
 		});
 		if (picked === false) return false;
@@ -1317,7 +1321,7 @@ export default class RVLocatorPlugin extends Plugin {
 			fields.companions = this.recentCompanionNames();
 		}
 		return new Promise((resolve) => {
-			new LiteraturePromptModal(
+			const modal = new LiteraturePromptModal(
 				this.app,
 				fields,
 				(share) => resolve(share),
@@ -1326,7 +1330,9 @@ export default class RVLocatorPlugin extends Plugin {
 					pronoun: coveragePronoun(gender),
 					onDecision: (yes) => { this.coverageDecisions.set(file.path, yes ? 'yes' : 'no'); },
 				} : null,
-			).open();
+			);
+			modal.buttonAccent = this.buttonAccent(file.path);
+			modal.open();
 		});
 	}
 
@@ -1588,7 +1594,9 @@ export default class RVLocatorPlugin extends Plugin {
 			now: new Date(),
 			abbreviate: this.settings.abbreviateDayparts,
 		});
-		new ReturnSuggestModal(this.app, displayName, digest.markdown).open();
+		const modal = new ReturnSuggestModal(this.app, displayName, digest.markdown);
+		modal.buttonAccent = this.buttonAccent(file.path);
+		modal.open();
 	}
 
 	snoozeUntilFor(path: string): Date | null {
@@ -1649,7 +1657,7 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 	}
 
-	private noteFrontmatter(path: string): Record<string, unknown> | null {
+	noteFrontmatter(path: string): Record<string, unknown> | null {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return null;
 		const frontmatter = this.cachedFrontmatter.get(path) ?? this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -2722,9 +2730,11 @@ export default class RVLocatorPlugin extends Plugin {
 	private openSnoozeModal(path: string, displayName: string): void {
 		const until = this.snoozeUntilFor(path);
 		const label = this.snoozeLabelFor(path);
-		new UrgencySnoozeModal(this.app, cardPersonTitle(displayName, true), { until, label }, (next) => {
+		const modal = new UrgencySnoozeModal(this.app, cardPersonTitle(displayName, true), { until, label }, (next) => {
 			void this.applySnooze(path, next);
-		}).open();
+		});
+		modal.buttonAccent = this.buttonAccent(path);
+		modal.open();
 	}
 
 	promptPriority(path: string, displayName: string): void {
@@ -2732,9 +2742,11 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!file) return;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const current = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? 0;
-		new PrioritySliderModal(this.app, displayName, current, (priority) => {
+		const modal = new PrioritySliderModal(this.app, displayName, current, (priority) => {
 			void this.writePriority(file, priority).catch((error: unknown) => new Notice(this.friendlyError(error)));
-		}).open();
+		});
+		modal.buttonAccent = this.buttonAccent(path);
+		modal.open();
 	}
 
 	requestBulkStop(): void {
@@ -2946,6 +2958,7 @@ export default class RVLocatorPlugin extends Plugin {
 				new Notice(this.friendlyError(error));
 			});
 		});
+		modal.buttonAccent = this.buttonAccent(file.path);
 		modal.open();
 	}
 
@@ -3134,6 +3147,26 @@ export default class RVLocatorPlugin extends Plugin {
 		return snoozeActive(this.snoozeUntilFor(path), new Date());
 	}
 
+	/** The note's urgency color, used on that note's modal buttons. */
+	buttonAccent(path: string): string {
+		if (this.snoozeActiveFor(path)) return SNOOZE_SLATE;
+		const data = this.noteFrontmatter(path);
+		if (!data) return '';
+		const priority = finiteVisitCount(readProperty(data, 'Priority'));
+		const daysOf = (key: string): number | null => {
+			const raw = dateTextFromUnknown(readProperty(data, key));
+			return raw ? calendarDaysSince(raw, new Date()) : null;
+		};
+		const known = [daysOf('Last Spoke'), daysOf('Last Attempted')].filter((day): day is number => day != null);
+		const days = known.length === 0 ? null : Math.min(...known);
+		const urgency = displayedUrgency(days, priority, this.settings, this.snoozeUntilFor(path), new Date());
+		return urgencyAccentColor(
+			urgency,
+			priority,
+			urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors),
+		);
+	}
+
 	snoozeLabelFor(path: string): string {
 		const file = this.app.vault.getFileByPath(path);
 		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
@@ -3257,7 +3290,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		const defaults = await this.studyDefaults(file.path);
-		new VisitEditModal(this.app, {
+		const past = new VisitEditModal(this.app, {
 			title: `Log past visit on “${cardPersonTitle(file.basename, false)}”`,
 			recentCompanions: this.recentCompanionNames(),
 			campaign: campaign ? {
@@ -3276,7 +3309,9 @@ export default class RVLocatorPlugin extends Plugin {
 					new Notice(this.friendlyError(error));
 				});
 			},
-		}).open();
+		});
+		past.buttonAccent = this.buttonAccent(file.path);
+		past.open();
 	}
 
 	private async writePastVisit(file: TFile, facts: VisitFacts): Promise<void> {
@@ -3411,7 +3446,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
 		const defaults = await this.studyDefaults(file.path);
 		const campaign = this.campaign;
-		new VisitEditModal(this.app, {
+		const editor = new VisitEditModal(this.app, {
 			title: 'Edit visit',
 			initial: visitFacts(entry),
 			recentCompanions: this.recentCompanionNames(),
@@ -3427,7 +3462,9 @@ export default class RVLocatorPlugin extends Plugin {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
 			onDelete: () => this.confirmDeleteVisit(file, entry, hint),
-		}).open();
+		});
+		editor.buttonAccent = this.buttonAccent(file.path);
+		editor.open();
 	}
 
 	private confirmDeleteVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
@@ -3501,37 +3538,60 @@ export default class RVLocatorPlugin extends Plugin {
 	private promptAttributes(path: string): void {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
-		const current = stripFilenameStamp(file.basename);
-		const suffix = file.basename.slice(current.length);
-		const gender = sanitizeGender(readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, 'Gender')) ?? 'Man';
-		new EditAttributesModal(this.app, { name: current, gender }, (next) => {
+		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+		const gender = sanitizeGender(readProperty(frontmatter, 'Gender')) ?? 'Man';
+		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority'));
+		const status = resolveStatus(readProperty(frontmatter, 'Status'), priority);
+		const years = ageYears(readProperty(frontmatter, 'Age'));
+		const modal = new EditAttributesModal(this.app, {
+			name: cardPersonTitle(file.basename, true),
+			gender,
+			status,
+			age: years == null ? '' : String(years),
+			ageExact: readProperty(frontmatter, 'Age Exact') === true,
+		}, (next) => {
 			if (!next) return;
-			void this.applyAttributes(file, suffix, current, gender, next);
-		}).open();
+			void this.applyAttributes(file, next);
+		});
+		modal.buttonAccent = this.buttonAccent(path);
+		modal.open();
 	}
 
 	private async applyAttributes(
 		file: TFile,
-		suffix: string,
-		current: string,
-		gender: 'Man' | 'Woman',
-		next: { name: string; gender: 'Man' | 'Woman' },
+		next: { name: string; gender: 'Man' | 'Woman'; status: RvStatus; age: string; ageExact: boolean },
 	): Promise<void> {
-		if (next.gender !== gender) {
-			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-				assignProperty(frontmatter as Record<string, unknown>, 'Gender', next.gender);
-			});
+		const before = cardPersonTitle(file.basename, true);
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			assignProperty(data, 'Gender', next.gender);
+			const priority = finiteVisitCount(readProperty(data, 'Priority')) ?? 0;
+			const current = resolveStatus(readProperty(data, 'Status'), priority);
+			const resolved = applyStatusPriority({ status: current, priority }, { status: next.status });
+			assignProperty(data, 'Status', resolved.status);
+			assignProperty(data, 'Priority', resolved.priority);
+			const years = ageYears(next.age);
+			if (years == null) {
+				removeProperty(data, 'Age');
+				removeProperty(data, 'Age Exact');
+			} else {
+				assignProperty(data, 'Age', years);
+				assignProperty(data, 'Age Exact', next.ageExact);
+			}
+		});
+		const current = this.app.vault.getFileByPath(file.path) ?? file;
+		const nextBase = replacePersonName(current.basename, next.name);
+		if (nextBase === current.basename) {
+			for (const callback of this.viewRefreshers) callback();
+			return;
 		}
-		const name = sanitizeNoteName(stripFilenameStamp(next.name));
-		if (!name || name === current) return;
-		const renamed = this.app.vault.getFileByPath(file.path) ?? file;
-		await this.applyRename(renamed, `${name}${suffix}`, current, name);
+		await this.applyRename(current, nextBase, before, sanitizeNoteName(next.name) || before);
 	}
 
 	private async applyRename(file: TFile, nextBase: string, oldDisplay: string, newDisplay: string): Promise<void> {
 		const parent = file.parent?.path ?? '';
 		const dest = parent && parent !== '/' ? `${parent}/${nextBase}.md` : `${nextBase}.md`;
-		const held = this.holdNoteView(file);
+		const opens = this.holdOpenLeaves(file);
 		await this.app.fileManager.renameFile(file, dest);
 		const renamed = this.app.vault.getFileByPath(dest);
 		if (!renamed) return;
@@ -3540,14 +3600,31 @@ export default class RVLocatorPlugin extends Plugin {
 			const line = `> - ${formatVisitStamp(new Date())} — name ${oldDisplay} → ${newDisplay}`;
 			return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
 		});
-		await this.reopenRenamedNote(renamed, held);
+		if (opens.length === 0) {
+			await this.reopenRenamedNote(renamed, null);
+			return;
+		}
+		for (const open of opens) await this.reopenOnLeaf(open.leaf, renamed, open.held);
+	}
+
+	/** The first open tab. Every tab is reopened from {@link holdOpenLeaves}. */
+	private holdNoteView(file: TFile): { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number } | null {
+		return this.holdOpenLeaves(file)[0]?.held ?? null;
+	}
+
+	/** Every tab that has this note open, with the view state from before the path changes. */
+	private holdOpenLeaves(file: TFile): Array<{
+		leaf: WorkspaceLeaf;
+		held: { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number };
+	}> {
+		return this.app.workspace.getLeavesOfType('markdown')
+			.filter((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path)
+			.map((leaf) => ({ leaf, held: this.captureLeaf(leaf) }));
 	}
 
 	/** Mode, source flag, and scroll from before the path changes. */
-	private holdNoteView(file: TFile): { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number } | null {
-		const leaf = this.app.workspace.getLeavesOfType('markdown')
-			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
-		if (!leaf || !(leaf.view instanceof MarkdownView)) return null;
+	private captureLeaf(leaf: WorkspaceLeaf): { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number } {
+		if (!(leaf.view instanceof MarkdownView)) return { mode: 'preview', source: false, ephemeral: {}, scrollTop: 0 };
 		const view = leaf.view;
 		const live = view.getState();
 		const leafState = leaf.getViewState().state;
@@ -3579,6 +3656,14 @@ export default class RVLocatorPlugin extends Plugin {
 		let leaf = leaves.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
 		if (!leaf) leaf = this.app.workspace.getLeaf(false);
 		if (!leaf) return;
+		await this.reopenOnLeaf(leaf, file, held);
+	}
+
+	private async reopenOnLeaf(
+		leaf: WorkspaceLeaf,
+		file: TFile,
+		held: { mode: string; source: boolean; ephemeral: Record<string, unknown>; scrollTop: number } | null,
+	): Promise<void> {
 		const mode = held?.mode ?? 'preview';
 		const source = held?.source ?? false;
 		const livePreview = mode === 'source' && source === false;
@@ -4293,6 +4378,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const priority = current == null ? this.settings.defaultNewRvPriority : Math.max(0, Math.min(5, Math.round(current)));
 		const next = await new Promise<number | null>((resolve) => {
 			const modal = new PriorityNudgeModal(this.app, priority, (value) => resolve(value));
+			modal.buttonAccent = this.buttonAccent(file.path);
 			const previous = modal.onClose.bind(modal);
 			modal.onClose = () => {
 				previous();

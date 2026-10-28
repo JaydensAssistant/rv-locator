@@ -2,11 +2,12 @@ import { Modal, Setting, setIcon, type App, type ButtonComponent } from 'obsidia
 import { AddressSuggestController, type SuggestFetchResult } from './address-suggest';
 import { emptyShare, studyPrefill, type LessonSpec, type VisitShare } from './catalog';
 import { mountShareFields } from './catalog-fields';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { SUGGEST_PENDING, mountAlwaysChevron } from './suggest-field';
 import { abbreviateAddress, addressesMatchOneForOne } from './address';
 import { companionChoices, exactCompanion, matchingCompanion } from './companions';
-import type { RvGender } from './status';
+import { statusIcon, type RvGender, type RvStatus } from './status';
+import { RESTROOM_MAN, RESTROOM_WOMAN, ageYears } from './person-meta';
 import type { GeocodeHit } from './types';
 
 export interface NewRvIdentity {
@@ -89,6 +90,7 @@ export class NewRvIdentityModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
 		this.setTitle(this.options.title ?? 'New RV');
 		const { contentEl } = this;
 		contentEl.createEl('p', {
@@ -98,14 +100,14 @@ export class NewRvIdentityModal extends Modal {
 		const gender = new Setting(contentEl).setName('Man / Woman');
 		gender.settingEl?.addClass('rv-gender-choice');
 		gender.addButton((button) => {
-			mountGenderButton(button, 'Man', 'mars', this.gender === 'Man');
+			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
 			button.onClick(() => {
 				this.gender = 'Man';
 				this.paintGender(gender);
 			});
 		});
 		gender.addButton((button) => {
-			mountGenderButton(button, 'Woman', 'venus', this.gender === 'Woman');
+			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
 			button.onClick(() => {
 				this.gender = 'Woman';
 				this.paintGender(gender);
@@ -324,7 +326,7 @@ export class NewRvIdentityModal extends Modal {
 	}
 }
 
-export function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon: 'mars' | 'venus', selected: boolean): void {
+export function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon: string, selected: boolean): void {
 	button.setButtonText('');
 	button.setTooltip(label);
 	const el = button.buttonEl;
@@ -338,12 +340,19 @@ export function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman
 export interface AttributeDraft {
 	name: string;
 	gender: RvGender;
+	status: RvStatus;
+	age: string;
+	ageExact: boolean;
 }
 
-/** Name and Man/Woman today. More fields can be added inside rv-attr-fields. */
+/** The person's name, status, age, and Man/Woman. The filename street stays out of Name. */
 export class EditAttributesModal extends Modal {
 	private name: string;
 	private gender: RvGender;
+	private status: RvStatus;
+	private age: string;
+	private ageExact: boolean;
+	buttonAccent = '';
 
 	constructor(
 		app: App,
@@ -353,11 +362,15 @@ export class EditAttributesModal extends Modal {
 		super(app);
 		this.name = current.name;
 		this.gender = current.gender;
+		this.status = current.status;
+		this.age = current.age;
+		this.ageExact = current.ageExact;
 	}
 
 	onOpen(): void {
 		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-edit-attributes');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		this.setTitle('Edit attributes');
 		const fields = this.contentEl.createDiv('rv-attr-fields');
 		new Setting(fields)
@@ -368,7 +381,63 @@ export class EditAttributesModal extends Modal {
 				text.inputEl?.setAttribute('aria-label', 'Name');
 				text.onChange((value) => { this.name = value; });
 			});
-		const gender = new Setting(fields);
+		const status = new Setting(fields).setName('Status');
+		status.settingEl?.addClass('rv-status-choice');
+		const paintStatus = (): void => {
+			const buttons = status.settingEl?.querySelectorAll('button') ?? [];
+			buttons.forEach((button) => {
+				if (!(button instanceof HTMLButtonElement)) return;
+				button.classList.toggle('is-selected', button.dataset.status === this.status);
+			});
+		};
+		for (const option of ['Active', 'Study', 'Inactive'] as const) {
+			status.addButton((button) => {
+				const el = button.buttonEl;
+				el.dataset.status = option;
+				el.setAttribute('aria-label', option);
+				setIcon(el, statusIcon(option));
+				el.createSpan({ cls: 'rv-gender-word', text: option });
+				button.onClick(() => {
+					this.status = option;
+					paintStatus();
+				});
+			});
+		}
+		paintStatus();
+		const age = new Setting(fields).setName('Estimated age');
+		age.settingEl?.addClass('rv-age-choice');
+		age.addText((text) => {
+			text.setPlaceholder(this.ageExact ? '42' : '~35');
+			text.setValue(this.age);
+			text.inputEl?.setAttribute('aria-label', 'Estimated age');
+			text.inputEl?.setAttribute('inputmode', 'numeric');
+			text.onChange((value) => { this.age = value; });
+		});
+		const paintAge = (): void => {
+			const buttons = age.settingEl?.querySelectorAll('button') ?? [];
+			buttons.forEach((button) => {
+				if (!(button instanceof HTMLButtonElement)) return;
+				button.classList.toggle('is-selected', (button.dataset.exact === '1') === this.ageExact);
+			});
+		};
+		age.addButton((button) => {
+			button.buttonEl.dataset.exact = '0';
+			button.setButtonText('Approx');
+			button.onClick(() => {
+				this.ageExact = false;
+				paintAge();
+			});
+		});
+		age.addButton((button) => {
+			button.buttonEl.dataset.exact = '1';
+			button.setButtonText('Exact');
+			button.onClick(() => {
+				this.ageExact = true;
+				paintAge();
+			});
+		});
+		paintAge();
+		const gender = new Setting(fields).setName('Man / Woman');
 		gender.settingEl?.addClass('rv-gender-choice');
 		const paint = (): void => {
 			const buttons = gender.settingEl?.querySelectorAll('button') ?? [];
@@ -378,14 +447,14 @@ export class EditAttributesModal extends Modal {
 			});
 		};
 		gender.addButton((button) => {
-			mountGenderButton(button, 'Man', 'mars', this.gender === 'Man');
+			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
 			button.onClick(() => {
 				this.gender = 'Man';
 				paint();
 			});
 		});
 		gender.addButton((button) => {
-			mountGenderButton(button, 'Woman', 'venus', this.gender === 'Woman');
+			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
 			button.onClick(() => {
 				this.gender = 'Woman';
 				paint();
@@ -399,7 +468,14 @@ export class EditAttributesModal extends Modal {
 			this.close();
 		});
 		save.addEventListener('click', () => {
-			this.onDone({ name: this.name, gender: this.gender });
+			const years = ageYears(this.age.replace(/^~/, ''));
+			this.onDone({
+				name: this.name,
+				gender: this.gender,
+				status: this.status,
+				age: years == null ? '' : String(years),
+				ageExact: this.ageExact,
+			});
 			this.close();
 		});
 		iconizeModal(this.contentEl);

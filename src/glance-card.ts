@@ -11,7 +11,9 @@ import { cardPersonTitle } from './note-name';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyBand, urgencyMark } from './scoring';
 import { paintUrgencyInk } from './color-math';
-import { resolveStatus, statusIcon } from './status';
+import { resolveStatus, sanitizeGender, statusIcon } from './status';
+import { ageCaption, appendPersonMeta } from './person-meta';
+import { paintGlanceFoot } from './glance-foot';
 import { SNOOZE_SLATE } from './snooze';
 import { urgencyColorsFor } from './urgency-palette';
 import type { GlancableLineId, RVLocatorSettings } from './types';
@@ -33,6 +35,8 @@ export interface NoteGlanceHost {
 	cardReturnBucket(path: string): 'Try' | 'Avoid' | 'Unsure' | 'Untried';
 	cardOverrideLabel(path: string): string | null;
 	openAttemptLog(path: string): void;
+	snoozeLabelFor(path: string): string;
+	snoozeDaysLeftFor(path: string): number;
 }
 
 /**
@@ -72,9 +76,6 @@ export function paintNoteGlanceCard(parent: HTMLElement, path: string, host: Not
 	const show = (id: GlancableLineId): boolean => linesOn[id] !== false;
 	if (show('name')) {
 		const name = card.createDiv('rv-locator-card-name');
-		const statusIconEl = name.createSpan('rv-locator-status-icon');
-		setIcon(statusIconEl, statusIcon(status));
-		statusIconEl.setAttr('aria-label', status);
 		const mark = host.campaignMark(path);
 		if (mark) {
 			const icon = name.createSpan({
@@ -83,7 +84,10 @@ export function paintNoteGlanceCard(parent: HTMLElement, path: string, host: Not
 			});
 			setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
 		}
-		const title = cardPersonTitle(file.basename, settings.cardTitleNameOnly);
+		const statusIconEl = name.createSpan('rv-locator-status-icon');
+		setIcon(statusIconEl, statusIcon(status));
+		statusIconEl.setAttr('aria-label', status);
+		const title = cardPersonTitle(file.basename, true);
 		const link = name.createEl('a', {
 			cls: 'rv-locator-file-link',
 			text: title,
@@ -95,6 +99,11 @@ export function paintNoteGlanceCard(parent: HTMLElement, path: string, host: Not
 			event.stopPropagation();
 			host.openMapNote(path);
 		});
+		appendPersonMeta(
+			name,
+			ageCaption(readProperty(note, 'Age'), readProperty(note, 'Age Exact')),
+			sanitizeGender(readProperty(note, 'Gender')),
+		);
 	}
 	const address = textOf(readProperty(note, settings.addressProperty.trim() || 'Address'));
 	const cityName = settings.cityProperty.trim() || 'City';
@@ -136,56 +145,24 @@ export function paintNoteGlanceCard(parent: HTMLElement, path: string, host: Not
 		if (compact) compactLines.push('dates');
 	}
 	const foot = card.createDiv('rv-locator-card-foot');
-	if (show('met-with')) {
-		const metWith = textOf(readProperty(note, 'Met With'));
-		plainSlot(foot, 'user', metWith || '—', !metWith);
-	}
+	const metWith = textOf(readProperty(note, 'Met With'));
 	const ratio = show('visits') ? visitRatioText(note, study, settings.studyRatio) : null;
 	const overrideLabel = settings.showCardReturnStatus && !snoozed ? host.cardOverrideLabel(path) : null;
-	if (overrideLabel) {
-		foot.createSpan({
-			cls: 'rv-locator-slot rv-locator-override-label',
-			text: overrideLabel,
-			attr: { 'aria-label': `Return override ${overrideLabel}` },
-		});
-	} else if (ratio && !settings.showCardReturnStatus) {
-		const ratioEl = foot.createSpan({
-			cls: 'rv-locator-slot rv-locator-visits',
-			attr: { 'aria-label': ratio.title },
-		});
-		ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
-	}
-	if ((!overrideLabel || snoozed) && ratio && settings.showCardReturnStatus) {
-		const line = foot.createSpan('rv-locator-return-inline');
-		line.createSpan({
-			cls: 'rv-locator-return-visits',
-			text: `# ${ratio.text}`,
-			attr: { 'aria-label': ratio.title },
-		});
-		line.createSpan({
-			cls: 'rv-locator-return-when',
-			text: cardReturnLead(new Date(), settings.cardReturnFormat),
-		});
-		const bucket = line.createSpan({
-			cls: 'rv-locator-return-bucket',
-			text: host.cardReturnBucket(path),
-		});
-		bucket.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			host.openAttemptLog(path);
-		});
-	}
-	if (overrideLabel) {
-		const overrideEl = foot.querySelector('.rv-locator-override-label');
-		if (overrideEl instanceof HTMLElement) {
-			overrideEl.addEventListener('click', (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				host.openAttemptLog(path);
-			});
-		}
-	}
+	const snoozeLabel = snoozed ? host.snoozeLabelFor(path) : '';
+	const snoozeDays = snoozed ? host.snoozeDaysLeftFor(path) : null;
+	paintGlanceFoot(foot, {
+		showPerson: show('met-with'),
+		metWith,
+		ratio: ratio?.text ?? '',
+		ratioTitle: ratio?.title ?? '',
+		daypart: cardReturnLead(new Date(), settings.cardReturnFormat),
+		bucket: overrideLabel || host.cardReturnBucket(path),
+		showReturn: settings.showCardReturnStatus,
+		snoozed,
+		snoozeLabel,
+		snoozeDays: snoozeDays == null ? '' : `${snoozeDays}d`,
+		onOpen: () => { host.openAttemptLog(path); },
+	});
 	if (show('met-with') || show('visits')) compactLines.push('foot');
 	paintActions(card, host, path, file.basename, priority, urgency, address, compact ? compactLines : null, fitted, snoozed);
 	return true;

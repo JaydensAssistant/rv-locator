@@ -1,7 +1,7 @@
 import { Modal, Setting, type App } from 'obsidian';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { mountCampaignChoice } from './campaign-choice';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { coverageQuestion } from './modals';
 
 /** Name a campaign, or cancel the one that is already active. Only one is active. */
@@ -23,6 +23,8 @@ export class CampaignModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Campaign');
 		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-campaign');
+		markModalTone(this.modalEl, 'general');
 		const { contentEl } = this;
 		const active = campaignIsActive(this.current);
 		if (active && this.current) {
@@ -44,6 +46,7 @@ export class CampaignModal extends Modal {
 				text.onChange((value) => { this.name = value; });
 			});
 		new Setting(contentEl)
+			.setClass('rv-date-line')
 			.setName('Start date')
 			.addText((text) => {
 				text.inputEl.type = 'date';
@@ -51,6 +54,7 @@ export class CampaignModal extends Modal {
 				text.onChange((value) => { this.start = value; });
 			});
 		new Setting(contentEl)
+			.setClass('rv-date-line')
 			.setName('End date')
 			.setDesc('Optional.')
 			.addText((text) => {
@@ -122,6 +126,7 @@ export function askCampaignCovered(
 		modal.onOpen = () => {
 			modal.setTitle(campaignName);
 			modal.modalEl.addClass('rv-locator-modal');
+			markModalTone(modal.modalEl, 'general');
 			mountCampaignChoice(
 				modal.contentEl,
 				coverageQuestion(pronoun, campaignName),

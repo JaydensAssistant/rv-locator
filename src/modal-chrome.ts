@@ -1,4 +1,6 @@
 import { Platform, setIcon, type Setting } from 'obsidian';
+import { urgencyInk } from './urgency-palette';
+import { RESTROOM_MAN, RESTROOM_WOMAN } from './person-meta';
 
 const PROMPT_ICONS: Array<[RegExp, string]> = [
 	[/literature|publication/i, 'book-open'],
@@ -8,6 +10,7 @@ const PROMPT_ICONS: Array<[RegExp, string]> = [
 	[/where you ended|end date|ended/i, 'calendar'],
 	[/companion|who came|who was taken|publisher came/i, 'users'],
 	[/address/i, 'map-pin'],
+	[/estimated age|^age$/i, 'sprout'],
 	[/name/i, 'user'],
 	[/man \/ woman|gender/i, 'person-standing'],
 	[/priority/i, 'gauge'],
@@ -50,8 +53,8 @@ const BUTTON_ICONS: Array<[RegExp, string]> = [
 	[/^home$/i, 'door-open'],
 	[/^create$/i, 'plus'],
 	[/^add$/i, 'plus'],
-	[/^man$/i, 'mars'],
-	[/^woman$/i, 'venus'],
+	[/^man$/i, RESTROOM_MAN],
+	[/^woman$/i, RESTROOM_WOMAN],
 	[/^remove$/i, 'trash-2'],
 	[/^keep$/i, 'check'],
 	[/^unarchive$/i, 'archive-restore'],
@@ -217,6 +220,19 @@ function paintIcon(node: Element, icon: string): void {
 	mark.className = 'rv-modal-icon';
 	node.prepend(mark);
 	setIcon(mark, icon);
+}
+
+/** Primary buttons. RV notes use that note's urgency. General modals use the green. */
+export function markModalTone(modalEl: HTMLElement, tone: 'general' | 'rv', accent = ''): void {
+	modalEl.addClass(tone === 'rv' ? 'rv-modal-rv' : 'rv-modal-general');
+	const drop = tone === 'rv' ? 'rv-modal-general' : 'rv-modal-rv';
+	if (typeof modalEl.removeClass === 'function') modalEl.removeClass(drop);
+	else modalEl.classList.remove(drop);
+	if (tone !== 'rv') return;
+	const color = accent.trim();
+	if (!color || typeof modalEl.style?.setProperty !== 'function') return;
+	modalEl.style.setProperty('--rv-modal-accent', color);
+	modalEl.style.setProperty('--rv-modal-ink', urgencyInk(color));
 }
 
 export function nameWithIcon(setting: Setting, icon: string, name: string): Setting {

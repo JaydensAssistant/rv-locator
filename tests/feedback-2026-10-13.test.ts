@@ -260,8 +260,8 @@ describe('2026-10-13 feedback', () => {
 		assert.match(study, /\['finished', 'Finished', 'circle-check-big'\]/);
 		const identity = source('src/new-rv-modal.ts');
 		assert.match(identity, /setIcon\(el, icon\)/);
-		assert.match(identity, /mountGenderButton\(button, 'Man', 'mars'/);
-		assert.match(identity, /mountGenderButton\(button, 'Woman', 'venus'/);
+		assert.match(identity, /mountGenderButton\(button, 'Man', RESTROOM_MAN/);
+		assert.match(identity, /mountGenderButton\(button, 'Woman', RESTROOM_WOMAN/);
 		assert.equal(identity.includes('♂'), false);
 		assert.equal(identity.includes('♀'), false);
 		const edit = source('src/visit-modals.ts');

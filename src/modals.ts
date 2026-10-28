@@ -2,7 +2,7 @@ import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder
 import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { mountCampaignChoice } from './campaign-choice';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
 import { companionChoices, exactCompanion, matchingCompanion, type CompanionSuggestion } from './companions';
@@ -132,6 +132,7 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 		void super.onOpen();
 		this.setTitle('Choose a folder');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
 		iconizeModal(this.modalEl);
 	}
 }
@@ -164,6 +165,7 @@ export class BulkGeocodeModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Bulk geocode');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
 		this.render();
 	}
 
@@ -324,6 +326,7 @@ export class SuccessfulVisitsModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Fill Successful Visits');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
 		this.render();
 	}
 
@@ -425,6 +428,7 @@ export class SuccessfulVisitsModal extends Modal {
 export type VisitMenuAnswer = 'home' | 'miss' | 'past' | 'archive';
 
 export class VisitConfirmModal extends Modal {
+	buttonAccent = '';
 	private answered = false;
 
 	constructor(
@@ -438,6 +442,7 @@ export class VisitConfirmModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Log a visit');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
 		contentEl.createEl('p', {
 			cls: 'rv-locator-modal-copy',
@@ -514,6 +519,7 @@ export function coverageQuestion(pronoun: 'him' | 'her' | 'them', campaign: stri
  * Cancel and a click outside do not log.
  */
 export class CompanionSuggestModal extends Modal {
+	buttonAccent = '';
 	private readonly gate: CompanionPromptGate;
 	private covered = true;
 	private decided = false;
@@ -543,6 +549,7 @@ export class CompanionSuggestModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Log visit');
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-companion-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
 		new Setting(contentEl)
 			.setName('What publisher came with you?')

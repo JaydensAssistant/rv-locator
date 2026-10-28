@@ -1,5 +1,5 @@
 import { Modal, Setting, TFile, normalizePath, type App } from 'obsidian';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { extrasDestinations, type ExtrasPlacement } from './extras-sync';
 import { parseHomeCountyLines } from './home-base';
 import { TEMPLATER_PLUGIN_ID } from './new-rv-launch';
@@ -96,6 +96,7 @@ export class SetupWizardModal extends Modal {
 
 	onOpen(): void {
 		this.modalEl.addClass('rv-locator-setup-wizard');
+		markModalTone(this.modalEl, 'general');
 		this.setTitle('RV Locator setup');
 		void this.render();
 	}

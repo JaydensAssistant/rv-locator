@@ -1,5 +1,5 @@
 import { Modal, Notice, Setting, type App } from 'obsidian';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { DAYPARTS, daypartSettingLabel, type Daypart } from './schedule';
 import {
 	formatSlotOverride,
@@ -29,6 +29,7 @@ export class SlotOverrideModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Try or Avoid');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
 		this.paint();
 	}
 

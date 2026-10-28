@@ -1,7 +1,7 @@
 import { Modal, Notice, Setting, SuggestModal, type App } from 'obsidian';
 import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 import { mountAlwaysChevron, releaseSuggestionFields } from './suggest-field';
 import { mountCampaignChoice } from './campaign-choice';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
@@ -28,6 +28,7 @@ export interface VisitEditOptions {
  * taken. A time later than now is refused.
  */
 export class VisitEditModal extends Modal {
+	buttonAccent = '';
 	private home = true;
 	private dateText = '';
 	private hour = 12;
@@ -236,6 +237,7 @@ export class VisitEditModal extends Modal {
 
 /** Literature, media, and study lessons. Home logs use this instead of the companion dialog. */
 export class LiteraturePromptModal extends Modal {
+	buttonAccent = '';
 	private share: VisitShare;
 	private settled = false;
 	private covered = true;
@@ -253,6 +255,7 @@ export class LiteraturePromptModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Log visit');
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		mountShareFields(this.contentEl, this.options, (next) => { this.share = next; });
 		if (this.campaign) {
 			mountCampaignChoice(

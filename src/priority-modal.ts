@@ -1,8 +1,9 @@
 import { Modal, Setting, type App } from 'obsidian';
-import { iconizeModal } from './modal-chrome';
+import { iconizeModal, markModalTone } from './modal-chrome';
 
 /** Change priority with a slider. 0 archives. Above 0 on an inactive note restores Active. */
 export class PrioritySliderModal extends Modal {
+	buttonAccent = '';
 	private value: number;
 
 	constructor(
@@ -18,6 +19,7 @@ export class PrioritySliderModal extends Modal {
 	onOpen(): void {
 		this.setTitle(`Priority on “${this.displayName}”`);
 		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
 		new Setting(contentEl)
 			.setName('Priority')

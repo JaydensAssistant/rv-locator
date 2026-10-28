@@ -22,7 +22,9 @@ import { calendarDaysSince, formatGlanceableCounter } from './dates';
 import { readProperty } from './frontmatter';
 import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceQuery } from './glance-search';
 import { formatStudyFraction } from './catalog';
-import { resolveStatus, statusIcon } from './status';
+import { resolveStatus, sanitizeGender, statusIcon } from './status';
+import { ageCaption, appendPersonMeta } from './person-meta';
+import { paintGlanceFoot } from './glance-foot';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
 export class NearbyGlancableView extends NearbyBasesView {
@@ -384,18 +386,24 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (this.lineOn('name')) {
 			const name = card.createDiv('rv-locator-card-name');
 			name.setAttr('data-line', glancableLineId(0));
+			this.paintCampaignMark(name, row.path);
 			const statusIconEl = name.createSpan('rv-locator-status-icon');
 			setIcon(statusIconEl, statusIcon(row.status));
 			statusIconEl.setAttr('aria-label', row.status);
 			statusIconEl.querySelector('svg')?.removeAttribute('aria-label');
-			this.paintCampaignMark(name, row.path);
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
-				text: cardPersonTitle(row.name, this.plugin.settings.cardTitleNameOnly),
+				text: cardPersonTitle(row.name, true),
 				href: row.path,
 				attr: { 'aria-label': row.name },
 			});
 			this.bindFileLink(link, row.path);
+			const facts = this.plugin.noteFrontmatter(row.path);
+			appendPersonMeta(
+				name,
+				ageCaption(readProperty(facts, 'Age'), readProperty(facts, 'Age Exact')),
+				sanitizeGender(readProperty(facts, 'Gender')),
+			);
 		}
 
 		const showStreet = this.lineOn('street') && Boolean(row.addressStreet);
@@ -483,68 +491,28 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		const foot = card.createDiv('rv-locator-card-foot');
 		foot.setAttr('data-line', glancableLineId(5));
-		if (this.lineOn('met-with')) {
-			const metWith = this.cellNamed(row, 'Met With');
-			const metText = metWith && metWith.kind !== 'empty' && metWith.text && metWith.text !== '—'
-				? metWith.text
-				: '';
-			this.plainSlot(foot, 'user', metText || '—', metText ? `Met With ${metText}` : 'Met With', !metText);
-		}
+		const metWith = this.cellNamed(row, 'Met With');
+		const metText = metWith && metWith.kind !== 'empty' && metWith.text && metWith.text !== '—'
+			? metWith.text
+			: '';
 		const ratio = this.lineOn('visits')
 			? (study ? studyRatio(note, this.plugin.settings.studyRatio) : visitRatio(this.cellNamed(row, 'Successful Visits'), this.cellNamed(row, 'Visits')))
 			: null;
-		const overrideLabel = this.plugin.settings.showCardReturnStatus ? this.plugin.cardOverrideLabel(row.path) : null;
-		if (overrideLabel && !snoozed) {
-			foot.createSpan({
-				cls: 'rv-locator-slot rv-locator-override-label',
-				text: overrideLabel,
-				attr: { 'aria-label': `Return override ${overrideLabel}` },
-			});
-		} else if (ratio && !this.plugin.settings.showCardReturnStatus) {
-			const ratioEl = foot.createSpan({
-				cls: 'rv-locator-slot rv-locator-visits',
-				attr: { 'aria-label': ratio.title },
-			});
-			ratioEl.createSpan({ cls: 'rv-locator-slot-text', text: `# ${ratio.text}` });
-		}
-		if ((!overrideLabel || snoozed) && ratio && this.plugin.settings.showCardReturnStatus) {
-			const line = foot.createSpan('rv-locator-return-inline');
-			line.createSpan({
-				cls: 'rv-locator-return-visits',
-				text: `# ${ratio.text}`,
-				attr: { 'aria-label': ratio.title },
-			});
-			line.createSpan({
-				cls: 'rv-locator-return-when',
-				text: cardReturnLead(new Date(), this.plugin.settings.cardReturnFormat),
-			});
-			const bucket = line.createSpan({
-				cls: 'rv-locator-return-bucket',
-				text: this.plugin.cardReturnBucket(row.path),
-			});
-			bucket.addEventListener('click', (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				this.plugin.openAttemptLog(row.path);
-			});
-		}
-		if (snoozed) {
-			const reason = this.plugin.snoozeLabelFor(row.path);
-			const line = foot.createSpan('rv-locator-snooze-line');
-			line.createSpan({ cls: 'rv-snooze-tiny', text: snoozeCardCaption(reason) });
-			line.createSpan({
-				cls: 'rv-snooze-tiny rv-snooze-days',
-				text: `${this.plugin.snoozeDaysLeftFor(row.path)}d`,
-			});
-		}
-		const overrideEl = foot.querySelector('.rv-locator-override-label');
-		if (overrideEl instanceof HTMLElement) {
-			overrideEl.addEventListener('click', (event) => {
-				event.preventDefault();
-				event.stopPropagation();
-				this.plugin.openAttemptLog(row.path);
-			});
-		}
+		const overrideLabel = this.plugin.settings.showCardReturnStatus && !snoozed ? this.plugin.cardOverrideLabel(row.path) : null;
+		if (overrideLabel) foot.addClass('rv-locator-override-label');
+		paintGlanceFoot(foot, {
+			showPerson: this.lineOn('met-with'),
+			metWith: metText,
+			ratio: ratio?.text ?? '',
+			ratioTitle: ratio?.title ?? '',
+			daypart: cardReturnLead(new Date(), this.plugin.settings.cardReturnFormat),
+			bucket: overrideLabel || this.plugin.cardReturnBucket(row.path),
+			showReturn: this.plugin.settings.showCardReturnStatus,
+			snoozed,
+			snoozeLabel: snoozed ? snoozeCardCaption(this.plugin.snoozeLabelFor(row.path)) : '',
+			snoozeDays: snoozed ? `${this.plugin.snoozeDaysLeftFor(row.path)}d` : '',
+			onOpen: () => { this.plugin.openAttemptLog(row.path); },
+		});
 		const lines: CompactLineKind[] = [];
 		if (this.lineOn('name')) lines.push('name');
 		if (showStreet || showCity || showDistance) lines.push('place');
@@ -724,6 +692,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private sizeEmbedFrame(): void {
 		const embed = this.root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
 		if (!(embed instanceof HTMLElement)) return;
+		const fullBase = embed.closest('.rv-locator-full-base');
+		if (fullBase instanceof HTMLElement) {
+			embed.classList.remove('is-embed-capped');
+			embed.style.removeProperty('--rv-embed-cap');
+			embed.style.removeProperty('height');
+			embed.style.removeProperty('max-height');
+			embed.style.setProperty('overflow', 'visible', 'important');
+			concealRawBaseEmbed(fullBase);
+			return;
+		}
 		const release = (): void => {
 			embed.classList.remove('is-embed-capped');
 			embed.style.removeProperty('--rv-embed-cap');
@@ -1453,4 +1431,20 @@ function countText(cell: CellModel | undefined): string {
 	const count = Number(cell.text);
 	if (!Number.isFinite(count)) return cell.text;
 	return Number.isInteger(count) ? String(count) : cell.text;
+}
+
+/** Hide a raw `![[file.base]]` line once the embed is the full-base view. */
+export function concealRawBaseEmbed(root: HTMLElement): number {
+	let hidden = 0;
+	if (typeof root.querySelectorAll !== 'function') return 0;
+	root.querySelectorAll('p, .cm-line, .el-p').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (node.querySelector('.internal-embed, .bases-embed, .bases-view, .markdown-embed')) return;
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (!/^!\[\[[^\]]+\.base\]\]$/.test(text)) return;
+		node.classList.add('rv-base-source-hidden');
+		node.style.display = 'none';
+		hidden += 1;
+	});
+	return hidden;
 }
