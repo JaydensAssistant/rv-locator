@@ -43,7 +43,6 @@ export interface NoteChromeHost {
 	renameNote(path: string): void;
 	mapOpen(): boolean;
 	ghostIcon(path: string): 'hourglass' | 'moon' | 'ban' | null;
-	openReturn?(path: string, name: string): void;
 }
 
 const LONG_PRESS_MS = 500;

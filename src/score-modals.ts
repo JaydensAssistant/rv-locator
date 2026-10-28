@@ -1,56 +1,11 @@
 import { Modal, Setting, setIcon, type App } from 'obsidian';
 import { iconizeModal, markModalTone } from './modal-chrome';
-import { digestVoiceClass } from './attempt-digest';
 import { sliderToSnoozeDays, snoozeDaysToSlider } from './lesson-stops';
 import {
 	snoozeDaysFromUntil,
 	snoozePreview,
 	type SnoozeWrite,
 } from './snooze';
-
-export class ReturnSuggestModal extends Modal {
-	buttonAccent = '';
-	constructor(app: App, private displayName: string, private markdown: string) {
-		super(app);
-	}
-
-	onOpen(): void {
-		this.setTitle('Return times');
-		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'rv', this.buttonAccent);
-		const { contentEl } = this;
-		contentEl.createDiv({ cls: 'rv-locator-modal-copy', text: this.displayName });
-		const host = contentEl.createDiv('rv-locator-return-digest');
-		for (const line of this.markdown.split('\n')) {
-			if (!line.trim()) continue;
-			const row = host.createDiv({ cls: 'rv-locator-return-line' });
-			const voice = digestVoiceClass(line.replaceAll('**', ''));
-			if (voice) row.addClass(voice);
-			if (line.startsWith('|')) row.addClass('is-table');
-			appendDigestText(row, line);
-		}
-		new Setting(contentEl).addButton((button) => {
-			button.setButtonText('Close');
-			button.onClick(() => this.close());
-		});
-		iconizeModal(contentEl);
-	}
-
-	onClose(): void {
-		this.contentEl.empty();
-	}
-}
-
-function appendDigestText(row: HTMLElement, line: string): void {
-	const parts = line.split(/(\*\*[^*]+\*\*)/g);
-	for (const part of parts) {
-		if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-			row.createEl('strong', { text: part.slice(2, -2) });
-			continue;
-		}
-		if (part) row.appendText(part);
-	}
-}
 
 export interface SnoozeModalState {
 	until: Date | null;

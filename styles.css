@@ -1147,44 +1147,28 @@
 	height: 16px;
 }
 
-.rv-locator-modal .rv-locator-return-digest {
-	display: block;
-	margin: 0 0 12px;
-	color: var(--text-muted);
-	font-size: var(--font-ui-small);
-	line-height: 1.35;
-}
-
 .rv-locator-digest-block table,
 table.rv-locator-digest-block,
-table.rv-locator-digest-table,
-.rv-locator-modal .rv-locator-return-digest table {
+table.rv-locator-digest-table {
 	width: auto;
 	margin: 0 0 0.35rem;
 	font-size: var(--font-ui-smaller);
 }
 
 .callout-content > .rv-locator-digest-block.is-avoid,
-.rv-locator-return-line.is-avoid,
 .callout-content > .rv-locator-digest-block.is-try,
-.rv-locator-return-line.is-try,
 .callout-content > .rv-locator-digest-block.is-untried,
-.rv-locator-return-line.is-untried,
-.callout-content > .rv-locator-digest-block.is-unsure,
-.rv-locator-return-line.is-unsure {
+.callout-content > .rv-locator-digest-block.is-unsure {
 	color: var(--text-normal);
 	font-weight: 400;
 }
 
 .callout-content > .rv-locator-digest-block.is-try strong,
-.rv-locator-return-line.is-try strong,
-.callout-content > .rv-locator-digest-block.is-avoid strong,
-.rv-locator-return-line.is-avoid strong {
+.callout-content > .rv-locator-digest-block.is-avoid strong {
 	font-weight: 700;
 }
 
-.callout-content > .rv-locator-digest-block.is-history,
-.rv-locator-return-line.is-history {
+.callout-content > .rv-locator-digest-block.is-history {
 	color: var(--text-muted);
 	font-weight: 400;
 }

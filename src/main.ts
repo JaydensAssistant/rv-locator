@@ -59,7 +59,7 @@ import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
-import { PriorityNudgeModal, ReturnSuggestModal, UrgencySnoozeModal } from './score-modals';
+import { PriorityNudgeModal, UrgencySnoozeModal } from './score-modals';
 import { fillToastText, watchBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
@@ -229,17 +229,6 @@ export default class RVLocatorPlugin extends Plugin {
 			callback: () => {
 				const modal = new SuccessfulVisitsModal(this.app, this, (choice, report) => this.runSuccessfulVisitsFill(choice, report));
 				modal.open();
-			},
-		});
-
-		this.addCommand({
-			id: 'suggest-return-times',
-			name: 'Suggest return times',
-			checkCallback: (checking) => {
-				const file = this.app.workspace.getActiveFile();
-				const available = !!file && file.extension === 'md';
-				if (available && !checking && file) void this.suggestReturnFor(file.path, file.basename);
-				return available;
 			},
 		});
 
@@ -1577,28 +1566,6 @@ export default class RVLocatorPlugin extends Plugin {
 		});
 	}
 
-	async suggestReturnFor(path: string, displayName: string): Promise<void> {
-		const file = this.app.vault.getFileByPath(path);
-		if (!file) {
-			new Notice('That note is not in the vault.');
-			return;
-		}
-		const buckets = await this.readAttemptBuckets(file);
-		const digest = suggestReturnDigest({
-			buckets,
-			grid: this.settings.availabilityGrid,
-			orientation: this.settings.digestOrientation,
-			days: this.settings.digestDays,
-			thresholds: this.digestThresholds(),
-			overrides: this.slotOverridesFor(file),
-			now: new Date(),
-			abbreviate: this.settings.abbreviateDayparts,
-		});
-		const modal = new ReturnSuggestModal(this.app, displayName, digest.markdown);
-		modal.buttonAccent = this.buttonAccent(file.path);
-		modal.open();
-	}
-
 	snoozeUntilFor(path: string): Date | null {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return null;
@@ -1643,7 +1610,6 @@ export default class RVLocatorPlugin extends Plugin {
 				const file = this.app.vault.getFileByPath(path);
 				return cardPersonTitle(file?.basename ?? path, true);
 			},
-			openReturn: (path, name) => { void this.suggestReturnFor(path, name); },
 			renameNote: (path) => { this.promptAttributes(path); },
 			mapOpen: () => this.hubMapOpen,
 			ghostIcon: (path) => this.ghostIconForCard(path),
@@ -1733,12 +1699,12 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!address) return;
 		const cached = getCached(this.geocodeCache, address);
 		if (cached) {
-			await this.presentHits(file, address, cached, true);
+			await this.presentHits(file, address, cached);
 			return;
 		}
 		try {
 			const hits = await this.lookupAddress(address, false);
-			await this.presentHits(file, address, hits, false);
+			await this.presentHits(file, address, hits);
 		} catch (error) {
 			new Notice(this.friendlyError(error));
 		}
@@ -2914,14 +2880,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 		const cached = getCached(this.geocodeCache, address);
 		if (cached) {
-			await this.presentHits(file, address, cached, true, quiet);
+			await this.presentHits(file, address, cached, quiet);
 			return;
 		}
 
 		const notice = new Notice('Looking up address…', 0);
 		try {
 			const hits = await this.lookupAddress(address, true);
-			await this.presentHits(file, address, hits, false, quiet);
+			await this.presentHits(file, address, hits, quiet);
 		} catch (error) {
 			new Notice(this.friendlyError(error));
 		} finally {
@@ -2929,7 +2895,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean, quiet = false): Promise<void> {
+	private async presentHits(file: TFile, address: string, hits: GeocodeHit[], quiet = false): Promise<void> {
 		const verified = this.verifiedNewRvHit;
 		this.verifiedNewRvHit = null;
 		if (verified && addressesMatchOneForOne(address, verified.formattedAddress)) {
@@ -2943,7 +2909,7 @@ export default class RVLocatorPlugin extends Plugin {
 			if (quiet || this.pendingNewRvPath === file.path) this.armSettledVisitFocus(file);
 			return;
 		}
-		this.openPicker(file, address, hits, fromCache, quiet);
+		this.openPicker(file, address, hits, quiet);
 	}
 
 	promptVisit(path: string, displayName: string): void {
@@ -3959,29 +3925,15 @@ export default class RVLocatorPlugin extends Plugin {
 		placeVisitNoteFocus(root, '', 0);
 	}
 
-	private openPicker(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean, quiet = false): void {
+	private openPicker(file: TFile, address: string, hits: GeocodeHit[], quiet = false): void {
 		const settleNotes = (): void => { this.armSettledVisitFocus(file); };
 		const modal = new GeocodeSuggestModal(
 			this.app,
 			hits,
-			fromCache,
 			(hit) => {
 				void this.writeHit(file, address, hit, hits, !quiet).catch((error: unknown) => {
 					new Notice(this.friendlyError(error));
 				}).finally(settleNotes);
-			},
-			async () => {
-				const notice = new Notice('Looking up address…', 0);
-				try {
-					const fresh = await this.lookupAddress(address, true);
-					hits = fresh;
-					return fresh;
-				} catch (error) {
-					new Notice(this.friendlyError(error));
-					return hits;
-				} finally {
-					notice.hide();
-				}
 			},
 			() => { settleNotes(); },
 		);
@@ -4000,7 +3952,7 @@ export default class RVLocatorPlugin extends Plugin {
 			let hit = decision.hit;
 			if (!hit) {
 				if (this.bulkAborted) return 'cancelled';
-				hit = await this.askForHit(file, item.address, results, Boolean(cached));
+				hit = await this.askForHit(file, results);
 				if (!hit) return this.bulkAborted ? 'cancelled' : 'passed';
 			}
 			await this.writeHit(file, item.address, hit, results, false);
@@ -4017,7 +3969,7 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	private askForHit(file: TFile, address: string, hits: GeocodeHit[], fromCache: boolean): Promise<GeocodeHit | null> {
+	private askForHit(file: TFile, hits: GeocodeHit[]): Promise<GeocodeHit | null> {
 		return new Promise((resolve) => {
 			let settled = false;
 			const finish = (hit: GeocodeHit | null) => {
@@ -4028,21 +3980,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const modal = new GeocodeSuggestModal(
 				this.app,
 				hits,
-				fromCache,
 				(hit) => finish(hit),
-				async () => {
-					const notice = new Notice('Looking up address…', 0);
-					try {
-						const fresh = await this.lookupAddress(address, true, () => this.bulkAborted);
-						hits = fresh;
-						return fresh;
-					} catch (error) {
-						new Notice(this.friendlyError(error));
-						return hits;
-					} finally {
-						notice.hide();
-					}
-				},
 				() => finish(null),
 			);
 			modal.heading = `Choose a location for ${file.basename}`;

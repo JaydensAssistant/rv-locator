@@ -289,3 +289,43 @@ describe('2026-10-13 feedback', () => {
 		assert.equal(share.match(/mediaAliasIndex\(\)/g)?.length, 1);
 	});
 });
+
+describe('location picker and return times', () => {
+	it('removes Look up again and keeps the Geoapify attribution', () => {
+		const modal = source('src/modals.ts');
+		const picker = modal.slice(modal.indexOf('class GeocodeSuggestModal'), modal.indexOf('class FolderSuggestModal'));
+		assert.equal(picker.includes('Look up again'), false);
+		assert.equal(picker.includes('onRefetch'), false);
+		assert.equal(picker.includes('Showing a saved lookup'), false);
+		assert.match(picker, /PRIVACY_NOTICE/);
+		assert.match(picker, /purpose: 'to navigate'/);
+		assert.match(picker, /purpose: 'to use result'/);
+		assert.match(picker, /purpose: 'to cancel'/);
+		const css = source('styles.css');
+		assert.match(css, /\.prompt\.rv-modal-general button\.mod-cta/);
+		assert.match(css, /\.prompt\.rv-modal-rv button\.mod-cta/);
+		assert.match(css, /\.prompt\.rv-modal-general,\s*\.prompt\.rv-modal-rv \.suggestion-highlight|\.prompt\.rv-modal-rv \.suggestion-highlight/);
+		assert.match(css, /--interactive-accent:\s*#1f8a4c/);
+		assert.match(css, /--interactive-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
+	});
+
+	it('removes the Return times screen and keeps the digest, Try and Avoid, and the card bucket', () => {
+		const main = source('src/main.ts');
+		const chrome = source('src/note-chrome.ts');
+		const scores = source('src/score-modals.ts');
+		assert.equal(main.includes('suggest-return-times'), false);
+		assert.equal(main.includes('Suggest return times'), false);
+		assert.equal(main.includes('suggestReturnFor'), false);
+		assert.equal(main.includes('openReturn'), false);
+		assert.equal(main.includes('ReturnSuggestModal'), false);
+		assert.equal(chrome.includes('openReturn'), false);
+		assert.equal(scores.includes('ReturnSuggestModal'), false);
+		assert.equal(scores.includes("setTitle('Return times')"), false);
+		assert.match(main, /suggestReturnDigest\(/);
+		assert.match(main, /currentReturnBucket\(/);
+		assert.match(main, /cardReturnBucket\(/);
+		assert.match(source('src/schedule.ts'), /export function suggestReturnDigest/);
+		assert.match(source('src/schedule.ts'), /export function currentReturnBucket/);
+		assert.match(source('src/schedule.ts'), /export function cardReturnLead/);
+	});
+});

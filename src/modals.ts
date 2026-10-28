@@ -13,17 +13,13 @@ import type RVLocatorPlugin from './main';
 
 export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 	buttonAccent = '';
-	private closed = false;
-	private lookingUp = false;
 	private chose = false;
 	heading = 'Choose a location';
 
 	constructor(
 		app: App,
 		private hits: GeocodeHit[],
-		private fromCache: boolean,
 		private onPick: (hit: GeocodeHit) => void,
-		private onRefetch: () => Promise<GeocodeHit[]>,
 		private onDismiss: () => void = () => {},
 	) {
 		super(app);
@@ -41,22 +37,14 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 			{ command: 'esc', purpose: 'to cancel' },
 		]);
 
-		const bar = this.modalEl.createDiv('rv-locator-suggest-actions');
-		const button = bar.createEl('button', { text: 'Look up again', cls: 'mod-cta' });
-		button.addEventListener('click', () => {
-			void this.refetch(button);
-		});
 		const privacy = this.modalEl.createDiv({ cls: 'rv-locator-privacy' });
-		privacy.setText(this.fromCache
-			? `Showing a saved lookup. Look up again sends the address to Geoapify. ${PRIVACY_NOTICE}`
-			: PRIVACY_NOTICE);
+		privacy.setText(PRIVACY_NOTICE);
 		this.modalEl.addClass('rv-locator-modal');
 		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		iconizeModal(this.modalEl);
 	}
 
 	onClose(): void {
-		this.closed = true;
 		super.onClose();
 		schedulePickerDismiss(
 			() => this.chose,
@@ -88,27 +76,6 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 	onChooseSuggestion(hit: GeocodeHit): void {
 		this.chose = true;
 		this.onPick(hit);
-	}
-
-	private async refetch(button: HTMLButtonElement): Promise<void> {
-		if (this.lookingUp) return;
-		this.lookingUp = true;
-		button.disabled = true;
-		button.setText('Looking up…');
-		try {
-			const hits = await this.onRefetch();
-			if (this.closed) return;
-			this.hits = hits;
-			this.fromCache = false;
-			this.inputEl.value = '';
-			this.inputEl.dispatchEvent(new Event('input'));
-		} finally {
-			this.lookingUp = false;
-			if (!this.closed) {
-				button.disabled = false;
-				button.setText('Look up again');
-			}
-		}
 	}
 }
 

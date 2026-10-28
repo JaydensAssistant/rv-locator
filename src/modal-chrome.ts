@@ -39,7 +39,6 @@ const PROMPT_ICONS: Array<[RegExp, string]> = [
 const BUTTON_ICONS: Array<[RegExp, string]> = [
 	[/^log past visit$/i, 'rotate-ccw-clock'],
 	[/^log visit$/i, 'check'],
-	[/^look up again$/i, 'refresh-cw'],
 	[/^save and continue$/i, 'check'],
 	[/^cancel$/i, 'x'],
 	[/^save$/i, 'check'],
