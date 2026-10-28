@@ -181,8 +181,16 @@ describe('next build locks', () => {
 		assert.match(css, /\.rv-qf-body \.rv-qf-value \{[^}]*justify-self:\s*stretch/);
 		assert.match(css, /\.rv-qf-body \.rv-qf-value \{[^}]*width:\s*100%/);
 		assert.match(css, /\.rv-qf-chips\.is-single > \.rv-qf-chip \{[^}]*width:\s*100%/);
+		assert.match(css, /\.rv-qf-chips\.is-halves \{[^}]*gap:\s*6px/);
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*flex:\s*1 1 0/);
-		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*width:\s*50%/);
+		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-radius:\s*6px/);
+		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-left-width:\s*1px/);
+		assert.match(css, /\.rv-qf-body \.rv-qf-value > \.rv-qf-pill \{[^}]*display:\s*flex/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*0 1 auto/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*font-size:\s*calc\(13px \* var\(--rv-font-scale, 1\)\)/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*flex:\s*0 0 auto/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-gender svg :is\(circle, path, line, polyline\) \{[^}]*stroke-width:\s*2px/);
+		assert.doesNotMatch(css, /\.rv-dashboard[^{]*\.rv-title-age \{[^}]*font-size:\s*calc\(13px/);
 		const ago = css.match(/\.rv-qf-pill \.rv-stamp-ago \{[^}]*\}/)?.[0] ?? '';
 		assert.match(ago, /border:\s*0/);
 		assert.match(ago, /box-shadow:\s*none/);

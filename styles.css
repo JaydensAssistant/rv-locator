@@ -699,7 +699,7 @@
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	color: var(--text-normal);
@@ -8687,6 +8687,11 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	max-width: 100%;
 }
 
+/* The date pill was inline-flex, so the value's line box sat above the 24px chip rows. */
+.rv-qf-body .rv-qf-value > .rv-qf-pill {
+	display: flex;
+}
+
 .rv-qf-pill {
 	justify-content: center;
 }
@@ -8705,10 +8710,17 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	max-width: 100%;
 }
 
+.rv-qf-chips.is-halves {
+	gap: 6px;
+}
+
 .rv-qf-chips.is-halves > .rv-qf-chip {
 	flex: 1 1 0;
-	width: 50%;
-	max-width: 50%;
+	width: auto;
+	max-width: none;
+	min-width: 0;
+	border-radius: 6px;
+	border-left-width: 1px;
 }
 
 .rv-qf-label .rv-qf-plus,
@@ -8835,4 +8847,36 @@ h5.rv-visit-stamp + .rv-item-strip {
 	border-color: var(--rv-modal-accent) !important;
 	box-shadow: none !important;
 	outline: none !important;
+}
+
+/*
+  Glancable card title only. Age is the secondary caption (13px, muted).
+  The restroom figure matches that caption and keeps a 2px stroke.
+  The dashboard title does not use this selector.
+*/
+.rv-locator-glancable .rv-locator-card-name .rv-title-age {
+	flex: 0 0 auto;
+	margin-inline-start: 4px;
+	font-size: calc(13px * var(--rv-font-scale, 1));
+	font-weight: 400;
+	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
+	color: var(--text-muted);
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-title-gender {
+	flex: 0 0 auto;
+	width: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
+	height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
+	color: var(--text-muted);
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-title-gender svg {
+	overflow: visible;
+}
+
+.rv-locator-glancable .rv-locator-card-name .rv-title-gender svg :is(circle, path, line, polyline) {
+	stroke-width: 2px;
+	vector-effect: non-scaling-stroke;
+	stroke-linecap: round;
+	stroke-linejoin: round;
 }
