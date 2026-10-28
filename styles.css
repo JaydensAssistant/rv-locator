@@ -699,13 +699,16 @@
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
-	flex: 0 1 auto;
+	flex: 1 1 auto;
 	min-width: 0;
+	max-width: max-content;
 	overflow: hidden;
 	color: var(--text-normal);
 	font-size: inherit;
 	font-weight: 700;
 	line-height: inherit;
+	overflow-wrap: normal;
+	word-break: normal;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
@@ -8853,7 +8856,14 @@ h5.rv-visit-stamp + .rv-item-strip {
   Glancable card title only. Age is the secondary caption (13px, muted).
   The restroom figure matches that caption and keeps a 2px stroke.
   The dashboard title does not use this selector.
+  The name row uses the card width. A long name fills up to the age.
+  A short name stays max-content, so the age remains 6px after it.
 */
+.rv-locator-glancable .rv-locator-card-name {
+	width: 100%;
+	max-width: 100%;
+}
+
 .rv-locator-glancable .rv-locator-card-name .rv-title-age {
 	flex: 0 0 auto;
 	margin-inline-start: 4px;

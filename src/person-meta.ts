@@ -1,16 +1,19 @@
 import { addIcon, setIcon } from 'obsidian';
 import { sanitizeNoteName, stripFilenameStamp } from './note-name';
 
-/** Restroom figures. Stroke stays the normal lucide weight. */
+/** Restroom figures. Approved 24-viewBox glyphs; Obsidian icons are a 100 box. */
 export const RESTROOM_MAN = 'rv-restroom-man';
 export const RESTROOM_WOMAN = 'rv-restroom-woman';
 
-const MAN_PATHS = '<circle cx="12" cy="4.5" r="2"/><path d="M12 6.5v6M9 21.5l3-9 3 9"/>';
-/** Same head and the same foot line as the man (y 2.5–21.5, x 9–15), so the figure is not a tiny triangle. */
-const WOMAN_PATHS = '<circle cx="12" cy="4.5" r="2"/><path d="M12 6.5L9 21.5h6z"/>';
+const MAN_PATHS = '<circle cx="12" cy="5" r="3"/><path d="M8 10.5h8"/><path d="M12 8.5v6.5"/><path d="m12 15-3.5 7"/><path d="m12 15 3.5 7"/>';
+const WOMAN_PATHS = '<circle cx="12" cy="5" r="3"/><path d="M9.5 8.5h5"/><path d="M9.5 8.5 5.5 17h13L14.5 8.5"/><path d="M10 17v5"/><path d="M14 17v5"/>';
 
+/**
+ * Stroke 2.75 in the 24 box is about 1.8px when the icon is drawn at 16px.
+ * Sizes and colors stay with each callsite.
+ */
 function iconBody(paths: string): string {
-	return `<g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</g>`;
+	return `<svg viewBox="0 0 24 24" width="100" height="100" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 }
 
 export function registerRestroomIcons(): void {

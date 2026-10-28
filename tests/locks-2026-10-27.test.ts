@@ -186,7 +186,8 @@ describe('next build locks', () => {
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-radius:\s*6px/);
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-left-width:\s*1px/);
 		assert.match(css, /\.rv-qf-body \.rv-qf-value > \.rv-qf-pill \{[^}]*display:\s*flex/);
-		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*0 1 auto/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*1 1 auto/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*max-width:\s*max-content/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*font-size:\s*calc\(13px \* var\(--rv-font-scale, 1\)\)/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*flex:\s*0 0 auto/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-gender svg :is\(circle, path, line, polyline\) \{[^}]*stroke-width:\s*2px/);
@@ -205,8 +206,9 @@ describe('next build locks', () => {
 		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?background-color:\s*var\(--rv-modal-accent\) !important/);
 		assert.match(css, /\.modal\.rv-edit-attributes \.rv-age-choice button\.is-selected[\s\S]*?box-shadow:\s*none !important/);
 		assert.match(css, /\.modal\.rv-edit-attributes \.rv-gender-choice \.setting-item-control button svg \{[^}]*width:\s*16px !important[^}]*height:\s*16px !important/);
-		assert.match(meta, /M9 21\.5l3-9 3 9/);
-		assert.match(meta, /M12 6\.5L9 21\.5h6z/);
+		assert.match(meta, /<circle cx="12" cy="5" r="3"\/><path d="M8 10\.5h8"\/><path d="M12 8\.5v6\.5"\/><path d="m12 15-3\.5 7"\/><path d="m12 15 3\.5 7"\/>/);
+		assert.match(meta, /<circle cx="12" cy="5" r="3"\/><path d="M9\.5 8\.5h5"\/><path d="M9\.5 8\.5 5\.5 17h13L14\.5 8\.5"\/><path d="M10 17v5"\/><path d="M14 17v5"\/>/);
+		assert.match(meta, /viewBox="0 0 24 24"/);
 		assert.match(chrome, /function showChipOverlay/);
 		assert.doesNotMatch(chrome, /valueEl\.addEventListener\('mouseenter'/);
 		assert.doesNotMatch(chrome, /createEl\('button'[\s\S]{0,80}rv-qf-chevron/);

@@ -3,8 +3,8 @@ import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-const man = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" class="svg-icon"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5v6M9 21.5l3-9 3 9"/></g></svg>';
-const woman = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" class="svg-icon"><g transform="scale(4.1667)" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="4.5" r="2"/><path d="M12 6.5L9 21.5h6z"/></g></svg>';
+const man = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" class="svg-icon"><svg viewBox="0 0 24 24" width="100" height="100" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><path d="M8 10.5h8"/><path d="M12 8.5v6.5"/><path d="m12 15-3.5 7"/><path d="m12 15 3.5 7"/></svg></svg>';
+const woman = '<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100" class="svg-icon"><svg viewBox="0 0 24 24" width="100" height="100" fill="none" stroke="currentColor" stroke-width="2.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="3"/><path d="M9.5 8.5h5"/><path d="M9.5 8.5 5.5 17h13L14.5 8.5"/><path d="M10 17v5"/><path d="M14 17v5"/></svg></svg>';
 const ring = '<svg class="rv-urgency-glyph" data-rv-glyph="ring" viewBox="0 0 28 28"><circle class="is-ring" cx="14" cy="14" r="12.22" fill="none" stroke="currentColor"></circle></svg>';
 
 function page(css: string): string {
@@ -167,10 +167,12 @@ describe('glancable title and Quick Facts layout', () => {
 		assert.equal(stroke.vectorEffect, 'non-scaling-stroke');
 		assert.equal(womanStroke.vectorEffect, 'non-scaling-stroke');
 
-		const long = data.long as { linkScroll: number; linkClient: number; ageScroll: number; ageClient: number; gender: { right: number }; name: { right: number } };
+		const long = data.long as { link: { right: number }; linkScroll: number; linkClient: number; age: { left: number }; ageScroll: number; ageClient: number; gender: { right: number }; name: { right: number } };
 		assert.ok(long.linkScroll > long.linkClient + 8);
 		assert.ok(long.ageScroll <= long.ageClient + 1);
 		assert.ok(long.gender.right <= long.name.right + 0.6);
+		const longGap = long.age.left - long.link.right;
+		assert.ok(longGap >= 4 && longGap <= 8, `long age gap ${longGap}`);
 
 		const dashAge = data.dashAge as { fontSize: string };
 		const dashGender = data.dashGender as { width: string; height: string };
