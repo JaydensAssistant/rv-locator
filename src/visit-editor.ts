@@ -1,5 +1,5 @@
 import { appendCompanionTaken, companionDisplayName, companionKey, takenItems } from './companions';
-import { formatGlancableStampFromRaw, stripStampAge } from './dates';
+import { stripStampAge } from './dates';
 import { assignProperty, readProperty, removeProperty } from './frontmatter';
 import { parseLogBullet, stampDateTime } from './schedule';
 import { shareFromLine, visitExtraMarkup } from './visit-share';
@@ -18,7 +18,6 @@ import {
 	sectionEnd,
 	unfoldDashboard,
 	visitNotesField,
-	assignLaterStamp,
 	visitPhrase,
 	writeShareProperty,
 } from './visit-log';
@@ -286,11 +285,13 @@ export interface VisitChange {
 /**
  * Frontmatter after a visit is deleted, backfilled, or edited.
  * Visits and Successful Visits move by the difference and never go below 0.
- * Last Attempted and Last Spoke move to the latest remaining visit when they
- * were set by the removed one, or forward when an added visit is later.
- * A companion leaves Taken only when no other visit records them and they
- * are not Met With. Met With is not changed. Met becomes the earliest
- * logged visit that is not in the future.
+ * Last Attempted, Last Spoke, and Last Studied are rewritten from the visits
+ * that remain. Last Attempted is the latest visit, Last Spoke the latest Home,
+ * and Last Studied the latest visit that recorded a lesson. Each is cleared
+ * when nothing qualifies. A companion leaves Taken only when no other visit
+ * records them and they are not Met With. Met With is not changed. Met becomes
+ * the earliest logged visit that is not in the future, and is cleared when no
+ * visit remains.
  */
 export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>, change: VisitChange): void {
 	const removed = change.removed ?? null;
@@ -298,8 +299,8 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	const after = [...change.remaining, ...(added ? [added] : [])];
 	shiftCount(frontmatter, 'Visits', (added ? 1 : 0) - (removed ? 1 : 0));
 	shiftCount(frontmatter, 'Successful Visits', (added?.home ? 1 : 0) - (removed?.home ? 1 : 0));
-	moveLatest(frontmatter, 'Last Attempted', removed, after);
-	moveLatest(frontmatter, 'Last Spoke', removed?.home ? removed : null, after.filter((visit) => visit.home));
+	writeLatest(frontmatter, 'Last Attempted', after);
+	writeLatest(frontmatter, 'Last Spoke', after.filter((visit) => visit.home));
 	applyShareHistory(frontmatter, 'Left Publications', change, 'publications');
 	applyShareHistory(frontmatter, 'Shared Media', change, 'media');
 	applyLessonChange(frontmatter, change);
@@ -367,9 +368,8 @@ function applyLessonChange(frontmatter: Record<string, unknown>, change: VisitCh
 	const removedTitles = lessonTitles(removed);
 	if (addedTitles.length === 0 && removedTitles.length === 0) return;
 	shiftCount(frontmatter, 'Studies', addedTitles.length - removedTitles.length);
-	if (added && addedTitles.length > 0) {
-		assignLaterStamp(frontmatter, 'Last Studied', formatFrontmatterDateTime(added.when));
-	}
+	const studied = [...change.remaining, ...(added ? [added] : [])].filter((visit) => lessonTitles(visit).length > 0);
+	writeLatest(frontmatter, 'Last Studied', studied);
 	const kept = new Set(
 		[...change.remaining, ...(added ? [added] : [])]
 			.flatMap((visit) => lessonTitles(visit))
@@ -439,11 +439,18 @@ export function earliestNonFutureVisit(visits: readonly { when: Date }[], now: D
 
 export function syncMet(frontmatter: Record<string, unknown>, visits: readonly { when: Date }[], now: Date): void {
 	const earliest = earliestNonFutureVisit(visits, now);
-	if (!earliest) return;
-	const next = formatFrontmatterDateTime(earliest);
-	const current = rawDate(readProperty(frontmatter, 'Met'));
-	if (current === next) return;
-	assignProperty(frontmatter, 'Met', next);
+	// A future visit must not wipe a Met that an earlier visit already set.
+	if (!earliest) {
+		if (visits.length === 0) writeLatest(frontmatter, 'Met', []);
+		return;
+	}
+	assignDerivedStamp(frontmatter, 'Met', earliest);
+}
+
+function assignDerivedStamp(frontmatter: Record<string, unknown>, name: string, when: Date | null): void {
+	const next = when ? formatFrontmatterDateTime(when) : '';
+	if (rawDate(readProperty(frontmatter, name)) === next) return;
+	assignProperty(frontmatter, name, next);
 }
 
 function latestOf(visits: readonly VisitFacts[]): Date | null {
@@ -454,24 +461,9 @@ function latestOf(visits: readonly VisitFacts[]): Date | null {
 	return latest;
 }
 
-function moveLatest(frontmatter: Record<string, unknown>, name: string, removed: VisitFacts | null, after: readonly VisitFacts[]): void {
-	const raw = rawDate(readProperty(frontmatter, name));
-	const current = parseFrontmatterDateTime(raw);
-	const latest = latestOf(after);
-	if (removed && current) {
-		const removedStamp = formatVisitStamp(removed.when);
-		const setByRemoved = formatGlancableStampFromRaw(raw) === removedStamp;
-		const stillThere = after.some((visit) => formatVisitStamp(visit.when) === removedStamp);
-		if (setByRemoved && !stillThere) {
-			assignProperty(frontmatter, name, latest ? formatFrontmatterDateTime(latest) : '');
-			return;
-		}
-	}
-	if (!latest) return;
-	if (!current || latest.getTime() > current.getTime()) {
-		if (current && formatGlancableStampFromRaw(raw) === formatVisitStamp(latest)) return;
-		assignProperty(frontmatter, name, formatFrontmatterDateTime(latest));
-	}
+/** Latest `when` among `visits`, or cleared when the list is empty. Dates, not formatted stamps. */
+function writeLatest(frontmatter: Record<string, unknown>, name: string, visits: readonly VisitFacts[]): void {
+	assignDerivedStamp(frontmatter, name, latestOf(visits));
 }
 
 function updateTaken(frontmatter: Record<string, unknown>, removed: VisitFacts | null, added: VisitFacts | null, after: readonly VisitFacts[]): void {

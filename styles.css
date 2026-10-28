@@ -8652,16 +8652,40 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	flex: 1 1 0;
 }
 
-.modal.rv-modal-general button.mod-cta {
+/* SuggestModal / FuzzySuggestModal render as .prompt, so a .modal rule never reaches them. */
+.prompt.rv-modal-general {
+	--interactive-accent: #1f8a4c;
+	--interactive-accent-hover: #1f8a4c;
+	--text-accent: #1f8a4c;
+	--text-accent-hover: #1f8a4c;
+	--text-on-accent: #ffffff;
+}
+
+.prompt.rv-modal-rv {
+	--interactive-accent: var(--rv-modal-accent, #1f8a4c);
+	--interactive-accent-hover: var(--rv-modal-accent, #1f8a4c);
+	--text-accent: var(--rv-modal-accent, #1f8a4c);
+	--text-accent-hover: var(--rv-modal-accent, #1f8a4c);
+	--text-on-accent: var(--rv-modal-ink, #ffffff);
+}
+
+.modal.rv-modal-general button.mod-cta,
+.prompt.rv-modal-general button.mod-cta {
 	background-color: #1f8a4c !important;
 	color: #ffffff !important;
 	box-shadow: none !important;
 }
 
-.modal.rv-modal-rv button.mod-cta {
+.modal.rv-modal-rv button.mod-cta,
+.prompt.rv-modal-rv button.mod-cta {
 	background-color: var(--rv-modal-accent) !important;
 	color: var(--rv-modal-ink, #fff) !important;
 	box-shadow: none !important;
+}
+
+.prompt.rv-modal-general .suggestion-highlight,
+.prompt.rv-modal-rv .suggestion-highlight {
+	color: var(--text-accent, #1f8a4c) !important;
 }
 
 .modal.rv-campaign .rv-date-line {

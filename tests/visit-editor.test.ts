@@ -218,8 +218,8 @@ describe('visit change frontmatter', () => {
 	const base = (): Record<string, unknown> => ({
 		Visits: 3,
 		'Successful Visits': 2,
-		'Last Attempted': '2026-09-26T10:12:00',
-		'Last Spoke': '2026-09-26T10:12:00',
+		'Last Attempted': '2026-09-26T10:00:00',
+		'Last Spoke': '2026-09-26T10:00:00',
 		Met: '2026-09-21T17:00:00',
 		'Met With': 'Ana',
 		Taken: ['Ana', 'Devin'],
@@ -247,7 +247,7 @@ describe('visit change frontmatter', () => {
 		applyVisitChangeFrontmatter(frontmatter, { removed: all[1], remaining: [all[0]!, all[2]!] });
 		assert.equal(frontmatter.Visits, 2);
 		assert.equal(frontmatter['Successful Visits'], 2);
-		assert.equal(frontmatter['Last Attempted'], '2026-09-26T10:12:00');
+		assert.equal(frontmatter['Last Attempted'], '2026-09-26T10:00:00');
 		assert.deepEqual(frontmatter.Taken, ['Ana', 'Devin']);
 	});
 
@@ -277,7 +277,7 @@ describe('visit change frontmatter', () => {
 		applyVisitChangeFrontmatter(frontmatter, { added, remaining: visits() });
 		assert.equal(frontmatter.Visits, 4);
 		assert.equal(frontmatter['Successful Visits'], 3);
-		assert.equal(frontmatter['Last Attempted'], '2026-09-26T10:12:00');
+		assert.equal(frontmatter['Last Attempted'], '2026-09-26T10:00:00');
 		assert.deepEqual(frontmatter.Taken, ['Ana', 'Devin', 'Mia']);
 	});
 
@@ -285,7 +285,7 @@ describe('visit change frontmatter', () => {
 		const frontmatter = base();
 		applyVisitChangeFrontmatter(frontmatter, { added: { when: new Date(2026, 8, 28, 9), home: false, companion: '' }, remaining: visits() });
 		assert.equal(frontmatter['Last Attempted'], '2026-09-28T09:00:00');
-		assert.equal(frontmatter['Last Spoke'], '2026-09-26T10:12:00');
+		assert.equal(frontmatter['Last Spoke'], '2026-09-26T10:00:00');
 	});
 
 	it('editing a Home into a Not home moves Last Spoke and drops the notes property', () => {
@@ -300,7 +300,7 @@ describe('visit change frontmatter', () => {
 		});
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 1);
-		assert.equal(frontmatter['Last Attempted'], '2026-09-26T10:12:00');
+		assert.equal(frontmatter['Last Attempted'], '2026-09-26T10:00:00');
 		assert.equal(frontmatter['Last Spoke'], '2026-09-21T17:00:00');
 		assert.equal('sVisit2Notes' in frontmatter, false);
 	});
@@ -316,10 +316,10 @@ describe('visit change frontmatter', () => {
 		});
 		assert.equal(frontmatter.sVisit2Notes, 'Went well');
 		assert.equal(frontmatter.Visits, 3);
-		assert.equal(frontmatter['Last Spoke'], '2026-09-26T10:12:00');
+		assert.equal(frontmatter['Last Spoke'], '2026-09-26T10:00:00');
 	});
 
-	it('does not move last- fields backward when a past visit is earlier', () => {
+	it('a live log does not move last- fields backward; a visit change follows the visits that remain', () => {
 		const frontmatter: Record<string, unknown> = {
 			'Last Attempted': '2026-10-13T16:40:00',
 			'Last Spoke': '2026-10-13T16:40:00',
@@ -334,13 +334,87 @@ describe('visit change frontmatter', () => {
 			added: { when: new Date(2026, 9, 13, 10), home: true, companion: '', lesson: 'Faith' },
 			remaining: [],
 		});
-		assert.equal(frontmatter['Last Studied'], '2026-10-13T16:40:00');
+		assert.equal(frontmatter['Last Attempted'], '2026-10-13T10:00:00');
+		assert.equal(frontmatter['Last Spoke'], '2026-10-13T10:00:00');
+		assert.equal(frontmatter['Last Studied'], '2026-10-13T10:00:00');
 		const later: Record<string, unknown> = { 'Last Studied': '2026-10-13T10:00:00', Studies: 1 };
 		applyVisitChangeFrontmatter(later, {
 			added: { when: new Date(2026, 9, 13, 16, 40), home: true, companion: '', lesson: 'Faith' },
 			remaining: [],
 		});
 		assert.equal(later['Last Studied'], '2026-10-13T16:40:00');
+	});
+
+	it('deleting the latest visit recomputes last- fields from the visits that remain', () => {
+		const earlierMiss = { when: new Date(2026, 9, 8, 18, 13, 0), home: false, companion: '' };
+		const earlierHome = { when: new Date(2026, 9, 15, 4, 7, 0), home: true, companion: '', lesson: 'Hope' };
+		const latest = { when: new Date(2026, 9, 28, 21, 46, 50), home: true, companion: 'Sam', lesson: 'Faith' };
+		const frontmatter: Record<string, unknown> = {
+			Visits: 3,
+			'Successful Visits': 2,
+			'Last Attempted': '2026-10-28T21:46:50',
+			'Last Spoke': '2026-10-28T21:46:50',
+			'Last Studied': '2026-10-28T21:46:50',
+			Met: '2026-10-08T18:13:00',
+			Studies: 2,
+			'Lessons Studied': ['Hope', 'Faith'],
+		};
+		applyVisitChangeFrontmatter(frontmatter, { removed: latest, remaining: [earlierMiss, earlierHome] });
+		assert.equal(frontmatter['Last Attempted'], '2026-10-15T04:07:00');
+		assert.equal(frontmatter['Last Spoke'], '2026-10-15T04:07:00');
+		assert.equal(frontmatter['Last Studied'], '2026-10-15T04:07:00');
+		assert.equal(frontmatter.Met, '2026-10-08T18:13:00');
+	});
+
+	it('deleting a middle visit leaves last- fields on the latest remaining visit', () => {
+		const earliest = { when: new Date(2026, 9, 8, 9, 17, 0), home: true, companion: '' };
+		const middle = { when: new Date(2026, 9, 20, 14, 23, 0), home: false, companion: '' };
+		const latest = { when: new Date(2026, 9, 28, 21, 46, 50), home: true, companion: '' };
+		const frontmatter: Record<string, unknown> = {
+			'Last Attempted': '2026-10-28T21:46:50',
+			'Last Spoke': '2026-10-28T21:46:50',
+			Met: '2026-10-08T09:17:00',
+		};
+		applyVisitChangeFrontmatter(frontmatter, { removed: middle, remaining: [earliest, latest] });
+		assert.equal(frontmatter['Last Attempted'], '2026-10-28T21:46:50');
+		assert.equal(frontmatter['Last Spoke'], '2026-10-28T21:46:50');
+		assert.equal(frontmatter.Met, '2026-10-08T09:17:00');
+	});
+
+	it('deleting the only visit clears Last Spoke, Last Attempted, Last Studied, and Met', () => {
+		const only = { when: new Date(2026, 9, 28, 21, 46, 50), home: true, companion: '', lesson: 'Faith' };
+		const frontmatter: Record<string, unknown> = {
+			Visits: 1,
+			'Successful Visits': 1,
+			'Last Attempted': '2026-10-28T21:46:50',
+			'Last Spoke': '2026-10-28T21:46:50',
+			'Last Studied': '2026-10-28T21:46:50',
+			Met: '2026-10-28T21:46:50',
+			Studies: 1,
+			'Lessons Studied': ['Faith'],
+		};
+		applyVisitChangeFrontmatter(frontmatter, { removed: only, remaining: [] });
+		assert.equal(frontmatter['Last Attempted'], '');
+		assert.equal(frontmatter['Last Spoke'], '');
+		assert.equal(frontmatter['Last Studied'], '');
+		assert.equal(frontmatter.Met, '');
+	});
+
+	it('editing a visit onto a new minute recomputes Last Spoke, Last Attempted, and Met', () => {
+		const kept = { when: new Date(2026, 9, 8, 18, 13, 0), home: true, companion: '', lesson: 'Hope' };
+		const removed = { when: new Date(2026, 9, 28, 21, 46, 50), home: true, companion: 'Sam', lesson: 'Faith' };
+		const added = { when: new Date(2026, 9, 20, 9, 46, 0), home: false, companion: '', lesson: 'Faith' };
+		const frontmatter: Record<string, unknown> = {
+			'Last Attempted': '2026-10-28T21:46:50',
+			'Last Spoke': '2026-10-28T21:46:50',
+			'Last Studied': '2026-10-28T21:46:50',
+			Met: '2026-10-08T18:13:00',
+		};
+		applyVisitChangeFrontmatter(frontmatter, { removed, added, remaining: [kept] });
+		assert.equal(frontmatter['Last Attempted'], '2026-10-20T09:46:00');
+		assert.equal(frontmatter['Last Spoke'], '2026-10-08T18:13:00');
+		assert.equal(frontmatter['Last Studied'], '2026-10-20T09:46:00');
+		assert.equal(frontmatter.Met, '2026-10-08T18:13:00');
 	});
 
 	it('keeps literature and media across log, edit, and delete', () => {
