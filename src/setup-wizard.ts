@@ -1,0 +1,259 @@
+import { Modal, Setting, TFile, normalizePath, type App } from 'obsidian';
+import { iconizeModal, markModalTone } from './modal-chrome';
+import { extrasDestinations, type ExtrasPlacement } from './extras-sync';
+import { parseHomeCountyLines } from './home-base';
+import { TEMPLATER_PLUGIN_ID } from './new-rv-launch';
+import { explainMayGoOut, paintMayGoOutGrid } from './settings-scoring';
+import { META_BIND_PLUGIN_ID, setupChecklist, type SetupSnapshot } from './setup-check';
+import type { AvailabilityGrid } from './schedule';
+import type { RVLocatorSettings } from './types';
+import { defaultUrgencyColors } from './urgency-palette';
+import { renderUrgencyPalette, type UrgencyPaletteChoice } from './urgency-palette-ui';
+
+/** First launch opens the wizard. A finished wizard stays closed until Settings opens it. */
+export function shouldAutoOpenSetupWizard(completed: boolean, unloaded: boolean): boolean {
+	return !unloaded && !completed;
+}
+
+export type SetupWizardStep = 'home' | 'colors' | 'plugins';
+
+interface PluginHost {
+	plugins?: {
+		enabledPlugins?: { has?: (id: string) => boolean };
+		plugins?: Record<string, unknown>;
+	};
+}
+
+export function pluginEnabled(app: App, id: string): boolean {
+	const host = app as App & PluginHost;
+	if (host.plugins?.enabledPlugins?.has?.(id)) return true;
+	return Boolean(host.plugins?.plugins?.[id]);
+}
+
+export async function readSetupSnapshot(
+	app: App,
+	settings: RVLocatorSettings,
+	placement: ExtrasPlacement,
+	templaterSettings: { templates_folder?: unknown; user_scripts_folder?: unknown } | null,
+): Promise<SetupSnapshot> {
+	const files: SetupSnapshot['files'] = [];
+	for (const file of extrasDestinations(app.vault.configDir, placement)) {
+		const path = normalizePath(file.vault);
+		files.push({ path, exists: app.vault.getAbstractFileByPath(path) instanceof TFile });
+	}
+	const templatesFolder = typeof templaterSettings?.templates_folder === 'string' ? templaterSettings.templates_folder : '';
+	const scriptsFolder = typeof templaterSettings?.user_scripts_folder === 'string' ? templaterSettings.user_scripts_folder : '';
+	return {
+		templaterEnabled: pluginEnabled(app, TEMPLATER_PLUGIN_ID),
+		metaBindEnabled: pluginEnabled(app, META_BIND_PLUGIN_ID),
+		templatesFolder,
+		scriptsFolder,
+		resolvedTemplatesFolder: placement.templatesFolder,
+		resolvedScriptsFolder: placement.scriptsFolder,
+		files,
+		defaultNewRvPriority: settings.defaultNewRvPriority,
+		homeCounties: [...settings.homeCounties],
+		geoapifyConfigured: settings.geoapifyApiKey.trim().length > 0,
+		newRvTemplateFile: settings.newRvTemplateFile,
+		homeLogTemplateFile: settings.homeLogTemplateFile,
+		missLogTemplateFile: settings.missLogTemplateFile,
+	};
+}
+
+export interface SetupWizardActions {
+	onDismiss: () => void;
+	onPlaceExtras: () => void;
+	openCommunityPlugins: () => void;
+	openTemplaterSettings: () => void;
+	openMetaBindSettings: () => void;
+	/** Writes home counties, then saves settings. Skip does not call this. */
+	onSaveHomeCounties: (counties: string[]) => Promise<void> | void;
+	/** Writes the may-go-out grid. Skip does not call this. */
+	onSaveMayGoOut: (grid: AvailabilityGrid) => Promise<void> | void;
+	/** Writes the urgency palette and custom colors. Skip does not call this. */
+	onSaveUrgencyColors: (choice: UrgencyPaletteChoice) => Promise<void> | void;
+}
+
+export class SetupWizardModal extends Modal {
+	private closed = false;
+	private renderGeneration = 0;
+	private step: SetupWizardStep = 'home';
+	private homeDraft = '';
+	private homeDraftReady = false;
+	private scheduleDraft: AvailabilityGrid | null = null;
+	private colorsDraft: UrgencyPaletteChoice;
+
+	constructor(
+		app: App,
+		private load: () => Promise<SetupSnapshot>,
+		private actions: SetupWizardActions,
+		private initialSchedule: AvailabilityGrid = {},
+		initialColors: UrgencyPaletteChoice = { palette: 'default', custom: defaultUrgencyColors() },
+	) {
+		super(app);
+		this.colorsDraft = { palette: initialColors.palette, custom: [...initialColors.custom] };
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-locator-setup-wizard');
+		markModalTone(this.modalEl, 'general');
+		this.setTitle('RV Locator setup');
+		void this.render();
+	}
+
+	onClose(): void {
+		this.closed = true;
+		this.renderGeneration += 1;
+		this.actions.onDismiss();
+		this.contentEl.empty();
+	}
+
+	private async render(): Promise<void> {
+		if (this.step === 'home') {
+			await this.renderHome();
+			return;
+		}
+		if (this.step === 'colors') {
+			this.renderColors();
+			return;
+		}
+		await this.renderPlugins();
+	}
+
+	private async renderHome(): Promise<void> {
+		const generation = ++this.renderGeneration;
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('p', { text: 'Step 1 of 3. Home region.' });
+		contentEl.createEl('p', {
+			text: 'These counties are where you normally work return visits. A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in one of them, so a wrong-city pick is not saved.',
+		});
+		contentEl.createEl('p', {
+			text: 'One county per line, the same list as Home counties in settings. Skip leaves the list unchanged. Empty means every match asks you to confirm.',
+		});
+		contentEl.createEl('p', {
+			text: 'May go out is when you might visit. Grey is off and green is may go out. Click a daypart to switch. Skip leaves that schedule unchanged.',
+		});
+		explainMayGoOut(contentEl);
+		const snapshot = await this.load();
+		if (this.closed || generation !== this.renderGeneration) return;
+		if (!this.homeDraftReady) {
+			this.homeDraft = snapshot.homeCounties.join('\n');
+			this.scheduleDraft = { ...this.initialSchedule };
+			this.homeDraftReady = true;
+		}
+		new Setting(contentEl)
+			.setName('Home counties')
+			.setDesc('One county per line. Empty means every match asks you to confirm.')
+			.addTextArea((text) => {
+				text.inputEl.rows = 4;
+				text.setPlaceholder('Orange\nLake');
+				text.setValue(this.homeDraft);
+				text.onChange((value) => { this.homeDraft = value; });
+			});
+		if (this.scheduleDraft) {
+			const draft = this.scheduleDraft;
+			paintMayGoOutGrid(
+				contentEl,
+				() => draft,
+				(key, level) => { draft[key] = level; },
+			);
+		}
+		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
+				button.setButtonText('Save and continue');
+				button.setCta();
+				button.onClick(() => { void this.saveHomeAndContinue(); });
+			})
+			.addButton((button) => {
+				button.setButtonText('Skip');
+				button.onClick(() => { this.showStep('colors'); });
+			});
+		iconizeModal(contentEl);
+	}
+
+	private renderColors(): void {
+		++this.renderGeneration;
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('p', { text: 'Step 2 of 3. Urgency colors.' });
+		contentEl.createEl('p', {
+			text: 'Nearby colors each card by how overdue the return visit is. Pick a palette, or set each level yourself. Skip keeps the current colors. Settings can change these later.',
+		});
+		renderUrgencyPalette(
+			contentEl,
+			() => this.colorsDraft,
+			(choice) => { this.colorsDraft = { palette: choice.palette, custom: [...choice.custom] }; },
+		);
+		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
+				button.setButtonText('Save and continue');
+				button.setCta();
+				button.onClick(() => { void this.saveColorsAndContinue(); });
+			})
+			.addButton((button) => {
+				button.setButtonText('Skip');
+				button.onClick(() => { this.showStep('plugins'); });
+			});
+		iconizeModal(contentEl);
+	}
+
+	private async saveColorsAndContinue(): Promise<void> {
+		await this.actions.onSaveUrgencyColors({ palette: this.colorsDraft.palette, custom: [...this.colorsDraft.custom] });
+		if (this.closed) return;
+		this.showStep('plugins');
+	}
+
+	private async saveHomeAndContinue(): Promise<void> {
+		await this.actions.onSaveHomeCounties(parseHomeCountyLines(this.homeDraft));
+		if (this.scheduleDraft) await this.actions.onSaveMayGoOut({ ...this.scheduleDraft });
+		if (this.closed) return;
+		this.showStep('colors');
+	}
+
+	private showStep(step: SetupWizardStep): void {
+		this.step = step;
+		void this.render();
+	}
+
+	private async renderPlugins(): Promise<void> {
+		const generation = ++this.renderGeneration;
+		const { contentEl } = this;
+		contentEl.empty();
+		contentEl.createEl('p', { text: 'Step 3 of 3. Templates and scripts.' });
+		contentEl.createEl('p', {
+			text: 'Check the Geoapify key, Templater, and Meta Bind, then put the New RV templates and scripts in Templater’s folders. The setup notice uses this same list. RV Locator does not install plugins or turn on the Meta Bind JS Engine or Templater system commands.',
+		});
+		const snapshot = await this.load();
+		if (this.closed || generation !== this.renderGeneration) return;
+		const list = contentEl.createEl('ul', { cls: 'rv-locator-check-list' });
+		for (const check of setupChecklist(snapshot)) {
+			const item = list.createEl('li', { cls: check.ok ? 'rv-locator-check-ok' : 'rv-locator-check-miss' });
+			item.createDiv({
+				cls: 'rv-locator-check-title',
+				text: `${check.ok ? 'Ready' : 'Needs attention'}: ${check.title}`,
+			});
+			item.createDiv({ cls: 'rv-locator-check-detail', text: check.detail });
+		}
+		const actions = contentEl.createDiv({ cls: 'rv-locator-setup-actions' });
+		this.actionButton(actions, 'Community plugins', () => { this.actions.openCommunityPlugins(); });
+		this.actionButton(actions, 'Templater settings', () => { this.actions.openTemplaterSettings(); });
+		this.actionButton(actions, 'Meta Bind settings', () => { this.actions.openMetaBindSettings(); });
+		this.actionButton(actions, 'Update from GitHub', () => { this.actions.onPlaceExtras(); }, true);
+		this.actionButton(actions, 'Check again', () => { void this.render(); });
+		this.actionButton(actions, 'Done', () => { this.close(); });
+		iconizeModal(contentEl);
+	}
+
+	/** Full-width buttons so a typical Obsidian modal does not clip the row. */
+	private actionButton(parent: HTMLElement, label: string, onClick: () => void, cta = false): void {
+		const button = cta
+			? parent.createEl('button', { text: label, cls: 'mod-cta' })
+			: parent.createEl('button', { text: label });
+		button.setAttribute('type', 'button');
+		button.addEventListener('click', onClick);
+	}
+}

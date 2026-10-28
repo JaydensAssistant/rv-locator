@@ -1,0 +1,1385 @@
+import { Menu, setIcon } from 'obsidian';
+import { attemptLogCallouts, isLogCalloutTitle } from './attempt-digest';
+import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
+import { pickDayJump, type DayJumpCandidate } from './day-jump';
+import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
+import { parseLogBullet, stampDateTime } from './schedule';
+import { readProperty } from './frontmatter';
+import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
+import { displayedUrgency } from './row-score';
+import { urgencyAccentColor, urgencyMark } from './scoring';
+import { appendBadge, concealRawBaseEmbed, pinBadgeStroke } from './glancable-view';
+import { isRvDashboardNote } from './rv-note-view';
+import { resolveStatus, sanitizeGender, statusIcon, type RvStatus } from './status';
+import { lastListEntries } from './taken-row';
+import type { RVLocatorSettings } from './types';
+import { formatStudyFraction, lessonPillLabel } from './catalog';
+import { paintUrgencyInk } from './color-math';
+import { SNOOZE_SLATE } from './snooze';
+import { displayTitle, fitEndEllipsis, showTitlePopover } from './title-fit';
+import { cardPersonTitle } from './note-name';
+import { ageCaption, appendPersonMeta } from './person-meta';
+import { urgencyColorsFor } from './urgency-palette';
+
+export interface NoteChromeHost {
+	frontmatter(path: string): Record<string, unknown> | null;
+	settings: RVLocatorSettings;
+	snoozeUntil(path: string): Date | null;
+	setStatus(path: string, status: RvStatus): void;
+	setPriority(path: string, priority: number): void;
+	openUrgency(path: string, name: string, event: MouseEvent): void;
+	openPriority(path: string, name: string): void;
+	openRoute(path: string): void;
+	openHub(path: string, target: string): void;
+	addHub(path: string): void;
+	removeHub(path: string, label: string): void;
+	moveHub(path: string, label: string): void;
+	openSlotOverride(path: string): void;
+	setAddress(path: string, address: string): void;
+	openMap(path: string): void;
+	openCompanion(path: string): void;
+	campaignMark(path: string): 'covered' | 'open' | null;
+	noteTitle(path: string): string;
+	renameNote(path: string): void;
+	mapOpen(): boolean;
+	ghostIcon(path: string): 'hourglass' | 'moon' | 'ban' | null;
+}
+
+const LONG_PRESS_MS = 500;
+
+/** Leaves and previews that own the urgency custom properties. */
+const URGENCY_READY_SELECTOR = '.workspace-leaf-content, .markdown-preview-view, .markdown-reading-view, .rv-dashboard';
+
+/** Quick Facts header badges, Quick Facts rows, and one shared Hub chip row. */
+export function decorateNoteChrome(root: HTMLElement, path: string, host: NoteChromeHost): void {
+	const data = host.frontmatter(path);
+	if (!data) return;
+	const fullBase = root.classList.contains('rv-locator-full-base')
+		? root
+		: root.closest('.rv-locator-full-base');
+	if (fullBase instanceof HTMLElement) concealRawBaseEmbed(fullBase);
+	decorateNoteTitle(root, data);
+	decorateDashboardHeading(root, path, data, host);
+	decorateQuickFacts(root, path, data, host);
+	decorateHubRow(root, path, data, host);
+	decorateSlotOverride(root, path, data, host);
+	applyLiveUrgency(root, path, host, true);
+}
+
+/** Status icon to the left of the note title. Render only; the file is not written. */
+function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	if (!isRvDashboardNote(data) || typeof root.querySelectorAll !== 'function') return;
+	root.querySelectorAll('.callout[data-callout="quote"] .callout-title-inner').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const callout = node.closest('.callout');
+		if (!(callout instanceof HTMLElement) || callout.classList.contains('rv-locator-return-suggestions')) return;
+		const raw = (node.dataset.rvNamed === '1' ? 'RV Dashboard' : (node.textContent ?? '')).replace(/\s+/g, ' ').trim();
+		if (raw !== 'RV Dashboard' && node.dataset.rvNamed !== '1') return;
+		node.dataset.rvNamed = '1';
+		node.replaceChildren();
+		const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
+		const mark = host.campaignMark(path);
+		if (mark) {
+			const icon = node.createSpan('rv-dash-campaign');
+			setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
+			icon.setAttribute('aria-label', mark === 'covered' ? 'Covered this campaign' : 'Campaign');
+		}
+		const statusEl = node.createSpan('rv-dash-status');
+		setIcon(statusEl, statusIcon(status));
+		statusEl.setAttribute('aria-label', status);
+		node.createSpan({ cls: 'rv-dash-name', text: host.noteTitle(path) });
+		appendPersonMeta(
+			node,
+			ageCaption(readProperty(data, 'Age'), readProperty(data, 'Age Exact')),
+			sanitizeGender(readProperty(data, 'Gender')),
+		);
+		const more = node.createEl('button', {
+			cls: 'rv-dash-rename clickable-icon',
+			attr: { type: 'button', 'aria-label': 'Edit attributes' },
+		});
+		setIcon(more, 'more-horizontal');
+		more.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.renameNote(path);
+		});
+	});
+}
+
+function decorateNoteTitle(root: HTMLElement, data: Record<string, unknown>): void {
+	if (typeof root.closest !== 'function') return;
+	const leaf = root.closest('.workspace-leaf-content');
+	if (!(leaf instanceof HTMLElement) || typeof leaf.querySelectorAll !== 'function') return;
+	const dashboard = isRvDashboardNote(data);
+	const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
+	leaf.querySelectorAll('.inline-title').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const existing = node.querySelector(':scope > .rv-note-status');
+		if (!dashboard) {
+			existing?.remove();
+			return;
+		}
+		let mark = existing instanceof HTMLElement ? existing : null;
+		if (!mark) {
+			mark = node.ownerDocument.createElement('span');
+			mark.className = 'rv-note-status';
+			node.prepend(mark);
+		}
+		if (mark.dataset.status === status && mark.childElementCount > 0) return;
+		mark.dataset.status = status;
+		mark.replaceChildren();
+		setIcon(mark, statusIcon(status));
+		mark.setAttribute('aria-label', status);
+	});
+}
+
+/**
+ * The note, its preview, and the leaf, walking up from `start`.
+ * Custom properties inherit, so the leaf is enough for chrome that mounts later.
+ */
+export function urgencyStyleHosts(start: HTMLElement): HTMLElement[] {
+	const hosts: HTMLElement[] = [start];
+	let node = start.parentElement;
+	while (node) {
+		hosts.push(node);
+		if (node.classList.contains('workspace-leaf-content')) break;
+		node = node.parentElement;
+	}
+	return hosts;
+}
+
+/**
+ * Render-only urgency on the note and Return Suggestions. Does not rewrite Markdown.
+ * Sets the accent before chrome paints. With no frontmatter yet, clears a previous
+ * note's accent so the hide-until-ready rule can hold the wrong color off screen.
+ * `forceReady` unhides after the last remount even if frontmatter never arrives.
+ */
+export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChromeHost, forceReady = false): void {
+	const hosts = urgencyStyleHosts(start);
+	const data = host.frontmatter(path);
+	if (!data) {
+		if (forceReady) markUrgencyReady(hosts);
+		else clearUrgencyPaint(hosts);
+		return;
+	}
+	const priority = finiteNumber(readProperty(data, 'Priority'));
+	const urgency = noteUrgency(path, data, priority, host);
+	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
+	const snoozed = host.ghostIcon(path) === 'moon';
+	const accent = snoozed ? SNOOZE_SLATE : urgencyAccentColor(urgency, priority, colors);
+	markSnoozedDashboard(start, hosts, snoozed);
+	const inkHost = hosts[0];
+	if (inkHost) paintUrgencyInk(inkHost, accent);
+	const ink = inkHost?.style.getPropertyValue('--rv-urgency-ink') || accent;
+	for (const el of hosts) {
+		setPaint(el, '--rv-urgency-accent', accent);
+		setPaint(el, '--rv-urgency-ink', ink);
+		if (el.classList.contains('rv-locator-return-suggestions')) setPaint(el, '--callout-color', accent);
+	}
+	start.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		setPaint(node, '--rv-urgency-accent', accent);
+		setPaint(node, '--rv-urgency-ink', ink);
+		setPaint(node, '--callout-color', accent);
+	});
+	start.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		setPaint(node, '--rv-urgency-accent', accent);
+		paintUrgencyInk(node, accent);
+		const nodeInk = node.style.getPropertyValue('--rv-urgency-ink').trim() || accent;
+		setPaint(node, 'color', nodeInk, true);
+	});
+	markUrgencyReady(hosts);
+	paintUrgencyDetails(start, accent);
+}
+
+/** Address, hub, item icons, campaign, and badge strokes follow the accent after a visit. */
+function paintUrgencyDetails(start: HTMLElement, accent: string): void {
+	const colorOf = [
+		'.rv-item-icon',
+		'.rv-label-icon',
+		'.rv-stamp-kind',
+	].join(', ');
+	start.querySelectorAll(colorOf).forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		setPaint(node, 'color', accent, true);
+		node.querySelectorAll('svg').forEach((svg) => {
+			if (!(svg instanceof SVGElement)) return;
+			setPaint(svg, 'color', accent, true);
+			setPaint(svg, 'stroke', accent, true);
+		});
+	});
+	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		pinBadgeStroke(node);
+	});
+}
+
+function setPaint(el: HTMLElement | SVGElement, name: string, value: string, important = false): void {
+	const priority = important ? 'important' : '';
+	if (el.style.getPropertyValue(name) === value && el.style.getPropertyPriority(name) === priority) return;
+	if (important) el.style.setProperty(name, value, 'important');
+	else el.style.setProperty(name, value);
+}
+
+function markSnoozedDashboard(start: HTMLElement, hosts: readonly HTMLElement[], snoozed: boolean): void {
+	const mark = (el: HTMLElement): void => {
+		if (el.classList.contains('rv-dashboard')) el.classList.toggle('is-snoozed', snoozed);
+	};
+	mark(start);
+	for (const el of hosts) mark(el);
+}
+
+function markUrgencyReady(hosts: readonly HTMLElement[]): void {
+	for (const el of hosts) {
+		if (el.matches(URGENCY_READY_SELECTOR)) el.classList.add('is-urgency-ready');
+	}
+}
+
+function clearUrgencyPaint(hosts: readonly HTMLElement[]): void {
+	for (const el of hosts) {
+		el.style.removeProperty('--rv-urgency-accent');
+		el.style.removeProperty('--rv-urgency-ink');
+		if (el.classList.contains('rv-locator-return-suggestions')) el.style.removeProperty('--callout-color');
+		if (el.matches(URGENCY_READY_SELECTOR)) el.classList.remove('is-urgency-ready');
+	}
+}
+
+function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	const callout = quickFactsCallout(root);
+	if (!callout) return;
+	const title = callout.querySelector(':scope > .callout-title');
+	const content = callout.querySelector(':scope > .callout-content');
+	if (!title || !content || !(title instanceof HTMLElement) || !(content instanceof HTMLElement)) return;
+	const priority = finiteNumber(readProperty(data, 'Priority'));
+	const status = resolveStatus(readProperty(data, 'Status'), priority);
+	const urgency = noteUrgency(path, data, priority, host);
+	const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
+	const snoozed = host.ghostIcon(path) === 'moon';
+	const accent = snoozed ? SNOOZE_SLATE : urgencyAccentColor(urgency, priority, colors);
+	callout.style.setProperty('--rv-urgency-accent', accent);
+	paintUrgencyInk(callout, accent);
+	const dashboard = callout.closest('.rv-dashboard');
+	if (dashboard instanceof HTMLElement) {
+		dashboard.classList.toggle('is-snoozed', snoozed);
+		dashboard.style.setProperty('--rv-urgency-accent', accent);
+		paintUrgencyInk(dashboard, accent);
+	}
+	paintFactsTitle(title, path, data, status, priority, urgency, host);
+	paintFactsBody(content, path, data, status, priority, host);
+}
+
+function quickFactsCallout(root: HTMLElement): HTMLElement | null {
+	const list = root.matches('.callout[data-callout="rv"]')
+		? [root]
+		: Array.from(root.querySelectorAll('.callout[data-callout="rv"]'));
+	for (const node of list) {
+		if (!(node instanceof HTMLElement)) continue;
+		const title = node.querySelector(':scope > .callout-title');
+		const text = title?.textContent ?? '';
+		if (text.includes('Visit Facts') || text.includes('Quick Facts')) return node;
+	}
+	return null;
+}
+
+/** Fractional part in [0, 1). */
+function unitFraction(value: number): number {
+	const mod = value % 1;
+	return mod < 0 ? mod + 1 : mod;
+}
+
+/**
+ * Margin that puts a row on a whole pixel.
+ * `top` is the row's top while its margin-top is still `base`.
+ * The added amount is `(1 - f) mod 1`, which is 0 when the top is already whole.
+ */
+export function factsRowMargin(base: number, top: number): number {
+	const next = base + unitFraction(1 - unitFraction(top));
+	return Math.round(next * 10000) / 10000;
+}
+
+function px(value: number): string {
+	return String(Math.round(value * 10000) / 10000);
+}
+
+function factsBaseMargin(badges: HTMLElement): number {
+	const stored = badges.dataset.rvFactsBase;
+	if (stored != null && stored !== '') {
+		const parsed = Number(stored);
+		if (Number.isFinite(parsed)) return parsed;
+	}
+	const value = parseFloat(getComputedStyle(badges).marginTop);
+	const base = Number.isFinite(value) ? value : 0;
+	badges.dataset.rvFactsBase = String(base);
+	return base;
+}
+
+function factsScope(badges: HTMLElement): HTMLElement | null {
+	const scope = badges.closest('.markdown-preview-view, .markdown-reading-view, .markdown-source-view');
+	if (scope instanceof HTMLElement) return scope;
+	return badges.parentElement;
+}
+
+/** Measure the badge row and set its margin-top. No transform and no timer. */
+function snapFactsRow(badges: HTMLElement): void {
+	const probe = badges.getBoundingClientRect();
+	if (probe.width < 1 || probe.height < 1) return;
+	const scope = factsScope(badges);
+	const key = String(Math.round(scope?.getBoundingClientRect().width || probe.width));
+	if (badges.dataset.rvFactsWidth === key && badges.style.marginTop !== '') return;
+	const base = factsBaseMargin(badges);
+	badges.style.marginTop = `${px(base)}px`;
+	const top = badges.getBoundingClientRect().top;
+	badges.style.marginTop = `${px(factsRowMargin(base, top))}px`;
+	badges.dataset.rvFactsWidth = key;
+}
+
+function armFactsRow(badges: HTMLElement): void {
+	snapFactsRow(badges);
+	if (badges.dataset.rvFactsWatch === '1' || typeof ResizeObserver === 'undefined') return;
+	const scope = factsScope(badges);
+	if (!scope) return;
+	badges.dataset.rvFactsWatch = '1';
+	const observer = new ResizeObserver(() => {
+		snapFactsRow(badges);
+	});
+	observer.observe(scope);
+}
+
+function mountQuickFactsHead(inner: HTMLElement, ratio: string): void {
+	inner.replaceChildren();
+	inner.addClass('rv-qf-head');
+	inner.createSpan({ cls: 'rv-qf-head-label', text: 'Visit Facts' });
+	inner.createSpan({ cls: 'rv-qf-head-dot', text: '·' });
+	const count = inner.createSpan('rv-qf-head-count');
+	const icon = count.createSpan('rv-qf-head-icon');
+	setIcon(icon, 'list-checks');
+	count.createSpan({ cls: 'rv-qf-head-ratio', text: ratio });
+}
+
+function paintFactsTitle(
+	title: HTMLElement,
+	path: string,
+	data: Record<string, unknown>,
+	status: RvStatus,
+	priority: number | null,
+	urgency: number | null,
+	host: NoteChromeHost,
+): void {
+	const inner = title.querySelector('.callout-title-inner');
+	if (inner instanceof HTMLElement) {
+		const successful = finiteNumber(readProperty(data, 'Successful Visits'));
+		const visits = finiteNumber(readProperty(data, 'Visits'));
+		mountQuickFactsHead(inner, visitsPercent(successful, visits));
+	}
+	let badges = title.querySelector(':scope > .rv-qf-badges');
+	if (!(badges instanceof HTMLElement)) {
+		badges = title.createSpan('rv-qf-badges');
+	}
+	if (!(badges instanceof HTMLElement)) return;
+	const snoozed = host.ghostIcon(path) === 'moon';
+	const signature = [
+		host.settings.showUrgencyBadge ? `u:${urgency ?? ''}:${priority ?? ''}:${snoozed ? 'moon' : ''}` : '',
+		host.settings.showPriorityBadge && priority != null ? `p:${priority}` : '',
+		host.settings.showRouteBadge ? 'r:1' : '',
+	].join('|');
+	const expectsBadges = /(?:^|\|)[upr]:/.test(signature);
+	if (badges.dataset.rvFacts === signature && (!expectsBadges || badges.childElementCount > 0)) {
+		if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+		armFactsRow(badges);
+		return;
+	}
+	badges.empty();
+	const name = path.split('/').pop()?.replace(/\.md$/i, '') ?? path;
+	if (host.settings.showUrgencyBadge) {
+		const marks = urgencyMark(urgency, priority);
+		const button = snoozed
+			? appendBadge(badges, { kind: 'icon', icon: 'moon', band: marks.band, label: 'Urgency' })
+			: appendBadge(badges, { kind: 'urgency', glyphs: marks.glyphs, band: marks.band, label: 'Urgency' });
+		button.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openUrgency(path, name, event);
+		});
+	}
+	if (host.settings.showPriorityBadge && priority != null) {
+		const rank = String(Math.max(0, Math.min(5, Math.round(priority))));
+		const pill = appendBadge(badges, { kind: 'priority', rank, label: `Priority ${priority}` });
+		pill.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openPriority(path, name);
+		});
+	}
+	if (host.settings.showRouteBadge) {
+		const route = appendBadge(badges, { kind: 'icon', icon: 'route', label: 'Directions' });
+		route.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openRoute(path);
+		});
+	}
+	badges.dataset.rvFacts = signature;
+	if (title.getAttribute('data-rv-status') !== status) title.setAttr('data-rv-status', status);
+	armFactsRow(badges);
+}
+
+function paintFactsBody(
+	content: HTMLElement,
+	path: string,
+	data: Record<string, unknown>,
+	status: RvStatus,
+	priority: number | null,
+	host: NoteChromeHost,
+): void {
+	content.empty();
+	content.addClass('rv-qf-body');
+	const study = status === 'Study';
+	void priority;
+	if (study) factDateRow(content, 'book-marked', 'Studied', readProperty(data, 'Last Studied'));
+	if (!study || host.settings.studyShowSpoke) factDateRow(content, 'message-circle', 'Spoke', readProperty(data, 'Last Spoke'));
+	if (!study || host.settings.studyShowAttempted) factDateRow(content, 'clock', 'Attempted', readProperty(data, 'Last Attempted'));
+	factDateRow(content, 'home', 'Met', readProperty(data, 'Met'));
+	paintQuickList(content, 'book', 'Literature', textList(readProperty(data, 'Left Publications')), 'literature', 1);
+	paintQuickList(content, 'film', 'Media', textList(readProperty(data, 'Shared Media')), 'media', 1);
+	paintQuickList(content, 'book-open', 'Lessons', textList(readProperty(data, 'Lessons Studied')), 'lesson', 2);
+	const taken = textList(readProperty(data, 'Taken'));
+	const metWith = textOf(readProperty(data, 'Met With'));
+	const row = paintQuickList(content, 'users', 'Taken', taken, 'name', 2, metWith);
+	bindCompanionOpen(row, path, host);
+}
+
+function visitsPercent(successful: number | null, visits: number | null): string {
+	const home = successful == null ? '—' : String(successful);
+	const total = visits == null ? '—' : String(visits);
+	if (successful == null || visits == null || visits <= 0) return `${home}/${total}`;
+	return `${successful}/${visits} (${Math.round((successful / visits) * 100)}%)`;
+}
+
+function paintClampRow(parent: HTMLElement, icon: string, label: string, items: readonly string[]): void {
+	const row = factRow(parent, icon, label, '');
+	const valueEl = row.querySelector('.rv-qf-value');
+	if (!(valueEl instanceof HTMLElement)) return;
+	if (items.length === 0) {
+		valueEl.setText('—');
+		return;
+	}
+	paintClampList(valueEl, items);
+}
+
+/** Last three entries, clamped to two lines. A tap shows the rest. */
+function paintClampList(host: HTMLElement, items: readonly string[]): void {
+	const recent = lastListEntries(items);
+	const box = host.createSpan('rv-qf-clamp');
+	box.setText(recent.join(' · '));
+	if (items.length <= 1 && recent.join(' · ').length < 48) return;
+	host.classList.add('is-collapsible');
+	host.setAttr('role', 'button');
+	host.tabIndex = 0;
+	const full = items.join(' · ');
+	const reveal = (event: Event): void => {
+		event.preventDefault();
+		event.stopPropagation();
+		showTitlePopover(host, full);
+	};
+	host.addEventListener('click', reveal);
+	host.addEventListener('mouseenter', () => showTitlePopover(host, full));
+	host.addEventListener('pointerdown', (event) => {
+		if (!(event instanceof PointerEvent) || event.pointerType === 'mouse') return;
+		const timer = window.setTimeout(() => reveal(event), LONG_PRESS_MS);
+		const stop = (): void => window.clearTimeout(timer);
+		host.addEventListener('pointerup', stop, { once: true });
+		host.addEventListener('pointercancel', stop, { once: true });
+	});
+	host.addEventListener('keydown', (event) => {
+		if (!(event instanceof KeyboardEvent)) return;
+		if (event.key !== 'Enter' && event.key !== ' ') return;
+		reveal(event);
+	});
+}
+
+function bindCompanionOpen(row: HTMLElement, path: string, host: NoteChromeHost): void {
+	const open = (event: Event): void => {
+		event.preventDefault();
+		event.stopPropagation();
+		host.openCompanion(path);
+	};
+	row.querySelector('.rv-qf-icon')?.addEventListener('click', open);
+	row.querySelector('.rv-qf-label')?.addEventListener('click', open);
+	row.classList.add('rv-qf-companion');
+}
+
+const CAL_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+
+type ChipKind = 'literature' | 'media' | 'lesson' | 'name';
+
+interface FactChip {
+	title: string;
+	type: string;
+	full: string;
+	met: boolean;
+	empty: boolean;
+}
+
+function factDateRow(parent: HTMLElement, icon: string, label: string, value: unknown): void {
+	const row = factRow(parent, icon, label, '');
+	const valueEl = row.querySelector('.rv-qf-value');
+	if (!(valueEl instanceof HTMLElement)) return;
+	const raw = value instanceof Date ? value.toISOString() : textOf(value);
+	const display = formatDriveDate(raw);
+	if (display.empty || !display.rest) {
+		valueEl.createSpan({ cls: 'rv-qf-pill rv-qf-dash', text: '—' });
+		return;
+	}
+	const days = calendarDaysSince(raw, new Date());
+	const instant = parseDriveInstant(raw);
+	const lead = display.time ? `${display.dow}, ${display.time}` : (display.dow || display.text);
+	const pill = valueEl.createSpan('rv-qf-pill rv-qf-when');
+	if (instant) {
+		const tile = pill.createSpan('rv-cal');
+		tile.createSpan({ cls: 'rv-cal-month', text: CAL_MONTHS[instant.getMonth()] ?? '' });
+		tile.createSpan({ cls: 'rv-cal-day', text: String(instant.getDate()) });
+	}
+	pill.createSpan({ cls: 'rv-qf-when-lead', text: lead });
+	if (days != null) pill.createSpan({ cls: 'rv-stamp-ago', text: formatGlanceableCounter(days) });
+	pill.setAttr('title', display.title || raw);
+	if (!instant) return;
+	pill.setAttr('role', 'link');
+	pill.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		jumpToQuickFactDay(pill, instant);
+	});
+}
+
+function paintQuickList(
+	parent: HTMLElement,
+	icon: string,
+	label: string,
+	items: readonly string[],
+	kind: ChipKind,
+	limit: number,
+	metWith = '',
+): HTMLElement {
+	const row = factRow(parent, icon, label, '');
+	const labelEl = row.querySelector('.rv-qf-label');
+	const valueEl = row.querySelector('.rv-qf-value');
+	const all = items.map((item) => item.trim()).filter((item) => item.length > 0);
+	const width = limit === 2 ? 2 : 1;
+	const ordered = orderedChips(all, kind, width, metWith);
+	const collapsed = chipsFor(all, kind, width, metWith);
+	const shown = collapsed.filter((chip) => !chip.empty && !(kind === 'name' && chip.met && !all.some((item) => item.toLowerCase() === chip.full.toLowerCase()))).length;
+	const extra = Math.max(0, all.length - shown);
+	if (!(valueEl instanceof HTMLElement)) return row;
+	if (ordered.length === 0) {
+		valueEl.createSpan({ cls: 'rv-qf-pill rv-qf-dash', text: '—' });
+		return row;
+	}
+	const stack = valueEl.createSpan('rv-qf-stack');
+	const lines: HTMLElement[] = [];
+	for (let index = 0; index < ordered.length; index += width) {
+		const slice = ordered.slice(index, index + width);
+		const host = stack.createSpan(width === 2 ? 'rv-qf-chips is-halves' : 'rv-qf-chips is-single');
+		for (const chip of slice) paintFactChip(host, chip);
+		lines.push(host);
+	}
+	if (extra > 0 && labelEl instanceof HTMLElement) {
+		labelEl.createSpan({ cls: 'rv-qf-plus', text: `+${extra}` });
+		const chevron = labelEl.createSpan({
+			cls: 'rv-qf-chevron',
+			attr: { role: 'button', tabindex: '0', 'aria-expanded': 'false', 'aria-label': `${label} list` },
+		});
+		setIcon(chevron, 'chevron-down');
+		const searchWrap = valueEl.createSpan('rv-qf-search-wrap');
+		const searchIcon = searchWrap.createSpan('rv-qf-search-icon');
+		setIcon(searchIcon, 'search');
+		const search = searchWrap.createEl('input', {
+			cls: 'rv-qf-search',
+			attr: { type: 'search', placeholder: 'Search', 'aria-label': `Search ${label}` },
+		});
+		search.addEventListener('input', () => {
+			const query = search instanceof HTMLInputElement ? search.value.trim().toLowerCase() : '';
+			for (const line of lines) {
+				const chips = Array.from(line.querySelectorAll('.rv-qf-chip'));
+				let any = false;
+				for (const chip of chips) {
+					if (!(chip instanceof HTMLElement)) continue;
+					const hit = query.length === 0 || (chip.dataset.rvText ?? '').includes(query);
+					chip.hidden = !hit;
+					if (hit) any = true;
+				}
+				line.hidden = !any;
+			}
+		});
+		const toggle = (event: Event): void => {
+			event.preventDefault();
+			event.stopPropagation();
+			const open = !stack.classList.contains('is-open');
+			stack.classList.toggle('is-open', open);
+			valueEl.classList.toggle('is-open', open);
+			chevron.setAttr('aria-expanded', open ? 'true' : 'false');
+			setIcon(chevron, open ? 'chevron-up' : 'chevron-down');
+		};
+		chevron.addEventListener('click', toggle);
+		chevron.addEventListener('keydown', (event) => {
+			if (!(event instanceof KeyboardEvent)) return;
+			if (event.key !== 'Enter' && event.key !== ' ') return;
+			toggle(event);
+		});
+	}
+	return row;
+}
+
+function paintFactChip(host: HTMLElement, chip: FactChip): void {
+	const el = host.createSpan({ cls: chip.met ? 'rv-qf-chip is-met' : 'rv-qf-chip' });
+	el.dataset.rvText = chip.full.toLowerCase();
+	const group = el.createSpan('rv-qf-chip-group');
+	group.createSpan({ cls: 'rv-qf-chip-title', text: chip.title });
+	if (chip.type) group.createSpan({ cls: 'rv-qf-chip-type', text: chip.type });
+	armChipOverlay(el, chip.full);
+}
+
+/** Collapsed pills first, then every later entry, in the same single or double shape. */
+function orderedChips(items: readonly string[], kind: ChipKind, limit: number, metWith: string): FactChip[] {
+	if (kind === 'name') {
+		const visible = chipsFor(items, kind, limit, metWith).filter((chip) => !chip.empty);
+		const used = new Set(visible.map((chip) => chip.full.toLowerCase()));
+		const rest = items
+			.filter((item) => !used.has(item.trim().toLowerCase()))
+			.map((item) => ({ ...chipParts(item, kind), met: false, empty: false }));
+		return [...visible, ...rest];
+	}
+	const recent = lastListEntries(items, limit);
+	const recentKeys = new Set(recent.map((item) => item.toLowerCase()));
+	const older = items.filter((item) => !recentKeys.has(item.toLowerCase()));
+	return [...recent, ...older].map((item) => ({ ...chipParts(item, kind), met: false, empty: false }));
+}
+
+function chipsFor(items: readonly string[], kind: ChipKind, limit: number, metWith: string): FactChip[] {
+	if (kind !== 'name') return lastListEntries(items, limit).map((item) => ({ ...chipParts(item, kind), met: false, empty: false }));
+	const met = metWith.trim();
+	const metKey = met.toLowerCase();
+	if (met) {
+		const others = items.filter((item) => item.toLowerCase() !== metKey);
+		const left = others.length > 0 ? others[others.length - 1] ?? '' : '';
+		return [
+			left ? { ...chipParts(left, 'name'), met: false, empty: false } : { title: '', type: '', full: '', met: false, empty: true },
+			{ ...chipParts(met, 'name'), met: true, empty: false },
+		];
+	}
+	return lastListEntries(items, limit).map((item) => ({ ...chipParts(item, 'name'), met: false, empty: false }));
+}
+
+function chipParts(item: string, kind: ChipKind): { title: string; type: string; full: string } {
+	if (kind === 'literature' || kind === 'media') {
+		const parts = displayTitle(item, kind);
+		const type = parts.suffix.trim();
+		return { title: parts.text, type, full: type ? `${parts.text} ${type}` : parts.text };
+	}
+	if (kind === 'lesson') {
+		const title = lessonPillLabel(item);
+		return { title, type: '', full: title };
+	}
+	return { title: item, type: '', full: item };
+}
+
+function chipTruncated(el: HTMLElement): boolean {
+	const title = el.querySelector('.rv-qf-chip-title');
+	if (!(title instanceof HTMLElement)) return false;
+	if (title.clientWidth <= 0) return true;
+	return title.scrollWidth > title.clientWidth + 1;
+}
+
+/** One chip's own text, sitting on that chip. The chevron table holds the whole list. */
+function showChipOverlay(el: HTMLElement, full: string): void {
+	if (!full || !chipTruncated(el)) return;
+	showTitlePopover(el, full);
+	const pop = el.ownerDocument.querySelector('.rv-title-popover');
+	if (!(pop instanceof HTMLElement)) return;
+	pop.classList.add('rv-chip-overlay');
+	const box = el.getBoundingClientRect();
+	pop.style.left = `${box.left}px`;
+	pop.style.top = `${box.top}px`;
+}
+
+function armChipOverlay(el: HTMLElement, full: string): void {
+	if (!full) return;
+	const show = (): void => { showChipOverlay(el, full); };
+	el.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		show();
+	});
+	el.addEventListener('mouseenter', show);
+	let timer = 0;
+	el.addEventListener('pointerdown', () => {
+		timer = window.setTimeout(show, LONG_PRESS_MS);
+	});
+	const clear = (): void => { window.clearTimeout(timer); };
+	el.addEventListener('pointerup', clear);
+	el.addEventListener('pointerleave', clear);
+	el.addEventListener('pointercancel', clear);
+}
+
+interface DayJumpTarget extends DayJumpCandidate {
+	el: HTMLElement;
+}
+
+function jumpToQuickFactDay(anchor: HTMLElement, when: Date): void {
+	const preview = anchor.closest('.markdown-preview-view, .markdown-reading-view, .markdown-rendered');
+	const root = preview instanceof HTMLElement ? preview : anchor.ownerDocument.body;
+	if (!(root instanceof HTMLElement)) return;
+	const pick = pickDayJump(when, collectDayJumps(root));
+	if (!pick) return;
+	const target = pick.kind === 'notes' ? visitNotesTarget(pick.el) : pick.el;
+	revealJumpTarget(target, root);
+	jumpToDayInRoot(root, when);
+}
+
+/** Scroll to the visit on this day and flash it. Recent Notes, Older Visits, or the Attempt Log. */
+export function jumpToDayInRoot(root: HTMLElement, when: Date): boolean {
+	const pick = pickDayJump(when, collectDayJumps(root));
+	if (!pick) return false;
+	const target = pick.kind === 'notes' ? visitNotesTarget(pick.el) : pick.el;
+	revealJumpTarget(target, root);
+	scrollPreviewTarget(target);
+	target.classList.add('rv-day-flash');
+	window.setTimeout(() => target.classList.remove('rv-day-flash'), 1600);
+	return true;
+}
+
+function collectDayJumps(root: HTMLElement): DayJumpTarget[] {
+	const found: DayJumpTarget[] = [];
+	root.querySelectorAll('h3, h5').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-visit-notes-heading')) return;
+		const text = headingStampText(node);
+		if (/^(?:visit|recent) notes:?$/i.test(text)) return;
+		const when = stampDateTime(text);
+		if (!when) return;
+		found.push({ when, home: true, kind: 'notes', el: node });
+	});
+	for (const callout of attemptLogCallouts(root)) {
+		callout.querySelectorAll('li').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			const bullet = parseLogBullet(`- ${node.textContent ?? ''}`);
+			if (!bullet) return;
+			found.push({ when: bullet.when, home: bullet.home, kind: 'attempt', el: node });
+		});
+	}
+	return found;
+}
+
+function headingStampText(node: HTMLElement): string {
+	const copy = node.cloneNode(true);
+	if (copy instanceof HTMLElement) {
+		copy.querySelectorAll('.rv-stamp-ago, .rv-visit-more, .heading-collapse-indicator, .collapse-indicator').forEach((child) => child.remove());
+		return visibleStampText(copy.textContent ?? '');
+	}
+	return visibleStampText(node.textContent ?? '');
+}
+
+function visitNotesTarget(stamp: HTMLElement): HTMLElement {
+	const start = stamp.closest('.el-h3, .el-h5') ?? stamp;
+	let look: Element | null = start.nextElementSibling;
+	while (look) {
+		if (look.querySelector('h3.rv-visit-stamp, h5.rv-visit-stamp, .rv-stamp-ago')) break;
+		const area = look instanceof HTMLTextAreaElement ? look : look.querySelector('textarea');
+		if (area instanceof HTMLElement) return area;
+		look = look.nextElementSibling;
+	}
+	return stamp;
+}
+
+/** Open the Attempt Log and scroll to it. Used by the card return line. */
+export function revealAttemptLog(root: HTMLElement): boolean {
+	const callout = attemptLogCallouts(root)[0];
+	if (!callout) return false;
+	expandFoldedHost(callout, root);
+	scrollPreviewTarget(callout);
+	callout.classList.add('rv-day-flash');
+	window.setTimeout(() => callout.classList.remove('rv-day-flash'), 1600);
+	return true;
+}
+
+/** Lisa and Bo render the callout a few hundred milliseconds after the note opens. */
+const ATTEMPT_LOG_WAIT_MS = 2_000;
+
+/**
+ * Expand the Attempt Log once it is in the note. A fixed delay misses notes
+ * whose callout arrives later, so this watches mutations and animation frames
+ * until the callout exists or about two seconds have passed.
+ */
+export function revealAttemptLogWhenReady(root: HTMLElement, timeoutMs = ATTEMPT_LOG_WAIT_MS): void {
+	const started = Date.now();
+	let settled = false;
+	let observer: MutationObserver | null = null;
+	const stop = (): void => {
+		observer?.disconnect();
+		observer = null;
+	};
+	const attempt = (): void => {
+		if (settled) return;
+		const found = attemptLogCallouts(root).length > 0;
+		if (!found && Date.now() - started < timeoutMs) return;
+		settled = true;
+		stop();
+		if (found) revealAttemptLog(root);
+	};
+	const view = root.ownerDocument?.defaultView;
+	const Observer = view?.MutationObserver ?? globalThis.MutationObserver;
+	if (typeof Observer === 'function') {
+		observer = new Observer(() => attempt());
+		observer.observe(root, { childList: true, subtree: true });
+	}
+	const tick = (): void => {
+		attempt();
+		if (settled) return;
+		const frame = view?.requestAnimationFrame ?? globalThis.requestAnimationFrame;
+		if (typeof frame === 'function') frame(tick);
+		else globalThis.setTimeout(tick, 16);
+	};
+	tick();
+}
+
+function revealJumpTarget(target: HTMLElement, root: HTMLElement): void {
+	const notes = root.querySelector('h3.rv-visit-notes-heading');
+	const host = notes?.parentElement;
+	const notesWereCollapsed = host instanceof HTMLElement && host.classList.contains('is-collapsed');
+	expandFoldedHost(target, root);
+	if (notes instanceof HTMLElement && host instanceof HTMLElement && notesWereCollapsed && !host.contains(target)) {
+		let inRecent = false;
+		let cursor = host.nextElementSibling;
+		while (cursor instanceof HTMLElement) {
+			if (cursor.classList.contains('rv-older-visits-wrap') || cursor.classList.contains('rv-notes-fold-stop')) break;
+			if (cursor === target || cursor.contains(target)) inRecent = true;
+			cursor = cursor.nextElementSibling;
+		}
+		if (inRecent) {
+			host.classList.remove('is-collapsed');
+			notes.classList.add('is-open');
+			let again = host.nextElementSibling;
+			while (again instanceof HTMLElement) {
+				if (again.classList.contains('rv-older-visits-wrap') || again.classList.contains('rv-notes-fold-stop')) break;
+				if (again.style?.display === 'none') again.style.removeProperty('display');
+				again = again.nextElementSibling;
+			}
+		}
+	}
+	if (!target.classList.contains('rv-older-hidden') && !target.closest('.rv-older-hidden')) return;
+	root.dataset.rvOlderOpen = '1';
+	root.querySelectorAll('.rv-older-hidden').forEach((el) => {
+		if (el instanceof HTMLElement) el.classList.remove('rv-older-hidden');
+	});
+	root.querySelectorAll('.rv-older-visits').forEach((el) => {
+		if (el instanceof HTMLElement) el.classList.add('is-open');
+	});
+}
+
+function factRow(parent: HTMLElement, icon: string, label: string, value = ''): HTMLElement {
+	const row = parent.createDiv('rv-qf-row');
+	const iconEl = row.createSpan('rv-qf-icon');
+	setIcon(iconEl, icon);
+	row.createSpan({ cls: 'rv-qf-label', text: label });
+	const valueEl = row.createSpan({ cls: 'rv-qf-value', text: value });
+	if (!value) valueEl.empty();
+	return row;
+}
+
+function decorateHubRow(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	const paragraphs = root.matches('p') ? [root] : Array.from(root.querySelectorAll('p'));
+	for (const paragraph of paragraphs) {
+		if (!(paragraph instanceof HTMLElement)) continue;
+		const hubLabel = labeledStrong(paragraph, 'hub');
+		const addressLabel = labeledStrong(paragraph, 'address');
+		if (!hubLabel && !addressLabel) continue;
+		paragraph.addClass('rv-hub-owned');
+		pinSharedPairGrid(paragraph);
+		if (!hubLabel) {
+			decorateAddress(paragraph, path, data, host);
+			continue;
+		}
+		hubLabel.textContent = 'Hub:';
+		const address = labeledStrong(paragraph, 'address');
+		let line = paragraph.querySelector(':scope > .rv-hub-line');
+		if (!(line instanceof HTMLElement)) {
+			line = paragraph.createSpan('rv-hub-line');
+			if (address?.parentElement === paragraph) paragraph.insertBefore(line, address);
+		}
+		if (hubLabel.parentElement !== line) line.insertBefore(hubLabel, line.firstChild);
+		let row = line.querySelector(':scope > .rv-hub-row');
+		if (!(row instanceof HTMLElement)) {
+			const stray = paragraph.querySelector(':scope > .rv-hub-row');
+			row = stray instanceof HTMLElement ? stray : line.createSpan('rv-hub-row');
+			if (row.parentElement !== line) line.appendChild(row);
+		}
+		row.empty();
+		hubLabel.textContent = 'Hub:';
+		pinPairLabel(hubLabel);
+		if (!(line instanceof HTMLElement)) continue;
+		pinSharedLine(line);
+		const hubs = hubRefs(readProperty(data, 'Hub'));
+		const returnHub = host.settings.returnHubNote;
+		hubs.forEach((hub, index) => {
+			row.appendChild(hubChip(paragraph.ownerDocument, path, resolveReturnHub(hub, returnHub), index, host));
+		});
+		armHubOverflow(row);
+		let add = line.querySelector(':scope > .rv-hub-add');
+		if (!(add instanceof HTMLElement)) {
+			const button = paragraph.ownerDocument.createElement('button');
+			button.className = 'rv-hub-add';
+			button.setAttribute('type', 'button');
+			button.setAttribute('aria-label', 'Add hub');
+			setIcon(button, 'plus');
+			button.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				host.addHub(path);
+			});
+			line.appendChild(button);
+		}
+		decorateAddress(paragraph, path, data, host);
+	}
+}
+
+function ensureAddressInput(paragraph: HTMLElement): HTMLInputElement {
+	const found = paragraph.querySelector(':scope > input.rv-address-input, :scope > .rv-address-line input.rv-address-input');
+	if (found instanceof HTMLInputElement) return found;
+	const created = paragraph.ownerDocument.createElement('input');
+	created.className = 'rv-address-input';
+	created.type = 'text';
+	created.setAttribute('aria-label', 'Address');
+	const map = paragraph.querySelector(':scope > a.rv-map-button, :scope > .rv-address-line > a.rv-map-button');
+	if (map) paragraph.insertBefore(created, map);
+	else paragraph.appendChild(created);
+	return created;
+}
+
+function decorateAddress(paragraph: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	const address = labeledStrong(paragraph, 'address');
+	if (!address) return;
+	address.textContent = 'Address:';
+	const property = host.settings.addressProperty.trim() || 'Address';
+	const input = ensureAddressInput(paragraph);
+	for (const child of Array.from(paragraph.childNodes)) {
+		if (child === address || child === input) continue;
+		if (!(child instanceof HTMLElement)) {
+			if (child.nodeType === Node.TEXT_NODE && (child.textContent ?? '').trim()) {
+				const plain = paragraph.ownerDocument.createElement('span');
+				plain.className = 'rv-address-hidden';
+				plain.textContent = child.textContent ?? '';
+				child.replaceWith(plain);
+			}
+			continue;
+		}
+		if (
+			child.classList.contains('rv-hub-line')
+			|| child.classList.contains('rv-address-link')
+			|| child.tagName === 'STRONG'
+		) {
+			child.classList.remove('rv-address-hidden');
+			continue;
+		}
+		if (child.classList.contains('rv-map-button') || child.classList.contains('rv-address-line')) {
+			child.classList.remove('rv-address-hidden');
+			continue;
+		}
+		child.classList.add('rv-address-hidden');
+	}
+	const stored = textOf(readProperty(data, property));
+	const focused = paragraph.ownerDocument.activeElement === input;
+	if (!focused) input.value = stored;
+	const commit = () => host.setAddress(path, input.value);
+	input.onchange = null;
+	input.onkeydown = (event) => {
+		if (event.key !== 'Enter') return;
+		event.preventDefault();
+		input.blur();
+	};
+	input.onblur = () => {
+		commit();
+		showAddressLink(paragraph, input, path, host);
+	};
+	input.classList.add('rv-address-input');
+	showAddressLink(paragraph, input, path, host);
+	ensureEarthButton(paragraph, path, host);
+	assembleAddressLine(paragraph);
+}
+
+function assembleAddressLine(paragraph: HTMLElement): void {
+	const address = labeledStrong(paragraph, 'address');
+	if (!address) return;
+	const doc = paragraph.ownerDocument;
+	let line = paragraph.querySelector(':scope > .rv-address-line');
+	if (!(line instanceof HTMLElement)) {
+		line = doc.createElement('span');
+		line.className = 'rv-address-line';
+		paragraph.appendChild(line);
+	}
+	if (!(line instanceof HTMLElement)) return;
+	let field = line.querySelector(':scope > .rv-address-field');
+	if (!(field instanceof HTMLElement)) {
+		field = doc.createElement('span');
+		field.className = 'rv-address-field';
+	}
+	const input = paragraph.querySelector('input.rv-address-input');
+	const link = paragraph.querySelector('a.rv-address-link');
+	const earth = paragraph.querySelector('a.rv-map-button');
+	line.append(address, field);
+	if (input) field.append(input);
+	if (link instanceof HTMLElement) field.append(link);
+	if (earth instanceof HTMLElement) line.append(earth);
+	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
+	pinSharedLine(line);
+	line.style.setProperty('grid-template-rows', 'auto', 'important');
+	line.style.setProperty('justify-items', 'stretch', 'important');
+	line.style.setProperty('max-width', 'none', 'important');
+	line.style.setProperty('min-width', '0', 'important');
+	line.style.setProperty('box-sizing', 'border-box', 'important');
+	address.style.setProperty('grid-column', '1', 'important');
+	address.style.setProperty('grid-row', '1', 'important');
+	pinPairLabel(address);
+	field.style.setProperty('grid-column', '2', 'important');
+	field.style.setProperty('grid-row', '1', 'important');
+	field.style.setProperty('display', 'flex', 'important');
+	field.style.setProperty('align-items', 'center', 'important');
+	field.style.setProperty('height', '40px', 'important');
+	field.style.setProperty('width', 'auto', 'important');
+	field.style.setProperty('min-width', '0', 'important');
+	field.style.setProperty('max-width', 'none', 'important');
+	field.style.setProperty('flex', '1 1 auto', 'important');
+	field.style.setProperty('position', 'static', 'important');
+	field.style.setProperty('overflow', 'hidden', 'important');
+	if (earth instanceof HTMLElement) {
+		earth.style.setProperty('grid-column', '3', 'important');
+		earth.style.setProperty('grid-row', '1', 'important');
+		earth.style.setProperty('align-self', 'center', 'important');
+		earth.style.setProperty('justify-self', 'center', 'important');
+		earth.style.setProperty('position', 'static', 'important');
+		earth.style.setProperty('inset', 'auto', 'important');
+		earth.style.setProperty('transform', 'none', 'important');
+		earth.style.setProperty('margin', '0', 'important');
+		earth.style.setProperty('margin-top', '0', 'important');
+		earth.style.setProperty('width', '40px', 'important');
+		earth.style.setProperty('height', '40px', 'important');
+		earth.style.setProperty('min-width', '40px', 'important');
+		earth.style.setProperty('max-width', '40px', 'important');
+		earth.style.setProperty('min-height', '40px', 'important');
+		earth.style.setProperty('max-height', '40px', 'important');
+		earth.style.setProperty('flex', '0 0 40px', 'important');
+		earth.style.setProperty('z-index', '0', 'important');
+	}
+}
+
+function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
+	let earth = paragraph.querySelector(':scope > a.rv-map-button, :scope > .rv-address-line > a.rv-map-button');
+	if (!(earth instanceof HTMLElement)) {
+		const link = paragraph.ownerDocument.createElement('a');
+		link.className = 'rv-map-button';
+		link.setAttribute('href', '#');
+		link.setAttribute('aria-label', 'Map');
+		link.setAttribute('rel', 'noopener');
+		setIcon(link, 'earth');
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openMap(path);
+		});
+		paragraph.appendChild(link);
+		earth = link;
+	}
+	earth.classList.toggle('is-on', host.mapOpen());
+}
+
+function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
+	if (link.dataset.rvEdit === '1') return;
+	link.dataset.rvEdit = '1';
+	let timer = 0;
+	const start = (): void => {
+		link.hidden = true;
+		input.hidden = false;
+		link.style.setProperty('display', 'none', 'important');
+		input.style.setProperty('display', 'block', 'important');
+		input.focus();
+		if (typeof input.select === 'function') input.select();
+	};
+	link.addEventListener('contextmenu', (event) => {
+		event.preventDefault();
+		start();
+	});
+	link.addEventListener('pointerdown', () => {
+		window.clearTimeout(timer);
+		timer = window.setTimeout(start, LONG_PRESS_MS);
+	});
+	const cancel = (): void => { window.clearTimeout(timer); };
+	link.addEventListener('pointerup', cancel);
+	link.addEventListener('pointerleave', cancel);
+	link.addEventListener('pointercancel', cancel);
+}
+
+/** Hub and Address share one grid so both text boxes stay the same width. */
+function pinSharedPairGrid(paragraph: HTMLElement): void {
+	paragraph.style.setProperty('display', 'grid', 'important');
+	paragraph.style.setProperty('grid-template-columns', 'max-content minmax(0, 1fr) 40px', 'important');
+	paragraph.style.setProperty('column-gap', '8px', 'important');
+	paragraph.style.setProperty('row-gap', '8px', 'important');
+	paragraph.style.setProperty('align-items', 'center', 'important');
+	paragraph.style.setProperty('width', '100%', 'important');
+}
+
+function pinSharedLine(line: HTMLElement): void {
+	line.style.setProperty('display', 'grid', 'important');
+	line.style.setProperty('grid-column', '1 / -1', 'important');
+	line.style.setProperty('grid-template-columns', 'subgrid', 'important');
+	line.style.setProperty('column-gap', '8px', 'important');
+	line.style.setProperty('align-items', 'center', 'important');
+	line.style.setProperty('width', '100%', 'important');
+}
+
+function pinPairLabel(label: HTMLElement): void {
+	label.style.setProperty('display', 'inline-flex', 'important');
+	label.style.setProperty('align-items', 'center', 'important');
+	label.style.setProperty('align-self', 'center', 'important');
+	label.style.setProperty('height', '40px', 'important');
+	label.style.setProperty('gap', '0', 'important');
+	label.style.setProperty('width', 'max-content', 'important');
+	label.style.setProperty('min-width', 'max-content', 'important');
+	label.style.setProperty('justify-self', 'end', 'important');
+	label.style.setProperty('justify-content', 'flex-end', 'important');
+	label.style.setProperty('text-align', 'right', 'important');
+	label.style.setProperty('max-width', 'none', 'important');
+	label.style.setProperty('margin', '0', 'important');
+	label.style.setProperty('white-space', 'nowrap', 'important');
+	label.style.setProperty('font-size', '14px', 'important');
+	label.style.setProperty('line-height', '1.15', 'important');
+	label.style.setProperty('overflow', 'hidden', 'important');
+}
+
+function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: string, host: NoteChromeHost): void {
+	const found = paragraph.querySelector(':scope > a.rv-address-link, :scope > .rv-address-line a.rv-address-link');
+	const link = found instanceof HTMLElement ? found : paragraph.ownerDocument.createElement('a');
+	if (!(found instanceof HTMLElement)) {
+		link.className = 'rv-address-link';
+		link.setAttribute('href', '#');
+		if (typeof input.insertAdjacentElement === 'function') input.insertAdjacentElement('afterend', link);
+		else paragraph.appendChild(link);
+		link.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openMap(path);
+		});
+		armAddressEdit(link, input);
+	}
+	link.classList.toggle('is-on', host.mapOpen());
+	link.classList.remove('rv-address-hidden');
+	link.dataset.rvMapOpen = '1';
+	link.onclick = (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		host.openMap(path);
+	};
+	link.style.setProperty('display', 'block', 'important');
+	link.style.setProperty('grid-column', 'auto', 'important');
+	link.style.setProperty('width', '100%', 'important');
+	link.style.setProperty('max-width', '100%', 'important');
+	link.style.setProperty('min-width', '0', 'important');
+	link.style.setProperty('position', 'static', 'important');
+	link.style.setProperty('white-space', 'nowrap', 'important');
+	link.style.setProperty('overflow-wrap', 'normal', 'important');
+	link.style.setProperty('word-break', 'normal', 'important');
+	link.style.setProperty('overflow', 'hidden', 'important');
+	link.style.setProperty('text-overflow', 'ellipsis', 'important');
+	link.style.setProperty('line-height', '1.25', 'important');
+	link.style.removeProperty('max-height');
+	link.style.setProperty('max-height', 'none', 'important');
+	const text = input.value.trim();
+	link.classList.toggle('is-empty', !text);
+	link.textContent = text || 'Add an address';
+	const editing = paragraph.ownerDocument.activeElement === input;
+	const showInput = editing || text.length === 0;
+	link.hidden = showInput;
+	input.hidden = !showInput;
+	link.style.setProperty('display', showInput ? 'none' : 'block', 'important');
+	input.style.setProperty('display', showInput ? 'block' : 'none', 'important');
+}
+
+function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLElement | null {
+	const nodes = paragraph.querySelectorAll('strong');
+	for (const node of Array.from(nodes)) {
+		if (!(node instanceof HTMLElement)) continue;
+		const label = (node.textContent ?? '').replace(/:$/, '').trim().toLowerCase();
+		if (kind === 'hub' ? label === 'hub' || label === 'hubs' : label === 'address') return node;
+	}
+	return null;
+}
+
+function fitHubOverflow(row: HTMLElement): void {
+	row.querySelectorAll('.rv-hub-chip').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		const label = node.querySelector('.rv-hub-chip-label');
+		if (!(label instanceof HTMLElement)) return;
+		const full = label.dataset.full || label.textContent || '';
+		fitEndEllipsis(label, full);
+		node.classList.remove('is-overflow');
+	});
+}
+
+function armHubOverflow(row: Element): void {
+	if (!(row instanceof HTMLElement)) return;
+	fitHubOverflow(row);
+	if (row.dataset.rvHubOverflow === '1') return;
+	row.dataset.rvHubOverflow = '1';
+	const again = (): void => fitHubOverflow(row);
+	globalThis.setTimeout(again, 0);
+	if (typeof ResizeObserver === 'undefined') return;
+	try {
+		const observer = new ResizeObserver(again);
+		observer.observe(row);
+	} catch {
+		/* The row is not a browser node. */
+	}
+}
+
+function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: NoteChromeHost): HTMLAnchorElement {
+	const link = doc.createElement('a');
+	link.className = 'internal-link rv-hub-chip';
+	const label = doc.createElement('span');
+	label.className = 'rv-hub-chip-label';
+	label.textContent = hub.label;
+	link.appendChild(label);
+	const ellipsis = doc.createElement('span');
+	ellipsis.className = 'rv-hub-chip-ellipsis';
+	ellipsis.textContent = '…';
+	ellipsis.setAttribute('aria-hidden', 'true');
+	link.appendChild(ellipsis);
+	link.href = hub.target;
+	link.dataset.href = hub.target;
+	link.title = hub.label;
+	link.addEventListener('click', (event) => {
+		if (link.dataset.rvMenu === '1') {
+			link.dataset.rvMenu = '';
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
+		event.preventDefault();
+		event.stopPropagation();
+		host.openHub(path, hub.target);
+	});
+	const openMenu = (event: MouseEvent) => {
+		event.preventDefault();
+		event.stopPropagation();
+		link.dataset.rvMenu = '1';
+		const menu = new Menu();
+		if (index > 0) {
+			menu.addItem((item) => {
+				item.setTitle('Move Left');
+				item.setIcon('chevrons-left');
+				item.onClick(() => host.moveHub(path, hub.label));
+			});
+		}
+		menu.addItem((item) => {
+			item.setTitle('Remove');
+			item.setIcon('trash');
+			item.onClick(() => host.removeHub(path, hub.label));
+		});
+		menu.addItem((item) => {
+			item.setTitle('Add a Hub');
+			item.setIcon('plus');
+			item.onClick(() => host.addHub(path));
+		});
+		menu.showAtMouseEvent(event);
+		window.setTimeout(() => { link.dataset.rvMenu = ''; }, 400);
+	};
+	link.addEventListener('contextmenu', openMenu);
+	let timer: number | null = null;
+	const clear = () => {
+		if (timer != null) window.clearTimeout(timer);
+		timer = null;
+	};
+	link.addEventListener('pointerdown', (event) => {
+		if (event.pointerType === 'mouse' && event.button !== 0) return;
+		clear();
+		timer = window.setTimeout(() => openMenu(event), LONG_PRESS_MS);
+	});
+	link.addEventListener('pointerup', clear);
+	link.addEventListener('pointerleave', clear);
+	link.addEventListener('pointercancel', clear);
+	return link;
+}
+
+function decorateSlotOverride(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
+	const callouts = root.matches('.callout') ? [root] : Array.from(root.querySelectorAll('.callout'));
+	for (const callout of callouts) {
+		if (!(callout instanceof HTMLElement)) continue;
+		const title = callout.querySelector(':scope > .callout-title');
+		if (!(title instanceof HTMLElement)) continue;
+		const inner = title.querySelector('.callout-title-inner');
+		const label = (inner?.textContent ?? title.textContent ?? '');
+		if (!isLogCalloutTitle(label)) continue;
+		const priority = finiteNumber(readProperty(data, 'Priority'));
+		const urgency = noteUrgency(path, data, priority, host);
+		const colors = urgencyColorsFor(host.settings.urgencyPalette, host.settings.urgencyCustomColors);
+		const accent = host.ghostIcon(path) === 'moon' ? SNOOZE_SLATE : urgencyAccentColor(urgency, priority, colors);
+		callout.style.setProperty('--rv-urgency-accent', accent);
+		let badges = title.querySelector(':scope > .rv-qf-badges');
+		if (!(badges instanceof HTMLElement)) badges = title.createSpan('rv-qf-badges');
+		badges.empty();
+		const button = badges.createEl('button', {
+			cls: 'rv-locator-urgency rv-attempt-override',
+			attr: { type: 'button', 'aria-label': 'Mark a daypart Try or Avoid' },
+		});
+		setIcon(button, 'calendar-plus-2');
+		button.addEventListener('click', (event) => {
+			event.preventDefault();
+			event.stopPropagation();
+			host.openSlotOverride(path);
+		});
+	}
+}
+
+function propertyDays(value: unknown): number | null {
+	const raw = dateTextFromUnknown(value);
+	return raw ? calendarDaysSince(raw, new Date()) : null;
+}
+
+function noteUrgency(path: string, data: Record<string, unknown>, priority: number | null, host: NoteChromeHost): number | null {
+	const spoke = propertyDays(readProperty(data, 'Last Spoke'));
+	const attempted = propertyDays(readProperty(data, 'Last Attempted'));
+	const known = [spoke, attempted].filter((day): day is number => day != null);
+	const days = known.length === 0 ? null : Math.min(...known);
+	return displayedUrgency(days, priority, host.settings, host.snoozeUntil(path), new Date());
+}
+
+function textList(value: unknown): string[] {
+	const source = Array.isArray(value) ? value : value == null || value === '' ? [] : [value];
+	const names: string[] = [];
+	for (const item of source) {
+		const text = wikiLabel(textOf(item));
+		if (text) names.push(text);
+	}
+	return names;
+}
+
+function wikiLabel(text: string): string {
+	const raw = text.replace(/^["']|["']$/g, '').trim();
+	const wiki = /^\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]$/.exec(raw);
+	if (!wiki) return raw;
+	const alias = wiki[2]?.trim();
+	if (alias) return alias;
+	const target = (wiki[1] ?? raw).trim();
+	return (target.split('/').pop() ?? target).replace(/\.md$/i, '');
+}
+
+function textOf(value: unknown): string {
+	if (typeof value === 'string') return value.trim();
+	if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+	if (Array.isArray(value)) return value.map((item) => textOf(item)).filter(Boolean).join(' · ');
+	return '';
+}
+
+function finiteNumber(value: unknown): number | null {
+	if (typeof value === 'number' && Number.isFinite(value)) return value;
+	if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+	return null;
+}

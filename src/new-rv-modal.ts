@@ -1,0 +1,487 @@
+import { Modal, Setting, setIcon, type App, type ButtonComponent } from 'obsidian';
+import { AddressSuggestController, type SuggestFetchResult } from './address-suggest';
+import { emptyShare, studyPrefill, type LessonSpec, type VisitShare } from './catalog';
+import { mountShareFields } from './catalog-fields';
+import { iconizeModal, markModalTone } from './modal-chrome';
+import { SUGGEST_PENDING, mountAlwaysChevron } from './suggest-field';
+import { abbreviateAddress, addressesMatchOneForOne } from './address';
+import { companionChoices, exactCompanion, matchingCompanion } from './companions';
+import { statusIcon, type RvGender, type RvStatus } from './status';
+import { RESTROOM_MAN, RESTROOM_WOMAN, ageYears } from './person-meta';
+import type { GeocodeHit } from './types';
+
+export interface NewRvIdentity {
+	gender: RvGender;
+	name: string;
+	address: string;
+	/** Empty when they leave the companion blank. */
+	companion: string;
+	priority: number;
+	/** Set when they picked a Geoapify hit and the address still matches it. */
+	verifiedHit: GeocodeHit | null;
+	publications: string;
+	media: string;
+	publicationList?: string[];
+	mediaList?: string[];
+	lesson?: string;
+	lessonFrom?: string;
+	lessonTo?: string;
+	extraLesson?: string;
+	extraFrom?: string;
+	extraTo?: string;
+}
+
+export interface NewRvModalOptions {
+	defaultPriority: number;
+	companions: readonly string[];
+	/** Home-biased autocomplete, then a wider pass when home is sparse. */
+	suggestHome?: (query: string) => Promise<SuggestFetchResult>;
+	suggestBroad?: (query: string) => Promise<readonly GeocodeHit[]>;
+	/** Session cache shared with the plugin so reopening the modal is instant. */
+	addressCache?: () => Map<string, GeocodeHit[]>;
+	lessons?: readonly LessonSpec[];
+	customLessons?: readonly string[];
+	title?: string;
+	intro?: string;
+	preset?: Partial<Pick<NewRvIdentity, 'gender' | 'name' | 'address' | 'companion' | 'priority'>>;
+	publications?: readonly string[];
+	media?: readonly string[];
+}
+
+interface TextControl {
+	setValue: (value: string) => void;
+	inputEl?: HTMLElement;
+}
+
+/**
+ * One dialog: gender, name, address, Met companion, and priority.
+ * Companion is optional. Create with it blank leaves Met With and Taken blank.
+ */
+export class NewRvIdentityModal extends Modal {
+	private gender: RvGender = 'Man';
+	private name = '';
+	private address = '';
+	private companion = '';
+	private priority: number;
+	private settled = false;
+	private companionPicked = false;
+	private verifiedHit: GeocodeHit | null = null;
+	private addressResults: GeocodeHit[] = [];
+	private addressLoading = false;
+	private addressInput: TextControl | null = null;
+	private companionInput: TextControl | null = null;
+	private suggest: AddressSuggestController | null = null;
+	private share: VisitShare = emptyShare();
+
+	constructor(
+		app: App,
+		private options: NewRvModalOptions,
+		private onDone: (identity: NewRvIdentity | null) => void,
+	) {
+		super(app);
+		const preset = options.preset;
+		if (preset?.gender === 'Woman' || preset?.gender === 'Man') this.gender = preset.gender;
+		this.name = preset?.name ?? '';
+		this.address = preset?.address ?? '';
+		this.companion = preset?.companion ?? '';
+		const priority = preset?.priority ?? options.defaultPriority;
+		this.priority = Number.isInteger(priority) ? Math.max(0, Math.min(5, priority)) : 4;
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('rv-locator-modal');
+		markModalTone(this.modalEl, 'general');
+		this.setTitle(this.options.title ?? 'New RV');
+		const { contentEl } = this;
+		contentEl.createEl('p', {
+			cls: 'rv-locator-modal-copy',
+			text: this.options.intro ?? 'Man or woman, a name, the address, and a priority.',
+		});
+		const gender = new Setting(contentEl).setName('Man / Woman');
+		gender.settingEl?.addClass('rv-gender-choice');
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
+			button.onClick(() => {
+				this.gender = 'Man';
+				this.paintGender(gender);
+			});
+		});
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
+			button.onClick(() => {
+				this.gender = 'Woman';
+				this.paintGender(gender);
+			});
+		});
+		new Setting(contentEl)
+			.setName('Name')
+			.setDesc('Optional. Blank uses the street.')
+			.addText((text) => {
+				text.setPlaceholder('Name (optional)');
+				text.setValue(this.name);
+				text.onChange((value) => { this.name = value; });
+			});
+		new Setting(contentEl)
+			.setName('Address')
+			.setDesc('Street address.')
+			.addText((text) => {
+				text.setPlaceholder('Street address');
+				text.setValue(this.address);
+				this.addressInput = text;
+				this.bindField(text, () => this.commitAddressMatch(), (value) => {
+					this.address = value;
+					this.forgetVerification(value);
+					const exact = this.addressResults.find((hit) => addressesMatchOneForOne(value, hit.formattedAddress));
+					if (exact) {
+						this.verifiedHit = { ...exact, formattedAddress: exact.formattedAddress.replace(/\s+/g, ' ').trim() };
+						return;
+					}
+					this.suggest?.push(value);
+				});
+				if (text.inputEl) {
+					mountAlwaysChevron(text.inputEl, () => this.addressChevronItems(), (picked) => {
+						if (picked === SUGGEST_PENDING) return;
+						const hit = this.addressResults.find((item) => item.formattedAddress === picked);
+						if (hit) this.selectAddress(hit);
+					});
+					const home = this.options.suggestHome;
+					const broad = this.options.suggestBroad;
+					if (home && broad) {
+						this.suggest = new AddressSuggestController({
+							now: () => Date.now(),
+							schedule: (ms, run) => window.setTimeout(run, ms),
+							cancel: (id) => { window.clearTimeout(id); },
+						}, { home, broad }, (view) => {
+							this.addressLoading = view.loading;
+							this.addressResults = view.hits.map((hit) => ({
+								...hit,
+								formattedAddress: hit.formattedAddress.replace(/\s+/g, ' ').trim(),
+							}));
+							text.inputEl?.dispatchEvent(new Event('rv-suggest-sync'));
+						}, this.options.addressCache?.());
+					}
+				}
+			});
+		new Setting(contentEl)
+			.setName('What publisher came with you?')
+			.setDesc('Optional.')
+			.addText((text) => {
+				text.setPlaceholder('Companion (optional)');
+				text.setValue(this.companion);
+				this.companionInput = text;
+				if (text.inputEl) {
+					mountAlwaysChevron(text.inputEl, () => companionChoices(this.options.companions, this.companion).map((item) => item.label), (picked) => {
+						const match = companionChoices(this.options.companions, this.companion).find((item) => item.label === picked || item.value === picked);
+						this.companion = match?.value ?? picked;
+						text.setValue(this.companion);
+						this.companionPicked = true;
+					});
+				}
+				this.bindField(text, () => this.commitCompanionMatch(), (value) => {
+					this.companion = value;
+					const match = matchingCompanion(companionChoices(this.options.companions, value), value);
+					this.companionPicked = match != null && match.value === value.trim();
+					text.inputEl?.classList.toggle('is-selected', this.companionPicked);
+				});
+			});
+		mountShareFields(contentEl, {
+			publications: this.options.publications ?? [],
+			media: this.options.media ?? [],
+			customLessons: this.options.customLessons ?? [],
+			lessons: this.options.lessons ?? [],
+			showLiterature: true,
+			literatureCollapsed: false,
+			lessonExpanded: false,
+			showLesson: false,
+			optionalLesson: true,
+			lessonPrefill: studyPrefill(null, this.options.lessons),
+			initial: this.share,
+		}, (next) => { this.share = next; });
+		new Setting(contentEl)
+			.setName('Priority')
+			.setDesc('Uses the default priority.')
+			.addSlider((slider) => {
+				slider.setLimits(0, 5, 1);
+				slider.setValue(this.priority);
+				slider.setDynamicTooltip();
+				slider.onChange((value) => { this.priority = value; });
+			});
+		new Setting(contentEl)
+			.setClass('rv-modal-actions')
+			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.onClick(() => this.close());
+			})
+			.addButton((button) => {
+				button.setButtonText('Create');
+				button.setCta();
+				button.onClick(() => this.finish());
+			});
+		iconizeModal(contentEl);
+	}
+
+	onClose(): void {
+		this.suggest?.dispose();
+		this.suggest = null;
+		if (!this.settled) this.onDone(null);
+		this.contentEl.empty();
+	}
+
+	private finish(): void {
+		this.commitAddressMatch();
+		this.commitCompanionMatch();
+		const address = this.address.replace(/\r?\n/g, ' ').trim();
+		const verified = this.verifiedHit && addressesMatchOneForOne(address, this.verifiedHit.formattedAddress)
+			? this.verifiedHit
+			: null;
+		this.settled = true;
+		this.onDone({
+			gender: this.gender,
+			name: this.name.trim(),
+			address,
+			companion: this.companion.trim(),
+			priority: this.priority,
+			verifiedHit: verified,
+			publications: this.share.publications.trim(),
+			media: this.share.media.trim(),
+			publicationList: this.share.publicationList,
+			mediaList: this.share.mediaList,
+			lesson: this.share.lesson,
+			lessonFrom: this.share.lessonFrom,
+			lessonTo: this.share.lessonTo,
+			extraLesson: this.share.extraLesson,
+			extraFrom: this.share.extraFrom,
+			extraTo: this.share.extraTo,
+		});
+		this.close();
+	}
+
+	private paintGender(setting: Setting): void {
+		const buttons = setting.controlEl.querySelectorAll('button');
+		buttons.forEach((button) => {
+			button.classList.remove('mod-cta');
+			button.classList.toggle('is-selected', button.dataset.gender === this.gender);
+		});
+	}
+
+	private bindField(text: TextControl, commit: () => void, onChange: (value: string) => void): void {
+		text.inputEl?.addEventListener('keydown', (event) => {
+			if ((event as KeyboardEvent).key !== 'Enter') return;
+			event.preventDefault();
+			commit();
+		});
+		text.inputEl?.addEventListener('blur', () => commit());
+		const control = text as TextControl & { onChange?: (fn: (value: string) => void) => void };
+		control.onChange?.(onChange);
+	}
+
+	private forgetVerification(value: string): void {
+		if (!this.verifiedHit) return;
+		if (!addressesMatchOneForOne(value, this.verifiedHit.formattedAddress)) this.verifiedHit = null;
+	}
+
+	private addressChevronItems(): string[] {
+		const typed = this.addressInput?.inputEl instanceof HTMLInputElement ? this.addressInput.inputEl.value : this.address;
+		if (!typed.trim()) return [SUGGEST_PENDING];
+		const labels = this.addressResults.map((hit) => hit.formattedAddress).filter((label) => label.length > 0);
+		return this.addressLoading ? [SUGGEST_PENDING, ...labels] : labels;
+	}
+
+	private selectAddress(hit: GeocodeHit): void {
+		const label = hit.formattedAddress.replace(/\s+/g, ' ').trim();
+		this.address = label;
+		this.verifiedHit = { ...hit, formattedAddress: label };
+		const shown = this.addressInput?.inputEl instanceof HTMLInputElement ? this.addressInput.inputEl.value : undefined;
+		if (shown !== label) this.addressInput?.setValue(label);
+		const input = this.addressInput?.inputEl;
+		if (input instanceof HTMLInputElement) input.readOnly = false;
+	}
+
+	private commitAddressMatch(): void {
+		if (this.verifiedHit && addressesMatchOneForOne(this.address, this.verifiedHit.formattedAddress)) return;
+		const needle = this.address.replace(/\s+/g, ' ').trim().toLowerCase();
+		if (!needle) return;
+		const match = this.addressResults.find((hit) => {
+			const full = hit.formattedAddress.replace(/\s+/g, ' ').trim().toLowerCase();
+			return addressesMatchOneForOne(hit.formattedAddress, this.address)
+				|| abbreviateAddress(hit.formattedAddress).toLowerCase() === needle
+				|| full === needle;
+		});
+		if (!match) return;
+		this.selectAddress(match);
+	}
+
+	private selectCompanion(value: string): void {
+		this.companion = value;
+		this.companionPicked = true;
+		this.companionInput?.setValue(value);
+		this.companionInput?.inputEl?.classList.toggle('is-selected', true);
+	}
+
+	private commitCompanionMatch(): void {
+		if (this.companionPicked) return;
+		const match = exactCompanion(companionChoices(this.options.companions, this.companion), this.companion);
+		if (!match) return;
+		this.selectCompanion(match.value);
+	}
+}
+
+export function mountGenderButton(button: ButtonComponent, label: 'Man' | 'Woman', icon: string, selected: boolean): void {
+	button.setButtonText('');
+	button.setTooltip(label);
+	const el = button.buttonEl;
+	el.dataset.gender = label;
+	el.setAttribute('aria-label', label);
+	el.classList.toggle('is-selected', selected);
+	setIcon(el, icon);
+	el.createSpan({ cls: 'rv-gender-word', text: label });
+}
+
+export interface AttributeDraft {
+	name: string;
+	gender: RvGender;
+	status: RvStatus;
+	age: string;
+	ageExact: boolean;
+}
+
+/** The person's name, status, age, and Man/Woman. The filename street stays out of Name. */
+export class EditAttributesModal extends Modal {
+	private name: string;
+	private gender: RvGender;
+	private status: RvStatus;
+	private age: string;
+	private ageExact: boolean;
+	buttonAccent = '';
+
+	constructor(
+		app: App,
+		current: AttributeDraft,
+		private onDone: (next: AttributeDraft | null) => void,
+	) {
+		super(app);
+		this.name = current.name;
+		this.gender = current.gender;
+		this.status = current.status;
+		this.age = current.age;
+		this.ageExact = current.ageExact;
+	}
+
+	onOpen(): void {
+		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-edit-attributes');
+		markModalTone(this.modalEl, 'rv', this.buttonAccent);
+		this.setTitle('Edit attributes');
+		const fields = this.contentEl.createDiv('rv-attr-fields');
+		new Setting(fields)
+			.setClass('rv-attr-name')
+			.setName('Name')
+			.addText((text) => {
+				text.setValue(this.name);
+				text.inputEl?.setAttribute('aria-label', 'Name');
+				text.onChange((value) => { this.name = value; });
+			});
+		const status = new Setting(fields).setName('Status');
+		status.settingEl?.addClass('rv-status-choice');
+		const paintStatus = (): void => {
+			const buttons = status.settingEl?.querySelectorAll('button') ?? [];
+			buttons.forEach((button) => {
+				if (!(button instanceof HTMLButtonElement)) return;
+				button.classList.toggle('is-selected', button.dataset.status === this.status);
+			});
+		};
+		for (const option of ['Active', 'Study', 'Inactive'] as const) {
+			status.addButton((button) => {
+				const el = button.buttonEl;
+				el.dataset.status = option;
+				el.setAttribute('aria-label', option);
+				setIcon(el, statusIcon(option));
+				el.createSpan({ cls: 'rv-gender-word', text: option });
+				button.onClick(() => {
+					this.status = option;
+					paintStatus();
+				});
+			});
+		}
+		paintStatus();
+		const age = new Setting(fields).setName('Estimated age');
+		age.settingEl?.addClass('rv-age-choice');
+		age.addText((text) => {
+			text.setPlaceholder(this.ageExact ? '42' : '~35');
+			text.setValue(this.age);
+			text.inputEl?.setAttribute('aria-label', 'Estimated age');
+			text.inputEl?.setAttribute('inputmode', 'numeric');
+			text.onChange((value) => { this.age = value; });
+		});
+		const paintAge = (): void => {
+			const buttons = age.settingEl?.querySelectorAll('button') ?? [];
+			buttons.forEach((button) => {
+				if (!(button instanceof HTMLButtonElement)) return;
+				button.classList.toggle('is-selected', (button.dataset.exact === '1') === this.ageExact);
+			});
+		};
+		age.addButton((button) => {
+			button.buttonEl.dataset.exact = '0';
+			button.setButtonText('Approx');
+			button.onClick(() => {
+				this.ageExact = false;
+				paintAge();
+			});
+		});
+		age.addButton((button) => {
+			button.buttonEl.dataset.exact = '1';
+			button.setButtonText('Exact');
+			button.onClick(() => {
+				this.ageExact = true;
+				paintAge();
+			});
+		});
+		paintAge();
+		const gender = new Setting(fields).setName('Man / Woman');
+		gender.settingEl?.addClass('rv-gender-choice');
+		const paint = (): void => {
+			const buttons = gender.settingEl?.querySelectorAll('button') ?? [];
+			buttons.forEach((button) => {
+				if (!(button instanceof HTMLButtonElement)) return;
+				button.classList.toggle('is-selected', button.dataset.gender === this.gender);
+			});
+		};
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
+			button.onClick(() => {
+				this.gender = 'Man';
+				paint();
+			});
+		});
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
+			button.onClick(() => {
+				this.gender = 'Woman';
+				paint();
+			});
+		});
+		const bar = this.contentEl.createDiv('rv-modal-actions');
+		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+		const save = bar.createEl('button', { text: 'Save', cls: 'mod-cta', attr: { type: 'button' } });
+		cancel.addEventListener('click', () => {
+			this.onDone(null);
+			this.close();
+		});
+		save.addEventListener('click', () => {
+			const years = ageYears(this.age.replace(/^~/, ''));
+			this.onDone({
+				name: this.name,
+				gender: this.gender,
+				status: this.status,
+				age: years == null ? '' : String(years),
+				ageExact: this.ageExact,
+			});
+			this.close();
+		});
+		iconizeModal(this.contentEl);
+	}
+
+	onClose(): void {
+		this.contentEl.empty();
+	}
+}

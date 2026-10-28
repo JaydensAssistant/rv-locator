@@ -1,19 +1,36 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, visiblePropertyText } from '../src/active-layout';
-import { buildGeocodeUrl, formatSpecificAddress, googleMapsLink, normalizeAddress, parseGeocodeBody } from '../src/address';
+import { ACTIVE_SORT, NEARBY_COLUMN_ORDER, SORT_PRESETS, hubListIncludesActive, matchesActiveRvFilter, matchesNearbyScope, nextPresetSort, parsePriority, preferredSortDirection, resolveNearbyOrder, shouldUseActiveSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visiblePropertyText } from '../src/active-layout';
+import { abbreviateAddress, addressChevronLabels, addressesMatchOneForOne, buildGeocodeUrl, formatSpecificAddress, googleMapsAddressLink, mapsSearchQuery, normalizeAddress, parseGeocodeBody, recentAddresses, refreshBodyMapLink } from '../src/address';
+import { createCompanionPromptGate } from '../src/companion-prompt';
+import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, matchingCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
+import { CampaignModal } from '../src/campaign-modal';
+import { CompanionSuggestModal } from '../src/modals';
+import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
+import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
+import { requiredSetupGaps, setupChecklist, shouldPersistSetupWizardCompleted, shouldShowSetupNudge, type SetupSnapshot } from '../src/setup-check';
+import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
+import { GLANCABLE_CARD_LINES, glancableLineId } from '../src/glancable-lines';
+import { DEFAULT_NEW_RV_TEMPLATE, newRvLaunchError, newRvTemplateCandidates } from '../src/new-rv-launch';
 import { displayCity, parseDisplayAddress } from '../src/address-display';
 import { DISTANCE_COLUMN_ID, GEOCODE_ENDPOINT, GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION, PRIVACY_NOTICE } from '../src/constants';
 import { getCached, rememberResults, trimCache } from '../src/cache';
-import { formatDistance, haversineMeters, latLonFromUnknown, roundCoord } from '../src/distance';
-import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
-import { applyGeocodeHit, fillCity, fillSuccessfulVisits, planGeocodeWork, readAddress } from '../src/frontmatter';
-import { decideGeocodePick, streetTokensMatch } from '../src/home-base';
+import { coordString, formatDistance, haversineMeters, latLonFromUnknown } from '../src/distance';
+import { calendarDaysSince, dateCellDisplay, dateCellText, formatDriveDate, formatGlancableStampFromRaw, formatGlancableVisitStamp, formatWeekdayDate, isWeekdayProperty, parseDatePropertyNames, parseFlexibleDate, showsElapsedDays } from '../src/dates';
+import { applyGeocodeHit, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, locationPair, planGeocodeWork, readAddress } from '../src/frontmatter';
+import { countyFilterParam, countyNameKey, decideGeocodePick, hitInHomeCounties, isFullConfidence, normalizeCountyList, parseHomeCountyLines, preferHomeRegion } from '../src/home-base';
+import { canonicalUsCounty, isListedUsCounty, listedUsCounties } from '../src/us-county-index';
+import { glancableCardSlotPx, glancableCardWidthPx } from '../src/glancable-density';
+import { schedulePickerDismiss } from '../src/picker-gate';
 import { applyVisitBody, applyVisitFrontmatter, formatFrontmatterDateTime, formatVisitStamp } from '../src/visit-log';
 import { geocodeAddress, GeocodeRequestError } from '../src/geocode-client';
 import { RequestPacer } from '../src/pacer';
 import { redactSecrets } from '../src/redact';
 import { compareNullableNumber, cycleSort, sortRows, sortRowsBy } from '../src/sort';
+import { rvNoteTitle, streetShortName } from '../src/note-name';
+import { mergeHouseholdHubs } from '../src/hub-row';
+import { addressLookupDecision } from '../src/lookup-cadence';
 import { DEFAULT_SETTINGS, mergeSettings, sanitizeNearbySort, type GeocodeHit, type RVLocatorSettings } from '../src/types';
 
 const tacoma = {
@@ -28,10 +45,12 @@ const tacoma = {
 };
 
 describe('geocode request', () => {
-	it('uses the documented EU endpoint and sends only the address string', () => {
+	it('uses the global endpoint unless the region is EU', () => {
 		const url = new URL(buildGeocodeUrl('  7790 N Voyager Dr, Citrus Heights  ', 'secret-key'));
 		assert.equal(url.origin + url.pathname, GEOCODE_ENDPOINT);
-		assert.equal(url.host, 'api-eu.geoapify.com');
+		assert.equal(url.host, 'api.geoapify.com');
+		const eu = new URL(buildGeocodeUrl('7790 N Voyager Dr', 'secret-key', 'eu'));
+		assert.equal(eu.host, 'api-eu.geoapify.com');
 		assert.deepEqual([...url.searchParams.keys()].sort(), ['apiKey', 'format', 'limit', 'text']);
 		assert.equal(url.searchParams.get('text'), '7790 N Voyager Dr, Citrus Heights');
 		assert.equal(url.searchParams.get('format'), 'json');
@@ -39,6 +58,10 @@ describe('geocode request', () => {
 		assert.equal(GEOCODE_ENDPOINT.includes('nominatim'), false);
 		assert.equal(GEOCODE_ENDPOINT.includes('googleapis'), false);
 		assert.equal(url.searchParams.get('text')?.includes('Alana'), false);
+		const biased = new URL(buildGeocodeUrl('123 Main Street', 'secret-key', 'global', { lat: 34.05, lon: -118.25 }));
+		assert.equal(biased.host, 'api.geoapify.com');
+		assert.equal(biased.searchParams.get('bias'), 'proximity:-118.25,34.05');
+		assert.equal(biased.searchParams.get('filter'), null);
 	});
 
 	it('formats the most specific address from returned parts', () => {
@@ -80,10 +103,48 @@ describe('geocode request', () => {
 		assert.equal(hits[0]?.city, 'Tacoma');
 		assert.equal(hits[0]?.confidence, 1);
 		assert.equal(JSON.stringify(hits).includes('secret'), false);
+		const textual = parseGeocodeBody({
+			results: [{ ...tacoma, lat: 47.25, lon: -122.44, formatted: tacoma.formatted, rank: { confidence: '1.00', confidence_street_level: 0 } }],
+		});
+		assert.equal(textual[0]?.confidence, 1);
+		const streetOnly = parseGeocodeBody({
+			results: [{ ...tacoma, lat: 47.25, lon: -122.44, formatted: tacoma.formatted, rank: { confidence_street_level: 1 } }],
+		});
+		assert.equal(streetOnly[0]?.confidence, undefined);
+		assert.equal(isFullConfidence(undefined), false);
+		assert.equal(isFullConfidence(1), true);
+		assert.equal(isFullConfidence(1.0), true);
+		assert.equal(isFullConfidence(0.99), false);
 	});
 
-	it('builds a Google Maps link and does not call a geocoder', () => {
-		assert.equal(googleMapsLink(38.7, -121.28), 'https://www.google.com/maps?q=38.7,-121.28');
+	it('builds a Google Maps search link from the address text', () => {
+		assert.equal(
+			googleMapsAddressLink('142 Maple Street, Orlando, FL'),
+			'https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando%2C%20FL',
+		);
+		assert.equal(
+			googleMapsAddressLink('142 Maple\nStreet,  Orlando'),
+			'https://www.google.com/maps/search/?api=1&query=142%20Maple%20Street%2C%20Orlando',
+		);
+		assert.equal(googleMapsAddressLink('  1313 broadway  '), googleMapsAddressLink('1313 broadway'));
+		assert.equal(googleMapsAddressLink('1313 broadway').includes('47.25'), false);
+		assert.equal(googleMapsAddressLink('1313 broadway').includes('maps?q='), false);
+		assert.equal(
+			googleMapsAddressLink('123 S Main St', 'Orlando'),
+			'https://www.google.com/maps/search/?api=1&query=123%20S%20Main%20St%2C%20Orlando',
+		);
+		assert.equal(mapsSearchQuery('123 S Main St', 'Orlando'), '123 S Main St, Orlando');
+		assert.equal(googleMapsAddressLink('123 S Main St', ''), googleMapsAddressLink('123 S Main St'));
+		assert.equal(googleMapsAddressLink('123 S Main St', '   '), googleMapsAddressLink('123 S Main St'));
+		assert.equal(
+			googleMapsAddressLink('142 Maple Street, Orlando, FL', 'Tampa'),
+			googleMapsAddressLink('142 Maple Street, Orlando, FL'),
+		);
+		assert.equal(
+			googleMapsAddressLink('123 S Main St Orlando', 'Orlando'),
+			googleMapsAddressLink('123 S Main St Orlando'),
+		);
+		assert.equal(googleMapsAddressLink('123 S Main St', 'Orlando').includes('28.'), false);
 	});
 });
 
@@ -126,13 +187,17 @@ describe('privacy', () => {
 		assert.equal(frontmatter.Notes, 'Talked on the porch for twenty minutes.');
 		assert.equal(frontmatter.Address, '1313 broadway');
 		const location = frontmatter.Location;
+		const pair = locationPair(hit);
 		assert.ok(Array.isArray(location));
 		assert.equal(location.length, 2);
-		assert.equal(typeof location[0], 'number');
-		assert.equal(typeof location[1], 'number');
-		assert.deepEqual(location, [roundCoord(hit.lat), roundCoord(hit.lon)]);
-		assert.deepEqual(latLonFromUnknown(location), { lat: location[0], lon: location[1] });
-		assert.equal(frontmatter['Map Link'], `https://www.google.com/maps?q=${roundCoord(hit.lat)},${roundCoord(hit.lon)}`);
+		assert.equal(typeof location[0], 'string');
+		assert.equal(typeof location[1], 'string');
+		assert.deepEqual(location, pair);
+		assert.deepEqual(latLonFromUnknown(location), { lat: Number(pair[0]), lon: Number(pair[1]) });
+		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('1313 broadway', 'Tacoma'));
+		assert.equal(String(frontmatter['Map Link']).includes('Tacoma'), true);
+		assert.equal(String(frontmatter['Map Link']).includes(String(pair[0])), false);
+		assert.equal(String(frontmatter['Map Link']).includes(String(pair[1])), false);
 		assert.equal(frontmatter.City, 'Tacoma');
 		assert.equal('County' in frontmatter, false);
 		assert.equal('Distance' in frontmatter, false);
@@ -154,37 +219,67 @@ describe('privacy', () => {
 		assert.equal(readAddress({ Address: '10 Main' }, 'address'), '10 Main');
 	});
 
-	it('writes Location as two numbers and reads block or flow lists', () => {
+	it('writes Location as two quoted-string coordinates and reads them back', () => {
+		assert.equal(coordString(29.0313846), '29.0313846');
+		assert.equal(coordString(-82.5209372), '-82.5209372');
+		assert.equal(coordString(28.985237), '28.985237');
+		assert.equal(coordString(-82.4867061), '-82.4867061');
 		const frontmatter: Record<string, unknown> = {
 			Address: '10 Main St',
 			Location: '47.2, -122.4',
 		};
 		const settings: RVLocatorSettings = { ...DEFAULT_SETTINGS };
-		applyGeocodeHit(frontmatter, {
-			lat: 47.250944967,
-			lon: -122.439413029,
-			formattedAddress: '10 Main St, Tacoma',
-		}, settings);
+		const hit: GeocodeHit = {
+			lat: 29.0313846,
+			lon: -82.5209372,
+			formattedAddress: '10 Main St, Ocala',
+			city: 'Ocala',
+		};
+		applyGeocodeHit(frontmatter, hit, settings);
 		const location = frontmatter.Location;
 		assert.ok(Array.isArray(location));
-		assert.equal(location.length, 2);
-		assert.equal(typeof location[0], 'number');
-		assert.equal(typeof location[1], 'number');
+		assert.deepEqual(location, ['29.0313846', '-82.5209372']);
+		assert.equal(typeof location[0], 'string');
+		assert.equal(typeof location[1], 'string');
 		assert.equal(frontmatter.Address, '10 Main St');
-		assert.equal(frontmatter.City, 'Tacoma');
+		assert.equal(frontmatter['Map Link'], googleMapsAddressLink('10 Main St', 'Ocala'));
+		assert.equal(String(frontmatter['Map Link']).includes('Ocala'), true);
+		assert.equal(frontmatter.City, 'Ocala');
 		assert.equal('Last Attempted' in frontmatter, false);
-		assert.equal(typeof frontmatter.Location, 'object');
-		const block = latLonFromUnknown([location[0], location[1]]);
-		const flow = latLonFromUnknown([location[0], location[1]]);
+		assert.deepEqual(latLonFromUnknown(location), { lat: 29.0313846, lon: -82.5209372 });
 		const flowText = latLonFromUnknown(`[${location[0]}, ${location[1]}]`);
-		assert.deepEqual(block, flow);
-		assert.deepEqual(flowText, { lat: location[0], lon: location[1] });
-		assert.equal(latLonFromUnknown([String(location[0]), String(location[1])])?.lat, location[0]);
+		assert.deepEqual(flowText, { lat: 29.0313846, lon: -82.5209372 });
 		const skipped = planGeocodeWork([
 			{ path: 'listed.md', frontmatter: { Address: '10 Main St', Location: location } },
+			{ path: 'old.md', frontmatter: { Address: '11 Main St', Location: [28.985237, -82.4867061] } },
 		], settings, false);
 		assert.equal(skipped.length, 0);
 		assert.equal('Distance' in frontmatter, false);
+		const blocked = { ...DEFAULT_SETTINGS, locationProperty: 'Address' };
+		const locked: Record<string, unknown> = { Address: 'keep me' };
+		applyGeocodeHit(locked, hit, blocked);
+		assert.equal(locked.Address, 'keep me');
+		assert.equal('Location' in locked, false);
+
+		const numeric = `---\nAddress: 10 Main St\nLocation:\n  - 28.985237\n  - -82.4867061\nCity: Ocala\n---\n\nNotes stay.\n`;
+		const quoted = ensureQuotedLocationList(numeric, 'Location', ['28.985237', '-82.4867061']);
+		assert.match(quoted, /Location:\n {2}- "28.985237"\n {2}- "-82.4867061"/);
+		assert.match(quoted, /Address: 10 Main St/);
+		assert.match(quoted, /City: Ocala/);
+		assert.match(quoted, /Notes stay\./);
+		assert.equal(quoted.includes('\n  - 28.985237\n'), false);
+		assert.equal(quoted.includes('\n  - -82.4867061\n'), false);
+		const again = ensureQuotedLocationList(quoted, 'Location', ['28.985237', '-82.4867061']);
+		assert.equal(again, quoted);
+		const flow = `---\nAddress: keep\nLocation: [28.985237, -82.4867061]\n---\n`;
+		const fromFlow = ensureQuotedLocationList(flow, 'Location', ['28.985237', '-82.4867061']);
+		assert.match(fromFlow, /Address: keep/);
+		assert.match(fromFlow, /Location:\n {2}- "28.985237"\n {2}- "-82.4867061"\n---/);
+		assert.equal(ensureQuotedLocationList(numeric, 'Address', ['1', '2']), numeric);
+		assert.equal(ensureQuotedLocationList(numeric, 'Location', ['1', '2'], 'Location'), numeric);
+		const crlf = '---\r\nAddress: 10 Main St\r\nLocation:\r\n  - 1\r\n  - -2\r\n---\r\n\r\nBody\r\n';
+		const crlfOut = ensureQuotedLocationList(crlf, 'Location', ['29.0313846', '-82.5209372']);
+		assert.match(crlfOut, /Address: 10 Main St\r\nLocation:\r\n {2}- "29.0313846"\r\n {2}- "-82.5209372"\r\n---\r\n\r\nBody/);
 	});
 });
 
@@ -311,7 +406,30 @@ describe('distance and dates', () => {
 		assert.equal(scrambled[scrambled.indexOf('note.Last Spoke') + 1], 'note.Last Attempted');
 		assert.equal(scrambled[scrambled.indexOf('note.Last Attempted') + 1], 'note.Met');
 		assert.equal(scrambled[scrambled.length - 1], 'note.Taken');
-		assert.deepEqual(SORT_PRESETS.map((preset) => preset.label), ['Nearest', 'Priority', 'Last Spoke', 'Last Attempted']);
+		assert.deepEqual(SORT_PRESETS.map((preset) => preset.id), [
+			'ideality',
+			'urgency',
+			'distance',
+			'priority',
+			'spoke',
+			'attempted',
+			'met',
+			'city',
+		]);
+		assert.deepEqual(
+			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, null)),
+			['Ideality (beta) · high', 'Urgency · high', 'Nearest', 'Priority · high', 'Spoke · oldest', 'Attempted · oldest', 'Met · newest', 'City · nearest'],
+		);
+		assert.deepEqual(
+			SORT_PRESETS.map((preset) => sortPresetChipLabel(preset, preset.defaultDirection === 'ASC' ? 'DESC' : 'ASC')),
+			['Ideality (beta) · low', 'Urgency · low', 'Furthest', 'Priority · low', 'Spoke · newest', 'Attempted · newest', 'Met · oldest', 'City · furthest'],
+		);
+		assert.deepEqual(
+			SORT_PRESETS.map((preset) => sortPresetShortLabel(preset)),
+			['Score', 'Urgent', 'Near', 'Priority', 'Oldest', 'Tries', 'Met', 'City'],
+		);
+		assert.equal(sortDirectionArrow('ASC'), 'arrow-up');
+		assert.equal(sortDirectionArrow('DESC'), 'arrow-down');
 		const cased = resolveNearbyOrder([], ['note.priority', 'note.address']);
 		assert.ok(cased.includes('note.priority'));
 		assert.ok(cased.includes('note.address'));
@@ -321,8 +439,38 @@ describe('distance and dates', () => {
 		assert.equal(shouldUseActiveSort([{ property: 'file.name', direction: 'ASC' }]), true);
 		assert.equal(shouldUseActiveSort([{ property: 'note.Priority', direction: 'DESC' }]), false);
 		assert.equal(preferredSortDirection('note.Priority'), 'DESC');
+		assert.equal(preferredSortDirection('note.Last Spoke'), 'ASC');
+		assert.equal(preferredSortDirection('note.Last Attempted'), 'ASC');
 		assert.equal(preferredSortDirection('note.Met'), 'DESC');
 		assert.equal(preferredSortDirection(DISTANCE_COLUMN_ID), 'ASC');
+		const nearest = SORT_PRESETS.find((preset) => preset.id === 'distance');
+		const spoke = SORT_PRESETS.find((preset) => preset.id === 'spoke');
+		const attempted = SORT_PRESETS.find((preset) => preset.id === 'attempted');
+		assert.ok(nearest && spoke && attempted);
+		assert.deepEqual(nextPresetSort(null, nearest), { property: nearest.property, direction: 'ASC' });
+		assert.deepEqual(
+			nextPresetSort({ property: nearest.property, direction: 'ASC' }, nearest),
+			{ property: nearest.property, direction: 'DESC' },
+		);
+		assert.deepEqual(nextPresetSort({ property: nearest.property, direction: 'DESC' }, spoke), {
+			property: spoke.property,
+			direction: 'ASC',
+		});
+		assert.deepEqual(
+			nextPresetSort({ property: spoke.property, direction: 'ASC' }, spoke),
+			{ property: spoke.property, direction: 'DESC' },
+		);
+		assert.deepEqual(nextPresetSort(null, attempted), { property: attempted.property, direction: 'ASC' });
+		assert.deepEqual(GLANCABLE_CARD_LINES.map((line) => line.id), [
+			'name',
+			'place',
+			'last-spoke',
+			'last-attempted',
+			'met',
+			'foot',
+		]);
+		assert.equal(glancableLineId(2), 'last-spoke');
+		assert.equal(glancableLineId(4), 'met');
 		assert.deepEqual(ACTIVE_SORT.map((item) => item.property), [
 			'note.Priority',
 			'note.Last Spoke',
@@ -378,6 +526,46 @@ describe('distance and dates', () => {
 		assert.equal(visiblePropertyText('Person 1'), 'Person 1');
 	});
 
+	it('sorts Met newest first, flips to oldest, and keeps a missing Met last', () => {
+		const met = SORT_PRESETS.find((preset) => preset.property === 'note.Met');
+		const spoke = SORT_PRESETS.find((preset) => preset.property === 'note.Last Spoke');
+		const attempted = SORT_PRESETS.find((preset) => preset.property === 'note.Last Attempted');
+		assert.ok(met && spoke && attempted);
+		assert.equal(met.defaultDirection, 'DESC');
+		assert.equal(spoke.defaultDirection, 'ASC');
+		assert.equal(attempted.defaultDirection, 'ASC');
+		assert.equal(sortPresetChipLabel(met, null), 'Met · newest');
+		assert.equal(sortPresetChipLabel(met, 'DESC'), 'Met · newest');
+		assert.equal(sortPresetChipLabel(met, 'ASC'), 'Met · oldest');
+		assert.deepEqual(nextPresetSort(null, met), { property: 'note.Met', direction: 'DESC' });
+		assert.deepEqual(
+			nextPresetSort({ property: 'note.Met', direction: 'DESC' }, met),
+			{ property: 'note.Met', direction: 'ASC' },
+		);
+		assert.deepEqual(
+			nextPresetSort({ property: 'note.Met', direction: 'ASC' }, met),
+			{ property: 'note.Met', direction: 'DESC' },
+		);
+		const row = (id: string, metValue: number | null) => ({
+			lat: null,
+			lon: null,
+			id,
+			sortKeys: {
+				'note.Met': metValue == null ? { kind: 'empty' as const } : { kind: 'date' as const, value: metValue },
+			},
+		});
+		const rows = [
+			row('mid', Date.parse('2026-06-01T00:00:00')),
+			row('none', null),
+			row('new', Date.parse('2026-09-01T00:00:00')),
+			row('old', Date.parse('2026-01-01T00:00:00')),
+		];
+		const newest = sortRows(rows, nextPresetSort(null, met), null, DISTANCE_COLUMN_ID);
+		assert.deepEqual(newest.map((item) => item.id), ['new', 'mid', 'old', 'none']);
+		const oldest = sortRows(rows, nextPresetSort({ property: 'note.Met', direction: 'DESC' }, met), null, DISTANCE_COLUMN_ID);
+		assert.deepEqual(oldest.map((item) => item.id), ['old', 'mid', 'new', 'none']);
+	});
+
 	it('sorts like Active RVs before any distance override', () => {
 		const rows = [
 			activeRow('low', 1, '2026-09-20', 'B', 2),
@@ -430,6 +618,10 @@ describe('distance and dates', () => {
 		assert.equal(formatDriveDate('2026-09-09T23:45').rest, 'Sep 10, 2026');
 		assert.equal(formatDriveDate('').empty, true);
 		assert.equal(formatDriveDate('true').empty, true);
+		assert.equal(formatGlancableStampFromRaw('2026-09-09T13:38:03'), 'Wed, 2pm — Sep 9, 2026');
+		assert.equal(formatGlancableStampFromRaw('2026-09-09'), 'Wed — Sep 9, 2026');
+		assert.equal(formatGlancableVisitStamp(new Date(2026, 8, 9, 13, 38, 3)), 'Wed, 2pm — Sep 9, 2026');
+		assert.equal(formatGlancableVisitStamp(new Date(2026, 8, 9, 23, 45, 0)), 'Thu, 12am — Sep 10, 2026');
 		const today = new Date(2026, 8, 26);
 		assert.equal(calendarDaysSince('2026-09-09T13:38:03', today), 17);
 		assert.equal(calendarDaysSince('2026-09-09T23:45', today), 17);
@@ -502,6 +694,9 @@ describe('successful visits', () => {
 		}, DEFAULT_SETTINGS);
 		assert.equal(fromResult.Address, 'old');
 		assert.equal(fromResult.City, 'Crystal River');
+		assert.equal(fromResult['Map Link'], googleMapsAddressLink('old', 'Crystal River'));
+		assert.equal(String(fromResult['Map Link']).includes('Crystal%20River'), true);
+		assert.equal(String(fromResult['Map Link']).includes('28.99'), false);
 
 		const fromAddress: Record<string, unknown> = {};
 		applyGeocodeHit(fromAddress, {
@@ -511,9 +706,52 @@ describe('successful visits', () => {
 		}, DEFAULT_SETTINGS);
 		assert.equal('Address' in fromAddress, false);
 		assert.equal(fromAddress.City, 'Dunnellon');
+		assert.equal(fromAddress['Map Link'], googleMapsAddressLink('456 SW Dunnellon Rd, Dunnellon, FL'));
 		assert.equal('Visits' in fromAddress, false);
 		assert.equal('Successful Visits' in fromAddress, false);
 		assert.equal('Last Attempted' in fromAddress, false);
+
+		const stale: Record<string, unknown> = {
+			Address: '20 Oak St',
+			City: 'Orlando',
+			County: 'Orange County',
+			Location: ['28.5', '-81.3'],
+			'Map Link': googleMapsAddressLink('20 Oak St', 'Orlando'),
+		};
+		const countySettings = mergeSettings({ countyProperty: 'County' });
+		applyGeocodeHit(stale, {
+			lat: 28.69,
+			lon: -81.51,
+			formattedAddress: '20 Oak St, Apopka, FL',
+			city: 'Apopka',
+		}, countySettings);
+		assert.equal(stale.Address, '20 Oak St');
+		assert.equal(stale.City, 'Apopka');
+		assert.equal('County' in stale, false);
+		assert.deepEqual(stale.Location, locationPair({ lat: 28.69, lon: -81.51 }));
+		assert.equal(stale['Map Link'], googleMapsAddressLink('20 Oak St', 'Apopka'));
+		assert.equal(String(stale['Map Link']).includes('Orlando'), false);
+
+		const cleared: Record<string, unknown> = {
+			Address: '20 Oak St',
+			City: 'Orlando',
+			County: 'Orange County',
+			'Map Link': googleMapsAddressLink('20 Oak St', 'Orlando'),
+		};
+		applyGeocodeHit(cleared, {
+			lat: 28.1,
+			lon: -81.1,
+			formattedAddress: '20 Oak St',
+		}, countySettings);
+		assert.equal(cleared.Address, '20 Oak St');
+		assert.equal('City' in cleared, false);
+		assert.equal('County' in cleared, false);
+		assert.equal(String(cleared['Map Link']).includes('Orlando'), false);
+		const body = '> **Address:** `INPUT[text:Address]` [🗺️](https://www.google.com/maps/search/?api=1&query=old)\n';
+		const refreshed = refreshBodyMapLink(body, String(stale['Map Link']));
+		assert.equal(refreshed.includes(`[🗺️](${String(stale['Map Link'])})`), true);
+		assert.equal(refreshed.includes('query=old'), false);
+		assert.equal(refreshed.includes('INPUT[text:Address]'), true);
 
 		const ready = {
 			Address: '1313 Broadway, Citrus Springs, FL 34434',
@@ -548,9 +786,61 @@ describe('settings', () => {
 		assert.deepEqual(merged.homeCounties, []);
 		const homes = mergeSettings({ homeCounties: ['Orange', 'orange county', 'Lake'] });
 		assert.deepEqual(homes.homeCounties, ['Orange', 'Lake']);
+		assert.deepEqual(parseHomeCountyLines('Orange\n\n Lake \n'), ['Orange', 'Lake']);
+		assert.deepEqual(mergeSettings({ homeCounties: parseHomeCountyLines('Orange County\norange\nLake') }).homeCounties, ['Orange County', 'Lake']);
 		assert.equal(merged.locationProperty, 'Location');
 		assert.equal(merged.mapLinkProperty, 'Map Link');
 		assert.equal(merged.cityProperty, '');
+		assert.equal(merged.defaultNewRvPriority, 4);
+		assert.equal(merged.newRvTemplateFile, '99 New RV.md');
+		assert.equal(merged.homeLogTemplateFile, '99 RV Log Home.md');
+		assert.equal(merged.missLogTemplateFile, '99 RV Log Miss.md');
+		assert.equal(merged.setupWizardCompleted, false);
+		assert.equal(merged.setupIncompleteNudgeDismissed, false);
+		const tuned = mergeSettings({
+			defaultNewRvPriority: 0,
+			newRvTemplateFile: 'Custom New.md',
+			homeLogTemplateFile: 'Home.md',
+			missLogTemplateFile: 'Miss.md',
+			setupWizardCompleted: true,
+			setupIncompleteNudgeDismissed: true,
+		});
+		assert.equal(tuned.defaultNewRvPriority, 0);
+		assert.equal(tuned.newRvTemplateFile, 'Custom New.md');
+		assert.equal(tuned.homeLogTemplateFile, 'Home.md');
+		assert.equal(tuned.missLogTemplateFile, 'Miss.md');
+		assert.equal(tuned.setupWizardCompleted, true);
+		assert.equal(tuned.setupIncompleteNudgeDismissed, true);
+		const ignored = mergeSettings({ setupIncompleteNudgeDismissed: true, setupWizardCompleted: false });
+		assert.equal(ignored.setupIncompleteNudgeDismissed, true);
+		assert.equal(ignored.setupWizardCompleted, false);
+		const rejected = mergeSettings({
+			defaultNewRvPriority: 9,
+			newRvTemplateFile: '../nope.md',
+			homeLogTemplateFile: 'notes.txt',
+			setupWizardCompleted: false,
+		});
+		assert.equal(rejected.defaultNewRvPriority, 4);
+		const droppedCompanionLink = mergeSettings(JSON.parse('{"linkCompanionsToNotes":true,"defaultNewRvPriority":1}') as never);
+		assert.equal(droppedCompanionLink.defaultNewRvPriority, 1);
+		assert.equal('linkCompanionsToNotes' in droppedCompanionLink, false);
+		assert.equal(rejected.newRvTemplateFile, '99 New RV.md');
+		assert.equal(rejected.homeLogTemplateFile, '99 RV Log Home.md');
+		assert.equal(mergeSettings({ newRvTemplateFile: 'a<b>.md' }).newRvTemplateFile, '99 New RV.md');
+		assert.equal(mergeSettings({ newRvTemplateFile: 'bad\\name.md' }).newRvTemplateFile, '99 New RV.md');
+		assert.equal(mergeSettings({ newRvTemplateFile: '/tmp/Home.md' }).newRvTemplateFile, '99 New RV.md');
+		assert.equal(safeTemplateFileName('New RV.md', '99 New RV.md'), 'New RV.md');
+		assert.equal(safeTemplateFileName('notes.txt', '99 New RV.md'), '99 New RV.md');
+		assert.equal(safeVaultFolder('+/Templates', 'Templates'), '+/Templates');
+		assert.equal(safeVaultFolder('Ministry/Templates', 'Templates'), 'Ministry/Templates');
+		assert.equal(safeVaultFolder('~/Templates', 'Templates'), 'Templates');
+		assert.equal(safeVaultFolder('..\\nope', 'Templates'), 'Templates');
+		assert.equal(safeVaultFolder('C:/Templates', 'Templates'), 'Templates');
+		assert.equal(pathInsideFolder('+/Templates', '+/Templates/99 New RV.md'), true);
+		assert.equal(pathInsideFolder('Templates', 'Templates/../data.json'), false);
+		assert.equal(pathInsideFolder('Templates', 'TemplatesExtra/99 New RV.md'), false);
+		assert.equal(mergeSettings({ defaultNewRvPriority: '5' }).defaultNewRvPriority, 5);
+		assert.equal(mergeSettings({ defaultNewRvPriority: 1.5 }).defaultNewRvPriority, 4);
 		assert.deepEqual(merged.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
 		const legacy = mergeSettings({ weekdayDateProperties: 'Last Spc, Met' } as Partial<RVLocatorSettings>);
 		assert.deepEqual(legacy.datePropertiesForWeekday, ['Last Spoke', 'Met', 'Last Attempted']);
@@ -595,6 +885,7 @@ describe('home base pick', () => {
 		street: 'Maple Street',
 		county: 'Orange County',
 		city: 'Orlando',
+		confidence: 1,
 	};
 	const hammock: GeocodeHit = {
 		lat: 1,
@@ -603,55 +894,149 @@ describe('home base pick', () => {
 		housenumber: '10',
 		street: 'Oak Hammock Lane',
 		county: 'Orange County',
-	};
-	const redOak: GeocodeHit = {
-		lat: 1,
-		lon: 2,
-		formattedAddress: '8 Red Oak Lane, Orlando, FL',
-		housenumber: '8',
-		street: 'Red Oak Lane',
-		county: 'Orange County',
+		confidence: 1,
 	};
 
-	it('auto-picks the only in-county street match', () => {
-		assert.equal(streetTokensMatch('142 Maple Street, Orlando', maple), true);
-		assert.equal(streetTokensMatch('Oak Lane', hammock), false);
-		assert.equal(streetTokensMatch('Oak Lane', redOak), false);
-		assert.equal(streetTokensMatch('144 Maple Street', maple), false);
-		const picked = decideGeocodePick('142 Maple Street, Orlando', [maple, hammock], ['Orange']);
-		assert.equal(picked.hit, null);
-		const only = decideGeocodePick('142 Maple Street, Orlando', [maple, { ...hammock, county: 'Lake County' }], ['orange county']);
+	it('auto-picks the only in-home hit when confidence is 1.00', () => {
+		const both = decideGeocodePick([maple, hammock], ['Orange']);
+		assert.equal(both.hit, null);
+		const only = decideGeocodePick([maple, { ...hammock, county: 'Lake County' }], ['orange county']);
 		assert.equal(only.hit?.street, 'Maple Street');
+		const decimal = decideGeocodePick([{ ...maple, confidence: 1.0 }], ['Orange']);
+		assert.equal(decimal.hit?.street, 'Maple Street');
+		const outside = decideGeocodePick([{ ...maple, county: 'Seminole County' }], ['Orange']);
+		assert.equal(outside.hit?.street, 'Maple Street');
+		assert.equal(decideGeocodePick(
+			[{ ...maple, county: 'Seminole County' }, { ...hammock, county: 'Lake County' }],
+			['Orange'],
+		).hit, null);
+		const low = decideGeocodePick(
+			[{ ...maple, county: 'Seminole County' }, { ...hammock, confidence: 0.2 }],
+			['Orange'],
+		);
+		assert.equal(low.hit, null);
 	});
 
-	it('shows the picker when the home list is empty or the street is ambiguous', () => {
-		assert.equal(decideGeocodePick('142 Maple Street', [maple], []).hit, null);
-		assert.equal(decideGeocodePick('Oak Lane', [hammock], ['Orange']).hit, null);
-		assert.equal(decideGeocodePick('142 Maple Street', [{ ...maple, county: 'Seminole County' }], ['Orange']).hit, null);
+	it('shows the picker when confidence is missing, not 1, home is empty, or several hits are in-home', () => {
+		assert.equal(decideGeocodePick([maple], []).hit, null);
+		assert.equal(decideGeocodePick([{ ...hammock, confidence: undefined }], ['Orange']).hit, null);
+		assert.equal(decideGeocodePick([{ ...hammock, confidence: 0.99 }], ['Orange']).hit, null);
+		assert.equal(decideGeocodePick([maple, hammock], ['Orange County']).hit, null);
+		const citrus = decideGeocodePick([{ ...maple, county: 'Citrus' }], ['Citrus County, FL']);
+		assert.equal(citrus.hit?.street, 'Maple Street');
+		assert.equal(countyNameKey('Citrus County, FL'), 'citrus');
+		assert.equal(canonicalUsCounty('Citrus'), 'Citrus County, FL');
+		assert.equal(canonicalUsCounty('Citrus County, FL'), 'Citrus County, FL');
+		assert.equal(canonicalUsCounty('Marion'), null);
+		assert.deepEqual(normalizeCountyList(['Citrus', 'Citrus County, FL']), ['Citrus County, FL']);
+		assert.equal(countyFilterParam(['Citrus County, FL', 'Marion County, FL']), 'Citrus County|Marion County');
+		assert.equal(glancableCardSlotPx(1236, DEFAULT_SETTINGS), 400);
+		assert.equal(glancableCardSlotPx(400, DEFAULT_SETTINGS), 380);
+		assert.equal(glancableCardWidthPx(1236, 0, DEFAULT_SETTINGS), 400);
+		assert.equal(glancableCardWidthPx(1236, 12, DEFAULT_SETTINGS), 396);
+		assert.equal(glancableCardWidthPx(412, 0, DEFAULT_SETTINGS), 392);
+		assert.equal(glancableCardWidthPx(412, 12, DEFAULT_SETTINGS), 380);
+		assert.equal(hitInHomeCounties({ county: 'Marion' }, ['Marion County, FL']), true);
+		assert.equal(isListedUsCounty('Citrus'), true);
+		assert.equal(isListedUsCounty('Citrus County'), true);
+		assert.equal(isListedUsCounty('Citrus County, FL'), true);
+		assert.equal(isListedUsCounty('Marion'), true);
+		assert.equal(isListedUsCounty('Not A Real County'), false);
+		assert.equal(listedUsCounties('citrus').includes('Citrus County, FL'), true);
+		assert.equal(listedUsCounties('marion').includes('Marion County, FL'), true);
+		assert.deepEqual(mergeSettings({ homeCounties: ['Citrus County, FL\nMarion County, FL'] }).homeCounties, ['Citrus County, FL', 'Marion County, FL']);
 		const blocked = { ...DEFAULT_SETTINGS, countyProperty: 'Address' };
 		const frontmatter: Record<string, unknown> = { Address: 'keep me' };
 		applyGeocodeHit(frontmatter, maple, blocked);
 		assert.equal(frontmatter.Address, 'keep me');
-		assert.equal(frontmatter.Location != null, true);
+		assert.deepEqual(frontmatter.Location, ['1', '2']);
+	});
+});
+
+describe('picker confirm', () => {
+	function settle(order: ReadonlyArray<'close' | 'pick'>): 'updated' | 'passed' | null {
+		let chose = false;
+		let settled: 'updated' | 'passed' | null = null;
+		const later: Array<() => void> = [];
+		const finish = (kind: 'updated' | 'passed') => {
+			if (settled) return;
+			settled = kind;
+		};
+		for (const event of order) {
+			if (event === 'close') {
+				schedulePickerDismiss(() => chose, () => finish('passed'), (run) => later.push(run));
+				continue;
+			}
+			chose = true;
+			finish('updated');
+		}
+		for (const run of later) run();
+		return settled;
+	}
+
+	it('counts a confirmed pick after the modal closes, and a bare close as a skip', () => {
+		assert.equal(settle(['close', 'pick']), 'updated');
+		assert.equal(settle(['pick', 'close']), 'updated');
+		assert.equal(settle(['close']), 'passed');
+	});
+});
+
+describe('new RV note title', () => {
+	it('uses the householder and a short street name', () => {
+		assert.equal(streetShortName('142 Maple Street, Orlando, FL'), 'Maple Street');
+		assert.equal(streetShortName('88 Cypress Ave'), 'Cypress Ave');
+		assert.equal(streetShortName('10 Oak Hammock Lane, Orlando'), 'Oak Hammock Lane');
+		assert.equal(streetShortName('7790 N Voyager Dr, Citrus Heights'), 'Voyager Dr');
+		assert.equal(streetShortName('1313 Broadway, Tacoma, WA'), 'Broadway');
+		assert.equal(streetShortName('142 maple street'), 'Maple Street');
+		assert.equal(rvNoteTitle('Alex', '142 Maple Street, Orlando'), 'Alex on Maple Street');
+		assert.equal(rvNoteTitle('Riley', '88 Cypress Ave'), 'Riley on Cypress Ave');
+		assert.equal(rvNoteTitle('Sam', '10 Oak Hammock Ln'), 'Sam on Oak Hammock Ln');
+		assert.equal(rvNoteTitle('A/B', '1 Main St'), 'A B on Main St');
+		assert.equal(rvNoteTitle('', '142 Maple Street'), 'Maple Street');
+		assert.equal(rvNoteTitle('Alex', ''), 'Alex');
 	});
 });
 
 describe('visit log', () => {
 	const now = new Date(2026, 8, 26, 23, 12, 4);
+	const stampLine = '##### Sat, 11:12pm — Sep 26, 2026 <span class="rv-stamp-ago">Today</span>';
+	const notesField = '`INPUT[textArea:sVisit1Notes]`';
 
 	it('logs a home visit without touching Address', () => {
-		assert.equal(formatVisitStamp(now), 'Sat, Sep 26, 2026, 11:12pm');
+		assert.equal(formatVisitStamp(now), 'Sat, 11:12pm — Sep 26, 2026');
+		assert.equal(formatGlancableVisitStamp(now), 'Sat, 11pm — Sep 26, 2026');
 		assert.equal(formatFrontmatterDateTime(now), '2026-09-26T23:12:04');
-		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', Visits: 2, 'Successful Visits': 1 };
-		applyVisitFrontmatter(frontmatter, 'home', now);
+		const frontmatter: Record<string, unknown> = {
+			Address: '142 Maple Street',
+			Visits: 2,
+			'Successful Visits': 1,
+			'Met With': 'Door',
+		};
+		applyVisitFrontmatter(frontmatter, 'home', now, 'Sam');
 		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], 'Door');
+		assert.deepEqual(frontmatter.Taken, ['Sam']);
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 2);
 		assert.equal(frontmatter['Last Spoke'], '2026-09-26T23:12:04');
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('Talked on the porch.\n', 'home', now);
-		assert.match(body, /## Sat, Sep 26, 2026, 11:12pm\n\n## Attempt Log\n- Sat, Sep 26, 2026, 11:12pm — success\n$/);
-		assert.match(body, /^Talked on the porch\./);
+		assert.equal(body, [
+			'Talked on the porch.',
+			'',
+			'### Recent Notes:',
+			stampLine,
+			notesField,
+			'',
+			'> [!note]- Log',
+			'> - Sat, 11:12pm — Sep 26, 2026 — success',
+			'',
+		].join('\n'));
+		assert.equal(body.includes('## Attempt Log'), false);
+		const stampAt = body.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
+		const logAt = body.indexOf('> [!note]- Log');
+		assert.ok(stampAt >= 0 && stampAt < logAt);
 	});
 
 	it('logs a miss on Visits and Last Attempted only', () => {
@@ -661,17 +1046,205 @@ describe('visit log', () => {
 			'Successful Visits': 1,
 			'Last Spoke': '2026-09-01T10:00:00',
 		};
-		applyVisitFrontmatter(frontmatter, 'miss', now);
+		applyVisitFrontmatter(frontmatter, 'miss', now, 'Sam');
 		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], undefined);
+		assert.equal(frontmatter.Taken, undefined);
 		assert.equal(frontmatter.Visits, 3);
 		assert.equal(frontmatter['Successful Visits'], 1);
 		assert.equal(frontmatter['Last Spoke'], '2026-09-01T10:00:00');
 		assert.equal(frontmatter['Last Attempted'], '2026-09-26T23:12:04');
 		const body = applyVisitBody('', 'miss', now);
-		assert.equal(body.includes('## Sat, Sep 26, 2026, 11:12pm'), false);
-		assert.match(body, /^## Attempt Log\n- Sat, Sep 26, 2026, 11:12pm — not home\n$/);
+		assert.equal(body.includes('## Sat, 11:12pm — Sep 26, 2026'), false);
+		assert.equal(body, [
+			'> [!note]- Log',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
 		const again = applyVisitBody(body, 'miss', now);
-		assert.equal(again.split('- Sat, Sep 26, 2026, 11:12pm — not home').length, 3);
+		assert.equal(again, [
+			'> [!note]- Log',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+	});
+
+	it('appends inside an existing collapsed or expanded Attempt Log callout', () => {
+		const collapsed = '> [!note]- Attempt Log\n> - Mon, 9am — Sep 1, 2026 — success\n';
+		const next = applyVisitBody(collapsed, 'miss', now);
+		assert.equal(next, [
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+
+		const expanded = [
+			'> [!note]+ Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — not home',
+			'',
+			'Footer.',
+			'',
+		].join('\n');
+		const more = applyVisitBody(expanded, 'home', now);
+		assert.equal(more, [
+			'### Recent Notes:',
+			stampLine,
+			notesField,
+			'',
+			'> [!note]+ Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — success',
+			'',
+			'Footer.',
+			'',
+		].join('\n'));
+		assert.ok(more.indexOf('##### Sat, 11:12pm — Sep 26, 2026') < more.indexOf('> [!note]+ Attempt Log'));
+	});
+
+	it('writes another home stamp in the same rounded hour, and a miss still logs', () => {
+		const existing = [
+			'### Sat, 11:12pm — Sep 26, 2026',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Sat, 11:12pm — Sep 26, 2026 — success',
+			'',
+		].join('\n');
+		const next = applyVisitBody(existing, 'home', now);
+		assert.equal(next.split('\n').filter((line) => line === stampLine).length, 2);
+		assert.equal(next.includes('> - Sat, 11:12pm — Sep 26, 2026 — success\n> - Sat, 11:12pm — Sep 26, 2026 — success'), true);
+
+		const legacy = existing.replace('### Sat', '## Sat');
+		const kept = applyVisitBody(legacy, 'home', now);
+		assert.equal(kept.includes('## Sat, 11:12pm — Sep 26, 2026'), true);
+		assert.equal(kept.split('\n').filter((line) => line === stampLine).length, 1);
+		assert.equal(kept.includes('> - Sat, 11:12pm — Sep 26, 2026 — success\n> - Sat, 11:12pm — Sep 26, 2026 — success'), true);
+
+		const missed = applyVisitBody(next, 'miss', now);
+		assert.equal(missed.split('\n').filter((line) => line === stampLine).length, 2);
+		assert.equal(missed.includes('> - Sat, 11:12pm — Sep 26, 2026 — not home'), true);
+		const missedAgain = applyVisitBody(missed, 'miss', now);
+		assert.equal(missedAgain.split('\n').filter((line) => line.endsWith('— not home')).length, 2);
+	});
+
+	it('migrates a legacy ## Attempt Log heading into a collapsed callout', () => {
+		const legacy = [
+			'Notes.',
+			'',
+			'## Attempt Log',
+			'- Mon, 9am — Sep 1, 2026 — success',
+			'',
+			'## Later',
+			'keep',
+			'',
+		].join('\n');
+		const next = applyVisitBody(legacy, 'miss', now);
+		assert.equal(next.includes('## Attempt Log'), false);
+		assert.equal(next, [
+			'Notes.',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+			'## Later',
+			'keep',
+			'',
+		].join('\n'));
+	});
+
+	it('inserts a home stamp above the digest and keeps the callout fold', () => {
+		const note = [
+			'Notes.',
+			'',
+			'<!-- rv-locator-digest -->',
+			'| | Morning |',
+			'| --- | --- |',
+			'| Mon | 1/1 |',
+			'',
+			'> Try: **Mon morning (1/1)**',
+			'<!-- /rv-locator-digest -->',
+			'',
+			'> [!note]+ Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const next = applyVisitBody(note, 'home', now);
+		const stampAt = next.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
+		const digestAt = next.indexOf('<!-- rv-locator-digest -->');
+		const logAt = next.indexOf('> [!note]+ Attempt Log');
+		assert.ok(stampAt >= 0 && stampAt < digestAt && digestAt < logAt);
+		assert.equal(next.includes('> [!note]- Attempt Log'), false);
+		assert.ok(next.indexOf('> - Sat, 11:12pm — Sep 26, 2026 — success') > logAt);
+		assert.equal(next.split('<!-- rv-locator-digest -->').length, 2);
+
+		const quoted = [
+			'Notes.',
+			'',
+			'> Try: **Mon morning (1/1)**',
+			'> Untried: Sun',
+			'',
+			'> [!note]- Attempt Log',
+			'>',
+			'> | Mon | 1/1 |',
+			'>',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const above = applyVisitBody(quoted, 'home', now);
+		const quoteStamp = above.indexOf('##### Sat, 11:12pm — Sep 26, 2026');
+		const tryAt = above.indexOf('> Try: **Mon morning (1/1)**');
+		const quotedLog = above.indexOf('> [!note]- Attempt Log');
+		assert.ok(quoteStamp >= 0 && quoteStamp < tryAt && tryAt < quotedLog);
+		assert.ok(above.indexOf('> | Mon | 1/1 |') > quotedLog);
+
+		const ruled = [
+			'### Mon, 9am — Sep 1, 2026 <span class="rv-stamp-ago">25 days ago</span>',
+			'',
+			'---',
+			'',
+			'> Try: **Mon morning (1/1)**',
+			'',
+			'> [!note]- Attempt Log',
+			'> - Mon, 9am — Sep 1, 2026 — success',
+			'',
+		].join('\n');
+		const ruledNext = applyVisitBody(ruled, 'home', now);
+		const ruledLines = ruledNext.split('\n');
+		const newStamp = ruledLines.findIndex((line) => line.startsWith('##### Sat, 11:12pm'));
+		const rule = ruledLines.findIndex((line) => line === '---');
+		assert.ok(newStamp >= 0 && newStamp < rule);
+		assert.ok(ruledNext.indexOf('> Try: **Mon morning (1/1)**') > ruledNext.indexOf('\n---\n'));
+	});
+
+	it('accepts unmarked and tight Attempt Log callout variants', () => {
+		const plain = '> [!note] Attempt Log\n> - old — success\n';
+		const next = applyVisitBody(plain, 'miss', now);
+		assert.equal(next, [
+			'> [!note] Attempt Log',
+			'> - old — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+
+		const tight = '>[!note]- Attempt Log\n>- old — not home\n';
+		const more = applyVisitBody(tight, 'miss', now);
+		assert.equal(more, [
+			'>[!note]- Attempt Log',
+			'>- old — not home',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
+
+		const spaced = '> [!NOTE] - Attempt Log\n> - old — success\n';
+		const spacedNext = applyVisitBody(spaced, 'miss', now);
+		assert.equal(spacedNext, [
+			'> [!NOTE] - Attempt Log',
+			'> - old — success',
+			'> - Sat, 11:12pm — Sep 26, 2026 — not home',
+			'',
+		].join('\n'));
 	});
 });
 
@@ -690,5 +1263,1154 @@ function activeRow(id: string, priority: number, lastSpoke: string, name: string
 			'file.backlinks': { kind: 'number' as const, value: backlinks },
 			'file.name': { kind: 'text' as const, value: name },
 		},
+	};
+}
+
+describe('new RV launch', () => {
+	it('uses the configured name under Templater’s folder, then older names', () => {
+		assert.equal(DEFAULT_NEW_RV_TEMPLATE, 'Templates/99 New RV.md');
+		assert.deepEqual(newRvTemplateCandidates('Templates'), [
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates('Ministry/Templates', '99 New RV.md'), [
+			'Ministry/Templates/99 New RV.md',
+			'Ministry/Templates/New RV.md',
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates('Ministry/Templates', 'New RV.md'), [
+			'Ministry/Templates/New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates('../secret'), [
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.deepEqual(newRvTemplateCandidates(''), [
+			'Templates/99 New RV.md',
+			'Templates/New RV.md',
+		]);
+		assert.equal(newRvLaunchError(false, false, [DEFAULT_NEW_RV_TEMPLATE])?.includes('Templater is not enabled'), true);
+		assert.equal(newRvLaunchError(true, false, [DEFAULT_NEW_RV_TEMPLATE])?.includes(DEFAULT_NEW_RV_TEMPLATE), true);
+		assert.equal(newRvLaunchError(true, true, [DEFAULT_NEW_RV_TEMPLATE]), null);
+	});
+});
+
+describe('extras sync', () => {
+	it('downloads only pinned allowlisted paths and skips silent overwrite', async () => {
+		const manifest = JSON.parse(readFileSync('manifest.json', 'utf8')) as { version: string };
+		assert.equal(EXTRAS_SYNC_REF, `v${manifest.version}`);
+		assert.equal(EXTRAS_SYNC_REF, 'v1.3.5');
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('NEW-RV-GEOCODE.md')), false);
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('RV-LOG-BUTTONS-TEMPLATER.md')), false);
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.repo.endsWith('.css')), false);
+		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'unstable'));
+		assert.throws(() => extrasFileUrl('extras/templater-metabind/newRv.js', 'main'));
+		assert.throws(() => assertExtrasDownloadUrl('http://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://evil.example/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js'));
+		assert.throws(() => assertExtrasDownloadUrl('https://raw.githubusercontent.com/JaydensAssistant/rv-locator/unstable/Scripts/newRv.js'));
+		assert.throws(() => extrasRedirectUrl(
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js',
+			'https://objects.githubusercontent.com/JaydensAssistant/rv-locator/v1.2.2/Scripts/newRv.js',
+		));
+		const configDir = '.obsidian';
+		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir), true);
+		assert.equal(isAllowlistedExtrasPath('Templates/New RV.md', configDir), false);
+		assert.equal(isAllowlistedExtrasPath('Templates/NEW-RV-GEOCODE.md', configDir), false);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/snippets/rv-dashboard.css`, configDir), false);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/data.json`, configDir), false);
+		assert.equal(isAllowlistedExtrasPath(`${configDir}/plugins/rv-locator/main.js`, configDir), false);
+		assert.equal(isAllowlistedExtrasPath('Templates/../data.json', configDir), false);
+		assert.equal(isAllowlistedExtrasPath('/etc/passwd', configDir), false);
+		assert.equal(isAllowlistedExtrasPath('Scripts/newRv.js', configDir), true);
+		assert.equal(isAllowlistedExtrasPath('Scripts/secret.js', configDir), false);
+		const custom = {
+			templatesFolder: 'Ministry/Templates',
+			scriptsFolder: 'Ministry/Scripts',
+			newRvFileName: '99 New RV.md',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		};
+		assert.equal(isAllowlistedExtrasPath('Ministry/Templates/99 New RV.md', configDir, custom), true);
+		assert.equal(isAllowlistedExtrasPath('Templates/99 New RV.md', configDir, custom), false);
+		assert.equal(isAllowlistedExtrasPath('Ministry/Templates/../data.json', configDir, custom), false);
+		const unsafe = extrasDestinations(configDir, { templatesFolder: '../nope', scriptsFolder: 'plugins/templater', newRvFileName: 'bad/name.md' });
+		assert.equal(unsafe.some((file) => file.vault === 'Templates/99 New RV.md'), true);
+		assert.equal(unsafe.some((file) => file.vault === 'Scripts/newRv.js'), true);
+		assert.equal(unsafe.some((file) => file.vault.includes('..') || file.vault.includes('plugins')), false);
+		assert.equal(extrasDestinations(configDir).every((file) => /\.(md|js)$/.test(file.vault)), true);
+		assert.equal(extrasDestinations(configDir).some((file) => file.vault.endsWith('.css') || file.vault.includes('NEW-RV-GEOCODE')), false);
+		const url = extrasFileUrl('extras/templater-metabind/New RV.md');
+		assert.equal(
+			url,
+			'https://raw.githubusercontent.com/JaydensAssistant/rv-locator/v1.3.5/extras/templater-metabind/New%20RV.md',
+		);
+		assert.throws(() => extrasFileUrl('../secrets.env'));
+		assert.equal(planExtrasWrite(false, false), 'create');
+		assert.equal(planExtrasWrite(true, false), 'skip');
+		assert.equal(planExtrasWrite(true, true), 'overwrite');
+		assert.equal(await sha256Hex('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+		const calls: string[] = [];
+		const plan = await downloadExtras(async (fetched) => {
+			calls.push(fetched);
+			if (fetched.endsWith('/newRv.js')) {
+				return { ok: false, status: 404, text: '', finalUrl: fetched };
+			}
+			if (fetched.endsWith('/rvLog.js')) {
+				return { ok: true, status: 200, text: 'redirected', finalUrl: 'https://evil.example/rvLog.js' };
+			}
+			if (fetched.endsWith('/geocodeNewRv.js')) {
+				return { ok: true, status: 200, text: 'x'.repeat(EXTRAS_MAX_FILE_BYTES + 1), finalUrl: fetched };
+			}
+			return { ok: true, status: 200, text: `body:${fetched}`, finalUrl: fetched };
+		}, configDir);
+		assert.equal(plan.ref, 'v1.3.5');
+		assert.equal(calls.length, extrasDestinations(configDir).length);
+		assert.equal(calls.every((item) => item.includes('/v1.3.5/')), true);
+		assert.equal(calls.some((item) => item.includes('NEW-RV-GEOCODE') || item.includes('rv-dashboard.css')), false);
+		assert.equal(calls.some((item) => item.includes('/unstable/') || item.includes('/main/')), false);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/newRv.js'), true);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/rvLog.js'), true);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Scripts/geocodeNewRv.js' && item.reason === 'file exceeds size cap'), true);
+		assert.equal(plan.files.some((file) => file.vaultPath === 'Scripts/newRv.js'), false);
+		assert.equal(plan.files.some((file) => file.vaultPath === '.obsidian/plugins/rv-locator/data.json'), false);
+		const note = plan.files.find((file) => file.vaultPath === 'Templates/99 New RV.md');
+		assert.equal(note?.contents.startsWith('body:https://raw.githubusercontent.com/'), true);
+		assert.equal(note?.sha256, await sha256Hex(note?.contents ?? ''));
+	});
+
+	it('rewrites New RV templateFile paths to the resolved Home and Not home templates', async () => {
+		const source = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
+		const placement = {
+			templatesFolder: 'Ministry/Templates',
+			scriptsFolder: 'Ministry/Scripts',
+			newRvFileName: '99 New RV.md',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		};
+		const rewritten = rewriteNewRvTemplate(source, placement);
+		assert.equal(rewritten.includes('templateFile: Ministry/Templates/99 RV Log Home.md'), true);
+		assert.equal(rewritten.includes('templateFile: Ministry/Templates/99 RV Log Miss.md'), true);
+		assert.equal(rewritten.includes('templateFile: Templates/99 RV Log Home.md'), false);
+		assert.equal(rewritten.includes('templateFile: Templates/99 RV Log Miss.md'), false);
+		assert.equal(rewritten.includes('id: rv-log-home'), true);
+		assert.equal(rewritten.includes('id: rv-log-miss'), true);
+		const same = rewriteNewRvTemplate(source);
+		assert.equal(same.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(same.includes('templateFile: Templates/99 RV Log Miss.md'), true);
+		const plan = await downloadExtras(async (fetched) => ({
+			ok: true,
+			status: 200,
+			text: fetched.endsWith('/New%20RV.md') || fetched.includes('/New%20RV.md') ? source : 'script',
+			finalUrl: fetched,
+		}), '.obsidian', EXTRAS_SYNC_REF, placement);
+		const note = plan.files.find((file) => file.vaultPath === 'Ministry/Templates/99 New RV.md');
+		assert.equal(note?.contents.includes('templateFile: Ministry/Templates/99 RV Log Home.md'), true);
+		assert.equal(plan.files.some((file) => file.vaultPath.endsWith('.css') || file.vaultPath.includes('GEOCODE')), false);
+		assert.equal(plan.failed.length, 0);
+		assert.equal(EXTRAS_SYNC_FILES.some((file) => file.role === 'new-rv' && file.repo !== NEW_RV_TEMPLATE_REPO), false);
+		const plus = {
+			templatesFolder: '+/Templates',
+			scriptsFolder: 'Scripts',
+			newRvFileName: '99 New RV.md',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		};
+		assert.equal(isAllowlistedExtrasPath('+/Templates/99 New RV.md', '.obsidian', plus), true);
+		assert.equal(isAllowlistedExtrasPath('+/Templates/../data.json', '.obsidian', plus), false);
+	});
+
+	it('refuses a fetched New RV body whose templateFile path leaves the templates folder', async () => {
+		const source = [
+			'id: rv-log-home',
+			'templateFile: Templates/99 RV Log Home.md',
+			'templateFile: ../data.json',
+			'id: rv-log-miss',
+			'templateFile: Templates/99 RV Log Miss.md',
+			'',
+		].join('\n');
+		assert.throws(() => rewriteNewRvTemplate(source));
+		const plan = await downloadExtras(async (fetched) => ({
+			ok: true,
+			status: 200,
+			text: source,
+			finalUrl: fetched,
+		}), '.obsidian');
+		assert.equal(plan.files.some((file) => file.vaultPath === 'Templates/99 New RV.md'), false);
+		assert.equal(plan.failed.some((item) => item.vaultPath === 'Templates/99 New RV.md' && item.reason.includes('templates folder')), true);
+		const script = plan.files.find((file) => file.vaultPath === 'Scripts/newRv.js');
+		assert.equal(script?.contents, source);
+		assert.equal(plan.files.some((file) => file.vaultPath.endsWith('.js') && file.contents.includes('templateFile: Ministry/')), false);
+	});
+});
+
+describe('template file rename', () => {
+	const home = [
+		'    id: rv-log-home',
+		'    templateFile: Templates/99 RV Log Home.md',
+		'    id: rv-log-miss',
+		'    templateFile: Templates/99 RV Log Miss.md',
+		'See Templates/99 RV Log Home.md in the docs.',
+		'    templateFile: Templates/99 RV Log Home.md.bak',
+		'    templateFile: "Templates/99 RV Log Home.md"',
+	].join('\n');
+
+	it('renames a template inside the Templater folder and rewrites Home templateFile paths', async () => {
+		const store = memoryTemplates({
+			'Templates/99 RV Log Home.md': 'home button',
+			'Templates/99 New RV.md': home,
+			'RVs/Ada.md': `${home.replace(/\n/g, '\r\n')}\r\nAddress: 1 Main\r\n`,
+			'Notes/99 RV Log Home.md': 'not the template',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 RV Log Home.md',
+			typed: '03 RV Log Home.md',
+			fallbackName: '99 RV Log Home.md',
+			rewriteReferences: true,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '03 RV Log Home.md');
+		assert.equal(result.notice?.includes('Renamed Templates/99 RV Log Home.md to Templates/03 RV Log Home.md.'), true);
+		assert.equal(result.notice?.includes('Updated 2 notes'), true);
+		assert.equal(store.notes['Templates/99 RV Log Home.md'], undefined);
+		assert.equal(store.notes['Templates/03 RV Log Home.md'], 'home button');
+		assert.equal(store.notes['Notes/99 RV Log Home.md'], 'not the template');
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/03 RV Log Home.md'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/99 RV Log Miss.md'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('See Templates/99 RV Log Home.md in the docs.'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: Templates/99 RV Log Home.md.bak'), true);
+		assert.equal(store.notes['Templates/99 New RV.md']?.includes('templateFile: "Templates/03 RV Log Home.md"'), true);
+		assert.equal(store.notes['RVs/Ada.md']?.includes('templateFile: Templates/03 RV Log Home.md\r\n'), true);
+		assert.equal(store.renames.length, 1);
+	});
+
+	it('refuses to clobber an existing destination and keeps the old name', async () => {
+		const store = memoryTemplates({
+			'Templates/99 RV Log Miss.md': 'miss',
+			'Templates/03 RV Log Miss.md': 'already here',
+			'RVs/Ada.md': 'templateFile: Templates/99 RV Log Miss.md\n',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 RV Log Miss.md',
+			typed: '03 RV Log Miss.md',
+			fallbackName: '99 RV Log Miss.md',
+			rewriteReferences: true,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '99 RV Log Miss.md');
+		assert.equal(result.revertField, true);
+		assert.equal(result.notice, 'Did not rename. Templates/03 RV Log Miss.md already exists.');
+		assert.equal(store.notes['Templates/99 RV Log Miss.md'], 'miss');
+		assert.equal(store.notes['Templates/03 RV Log Miss.md'], 'already here');
+		assert.equal(store.notes['RVs/Ada.md'], 'templateFile: Templates/99 RV Log Miss.md\n');
+		assert.equal(store.renames.length, 0);
+	});
+
+	it('keeps the setting when the files are already aligned or both missing', async () => {
+		const aligned = memoryTemplates({ 'Ministry/Templates/03 New RV.md': 'body' });
+		const kept = await applyTemplateSettingChange(aligned.vault, {
+			templatesFolder: 'Ministry/Templates',
+			previous: '99 New RV.md',
+			typed: '03 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(kept.name, '03 New RV.md');
+		assert.equal(kept.notice, null);
+		assert.equal(aligned.renames.length, 0);
+		assert.equal(aligned.notes['Ministry/Templates/03 New RV.md'], 'body');
+		const absent = memoryTemplates({});
+		const saved = await applyTemplateSettingChange(absent.vault, {
+			templatesFolder: '',
+			previous: '99 New RV.md',
+			typed: '03 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(saved.name, '03 New RV.md');
+		assert.equal(saved.notice, null);
+		assert.equal(absent.renames.length, 0);
+		assert.equal(planTemplateRename({
+			templatesFolder: 'Templates',
+			oldName: '99 New RV.md',
+			newName: '03 New RV.md',
+			oldState: 'missing',
+			newState: 'missing',
+		}).action, 'save-only');
+	});
+
+	it('does not rename while the name is unchanged, unfinished, or unsafe', async () => {
+		const store = memoryTemplates({ 'Templates/99 New RV.md': 'body' });
+		const same = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '99 New RV.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(same.name, '99 New RV.md');
+		assert.equal(same.notice, null);
+		assert.equal(store.lookups.length, 0);
+		const partial = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '03 New',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: false,
+		});
+		assert.equal(partial.name, '99 New RV.md');
+		assert.equal(partial.revertField, false);
+		assert.equal(store.lookups.length, 0);
+		const blurred = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: 'Templates',
+			previous: '99 New RV.md',
+			typed: '../secret.md',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(blurred.name, '99 New RV.md');
+		assert.equal(blurred.revertField, true);
+		assert.equal(store.notes['Templates/99 New RV.md'], 'body');
+		assert.equal(store.renames.length, 0);
+		const outside = planTemplateRename({
+			templatesFolder: '../nope',
+			oldName: '99 New RV.md',
+			newName: '03 New RV.md',
+			oldState: 'file',
+			newState: 'missing',
+		});
+		assert.equal(outside.action, 'rename');
+		if (outside.action === 'rename') assert.equal(outside.from, 'Templates/99 New RV.md');
+	});
+
+	it('renames the New RV template without rewriting Home or Not home buttons', async () => {
+		const store = memoryTemplates({
+			'+/Templates/99 New RV.md': home,
+			'RVs/Ada.md': 'templateFile: +/Templates/99 New RV.md\n',
+		});
+		const result = await applyTemplateSettingChange(store.vault, {
+			templatesFolder: '+/Templates',
+			previous: '99 New RV.md',
+			typed: '  03 New RV.md  ',
+			fallbackName: '99 New RV.md',
+			rewriteReferences: false,
+			fromBlur: true,
+		});
+		assert.equal(result.name, '03 New RV.md');
+		assert.equal(store.notes['+/Templates/03 New RV.md']?.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(store.notes['RVs/Ada.md'], 'templateFile: +/Templates/99 New RV.md\n');
+		assert.equal(store.notes['+/Templates/99 New RV.md'], undefined);
+	});
+
+	it('leaves a folder at the new path untouched', () => {
+		const blocked = planTemplateRename({
+			templatesFolder: 'Templates',
+			oldName: '99 RV Log Home.md',
+			newName: 'Taken.md',
+			oldState: 'file',
+			newState: 'other',
+		});
+		assert.equal(blocked.action, 'refuse');
+		if (blocked.action === 'refuse') assert.equal(blocked.reason, 'destination-exists');
+		const quoted = rewriteTemplateFilePaths(
+			"templateFile: 'Templates/99 RV Log Miss.md'\n",
+			'Templates/99 RV Log Miss.md',
+			'Templates/Miss.md',
+		);
+		assert.equal(quoted, "templateFile: 'Templates/Miss.md'\n");
+	});
+});
+
+function memoryTemplates(files: Record<string, string>): {
+	vault: TemplateRenameVault;
+	notes: Record<string, string>;
+	renames: [string, string][];
+	lookups: string[];
+} {
+	const notes = { ...files };
+	const renames: [string, string][] = [];
+	const lookups: string[] = [];
+	const vault: TemplateRenameVault = {
+		fileState(path) {
+			lookups.push(path);
+			return path in notes ? 'file' : 'missing';
+		},
+		async renameFile(from, to) {
+			if (to in notes) throw new Error('destination-exists');
+			const body = notes[from];
+			if (body === undefined) throw new Error('missing');
+			notes[to] = body;
+			delete notes[from];
+			renames.push([from, to]);
+		},
+		markdownFiles() {
+			return Object.keys(notes).filter((path) => path.endsWith('.md')).map((path) => ({ path }));
+		},
+		async read(path) {
+			const body = notes[path];
+			if (body === undefined) throw new Error('missing');
+			return body;
+		},
+		async modify(path, contents) {
+			if (!(path in notes)) throw new Error('missing');
+			notes[path] = contents;
+		},
+	};
+	return { vault, notes, renames, lookups };
+}
+
+describe('companions', () => {
+	it('orders recent names from the newest note, Met With before Taken', () => {
+		const names = recentCompanionNames([
+			{ metWith: 'Jane', taken: ['Jane', 'Sam'], recentAt: Date.parse('2026-09-01T10:00:00') },
+			{ metWith: '[[Sam]]', taken: ['Pat', '[[People/Jo|Jo]]'], recentAt: Date.parse('2026-09-20T15:00:00') },
+		]);
+		assert.deepEqual(names, ['Sam', 'Pat', 'Jo', 'Jane']);
+		const spoke = companionRecency({ 'Last Spoke': '2026-09-20T15:00:00', Met: '2026-01-01T00:00:00' }, 0);
+		const modified = companionRecency({ Met: '2026-01-01' }, Date.parse('2026-12-01T00:00:00'));
+		assert.ok(modified > spoke);
+	});
+
+	it('dedupes Taken and stores a plain companion name', () => {
+		assert.deepEqual(appendCompanionTaken(['[[Sam]]'], 'sam'), ['[[Sam]]']);
+		assert.deepEqual(appendCompanionTaken(['Sam'], 'Pat'), ['Sam', 'Pat']);
+		assert.deepEqual(appendCompanionTaken(undefined, ''), []);
+		assert.equal(formatStoredCompanion('Pat'), 'Pat');
+		assert.equal(formatStoredCompanion('[[Pat]]'), 'Pat');
+		assert.equal(formatStoredCompanion('[[People/Sam|Sam]]'), 'Sam');
+		assert.equal(formatStoredCompanion('[[Nobody]]'), 'Nobody');
+		assert.equal(formatStoredCompanion('  Ada  '), 'Ada');
+		assert.equal(formatStoredCompanion(''), '');
+		assert.equal(formatStoredCompanion(undefined), '');
+		assert.equal(formatStoredCompanion(null), '');
+		assert.equal(formatStoredCompanion(false), '');
+		assert.equal(companionFrontmatterBlock(undefined), 'Met With:\nTaken:');
+		assert.equal(companionFrontmatterBlock(false), 'Met With:\nTaken:');
+		assert.equal(companionFrontmatterBlock('Sam'), 'Met With: "Sam"\nTaken:\n  - "Sam"');
+		assert.deepEqual(appendCompanionTaken([['Ada']], 'Pat'), ['[[Ada]]', 'Pat']);
+		assert.deepEqual(appendCompanionTaken(['Sam'], undefined), ['Sam']);
+		assert.equal(companionFrontmatterBlock(''), 'Met With:\nTaken:');
+		assert.equal(companionFrontmatterBlock('Pat'), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+		assert.equal(companionFrontmatterBlock(formatStoredCompanion('[[Pat]]')), 'Met With: "Pat"\nTaken:\n  - "Pat"');
+	});
+
+	it('stores a blank Met With on cancel and the chosen name otherwise', async () => {
+		const cancelled = await new Promise<unknown>((resolve) => {
+			const gate = createCompanionPromptGate(resolve);
+			gate.cancel();
+		});
+		assert.equal(cancelled, false);
+		assert.equal(companionFrontmatterBlock(cancelled), 'Met With:\nTaken:');
+		const chosen = await new Promise<unknown>((resolve) => {
+			const gate = createCompanionPromptGate(resolve);
+			gate.choose('Sam');
+		});
+		assert.equal(formatStoredCompanion(chosen), 'Sam');
+		assert.equal(companionFrontmatterBlock(chosen), 'Met With: "Sam"\nTaken:\n  - "Sam"');
+		const skipped = await new Promise<unknown>((resolve) => {
+			const gate = createCompanionPromptGate(resolve);
+			gate.skip();
+		});
+		assert.equal(skipped, null);
+		assert.equal(companionFrontmatterBlock(skipped), 'Met With:\nTaken:');
+	});
+
+	it('quotes Taken and Met With wikilinks that Obsidian flattened', () => {
+		const source = [
+			'---',
+			'Address: "142 Maple Street"',
+			'Met With: [[Door Person]]',
+			'Taken:',
+			'  - "Ada"',
+			'  - [[Pat Smith]]',
+			'  - - Sam',
+			'Hub:',
+			'  - [[Return Visits Hub]]',
+			'---',
+			'',
+			'Body stays.',
+			'',
+		].join('\n');
+		const quoted = stabilizeCompanionFrontmatter(source);
+		assert.equal(quoted.includes('Met With: "[[Door Person]]"'), true);
+		assert.equal(quoted.includes('  - "Ada"'), true);
+		assert.equal(quoted.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(quoted.includes('  - "[[Sam]]"'), true);
+		assert.equal(quoted.includes('  - [[Pat Smith]]'), false);
+		assert.equal(quoted.includes('  - - Sam'), false);
+		assert.equal(quoted.includes('  - [[Return Visits Hub]]'), true);
+		assert.equal(quoted.includes('Address: "142 Maple Street"'), true);
+		assert.equal(quoted.includes('Body stays.'), true);
+		assert.equal(stabilizeCompanionFrontmatter(quoted), quoted);
+		const nested = [
+			'---',
+			'Taken:',
+			'  -',
+			'    - Pat Smith',
+			'---',
+			'',
+		].join('\n');
+		const lifted = stabilizeCompanionFrontmatter(nested);
+		assert.equal(lifted.includes('  - "[[Pat Smith]]"'), true);
+		assert.equal(lifted.includes('    - Pat Smith'), false);
+	});
+
+	it('caps the suggester and keeps a skipped companion off the note', () => {
+		const notes = Array.from({ length: 40 }, (_, index) => ({
+			metWith: `Person ${index}`,
+			taken: [],
+			recentAt: index,
+		}));
+		assert.equal(recentCompanionNames(notes).length, RECENT_COMPANION_LIMIT);
+		assert.equal(recentCompanionNames(notes)[0], 'Person 39');
+		const now = new Date(2026, 8, 26, 23, 12, 4);
+		const frontmatter: Record<string, unknown> = { Address: '142 Maple Street', 'Met With': 'Ada', Taken: ['Ada'] };
+		applyVisitFrontmatter(frontmatter, 'home', now, '  ');
+		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada']);
+		applyVisitFrontmatter(frontmatter, 'home', now, formatStoredCompanion('[[Pat]]'));
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'Pat']);
+		applyVisitFrontmatter(frontmatter, 'home', now, 'Pat');
+		assert.equal(frontmatter.Address, '142 Maple Street');
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'Pat']);
+	});
+
+	it('sets Met With once on create, and a later Home only appends Taken', () => {
+		assert.equal(companionFrontmatterBlock('Devin'), 'Met With: "Devin"\nTaken:\n  - "Devin"');
+		const now = new Date(2026, 8, 29, 17, 0, 0);
+		const created: Record<string, unknown> = { 'Met With': 'Devin', Taken: ['Devin'], Met: '2026-09-29T16:39:36' };
+		applyVisitFrontmatter(created, 'home', now, 'Sam');
+		assert.equal(created['Met With'], 'Devin');
+		assert.deepEqual(created.Taken, ['Devin', 'Sam']);
+		assert.equal(created.Met, '2026-09-29T16:39:36');
+		applyVisitFrontmatter(created, 'miss', now, 'Pat');
+		assert.equal(created['Met With'], 'Devin');
+		assert.deepEqual(created.Taken, ['Devin', 'Sam']);
+		const skipped: Record<string, unknown> = { 'Met With': null, Taken: null };
+		applyVisitFrontmatter(skipped, 'home', now, 'Sam');
+		assert.equal(skipped['Met With'], null);
+		assert.deepEqual(skipped.Taken, ['Sam']);
+	});
+
+	it('offers a typed Use row as the name itself', () => {
+		assert.equal(companionChoices(['Jordan Lee'], 'TestCompanion')[0]?.value, 'TestCompanion');
+		assert.equal(companionChoices(['Jordan Lee'], 'TestCompanion')[0]?.label, 'Use “TestCompanion”');
+		assert.deepEqual(companionChoices(['Jordan Lee'], 'Jordan Lee').map((choice) => choice.value), ['Jordan Lee']);
+		assert.deepEqual(companionChoices(['Jordan Lee', 'Sam Ortiz'], '').map((choice) => choice.value), ['Jordan Lee', 'Sam Ortiz']);
+	});
+});
+
+describe('companion prompt', () => {
+	const root = globalThis as typeof globalThis & { window?: typeof globalThis };
+	root.window ??= root;
+
+	it('keeps a choice when the suggest modal closes first', async () => {
+		const seen: Array<string | null> = [];
+		const gate = createCompanionPromptGate((name) => { seen.push(name); });
+		gate.closed((run) => { setTimeout(run, 0); });
+		assert.deepEqual(seen, []);
+		gate.choose('TestCompanion');
+		assert.deepEqual(seen, ['TestCompanion']);
+		await waitTurn();
+		assert.deepEqual(seen, ['TestCompanion']);
+
+		const chosenFirst: Array<string | null> = [];
+		const early = createCompanionPromptGate((name) => { chosenFirst.push(name); });
+		early.choose('Jordan Lee');
+		early.closed((run) => { setTimeout(run, 0); });
+		await waitTurn();
+		assert.deepEqual(chosenFirst, ['Jordan Lee']);
+	});
+
+	it('skip resolves empty and esc cancels', async () => {
+		const skipped: Array<string | null> = [];
+		const gate = createCompanionPromptGate((name) => { skipped.push(name); });
+		gate.skip();
+		gate.closed((run) => { setTimeout(run, 0); });
+		await waitTurn();
+		assert.deepEqual(skipped, [null]);
+
+		const escaped: Array<string | null | false> = [];
+		await new Promise<void>((resolve) => {
+			const esc = createCompanionPromptGate((name) => {
+				escaped.push(name);
+				resolve();
+			});
+			esc.closed((run) => { setTimeout(run, 0); });
+			assert.deepEqual(escaped, []);
+		});
+		assert.deepEqual(escaped, [false]);
+	});
+
+	it('modal delivers a typed Use row after close, and Skip leaves the prompt empty', async () => {
+		const seen: Array<string | null> = [];
+		const modal = new CompanionSuggestModal({} as never, ['Jordan Lee', 'Sam Ortiz'], (name) => {
+			seen.push(name);
+		});
+		const typed = modal.getSuggestions('TestCompanion');
+		assert.equal(typed[0]?.value, 'TestCompanion');
+		assert.equal(typed[0]?.label, 'Use “TestCompanion”');
+		modal.onClose();
+		assert.deepEqual(seen, []);
+		const choice = typed[0];
+		assert.ok(choice);
+		modal.onChooseSuggestion(choice);
+		assert.deepEqual(seen, ['TestCompanion']);
+		await waitTurn();
+		assert.deepEqual(seen, ['TestCompanion']);
+
+		const skipped: Array<string | null> = [];
+		const skipModal = new CompanionSuggestModal({} as never, ['Jordan Lee'], (name) => {
+			skipped.push(name);
+		});
+		skipModal.onOpen();
+		assert.throws(() => clickLabeled(skipModal.contentEl as unknown as Clickable, 'Skip'));
+		clickLabeled(skipModal.contentEl as unknown as Clickable, 'Log visit');
+		assert.deepEqual(skipped, [null]);
+		await waitTurn();
+		assert.deepEqual(skipped, [null]);
+
+		const escaped: Array<string | null | false> = [];
+		const escModal = new CompanionSuggestModal({} as never, [], (name) => {
+			escaped.push(name);
+		});
+		escModal.onClose();
+		assert.deepEqual(escaped, []);
+		await waitTurn();
+		assert.deepEqual(escaped, [false]);
+
+		const dimmed: Array<string | null | false> = [];
+		const dimModal = new CompanionSuggestModal({} as never, ['Devin'], (name) => {
+			dimmed.push(name);
+		});
+		dimModal.onOpen();
+		dimModal.onDimPointerDown(dimModal.modalEl as unknown as EventTarget);
+		assert.deepEqual(dimmed, []);
+		dimModal.onDimPointerDown(null);
+		assert.deepEqual(dimmed, [false]);
+		await waitTurn();
+		assert.deepEqual(dimmed, [false]);
+	});
+
+	it('highlights a companion without logging, then logs after the coverage choice', async () => {
+		const seen: Array<string | null | false> = [];
+		const decisions: string[] = [];
+		const modal = new CompanionSuggestModal({} as never, ['Devin', 'Mia'], (name) => {
+			seen.push(name);
+		}, {
+			name: 'Spring',
+			onDecision: (decision) => { decisions.push(decision); },
+		});
+		modal.onOpen();
+		const copy = collectText(modal.contentEl as unknown as Clickable);
+		assert.equal(copy.includes("Did you cover them with the 'Spring' campaign yet?"), true);
+		const input = findTagged(modal.contentEl as unknown as Clickable, 'input');
+		input.emit('input', 'Devin');
+		assert.deepEqual(seen, []);
+		assert.deepEqual(decisions, []);
+		clickLabeled(modal.contentEl as unknown as Clickable, 'Log visit');
+		assert.deepEqual(seen, ['Devin']);
+		assert.deepEqual(decisions, ['yes']);
+		await waitTurn();
+		assert.deepEqual(seen, ['Devin']);
+	});
+
+	it('appends a chosen companion to Taken, leaves Met With, and leaves both on skip or a miss', async () => {
+		const now = new Date(2026, 8, 27, 12, 4, 0);
+		const stored = await storedFromPrompt(['close', { choose: 'TestCompanion' }]);
+		const frontmatter: Record<string, unknown> = {
+			Address: '200 S Orange Ave, Orlando, FL',
+			Visits: 1,
+			'Successful Visits': 1,
+			'Met With': 'Ada',
+			Taken: ['Ada'],
+		};
+		applyVisitFrontmatter(frontmatter, 'home', now, stored);
+		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Visits, 2);
+		assert.equal(frontmatter['Successful Visits'], 2);
+
+		applyVisitFrontmatter(frontmatter, 'home', now, stored);
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Visits, 3);
+
+		assert.equal(await storedFromPrompt(['close', { choose: 'Pat Smith' }]), 'Pat Smith');
+		assert.equal(await storedFromPrompt(['close', { choose: '[[Pat Smith]]' }]), 'Pat Smith');
+		assert.equal(await storedFromPrompt(['close', { choose: 'Nobody' }]), 'Nobody');
+
+		const skipped = await storedFromPrompt(['close']);
+		assert.equal(skipped, '');
+		applyVisitFrontmatter(frontmatter, 'home', now, skipped);
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
+		assert.equal(frontmatter.Visits, 4);
+		assert.equal(frontmatter['Successful Visits'], 4);
+
+		applyVisitFrontmatter(frontmatter, 'miss', now, 'Pat Smith');
+		assert.equal(frontmatter['Met With'], 'Ada');
+		assert.deepEqual(frontmatter.Taken, ['Ada', 'TestCompanion']);
+		assert.equal(frontmatter.Address, '200 S Orange Ave, Orlando, FL');
+		assert.equal(frontmatter.Visits, 5);
+		assert.equal(frontmatter['Successful Visits'], 4);
+	});
+});
+
+type Clickable = {
+	children: Clickable[];
+	text: string;
+	tag?: string;
+	click: () => void;
+	emit: (type: string, value?: string) => void;
+};
+
+function clickLabeled(root: Clickable, text: string): void {
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.text === text) {
+			current.click();
+			return;
+		}
+		stack.push(...current.children);
+	}
+	throw new Error(`No control labeled ${text}`);
+}
+
+function waitTurn(): Promise<void> {
+	return new Promise((resolve) => { setTimeout(resolve, 0); });
+}
+
+async function storedFromPrompt(
+	events: ReadonlyArray<'close' | { choose: string }>,
+): Promise<string> {
+	const picked = await new Promise<string | null | false>((resolve) => {
+		const gate = createCompanionPromptGate(resolve);
+		for (const event of events) {
+			if (event === 'close') gate.closed((run) => { setTimeout(run, 0); });
+			else gate.choose(event.choose);
+		}
+	});
+	if (typeof picked !== 'string') return '';
+	const name = picked.trim();
+	if (!name) return '';
+	return formatStoredCompanion(name);
+}
+
+describe('address chevron before a lookup', () => {
+	it('opens the most recently used addresses until Geoapify hits replace them', () => {
+		const labels = recentAddresses([
+			{ address: '1 Old Street', recentAt: 1 },
+			{ address: '9 New Road', recentAt: 5 },
+			{ address: '9  New Road', recentAt: 4 },
+			{ address: '', recentAt: 9 },
+			{ address: '3 Middle Lane', recentAt: 3 },
+		]);
+		assert.deepEqual(labels, ['9 New Road', '3 Middle Lane', '1 Old Street']);
+		assert.deepEqual(addressChevronLabels(labels, [], ''), labels);
+		assert.deepEqual(addressChevronLabels(labels, [], 'middle'), ['3 Middle Lane']);
+		assert.deepEqual(addressChevronLabels(labels, ['10 Geoapify Way', '11 Geoapify Way'], ''), ['10 Geoapify Way', '11 Geoapify Way']);
+	});
+});
+
+describe('address lookup cadence', () => {
+	it('sends at six characters, then every five more, and waits out a short tail', () => {
+		assert.equal(addressLookupDecision(0, 5), 'wait');
+		assert.equal(addressLookupDecision(0, 6), 'now');
+		assert.equal(addressLookupDecision(6, 10), 'idle');
+		assert.equal(addressLookupDecision(6, 11), 'now');
+		assert.equal(addressLookupDecision(11, 14), 'idle');
+		assert.equal(addressLookupDecision(11, 16), 'now');
+	});
+
+	it('matches an address one for one and prefers the home region without dropping the rest', () => {
+		assert.equal(addressesMatchOneForOne('123 Main Street, Los Angeles', '123  Main Street, Los Angeles'), true);
+		assert.equal(addressesMatchOneForOne('123 Main Street', '123 Main St'), false);
+		assert.equal(abbreviateAddress('123 Main Street, Los Angeles, CA 90012, USA'), '123 Main Street, Los Angeles');
+		const hits = [
+			{ formattedAddress: '123 Main Street, Springfield, IL', city: 'Springfield', state: 'Illinois' },
+			{ formattedAddress: '123 Main Street, Los Angeles, CA', city: 'Los Angeles', county: 'Los Angeles County', state: 'California' },
+		];
+		const ordered = preferHomeRegion(hits, ['Los Angeles, California']);
+		assert.equal(ordered[0]?.city, 'Los Angeles');
+		assert.equal(ordered[1]?.city, 'Springfield');
+		assert.equal(preferHomeRegion(hits, []).length, 2);
+	});
+
+	it('selects a companion only when the typed name matches one suggestion', () => {
+		const choices = companionChoices(['Jordan Lee', 'Joan'], 'Jo');
+		assert.equal(matchingCompanion(choices, 'Jo'), null);
+		assert.equal(matchingCompanion(companionChoices(['Jordan Lee', 'Sam Ortiz'], 'Sam'), 'Sam')?.value, 'Sam Ortiz');
+		assert.equal(matchingCompanion(companionChoices(['Jordan Lee'], 'Jordan Lee'), 'jordan lee')?.value, 'Jordan Lee');
+	});
+});
+
+describe('household hubs and card return status', () => {
+	it('links everyone at the address and keeps the return hub', () => {
+		assert.deepEqual(
+			mergeHouseholdHubs(['[[Return Visits Hub]]'], ['Ada', 'Bo']),
+			['[[Return Visits Hub]]', '[[Ada]]', '[[Bo]]'],
+		);
+		assert.deepEqual(mergeHouseholdHubs(['[[Ada]]', '[[Return Visits Hub]]'], ['Ada', 'Bo']), [
+			'[[Ada]]',
+			'[[Return Visits Hub]]',
+			'[[Bo]]',
+		]);
+	});
+
+	it('turns return status on when the key is absent and keeps an explicit off', () => {
+		assert.equal(DEFAULT_SETTINGS.showCardReturnStatus, true);
+		assert.equal(mergeSettings({}).showCardReturnStatus, true);
+		assert.equal(mergeSettings({ showCardReturnStatus: true }).showCardReturnStatus, true);
+		assert.equal(mergeSettings({ showCardReturnStatus: false }).showCardReturnStatus, false);
+	});
+
+	it('asks before removing a campaign', () => {
+		const saved: Array<unknown> = [];
+		const record = {
+			name: 'Spring',
+			start: '2026-10-01',
+			end: '',
+			covered: [],
+		};
+		const keep = new CampaignModal({} as never, record, (next) => { saved.push(next); });
+		keep.onOpen();
+		clickLabeled(keep.contentEl as unknown as Clickable, 'Keep');
+		assert.deepEqual(saved, []);
+		const remove = new CampaignModal({} as never, record, (next) => { saved.push(next); });
+		remove.onOpen();
+		clickLabeled(remove.contentEl as unknown as Clickable, 'Remove');
+		assert.deepEqual(saved, [null]);
+	});
+
+	it('drops icon and color from the New RV template frontmatter', () => {
+		const template = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
+		const frontmatter = template.split('---')[1] ?? '';
+		assert.equal(/^\s*icon\s*:/m.test(frontmatter), false);
+		assert.equal(/^\s*color\s*:/m.test(frontmatter), false);
+		assert.equal(template.includes('icon: door-open'), true);
+	});
+});
+
+describe('setup wizard', () => {
+	it('reports missing plugins and folders without treating the suggestion row as a failure', () => {
+		const missing = setupChecklist(sampleSetup({
+			files: [{ path: 'Templates/99 New RV.md', exists: false }],
+		}));
+		assert.equal(missing.find((check) => check.id === 'templater')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'templater')?.detail.includes('does not install'), true);
+		assert.equal(missing.find((check) => check.id === 'templater')?.detail.includes('system commands'), true);
+		assert.equal(missing.find((check) => check.id === 'meta-bind')?.detail.includes('JS Engine'), true);
+		assert.equal(missing.find((check) => check.id === 'meta-bind')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'templates-folder')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'templates-folder')?.detail.includes('templates_folder'), true);
+		assert.equal(missing.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
+		assert.equal(missing.find((check) => check.id === 'extras')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.ok, true);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('Link companions'), false);
+		assert.equal(missing.find((check) => check.id === 'suggested')?.detail.includes('New RV priority is 3'), true);
+		assert.equal(missing.find((check) => check.id === 'geoapify')?.ok, false);
+		assert.equal(missing.find((check) => check.id === 'geoapify')?.title.includes('Geoapify API key is missing'), true);
+		assert.equal(missing.find((check) => check.id === 'home-counties')?.ok, true);
+		assert.equal(missing.find((check) => check.id === 'home-counties')?.detail.includes('asks you to confirm'), true);
+		const named = setupChecklist(sampleSetup({ homeCounties: ['Orange', 'Lake'] }));
+		assert.equal(named.find((check) => check.id === 'home-counties')?.title, 'Home counties: Orange, Lake');
+		assert.equal(named.find((check) => check.id === 'home-counties')?.ok, true);
+		const ready = setupChecklist(sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Ministry/Templates',
+			scriptsFolder: 'Ministry/Scripts',
+			resolvedTemplatesFolder: 'Ministry/Templates',
+			resolvedScriptsFolder: 'Ministry/Scripts',
+			files: [{ path: 'Ministry/Templates/99 New RV.md', exists: true }],
+			geoapifyConfigured: true,
+		}));
+		assert.equal(ready.every((check) => check.ok), true);
+	});
+
+	it('asks for home counties, saves the settings list, and skip leaves it unchanged', async () => {
+		assert.equal(shouldAutoOpenSetupWizard(false, false), true);
+		assert.equal(shouldAutoOpenSetupWizard(true, false), false);
+		assert.equal(shouldAutoOpenSetupWizard(false, true), false);
+
+		let counties = ['Orange'];
+		const saved: string[][] = [];
+		const savedColors: unknown[] = [];
+		const opened = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: counties }), wizardActions({
+			onSaveHomeCounties: async (next) => {
+				saved.push(next);
+				counties = mergeSettings({ homeCounties: next }).homeCounties;
+			},
+			onSaveUrgencyColors: async (choice) => { savedColors.push(choice); },
+		}));
+		opened.open();
+		await waitTurn();
+		const firstCopy = collectText(opened.contentEl as unknown as Clickable);
+		assert.equal(firstCopy.includes('where you normally work return visits'), true);
+		assert.equal(firstCopy.includes('wrong-city pick'), true);
+		assert.equal(firstCopy.includes('asks you to confirm'), true);
+		assert.equal(firstCopy.includes('May go out'), true);
+		assert.equal(firstCopy.includes('before 12pm'), true);
+		const area = findTagged(opened.contentEl as unknown as Clickable, 'textarea');
+		assert.equal(area.text, 'Orange');
+		area.emit('change', 'Orange County\norange\nLake');
+		clickLabeled(opened.contentEl as unknown as Clickable, 'Save and continue');
+		await waitTurn();
+		assert.deepEqual(saved, [['Orange County', 'orange', 'Lake']]);
+		assert.deepEqual(counties, ['Orange County', 'Lake']);
+		assert.equal(collectText(opened.contentEl as unknown as Clickable).includes('Step 2 of 3. Urgency colors.'), true);
+		clickLabeled(opened.contentEl as unknown as Clickable, 'Save and continue');
+		await waitTurn();
+		assert.deepEqual(savedColors, [{ palette: 'default', custom: ['#1f8a4c', '#d6a100', '#e06a00', '#d63c3c'] }]);
+		const afterSave = collectText(opened.contentEl as unknown as Clickable);
+		assert.equal(afterSave.includes('Home counties: Orange County, Lake'), true);
+		assert.equal(afterSave.includes('Step 3 of 3'), true);
+
+		let skippedSaved = 0;
+		let skippedSchedule = 0;
+		const skipped = new SetupWizardModal({} as never, async () => sampleSetup({ homeCounties: [] }), wizardActions({
+			onSaveHomeCounties: async () => { skippedSaved += 1; },
+			onSaveMayGoOut: async () => { skippedSchedule += 1; },
+		}));
+		skipped.open();
+		await waitTurn();
+		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		clickLabeled(skipped.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		assert.equal(skippedSaved, 0);
+		assert.equal(skippedSchedule, 0);
+		const afterSkip = collectText(skipped.contentEl as unknown as Clickable);
+		assert.equal(afterSkip.includes('Home counties: none'), true);
+		assert.equal(afterSkip.includes('asks you to confirm'), true);
+	});
+
+	it('nags only for a required gap the wizard also shows', () => {
+		const ready = sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Templates',
+			scriptsFolder: 'Scripts',
+			files: [{ path: 'Templates/99 New RV.md', exists: true }],
+			homeCounties: [],
+			geoapifyConfigured: true,
+		});
+		assert.deepEqual(requiredSetupGaps(ready, 'key'), []);
+		assert.equal(setupChecklist(ready).every((check) => check.ok), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: ready,
+		}), false);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: ready,
+		}), false);
+		assert.equal(shouldPersistSetupWizardCompleted(false, ready, 'key'), true);
+		assert.equal(shouldPersistSetupWizardCompleted(true, ready, 'key'), false);
+		assert.deepEqual(requiredSetupGaps(ready, '  '), ['geoapify']);
+		const missingKey = setupChecklist({ ...ready, geoapifyConfigured: false });
+		assert.equal(missingKey.find((check) => check.id === 'geoapify')?.ok, false);
+		assert.equal(missingKey.find((check) => check.id === 'geoapify')?.detail.includes('RV Locator settings'), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: '',
+			snapshot: ready,
+		}), true);
+
+		const missing = sampleSetup({
+			files: [{ path: 'Templates/99 New RV.md', exists: false }],
+			homeCounties: [],
+		});
+		const gaps = requiredSetupGaps(missing, '');
+		assert.equal(gaps.includes('home-counties'), false);
+		assert.equal(gaps.includes('suggested'), false);
+		assert.equal(gaps.includes('geoapify'), true);
+		assert.equal(gaps.includes('templater'), true);
+		assert.equal(gaps.includes('meta-bind'), true);
+		assert.equal(gaps.includes('templates-folder'), true);
+		assert.equal(gaps.includes('scripts-folder'), true);
+		assert.equal(gaps.includes('extras'), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: missing,
+		}), true);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: true,
+			geoapifyApiKey: '',
+			snapshot: missing,
+		}), false);
+
+		const fallbackFiles = [
+			{ path: 'Templates/99 New RV.md', exists: true },
+			{ path: 'Templates/99 RV Log Home.md', exists: true },
+			{ path: 'Templates/99 RV Log Miss.md', exists: true },
+			{ path: 'Scripts/newRv.js', exists: true },
+			{ path: 'Scripts/rvLog.js', exists: true },
+			{ path: 'Scripts/geocodeNewRv.js', exists: true },
+		];
+		const fallback = sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: '',
+			scriptsFolder: '',
+			resolvedTemplatesFolder: 'Templates',
+			resolvedScriptsFolder: 'Scripts',
+			files: fallbackFiles,
+			geoapifyConfigured: true,
+		});
+		const fallbackChecks = setupChecklist(fallback);
+		assert.equal(fallbackChecks.find((check) => check.id === 'templates-folder')?.ok, true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'scripts-folder')?.ok, true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'templates-folder')?.detail.includes('templates_folder'), true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'scripts-folder')?.detail.includes('user_scripts_folder'), true);
+		assert.equal(fallbackChecks.find((check) => check.id === 'extras')?.ok, true);
+		assert.deepEqual(requiredSetupGaps(fallback, 'key'), []);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: false,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: fallback,
+		}), false);
+
+		const scriptsMissing = sampleSetup({
+			...fallback,
+			files: fallbackFiles.map((file) => file.path.startsWith('Scripts/') ? { ...file, exists: false } : file),
+		});
+		const scriptGaps = requiredSetupGaps(scriptsMissing, 'key');
+		assert.equal(scriptGaps.includes('templates-folder'), false);
+		assert.equal(scriptGaps.includes('scripts-folder'), true);
+		assert.equal(scriptGaps.includes('extras'), true);
+		assert.equal(setupChecklist(scriptsMissing).find((check) => check.id === 'scripts-folder')?.ok, false);
+		assert.equal(shouldShowSetupNudge({
+			wizardCompleted: true,
+			nudgeDismissed: false,
+			geoapifyApiKey: 'key',
+			snapshot: scriptsMissing,
+		}), true);
+	});
+
+	it('page 3 lists the Geoapify gap and every action button', async () => {
+		const blocked = new SetupWizardModal({} as never, async () => sampleSetup({ geoapifyConfigured: false }), wizardActions({}));
+		blocked.open();
+		await waitTurn();
+		clickLabeled(blocked.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		clickLabeled(blocked.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		const blockedText = collectText(blocked.contentEl as unknown as Clickable);
+		assert.equal(blockedText.includes('Needs attention: Geoapify API key is missing'), true);
+		for (const label of ['Community plugins', 'Templater settings', 'Meta Bind settings', 'Update from GitHub', 'Check again', 'Done']) {
+			assert.equal(blockedText.includes(label), true, label);
+		}
+
+		const ready = new SetupWizardModal({} as never, async () => sampleSetup({
+			templaterEnabled: true,
+			metaBindEnabled: true,
+			templatesFolder: 'Templates',
+			scriptsFolder: 'Scripts',
+			files: [{ path: 'Templates/99 New RV.md', exists: true }],
+			geoapifyConfigured: true,
+		}), wizardActions({}));
+		ready.open();
+		await waitTurn();
+		clickLabeled(ready.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		clickLabeled(ready.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		const readyText = collectText(ready.contentEl as unknown as Clickable);
+		assert.equal(readyText.includes('Ready: Geoapify API key is set'), true);
+		assert.equal(readyText.includes('Needs attention'), false);
+		let dismissed = 0;
+		const done = new SetupWizardModal({} as never, async () => sampleSetup({}), wizardActions({
+			onDismiss: () => { dismissed += 1; },
+		}));
+		done.open();
+		await waitTurn();
+		clickLabeled(done.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		clickLabeled(done.contentEl as unknown as Clickable, 'Skip');
+		await waitTurn();
+		clickLabeled(done.contentEl as unknown as Clickable, 'Done');
+		assert.equal(dismissed, 1);
+	});
+});
+
+function wizardActions(partial: Partial<ConstructorParameters<typeof SetupWizardModal>[2]>): ConstructorParameters<typeof SetupWizardModal>[2] {
+	return {
+		onDismiss: () => {},
+		onPlaceExtras: () => {},
+		openCommunityPlugins: () => {},
+		openTemplaterSettings: () => {},
+		openMetaBindSettings: () => {},
+		onSaveHomeCounties: async () => {},
+		onSaveMayGoOut: async () => {},
+		onSaveUrgencyColors: async () => {},
+		...partial,
+	};
+}
+
+function collectText(root: Clickable): string {
+	const parts: string[] = [];
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.text) parts.push(current.text);
+		stack.push(...current.children);
+	}
+	return parts.join('\n');
+}
+
+function findTagged(root: Clickable, tag: string): Clickable {
+	const stack = [root];
+	while (stack.length > 0) {
+		const current = stack.pop();
+		if (!current) continue;
+		if (current.tag === tag) return current;
+		stack.push(...current.children);
+	}
+	throw new Error(`No ${tag}`);
+}
+
+function sampleSetup(partial: Partial<SetupSnapshot>): SetupSnapshot {
+	return {
+		templaterEnabled: false,
+		metaBindEnabled: false,
+		templatesFolder: '',
+		scriptsFolder: '',
+		resolvedTemplatesFolder: 'Templates',
+		resolvedScriptsFolder: 'Scripts',
+		files: [],
+		defaultNewRvPriority: 3,
+		homeCounties: [],
+		geoapifyConfigured: false,
+		newRvTemplateFile: '99 New RV.md',
+		homeLogTemplateFile: '99 RV Log Home.md',
+		missLogTemplateFile: '99 RV Log Miss.md',
+		...partial,
 	};
 }

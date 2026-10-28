@@ -1,20 +1,26 @@
 import esbuild from 'esbuild';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 mkdirSync('tests-dist', { recursive: true });
 
 await esbuild.build({
-	entryPoints: ['tests/logic.test.ts'],
+	entryPoints: ['tests/logic.test.ts', 'tests/disk-proof.test.ts', 'tests/scoring.test.ts', 'tests/visit-editor.test.ts', 'tests/status.test.ts', 'tests/release-135.test.ts', 'tests/catalog.test.ts', 'tests/regressions-135.test.ts', 'tests/reading-fold.test.ts', 'tests/live-preview.test.ts', 'tests/polish-pack.test.ts', 'tests/smoke-layout.test.ts', 'tests/next-build.test.ts', 'tests/dogfood-2026-10-12.test.ts', 'tests/visit-notes-rewrite.test.ts', 'tests/idle-surface.test.ts', 'tests/feedback-2026-10-13.test.ts', 'tests/locks-2026-10-27.test.ts', 'tests/card-title-qf.test.ts'],
 	bundle: true,
 	format: 'cjs',
 	platform: 'node',
-	outfile: 'tests-dist/logic.test.cjs',
-	external: ['node:test', 'node:assert/strict'],
+	outdir: 'tests-dist',
+	entryNames: '[name]',
+	outExtension: { '.js': '.cjs' },
+	external: ['node:test', 'node:assert/strict', 'node:fs', 'node:path', 'node:child_process', 'jsdom'],
+	alias: {
+		obsidian: path.join(process.cwd(), 'tests/obsidian-stub.ts'),
+	},
 	logLevel: 'warning',
 });
 
-const result = spawnSync(process.execPath, ['--test', 'tests-dist/logic.test.cjs'], {
+const result = spawnSync(process.execPath, ['--test', '--experimental-test-isolation=process', 'tests-dist/logic.test.cjs', 'tests-dist/disk-proof.test.cjs', 'tests-dist/scoring.test.cjs', 'tests-dist/visit-editor.test.cjs', 'tests-dist/status.test.cjs', 'tests-dist/release-135.test.cjs', 'tests-dist/catalog.test.cjs', 'tests-dist/regressions-135.test.cjs', 'tests-dist/reading-fold.test.cjs', 'tests-dist/live-preview.test.cjs', 'tests-dist/polish-pack.test.cjs', 'tests-dist/smoke-layout.test.cjs', 'tests-dist/next-build.test.cjs', 'tests-dist/dogfood-2026-10-12.test.cjs', 'tests-dist/visit-notes-rewrite.test.cjs', 'tests-dist/idle-surface.test.cjs', 'tests-dist/feedback-2026-10-13.test.cjs', 'tests-dist/locks-2026-10-27.test.cjs', 'tests-dist/card-title-qf.test.cjs'], {
 	stdio: 'inherit',
 });
 

@@ -50,14 +50,60 @@ export function sortRowsBy<T extends DistanceSortable>(
 ): T[] {
 	if (sorts.length === 0) return [...rows];
 	const copy = [...rows];
+	const cityNear = cityNearness(copy, fix);
 	copy.sort((a, b) => {
 		for (const sort of sorts) {
-			const diff = compareRow(a, b, sort, fix, distanceProperty);
+			const diff = sort.property === 'note.City'
+				? compareCity(a, b, sort.direction, fix, cityNear)
+				: compareRow(a, b, sort, fix, distanceProperty);
 			if (diff !== 0) return diff;
 		}
 		return 0;
 	});
 	return copy;
+}
+
+/**
+ * With a position, cities are ordered by the nearest note in that city.
+ * Without one, City is alphabetical. Empty cities sort last.
+ */
+function compareCity(
+	a: DistanceSortable,
+	b: DistanceSortable,
+	direction: SortDirection,
+	fix: LatLon | null,
+	cityNear: Map<string, number>,
+): number {
+	const left = cityText(a);
+	const right = cityText(b);
+	if (!left && !right) return 0;
+	if (!left) return 1;
+	if (!right) return -1;
+	if (fix) {
+		const diff = (cityNear.get(left) ?? Number.POSITIVE_INFINITY) - (cityNear.get(right) ?? Number.POSITIVE_INFINITY);
+		if (diff !== 0) return direction === 'ASC' ? diff : -diff;
+	}
+	const name = left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+	return direction === 'ASC' ? name : -name;
+}
+
+function cityNearness(rows: readonly DistanceSortable[], fix: LatLon | null): Map<string, number> {
+	const nearest = new Map<string, number>();
+	if (!fix) return nearest;
+	for (const row of rows) {
+		const city = cityText(row);
+		const meters = metersOf(row, fix);
+		if (!city || meters == null) continue;
+		const previous = nearest.get(city);
+		if (previous == null || meters < previous) nearest.set(city, meters);
+	}
+	return nearest;
+}
+
+function cityText(row: DistanceSortable): string {
+	const key = row.sortKeys['note.City'];
+	if (!key || key.kind === 'empty') return '';
+	return displayOf(key).trim();
 }
 
 function compareRow(
