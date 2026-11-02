@@ -1,4 +1,4 @@
-import { Modal, Setting, setIcon, type App, type ButtonComponent } from 'obsidian';
+import { Modal, Notice, Setting, setIcon, type App, type ButtonComponent } from 'obsidian';
 import { AddressSuggestController, type SuggestFetchResult } from './address-suggest';
 import { emptyShare, studyPrefill, type LessonSpec, type VisitShare } from './catalog';
 import { mountShareFields } from './catalog-fields';
@@ -17,6 +17,9 @@ export interface NewRvIdentity {
 	/** Empty when they leave the companion blank. */
 	companion: string;
 	priority: number;
+	/** Blank when they leave Age empty. */
+	age?: string;
+	ageExact?: boolean;
 	/** Set when they picked a Geoapify hit and the address still matches it. */
 	verifiedHit: GeocodeHit | null;
 	publications: string;
@@ -33,6 +36,8 @@ export interface NewRvIdentity {
 
 export interface NewRvModalOptions {
 	defaultPriority: number;
+	/** Lowest urgency color. Priority segments step down from this. */
+	priorityAccent?: string;
 	companions: readonly string[];
 	/** Home-biased autocomplete, then a wider pass when home is sparse. */
 	suggestHome?: (query: string) => Promise<SuggestFetchResult>;
@@ -62,6 +67,8 @@ export class NewRvIdentityModal extends Modal {
 	private name = '';
 	private address = '';
 	private companion = '';
+	private age = '';
+	private ageExact = false;
 	private priority: number;
 	private settled = false;
 	private companionPicked = false;
@@ -85,27 +92,24 @@ export class NewRvIdentityModal extends Modal {
 		this.address = preset?.address ?? '';
 		this.companion = preset?.companion ?? '';
 		const priority = preset?.priority ?? options.defaultPriority;
-		this.priority = Number.isInteger(priority) ? Math.max(0, Math.min(5, priority)) : 4;
+		// New RV priority drops 0. setLimits(1, 5) is the segment range.
+		this.priority = Number.isInteger(priority) ? Math.max(1, Math.min(5, priority)) : 4;
 	}
 
 	onOpen(): void {
 		this.modalEl.addClass('rv-locator-modal');
+		this.modalEl.addClass('rv-new-rv');
 		markModalTone(this.modalEl, 'general');
 		this.setTitle(this.options.title ?? 'New RV');
 		const { contentEl } = this;
-		contentEl.createEl('p', {
-			cls: 'rv-locator-modal-copy',
-			text: this.options.intro ?? 'Man or woman, a name, the address, and a priority.',
-		});
+		if (this.options.intro) {
+			contentEl.createEl('p', {
+				cls: 'rv-locator-modal-copy',
+				text: this.options.intro,
+			});
+		}
 		const gender = new Setting(contentEl).setName('Man / Woman');
 		gender.settingEl?.addClass('rv-gender-choice');
-		gender.addButton((button) => {
-			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
-			button.onClick(() => {
-				this.gender = 'Man';
-				this.paintGender(gender);
-			});
-		});
 		gender.addButton((button) => {
 			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
 			button.onClick(() => {
@@ -113,19 +117,34 @@ export class NewRvIdentityModal extends Modal {
 				this.paintGender(gender);
 			});
 		});
+		gender.addButton((button) => {
+			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
+			button.onClick(() => {
+				this.gender = 'Man';
+				this.paintGender(gender);
+			});
+		});
 		new Setting(contentEl)
 			.setName('Name')
-			.setDesc('Optional. Blank uses the street.')
 			.addText((text) => {
-				text.setPlaceholder('Name (optional)');
+				text.setPlaceholder('Optional (e.g. Maria)');
 				text.setValue(this.name);
 				text.onChange((value) => { this.name = value; });
 			});
+		const age = new Setting(contentEl).setName('Age');
+		age.settingEl?.addClass('rv-age-choice');
+		age.addText((text) => {
+			text.setPlaceholder('Optional (e.g. ~35)');
+			text.setValue(this.age);
+			text.inputEl?.setAttribute('aria-label', 'Age');
+			text.inputEl?.setAttribute('inputmode', 'numeric');
+			text.onChange((value) => { this.age = value; });
+			if (text.inputEl) mountAgeSymbol(text.inputEl, () => this.ageExact, (exact) => { this.ageExact = exact; });
+		});
 		new Setting(contentEl)
 			.setName('Address')
-			.setDesc('Street address.')
 			.addText((text) => {
-				text.setPlaceholder('Street address');
+				text.setPlaceholder('Required (e.g. 123 Oak St)');
 				text.setValue(this.address);
 				this.addressInput = text;
 				this.bindField(text, () => this.commitAddressMatch(), (value) => {
@@ -164,9 +183,8 @@ export class NewRvIdentityModal extends Modal {
 			});
 		new Setting(contentEl)
 			.setName('What publisher came with you?')
-			.setDesc('Optional.')
 			.addText((text) => {
-				text.setPlaceholder('Companion (optional)');
+				text.setPlaceholder('Optional (e.g. Sister Johnson)');
 				text.setValue(this.companion);
 				this.companionInput = text;
 				if (text.inputEl) {
@@ -197,15 +215,23 @@ export class NewRvIdentityModal extends Modal {
 			lessonPrefill: studyPrefill(null, this.options.lessons),
 			initial: this.share,
 		}, (next) => { this.share = next; });
-		new Setting(contentEl)
-			.setName('Priority')
-			.setDesc('Uses the default priority.')
-			.addSlider((slider) => {
-				slider.setLimits(0, 5, 1);
-				slider.setValue(this.priority);
-				slider.setDynamicTooltip();
-				slider.onChange((value) => { this.priority = value; });
+		const priority = new Setting(contentEl).setName('Priority');
+		priority.settingEl?.addClass('rv-priority-choice');
+		const segs = priority.controlEl.createDiv('rv-priority-segs');
+		if (this.options.priorityAccent) segs.style.setProperty('--rv-priority-accent', this.options.priorityAccent);
+		for (let rank = 1; rank <= 5; rank += 1) {
+			const button = segs.createEl('button', {
+				cls: 'rv-priority-seg',
+				text: String(rank),
+				attr: { type: 'button', 'aria-label': `Priority ${rank}` },
 			});
+			button.dataset.priority = String(rank);
+			button.addEventListener('click', () => {
+				this.priority = rank;
+				this.paintPriority(segs);
+			});
+		}
+		this.paintPriority(segs);
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
@@ -231,6 +257,10 @@ export class NewRvIdentityModal extends Modal {
 		this.commitAddressMatch();
 		this.commitCompanionMatch();
 		const address = this.address.replace(/\r?\n/g, ' ').trim();
+		if (!address) {
+			new Notice('Address is required.');
+			return;
+		}
 		const verified = this.verifiedHit && addressesMatchOneForOne(address, this.verifiedHit.formattedAddress)
 			? this.verifiedHit
 			: null;
@@ -241,6 +271,8 @@ export class NewRvIdentityModal extends Modal {
 			address,
 			companion: this.companion.trim(),
 			priority: this.priority,
+			age: this.age.trim(),
+			ageExact: this.ageExact,
 			verifiedHit: verified,
 			publications: this.share.publications.trim(),
 			media: this.share.media.trim(),
@@ -254,6 +286,14 @@ export class NewRvIdentityModal extends Modal {
 			extraTo: this.share.extraTo,
 		});
 		this.close();
+	}
+
+	private paintPriority(host: HTMLElement): void {
+		host.querySelectorAll('.rv-priority-seg').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			node.classList.toggle('is-selected', node.dataset.priority === String(this.priority));
+			node.setAttribute('aria-pressed', node.dataset.priority === String(this.priority) ? 'true' : 'false');
+		});
 	}
 
 	private paintGender(setting: Setting): void {
@@ -404,39 +444,16 @@ export class EditAttributesModal extends Modal {
 			});
 		}
 		paintStatus();
-		const age = new Setting(fields).setName('Estimated age');
+		const age = new Setting(fields).setName('Age');
 		age.settingEl?.addClass('rv-age-choice');
 		age.addText((text) => {
-			text.setPlaceholder(this.ageExact ? '42' : '~35');
+			text.setPlaceholder('Optional (e.g. ~35)');
 			text.setValue(this.age);
-			text.inputEl?.setAttribute('aria-label', 'Estimated age');
+			text.inputEl?.setAttribute('aria-label', 'Age');
 			text.inputEl?.setAttribute('inputmode', 'numeric');
 			text.onChange((value) => { this.age = value; });
+			if (text.inputEl) mountAgeSymbol(text.inputEl, () => this.ageExact, (exact) => { this.ageExact = exact; });
 		});
-		const paintAge = (): void => {
-			const buttons = age.settingEl?.querySelectorAll('button') ?? [];
-			buttons.forEach((button) => {
-				if (!(button instanceof HTMLButtonElement)) return;
-				button.classList.toggle('is-selected', (button.dataset.exact === '1') === this.ageExact);
-			});
-		};
-		age.addButton((button) => {
-			button.buttonEl.dataset.exact = '0';
-			button.setButtonText('Approx');
-			button.onClick(() => {
-				this.ageExact = false;
-				paintAge();
-			});
-		});
-		age.addButton((button) => {
-			button.buttonEl.dataset.exact = '1';
-			button.setButtonText('Exact');
-			button.onClick(() => {
-				this.ageExact = true;
-				paintAge();
-			});
-		});
-		paintAge();
 		const gender = new Setting(fields).setName('Man / Woman');
 		gender.settingEl?.addClass('rv-gender-choice');
 		const paint = (): void => {
@@ -484,4 +501,62 @@ export class EditAttributesModal extends Modal {
 	onClose(): void {
 		this.contentEl.empty();
 	}
+}
+
+/** Right-side ~ or = box. The menu lists ~ Approximate and = Exact. No chevron. */
+function mountAgeSymbol(input: HTMLElement, exact: () => boolean, setExact: (value: boolean) => void): void {
+	const parent = input.parentElement;
+	if (!parent || parent.querySelector('.rv-age-symbol')) return;
+	parent.classList.add('rv-suggest-host');
+	const button = input.ownerDocument.createElement('button');
+	button.type = 'button';
+	button.className = 'rv-suggest-chevron rv-age-symbol';
+	button.setAttribute('aria-label', 'Age is approximate or exact');
+	const paint = (): void => { button.textContent = exact() ? '=' : '~'; };
+	paint();
+	input.insertAdjacentElement('afterend', button);
+	const panel = input.ownerDocument.createElement('div');
+	panel.className = 'rv-suggest-panel rv-age-menu';
+	panel.hidden = true;
+	parent.appendChild(panel);
+	const choices: ReadonlyArray<{ exact: boolean; label: string }> = [
+		{ exact: false, label: '~ Approximate' },
+		{ exact: true, label: '= Exact' },
+	];
+	button.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!panel.hidden) {
+			panel.hidden = true;
+			return;
+		}
+		panel.replaceChildren();
+		for (const choice of choices) {
+			const row = input.ownerDocument.createElement('button');
+			row.type = 'button';
+			row.className = 'rv-suggest-option';
+			row.textContent = choice.label;
+			row.classList.toggle('is-selected', choice.exact === exact());
+			row.addEventListener('click', (click) => {
+				click.preventDefault();
+				click.stopPropagation();
+				setExact(choice.exact);
+				paint();
+				panel.hidden = true;
+			});
+			panel.appendChild(row);
+		}
+		panel.hidden = false;
+	});
+	const doc = input.ownerDocument;
+	const close = (event: Event): void => {
+		if (!button.isConnected) {
+			doc.removeEventListener('pointerdown', close);
+			return;
+		}
+		const target = event.target;
+		if (target instanceof Node && parent.contains(target)) return;
+		panel.hidden = true;
+	};
+	doc.addEventListener('pointerdown', close);
 }

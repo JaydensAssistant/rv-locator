@@ -55,7 +55,9 @@ import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteNa
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { navigatingToFile, withReadingPreview } from './reading-open';
-import { isRvDashboardNote, refreshStampAgeLabels } from './rv-note-view';
+import { isRvDashboardNote, isRvLocatorSurface, refreshStampAgeLabels } from './rv-note-view';
+import { dismissNoteTitleModal, installRenameSwallow } from './rename-guard';
+import { storeFrontmatter } from './visit-paint-guard';
 import { NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
@@ -419,8 +421,11 @@ export default class RVLocatorPlugin extends Plugin {
 				if (fromCache) frontmatter = fromCache;
 			}
 			if (file instanceof TFile && frontmatter) {
-				this.cachedFrontmatter.set(file.path, { ...frontmatter });
-				applyExternalVisitNotes(file.path, noteValuesFromFrontmatter(frontmatter));
+				const pin = this.visitPaint.get(file.path);
+				const decision = storeFrontmatter(frontmatter, pin ? visitPaintRecord(pin) : null);
+				this.cachedFrontmatter.set(file.path, decision.stored);
+				if (decision.clearPin) this.visitPaint.delete(file.path);
+				applyExternalVisitNotes(file.path, noteValuesFromFrontmatter(decision.stored));
 			}
 			const active = this.app.workspace.getActiveFile();
 			if (!active || file.path === active.path) this.applyLayoutClasses();
@@ -482,6 +487,16 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-full-width-callout', on && this.settings.fullWidthCallout);
 		body.toggleClass('rv-map-open', on && this.hubMapOpen);
 		body.toggleClass('rv-hide-statusbar', on && shouldHideStatusBar(this.noteHidesStatusBar(), this.settings.hideStatusBar, this.standaloneBaseOpen()));
+		body.toggleClass('rv-hide-mobile-nav', on && this.activeLocatorSurface());
+	}
+
+	/** Hub notes and RV notes hide the phone navbar. Any other note brings it back. */
+	private activeLocatorSurface(): boolean {
+		const file = this.app.workspace.getActiveFile();
+		if (!file) return false;
+		const cached = this.cachedFrontmatter.get(file.path);
+		const data = cached ?? this.app.metadataCache.getFileCache(file)?.frontmatter;
+		return isRvLocatorSurface(data as Record<string, unknown> | null | undefined);
 	}
 
 	private noteHidesStatusBar(): boolean {
@@ -995,6 +1010,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
 			new NewRvIdentityModal(this.app, {
 				defaultPriority: this.settings.defaultNewRvPriority,
+				priorityAccent: urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors)[0],
 				companions: this.recentCompanionNames(),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
 				media: [...MEDIA_TITLES, ...this.settings.customMedia],
@@ -1028,6 +1044,7 @@ export default class RVLocatorPlugin extends Plugin {
 				title: 'Add a housemate',
 				intro: 'Same choices. The address starts filled in.',
 				defaultPriority: this.settings.defaultNewRvPriority,
+				priorityAccent: urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors)[0],
 				companions: this.recentCompanionNames(),
 				publications: [...PUBLICATION_TITLES, ...this.settings.customPublications],
 				media: [...MEDIA_TITLES, ...this.settings.customMedia],
@@ -1039,7 +1056,7 @@ export default class RVLocatorPlugin extends Plugin {
 				preset: {
 					gender,
 					address,
-					priority: Math.max(0, Math.min(5, Math.round(priority))),
+					priority: Math.max(1, Math.min(5, Math.round(priority))),
 				},
 			}, (value) => resolve(value)).open();
 		});
@@ -1079,6 +1096,9 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async launchNewRvTemplate(): Promise<void> {
 		this.creatingNewRv = true;
+		const releaseRename = installRenameSwallow(WorkspaceLeaf);
+		const dismissRename = (): void => { dismissNoteTitleModal(document); };
+		for (const delay of [0, 50, 200, 600, 1200]) window.setTimeout(dismissRename, delay);
 		try {
 			const templater = readTemplaterPlugin(this.app);
 			const create = templater?.templater?.create_new_note_from_template;
@@ -1119,6 +1139,10 @@ export default class RVLocatorPlugin extends Plugin {
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
 			new Notice(reason);
 		} finally {
+			window.setTimeout(() => {
+				dismissRename();
+				releaseRename();
+			}, 2000);
 			this.creatingNewRv = false;
 			this.newRvDraft = null;
 			this.housemateSourcePath = null;
@@ -1127,20 +1151,28 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async writeNewRvShare(file: TFile, identity: NewRvIdentity): Promise<void> {
 		const share = shareFromNewRvDraft(identity);
-		if (!share) return;
-		const publications = share.publicationList ?? [];
-		const media = share.mediaList ?? [];
+		const years = ageYears(typeof identity.age === 'string' ? identity.age.replace(/^~/, '') : identity.age);
+		if (!share && years == null) return;
+		const publications = share?.publicationList ?? [];
+		const media = share?.mediaList ?? [];
 		const now = new Date();
 		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 			const data = frontmatter as Record<string, unknown>;
-			const publication = publications[0];
-			const shown = media[0];
-			if (publications.length === 1 && publication) assignProperty(data, 'Left Publications', publication);
-			else if (publications.length > 1) assignProperty(data, 'Left Publications', publications);
-			if (media.length === 1 && shown) assignProperty(data, 'Shared Media', shown);
-			else if (media.length > 1) assignProperty(data, 'Shared Media', media);
-			recordLoggedLessons(data, share, formatFrontmatterDateTime(now));
+			if (share) {
+				const publication = publications[0];
+				const shown = media[0];
+				if (publications.length === 1 && publication) assignProperty(data, 'Left Publications', publication);
+				else if (publications.length > 1) assignProperty(data, 'Left Publications', publications);
+				if (media.length === 1 && shown) assignProperty(data, 'Shared Media', shown);
+				else if (media.length > 1) assignProperty(data, 'Shared Media', media);
+				recordLoggedLessons(data, share, formatFrontmatterDateTime(now));
+			}
+			if (years != null) {
+				assignProperty(data, 'Age', years);
+				assignProperty(data, 'Age Exact', identity.ageExact === true);
+			}
 		});
+		if (!share) return;
 		await this.app.vault.process(file, (data) => {
 			const info = getFrontMatterInfo(data);
 			const head = data.slice(0, info.contentStart);
@@ -1629,6 +1661,24 @@ export default class RVLocatorPlugin extends Plugin {
 			visits: readProperty(data, 'Visits'),
 			successful: readProperty(data, 'Successful Visits'),
 		});
+		this.cachedFrontmatter.set(path, { ...data });
+	}
+
+	/** Frontmatter lands first so a later body `changed` event cannot revive the old head. */
+	private async writeVisitHeadThenBody(
+		file: TFile,
+		nextBody: string,
+		apply: (data: Record<string, unknown>) => void,
+	): Promise<void> {
+		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+			const data = frontmatter as Record<string, unknown>;
+			apply(data);
+			this.pinVisitPaint(file.path, data);
+		});
+		await this.app.vault.process(file, (data) => {
+			const info = getFrontMatterInfo(data);
+			return data.slice(0, info.contentStart) + nextBody;
+		});
 	}
 
 	noteFrontmatter(path: string): Record<string, unknown> | null {
@@ -1656,11 +1706,10 @@ export default class RVLocatorPlugin extends Plugin {
 		if (paint) {
 			const fields = visitPaintRecord(paint);
 			const same = data != null && Object.entries(fields).every(([key, value]) => samePinned(readProperty(data, key), value));
-			if (same) this.visitPaint.delete(path);
-			else if (data) {
-				for (const [key, value] of Object.entries(fields)) assignProperty(data, key, value);
-			} else {
-				return fields;
+			if (!same) {
+				if (data) {
+					for (const [key, value] of Object.entries(fields)) assignProperty(data, key, value);
+				} else return fields;
 			}
 		}
 		return data;
@@ -3220,26 +3269,18 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare, silent = false): Promise<void> {
-		const before = silent ? '' : await this.app.vault.read(file);
+		const before = await this.app.vault.read(file);
 		const campaignSnap = this.campaign ? { ...this.campaign, covered: [...this.campaign.covered] } : null;
 		const now = new Date();
 		const coveredName = this.coverageDecisions.get(file.path) === 'yes' ? (this.campaign?.name ?? '') : '';
-		let notesProperty: string | null = null;
-		let visitsAfter: VisitEntry[] = [];
-		await this.app.vault.process(file, (data) => {
-			const info = getFrontMatterInfo(data);
-			const head = data.slice(0, info.contentStart);
-			const body = data.slice(info.contentStart);
-			if (outcome === 'home') notesProperty = nextVisitNotesProperty(body);
-			const nextBody = applyVisitBody(body, outcome, now, companion, share, coveredName);
-			visitsAfter = listVisits(nextBody);
-			return head + nextBody;
-		});
-		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			const data = frontmatter as Record<string, unknown>;
+		const info = getFrontMatterInfo(before);
+		const body = before.slice(info.contentStart);
+		const notesProperty = outcome === 'home' ? nextVisitNotesProperty(body) : null;
+		const nextBody = applyVisitBody(body, outcome, now, companion, share, coveredName);
+		const visitsAfter = listVisits(nextBody);
+		await this.writeVisitHeadThenBody(file, nextBody, (data) => {
 			applyVisitFrontmatter(data, outcome, now, companion, share);
 			syncMet(data, visitsAfter, now);
-			this.pinVisitPaint(file.path, data);
 		});
 		await this.rememberShare(share);
 		await this.restabilizeCompanions(file);
@@ -3291,19 +3332,14 @@ export default class RVLocatorPlugin extends Plugin {
 	private async writePastVisit(file: TFile, facts: VisitFacts): Promise<void> {
 		const companion = facts.home ? formatStoredCompanion(facts.companion) : '';
 		const visit: VisitFacts = { ...facts, companion };
-		let remaining: VisitFacts[] = [];
-		let notesProperty: string | null = null;
-		await this.app.vault.process(file, (data) => {
-			const info = getFrontMatterInfo(data);
-			const body = data.slice(info.contentStart);
-			remaining = listVisits(body).map(visitFacts);
-			notesProperty = visit.home ? nextVisitNotesProperty(data) : null;
-			return data.slice(0, info.contentStart) + insertVisit(body, visit, { now: new Date(), notesProperty });
-		});
-		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			const data = frontmatter as Record<string, unknown>;
+		const current = await this.app.vault.read(file);
+		const info = getFrontMatterInfo(current);
+		const body = current.slice(info.contentStart);
+		const remaining = listVisits(body).map(visitFacts);
+		const notesProperty = visit.home ? nextVisitNotesProperty(current) : null;
+		const nextBody = insertVisit(body, visit, { now: new Date(), notesProperty });
+		await this.writeVisitHeadThenBody(file, nextBody, (data) => {
 			applyVisitChangeFrontmatter(data, { added: visit, remaining });
-			this.pinVisitPaint(file.path, data);
 		});
 		await this.restabilizeCompanions(file);
 		await this.rememberShare({
@@ -3463,31 +3499,24 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Edit (`facts`) or delete (`null`) one visit, body and frontmatter together. */
 	private async changeVisit(file: TFile, hint: VisitHint, facts: VisitFacts | null): Promise<void> {
 		const added = facts ? { ...facts, companion: facts.home ? formatStoredCompanion(facts.companion) : '' } : null;
-		let change: VisitChange | null = null;
-		await this.app.vault.process(file, (data) => {
-			const info = getFrontMatterInfo(data);
-			const body = data.slice(info.contentStart);
-			const list = listVisits(body);
-			const entry = resolveVisit(list, hint);
-			if (!entry) return data;
-			change = {
-				removed: visitFacts(entry),
-				added,
-				remaining: list.filter((other) => other !== entry).map(visitFacts),
-				removedNotesProperty: entry.notesProperty,
-			};
-			const next = added ? editVisit(body, entry, added, new Date()) : removeVisit(body, entry);
-			return data.slice(0, info.contentStart) + next;
-		});
-		const applied = change as VisitChange | null;
-		if (!applied) {
+		const current = await this.app.vault.read(file);
+		const info = getFrontMatterInfo(current);
+		const body = current.slice(info.contentStart);
+		const list = listVisits(body);
+		const entry = resolveVisit(list, hint);
+		if (!entry) {
 			new Notice('That visit is no longer on the note.');
 			return;
 		}
-		await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
-			const data = frontmatter as Record<string, unknown>;
+		const applied: VisitChange = {
+			removed: visitFacts(entry),
+			added,
+			remaining: list.filter((other) => other !== entry).map(visitFacts),
+			removedNotesProperty: entry.notesProperty,
+		};
+		const nextBody = added ? editVisit(body, entry, added, new Date()) : removeVisit(body, entry);
+		await this.writeVisitHeadThenBody(file, nextBody, (data) => {
 			applyVisitChangeFrontmatter(data, applied);
-			this.pinVisitPaint(file.path, data);
 		});
 		await this.restabilizeCompanions(file);
 		await this.syncEditedCoverage(file.path, applied);

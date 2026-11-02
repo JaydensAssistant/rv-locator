@@ -148,7 +148,7 @@ export class SetupWizardModal extends Modal {
 			.setDesc('One county per line. Empty means every match asks you to confirm.')
 			.addTextArea((text) => {
 				text.inputEl.rows = 4;
-				text.setPlaceholder('Orange\nLake');
+				text.setPlaceholder('Optional (e.g. Orange)');
 				text.setValue(this.homeDraft);
 				text.onChange((value) => { this.homeDraft = value; });
 			});

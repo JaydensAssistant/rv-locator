@@ -3,7 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter, stripStampAge, visibleStampText } from './dates';
-import { mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
+import { fitTitleRow, mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
 import { layoutVisitNotes, mountHeadingChevron, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
 
@@ -495,7 +495,7 @@ function paintItemStrip(heading: HTMLElement, source: string, covered: string): 
 	}
 	fillStripChildren(strip, items);
 	strip.dataset.rvItems = signature;
-	if (items.length > 0) watchTitleRow(strip, () => refitItemStrip(strip), strip.parentElement);
+	if (items.length > 0) watchTitleRow(strip, () => fitHeadingStrip(strip), strip.parentElement);
 }
 
 /** Fill a strip we created. The heading and the notes stay where Obsidian put them. */
@@ -535,6 +535,56 @@ function paintStripChip(strip: HTMLElement, item: { icon: string; title: string;
 function releaseStripWidth(strip: HTMLElement): void {
 	strip.style.removeProperty('max-width');
 	strip.style.removeProperty('width');
+}
+
+/**
+ * Heading share line. fitTitleRow keeps five characters and two lines.
+ * Campaign stays. A +n button is only the last resort, and it never
+ * drops a title down to an icon.
+ */
+export function fitHeadingStrip(strip: HTMLElement): void {
+	releaseStripWidth(strip);
+	for (const stem of Array.from(strip.querySelectorAll('.rv-fit-stem'))) {
+		const host = stem.closest('.rv-fit');
+		const full = host instanceof HTMLElement ? host.getAttribute('data-stem') ?? '' : '';
+		if (full) stem.textContent = full;
+	}
+	strip.querySelector(':scope > .rv-item-more')?.remove();
+	const chips = Array.from(strip.querySelectorAll(':scope > .rv-item'))
+		.filter((node): node is HTMLElement => node instanceof HTMLElement);
+	for (const chip of chips) {
+		showStripChip(chip);
+		setChipIconOnly(chip, false);
+	}
+	fitTitleRow(strip);
+	if (strip.clientWidth <= 0) return;
+	const budget = stripContentBudget(strip);
+	const limit = budget > 0 ? budget : strip.clientWidth;
+	if (budget > 0) {
+		strip.style.setProperty('max-width', `${budget}px`, 'important');
+		strip.style.setProperty('width', `${budget}px`, 'important');
+	}
+	if (strip.scrollWidth <= limit + 1) return;
+	const foldable = chips.filter((chip) => !chip.classList.contains('is-campaign') && !chip.classList.contains('rv-item-more'));
+	const hidden: HTMLElement[] = [];
+	while (strip.scrollWidth > limit + 1) {
+		const visible = foldable.filter((chip) => !chip.hidden);
+		const last = visible[visible.length - 1];
+		if (!last) break;
+		hideStripChip(last);
+		hidden.unshift(last);
+	}
+	if (hidden.length === 0) return;
+	const more = strip.ownerDocument.createElement('button');
+	more.type = 'button';
+	more.className = 'rv-item rv-item-more';
+	more.textContent = `+${hidden.length}`;
+	more.addEventListener('click', (event) => {
+		event.preventDefault();
+		event.stopPropagation();
+		showTitlePopover(more, hidden.map(stripChipTitle).filter(Boolean).join('\n'));
+	});
+	strip.appendChild(more);
 }
 
 /** Restore full chip titles, then fold the ones that do not fit into a +n chip. Campaign stays. */

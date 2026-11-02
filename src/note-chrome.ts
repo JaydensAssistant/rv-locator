@@ -432,6 +432,7 @@ function paintFactsBody(
 	priority: number | null,
 	host: NoteChromeHost,
 ): void {
+	collapseChipReveal();
 	content.empty();
 	content.addClass('rv-qf-body');
 	const study = status === 'Study';
@@ -566,7 +567,7 @@ function paintQuickList(
 	const valueEl = row.querySelector('.rv-qf-value');
 	const all = items.map((item) => item.trim()).filter((item) => item.length > 0);
 	const width = limit === 2 ? 2 : 1;
-	const ordered = orderedChips(all, kind, width, metWith);
+	const ordered = pairBlankPartner(orderedChips(all, kind, width, metWith), width);
 	const collapsed = chipsFor(all, kind, width, metWith);
 	const shown = collapsed.filter((chip) => !chip.empty && !(kind === 'name' && chip.met && !all.some((item) => item.toLowerCase() === chip.full.toLowerCase()))).length;
 	const extra = Math.max(0, all.length - shown);
@@ -631,12 +632,25 @@ function paintQuickList(
 }
 
 function paintFactChip(host: HTMLElement, chip: FactChip): void {
+	if (chip.empty) {
+		const blank = host.createSpan({ cls: 'rv-qf-chip is-blank', text: '—' });
+		blank.dataset.rvText = '';
+		return;
+	}
 	const el = host.createSpan({ cls: chip.met ? 'rv-qf-chip is-met' : 'rv-qf-chip' });
 	el.dataset.rvText = chip.full.toLowerCase();
 	const group = el.createSpan('rv-qf-chip-group');
 	group.createSpan({ cls: 'rv-qf-chip-title', text: chip.title });
 	if (chip.type) group.createSpan({ cls: 'rv-qf-chip-type', text: chip.type });
 	armChipOverlay(el, chip.full);
+}
+
+/** A single Taken or Lessons entry keeps a blank partner so the row stays a pair. */
+function pairBlankPartner(chips: FactChip[], width: number): FactChip[] {
+	if (width !== 2 || chips.length !== 1) return chips;
+	const blank: FactChip = { title: '—', type: '', full: '', met: false, empty: true };
+	if (chips[0]?.met) return [blank, chips[0]];
+	return [...chips, blank];
 }
 
 /** Collapsed pills first, then every later entry, in the same single or double shape. */
@@ -690,30 +704,89 @@ function chipTruncated(el: HTMLElement): boolean {
 	return title.scrollWidth > title.clientWidth + 1;
 }
 
-/** One chip's own text, sitting on that chip. The chevron table holds the whole list. */
+let openChip: HTMLElement | null = null;
+let chipDismissArmed = false;
+let ignoreChipClick = false;
+
+function chipHostIsPhone(el: HTMLElement): boolean {
+	const body = el.ownerDocument.body;
+	return body.classList.contains('is-phone') || body.classList.contains('is-mobile');
+}
+
+function collapseChipReveal(): void {
+	const current = openChip;
+	openChip = null;
+	if (!(current instanceof HTMLElement) || !current.isConnected) return;
+	current.classList.remove('is-revealed');
+	current.style.removeProperty('max-width');
+}
+
+/** The value chip grows in place. One open at a time, kept 8px inside the screen. */
 function showChipOverlay(el: HTMLElement, full: string): void {
 	if (!full || !chipTruncated(el)) return;
-	showTitlePopover(el, full);
-	const pop = el.ownerDocument.querySelector('.rv-title-popover');
-	if (!(pop instanceof HTMLElement)) return;
-	pop.classList.add('rv-chip-overlay');
+	if (openChip && openChip !== el) collapseChipReveal();
+	openChip = el;
+	el.classList.add('is-revealed');
+	const view = el.ownerDocument.defaultView;
+	const width = view?.innerWidth ?? 0;
+	if (width <= 0) return;
 	const box = el.getBoundingClientRect();
-	pop.style.left = `${box.left}px`;
-	pop.style.top = `${box.top}px`;
+	const limit = width - 8;
+	if (box.right > limit) el.style.maxWidth = `${Math.max(40, limit - box.left)}px`;
+	else el.style.removeProperty('max-width');
+}
+
+function armChipDismiss(doc: Document): void {
+	if (chipDismissArmed) return;
+	chipDismissArmed = true;
+	doc.addEventListener('pointerdown', (event) => {
+		const body = doc.body;
+		if (!body.classList.contains('is-phone') && !body.classList.contains('is-mobile')) return;
+		const target = event.target;
+		if (openChip && target instanceof Node && openChip.contains(target)) return;
+		collapseChipReveal();
+	}, true);
+	const onScroll = (): void => {
+		const body = doc.body;
+		if (!body.classList.contains('is-phone') && !body.classList.contains('is-mobile')) return;
+		collapseChipReveal();
+	};
+	doc.addEventListener('scroll', onScroll, true);
 }
 
 function armChipOverlay(el: HTMLElement, full: string): void {
 	if (!full) return;
+	armChipDismiss(el.ownerDocument);
 	const show = (): void => { showChipOverlay(el, full); };
+	el.addEventListener('mouseenter', () => {
+		if (chipHostIsPhone(el)) return;
+		show();
+	});
+	el.addEventListener('mouseleave', () => {
+		if (chipHostIsPhone(el)) return;
+		if (openChip === el) collapseChipReveal();
+	});
 	el.addEventListener('click', (event) => {
 		event.preventDefault();
 		event.stopPropagation();
-		show();
+		if (ignoreChipClick) {
+			ignoreChipClick = false;
+			return;
+		}
+		if (!chipHostIsPhone(el)) {
+			show();
+			return;
+		}
+		if (el.classList.contains('is-revealed')) collapseChipReveal();
+		else show();
 	});
-	el.addEventListener('mouseenter', show);
 	let timer = 0;
-	el.addEventListener('pointerdown', () => {
-		timer = window.setTimeout(show, LONG_PRESS_MS);
+	el.addEventListener('pointerdown', (event) => {
+		if (!(event instanceof PointerEvent) || event.pointerType === 'mouse') return;
+		timer = window.setTimeout(() => {
+			ignoreChipClick = true;
+			show();
+		}, LONG_PRESS_MS);
 	});
 	const clear = (): void => { window.clearTimeout(timer); };
 	el.addEventListener('pointerup', clear);

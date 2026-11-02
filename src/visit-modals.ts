@@ -129,7 +129,7 @@ export class VisitEditModal extends Modal {
 		this.companionSetting = new Setting(contentEl)
 			.setName('What publisher came with you?')
 			.addText((text) => {
-				text.setPlaceholder('Nobody');
+				text.setPlaceholder('Optional (e.g. Sister Johnson)');
 				text.setValue(this.companion);
 				text.onChange((value) => { this.companion = value; });
 				mountAlwaysChevron(text.inputEl, () => this.options.recentCompanions.filter((name) => {
@@ -297,7 +297,7 @@ export class VisitPickModal extends SuggestModal<VisitEntry> {
 	buttonAccent = '';
 	constructor(app: App, private visits: readonly VisitEntry[], private onPick: (entry: VisitEntry) => void) {
 		super(app);
-		this.setPlaceholder('Choose a visit to edit or delete');
+		this.setPlaceholder('Optional');
 		this.emptyStateText = 'No visits on this note.';
 	}
 

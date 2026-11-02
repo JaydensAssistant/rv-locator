@@ -30,7 +30,7 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 	onOpen(): void {
 		void super.onOpen();
 		this.setTitle(this.heading);
-		this.setPlaceholder('Filter results');
+		this.setPlaceholder('Optional (e.g. Oak)');
 		this.setInstructions([
 			{ command: '↑↓', purpose: 'to navigate' },
 			{ command: '↵', purpose: 'to use result' },
@@ -525,7 +525,7 @@ export class CompanionSuggestModal extends Modal {
 		new Setting(contentEl)
 			.setName('What publisher came with you?')
 			.addText((text) => {
-				text.setPlaceholder('Companion (optional)');
+				text.setPlaceholder('Optional (e.g. Sister Johnson)');
 				this.companionInput = text;
 				text.inputEl.addEventListener('keydown', (event: KeyboardEvent) => {
 					if (event.key !== 'Enter') return;

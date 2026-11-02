@@ -41,7 +41,7 @@ describe('2026-10-12 dogfood round 2', () => {
 		assert.equal(snoozeCardCaption('   '), 'snoozed');
 		assert.equal(snoozeCardCaption('out of town'), 'out of town');
 		const modal = source('src/score-modals.ts');
-		assert.match(modal, /setPlaceholder\('optional'\)/);
+		assert.match(modal, /setPlaceholder\('Optional \(e\.g\. out of town\)'\)/);
 		assert.doesNotMatch(modal, /Hospital stay/);
 	});
 

@@ -1222,18 +1222,18 @@ describe('smoke layout', () => {
 			left: 120, top: 40, right: 400, bottom: 64, width: 280, height: 24, x: 120, y: 40, toJSON() { return {}; },
 		});
 		chip.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
-		const pop = window.document.querySelector('.rv-title-popover');
-		assert.ok(pop instanceof window.HTMLElement);
-		assert.equal(pop.classList.contains('rv-chip-overlay'), true);
-		assert.equal(pop.style.left, '120px');
-		assert.equal(pop.style.top, '40px');
-		assert.match(pop.textContent ?? '', /How Do You View the Bible/);
-		assert.doesNotMatch(pop.textContent ?? '', /Another Tract/);
-		pop.remove();
+		assert.equal(chip.classList.contains('is-revealed'), true);
+		assert.equal(window.document.querySelector('.rv-title-popover'), null);
+		assert.equal(window.document.querySelector('.rv-chip-overlay'), null);
+		assert.match(chip.textContent ?? '', /How Do You View the Bible/);
+		assert.doesNotMatch(chip.textContent ?? '', /Another Tract/);
+		chip.dispatchEvent(new window.MouseEvent('mouseleave', { bubbles: true }));
+		assert.equal(chip.classList.contains('is-revealed'), false);
 		lit.querySelector('.rv-qf-value')?.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
 		assert.equal(window.document.querySelector('.rv-title-popover'), null);
 		Object.defineProperty(title, 'scrollWidth', { configurable: true, get: () => 40 });
 		chip.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
+		assert.equal(chip.classList.contains('is-revealed'), false);
 		assert.equal(window.document.querySelector('.rv-title-popover'), null);
 		const chevron = lit.querySelector('.rv-qf-chevron');
 		assert.ok(chevron instanceof window.HTMLElement);
@@ -1263,6 +1263,33 @@ describe('smoke layout', () => {
 		assert.ok(media instanceof window.HTMLElement);
 		assert.equal(media.querySelector('.rv-qf-dash')?.textContent, '—');
 		assert.equal(media.querySelector('.rv-qf-chip'), null);
+		root.remove();
+	});
+
+	it('draws one Lessons or Taken entry beside a blank partner pill', () => {
+		const root = window.document.createElement('div');
+		root.className = 'rv-dashboard';
+		root.innerHTML = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div><div class="callout-content"></div></div>';
+		decorateNoteChrome(root, 'RVs/One Lesson.md', chromeHost({
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			'Lessons Studied': ['02 The Bible Gives Hope'],
+			Taken: ['Ada'],
+		}, { count: 0 }));
+		const row = (label: string): HTMLElement => {
+			const found = Array.from(root.querySelectorAll('.rv-qf-row')).find((node) =>
+				node.querySelector('.rv-qf-label')?.textContent?.startsWith(label));
+			assert.ok(found instanceof window.HTMLElement, label);
+			return found;
+		};
+		const lessons = row('Lessons').querySelectorAll('.rv-qf-chip');
+		const taken = row('Taken').querySelectorAll('.rv-qf-chip');
+		assert.equal(lessons.length, 2);
+		assert.equal(taken.length, 2);
+		assert.match(lessons[0]?.textContent ?? '', /Bible Gives Hope/);
+		assert.equal(lessons[1]?.textContent, '—');
+		assert.match(taken[0]?.textContent ?? '', /Ada/);
+		assert.equal(taken[1]?.textContent, '—');
 		root.remove();
 	});
 

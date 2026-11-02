@@ -947,8 +947,8 @@ describe('phone-first visit surfaces', () => {
 			assert.equal(readFileSync(file, 'utf8').includes('datalist'), false);
 		}
 		const fields = readFileSync('src/catalog-fields.ts', 'utf8');
-		assert.match(fields, /Tract or book \(optional\)/);
-		assert.match(fields, /Video \(optional\)/);
+		assert.match(fields, /Optional \(e\.g\. Will Suffering Ever End\?\)/);
+		assert.match(fields, /Optional \(e\.g\. Why Study the Bible\?\)/);
 		assert.equal(readFileSync('src/glancable-view.ts', 'utf8').includes('Left Publications'), false);
 		assert.equal(readFileSync('src/map-view.ts', 'utf8').includes('pin.card.literature'), false);
 		assert.match(readFileSync('src/note-chrome.ts', 'utf8'), /rv-note-status/);

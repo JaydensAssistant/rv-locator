@@ -72,7 +72,7 @@ export class UrgencySnoozeModal extends Modal {
 			.setClass('rv-modal-section')
 			.setName('Reason')
 			.addText((text) => {
-				text.setPlaceholder('optional');
+				text.setPlaceholder('Optional (e.g. out of town)');
 				text.setValue(this.label);
 				text.onChange((value) => {
 					this.label = value;

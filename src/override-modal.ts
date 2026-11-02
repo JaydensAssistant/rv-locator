@@ -64,7 +64,7 @@ export class SlotOverrideModal extends Modal {
 			.setName('Label')
 			.setDesc('Why this slot is Try or Avoid.')
 			.addText((text) => {
-				text.setPlaceholder('Works then');
+				text.setPlaceholder('Optional (e.g. Works then)');
 				text.setValue(this.reason);
 				text.onChange((value) => { this.reason = value; });
 			});

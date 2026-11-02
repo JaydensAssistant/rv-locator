@@ -12,7 +12,8 @@ describe('next build locks', () => {
 		const view = source('src/glancable-view.ts');
 		assert.match(view, /export function concealRawBaseEmbed/);
 		assert.match(view, /rv-base-source-hidden/);
-		assert.match(view, /overflow', 'visible'/);
+		assert.match(view, /transform', 'none'/);
+		assert.match(view, /is-embed-capped/);
 		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base[\s\S]*scrollbar-width:\s*auto/);
 		assert.match(css, /overflow:\s*visible !important/);
 	});
@@ -61,12 +62,14 @@ describe('next build locks', () => {
 	it('7 calendar tiles are 26px with no band, and Quick Facts tiles are 18px', () => {
 		assert.match(css, /\.rv-cal \{[^}]*width:\s*26px/);
 		assert.match(css, /\.rv-cal \{[^}]*height:\s*26px/);
-		assert.match(css, /\.rv-cal \{[^}]*background:\s*#2f2f2f/);
-		assert.match(css, /\.rv-cal \{[^}]*border:\s*1px solid #4a4a4a/);
-		assert.match(css, /\.rv-cal-month \{[^}]*font-size:\s*7\.5px/);
+		assert.match(css, /\.rv-cal \{[^}]*background:\s*var\(--background-primary\)/);
+		assert.match(css, /\.rv-cal-month \{[^}]*background:\s*var\(--rv-urgency-accent\)/);
+		assert.match(css, /\.rv-cal-month \{[^}]*color:\s*#fff/);
+		assert.match(css, /\.rv-cal-month \{[^}]*height:\s*8px/);
 		assert.match(css, /\.rv-cal-month \{[^}]*font-weight:\s*700/);
 		assert.match(css, /\.rv-cal-day \{[^}]*font-size:\s*12px/);
-		assert.match(css, /\.rv-cal-day \{[^}]*color:\s*#fff/);
+		assert.match(css, /\.rv-cal-day \{[^}]*color:\s*var\(--text-normal\)/);
+		assert.match(css, /\.rv-cal-day \{[^}]*padding:\s*2\.625px 0 0 0/);
 		assert.doesNotMatch(css, /border-top:\s*2px solid var\(--rv-urgency-accent/);
 		assert.match(css, /\.rv-qf-pill \.rv-cal \{[^}]*width:\s*18px/);
 	});
@@ -94,9 +97,9 @@ describe('next build locks', () => {
 		const modal = source('src/new-rv-modal.ts');
 		const main = source('src/main.ts');
 		assert.match(modal, /setName\('Status'\)/);
-		assert.match(modal, /setName\('Estimated age'\)/);
-		assert.match(modal, /setButtonText\('Approx'\)/);
-		assert.match(modal, /setButtonText\('Exact'\)/);
+		assert.match(modal, /setName\('Age'\)/);
+		assert.match(modal, /~ Approximate/);
+		assert.match(modal, /= Exact/);
 		assert.match(main, /cardPersonTitle\(file\.basename, true\)/);
 		assert.match(main, /replacePersonName\(current\.basename, next\.name\)/);
 		assert.match(css, /\.modal\.rv-edit-attributes \.rv-gender-choice \.setting-item-control button/);
@@ -149,7 +152,9 @@ describe('next build locks', () => {
 	it('17 18 19 chips overlay and each list has its own search', () => {
 		const chrome = source('src/note-chrome.ts');
 		assert.match(chrome, /function armChipOverlay/);
-		assert.match(chrome, /showTitlePopover\(el, full\)/);
+		assert.match(chrome, /function showChipOverlay/);
+		assert.match(chrome, /is-revealed/);
+		assert.match(chrome, /showTitlePopover/);
 		assert.match(chrome, /LONG_PRESS_MS/);
 		assert.match(chrome, /cls: 'rv-qf-search'/);
 		assert.match(chrome, /chip\.hidden = !hit/);
@@ -187,7 +192,7 @@ describe('next build locks', () => {
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-radius:\s*var\(--pill-r, 5px\)/);
 		assert.match(css, /\.rv-qf-chips\.is-halves > \.rv-qf-chip \{[^}]*border-left-width:\s*1px/);
 		assert.match(css, /\.rv-qf-body \.rv-qf-value > \.rv-qf-pill \{[^}]*display:\s*flex/);
-		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*1 1 auto/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*0 1 auto/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*max-width:\s*max-content/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*font-size:\s*calc\(13px \* var\(--rv-font-scale, 1\)\)/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*flex:\s*0 0 auto/);

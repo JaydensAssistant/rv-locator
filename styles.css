@@ -699,7 +699,7 @@
 }
 
 .rv-locator-glancable .rv-locator-card-name .rv-locator-file-link {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-width: 0;
 	max-width: max-content;
 	overflow: hidden;
@@ -4617,31 +4617,51 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 .rv-cal {
 	display: inline-flex;
 	flex-direction: column;
-	align-items: center;
-	justify-content: center;
+	align-items: stretch;
+	justify-content: flex-start;
 	width: 26px;
 	height: 26px;
 	box-sizing: border-box;
-	padding: 0 1px;
+	padding: 0;
 	border-radius: 5px;
-	background: #2f2f2f;
-	border: 1px solid #4a4a4a;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
 	box-shadow: none;
+	overflow: hidden;
+	flex: 0 0 auto;
+	line-height: 1;
 }
 
 .rv-cal-month {
-	font-size: 7.5px;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 100%;
+	height: 8px;
+	flex: 0 0 auto;
+	background: var(--rv-urgency-accent);
+	color: #fff;
+	font-size: 6.5px;
 	font-weight: 700;
-	letter-spacing: 0.02em;
-	color: var(--rv-urgency-accent, var(--text-faint));
+	letter-spacing: 0.04em;
 	line-height: 1;
+	text-transform: uppercase;
+	margin: 0;
+	padding: 0;
 }
 
 .rv-cal-day {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	flex: 1 1 auto;
+	min-height: 0;
+	margin: 0;
+	padding: 2.625px 0 0 0;
 	font-size: 12px;
 	font-weight: 700;
 	line-height: 1;
-	color: #fff;
+	color: var(--text-normal);
 }
 
 .rv-stamp-when {
@@ -4885,7 +4905,6 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 
 .rv-cal {
 	flex: 0 0 auto;
-	border-top: 1px solid #4a4a4a;
 	box-shadow: none;
 	line-height: 1;
 }
@@ -4975,9 +4994,9 @@ body.rv-center-visit-notes .rv-visit-stamp .rv-stamp-row {
 .rv-fit {
 	display: inline-flex;
 	align-items: center;
-	flex: 0 0 auto;
-	min-width: max-content;
-	max-width: none;
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: 100%;
 }
 
 .rv-fit {
@@ -6142,12 +6161,12 @@ body.rv-center-visit-notes .rv-older-heading {
 .rv-item-strip:not(.is-ghost) > .rv-item,
 .rv-item-strip:not(.is-ghost) .rv-fit,
 .rv-item-strip:not(.is-ghost) .rv-fit-stem {
-	flex: 0 0 auto;
-	flex-shrink: 0;
-	min-width: max-content;
-	max-width: none;
-	overflow: visible;
-	text-overflow: clip;
+	flex: 1 1 0;
+	flex-shrink: 1;
+	min-width: 0;
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .rv-title-popover {
@@ -7583,34 +7602,51 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	margin-bottom: 0;
 }
 
-.rv-item-strip:not(.is-ghost),
-.rv-item-strip.is-two-line:not(.is-ghost) {
+.rv-item-strip:not(.is-ghost) {
 	flex-wrap: nowrap;
-	height: 24px;
+	height: auto;
 	min-height: 24px;
-	max-height: 24px;
+	max-height: none;
 	overflow: hidden;
 }
 
-.rv-item-strip:not(.is-ghost) > .rv-strip-break {
-	display: none;
+.rv-item-strip.is-two-line:not(.is-ghost) {
+	flex-wrap: wrap;
+	height: auto;
+	min-height: 24px;
+	max-height: none;
+	overflow: visible;
+	white-space: normal;
+}
+
+.rv-item-strip.is-two-line:not(.is-ghost) > .rv-strip-break {
+	display: block;
+	flex: 0 0 100%;
+	width: 100%;
+	height: 0;
 }
 
 .rv-item-strip:not(.is-ghost) > .rv-item,
 .rv-item-strip:not(.is-ghost) .rv-fit {
-	flex: 0 0 auto;
-	flex-grow: 0;
-	flex-shrink: 0;
+	flex: 1 1 0;
+	flex-grow: 1;
+	flex-shrink: 1;
 	width: auto;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item.is-campaign {
+	flex: 0 0 auto;
+	flex-shrink: 0;
 	min-width: max-content;
-	max-width: none;
 }
 
 .rv-item-strip:not(.is-ghost) .rv-fit-stem {
-	flex: 0 0 auto;
-	min-width: max-content;
-	overflow: visible;
-	text-overflow: clip;
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
 .rv-item-strip:not(.is-ghost) .rv-type {
@@ -8237,6 +8273,10 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 .markdown-source-view.rv-locator-full-base {
 	--file-line-width: 100%;
 	--file-margins: 0px;
+	--file-margins-x: 0px;
+	--file-margins-y: 0px;
+	--bases-embed-width: 100%;
+	--bases-embed-transform: none;
 	padding-left: 0 !important;
 	padding-right: 0 !important;
 	scrollbar-gutter: auto !important;
@@ -8275,9 +8315,20 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	padding-left: 0 !important;
 	padding-right: 0 !important;
 	max-width: none !important;
+	width: 100% !important;
+	transform: none !important;
 	height: auto !important;
 	max-height: none !important;
 	overflow: visible !important;
+}
+
+.markdown-preview-view.rv-locator-full-base :is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base).is-embed-capped,
+.markdown-reading-view.rv-locator-full-base :is(.internal-embed, .markdown-embed, .bases-embed, .block-language-base).is-embed-capped {
+	height: var(--rv-embed-cap) !important;
+	max-height: var(--rv-embed-cap) !important;
+	overflow: hidden !important;
+	transform: none !important;
+	width: 100% !important;
 }
 
 .markdown-preview-view.rv-locator-full-base .inline-title,
@@ -8516,11 +8567,13 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 }
 
 .rv-qf-pill .rv-cal-month {
-	font-size: 5.2px;
+	height: 6px;
+	font-size: 4.5px;
 }
 
 .rv-qf-pill .rv-cal-day {
 	font-size: 8.3px;
+	padding-top: 1.8px;
 }
 
 .rv-qf-chips {
@@ -8894,6 +8947,7 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 .rv-locator-glancable .rv-locator-card-name .rv-title-age {
 	flex: 0 0 auto;
+	flex-shrink: 0;
 	margin-inline-start: 6px;
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 400;
@@ -8903,6 +8957,7 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 .rv-locator-glancable .rv-locator-card-name .rv-title-gender {
 	flex: 0 0 auto;
+	flex-shrink: 0;
 	width: 16px;
 	height: 16px;
 	color: var(--text-muted);
@@ -9135,4 +9190,199 @@ h5.rv-visit-stamp + .rv-item-strip {
 .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-raise:disabled {
 	color: #1f8a4c !important;
 	border-color: #1f8a4c !important;
+}
+
+/* New RV: label above Woman | Man, 4px between the equal buttons. */
+.modal.rv-locator-modal.rv-new-rv .setting-item.rv-gender-choice {
+	flex-direction: column !important;
+	align-items: stretch !important;
+}
+
+.modal.rv-locator-modal.rv-new-rv .setting-item.rv-gender-choice .setting-item-info {
+	width: 100% !important;
+	flex: none !important;
+	margin: 0 0 6px !important;
+}
+
+.modal.rv-locator-modal.rv-new-rv .setting-item.rv-gender-choice .setting-item-control {
+	width: 100% !important;
+	flex: 1 1 auto !important;
+	margin-left: 0 !important;
+	display: flex !important;
+	gap: 4px;
+}
+
+.modal.rv-locator-modal.rv-new-rv .setting-item.rv-gender-choice .setting-item-control button {
+	flex: 1 1 0 !important;
+	width: 0 !important;
+	min-width: 0 !important;
+}
+
+/* Priority segments. Ladder of the lowest urgency color. Selected ring is 2px gap + 2px. */
+.rv-priority-segs {
+	display: flex;
+	gap: 4px;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 6px 8px;
+	overflow: visible;
+}
+
+.rv-priority-seg {
+	--rv-visit-btn-bg: var(--rv-priority-accent, #1f8a4c);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
+	flex: 1 1 0;
+	height: 40px;
+	min-height: 40px;
+	border: 0;
+	border-radius: 6px;
+	background: var(--rv-visit-btn-bg);
+	color: #fff;
+	font-weight: 700;
+	cursor: pointer;
+}
+
+.rv-priority-seg:nth-child(1) {
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
+}
+
+.rv-priority-seg:nth-child(2) {
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.42, calc(l - 0.06), 0.74) clamp(0.05, c, 0.16) h);
+}
+
+.rv-priority-seg:nth-child(3) {
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.38, calc(l - 0.12), 0.68) clamp(0.05, c, 0.16) h);
+}
+
+.rv-priority-seg:nth-child(4) {
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.36, calc(l - 0.18), 0.62) clamp(0.05, c, 0.16) h);
+}
+
+.rv-priority-seg:nth-child(5) {
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.34, calc(l - 0.24), 0.56) clamp(0.05, c, 0.16) h);
+}
+
+.rv-priority-seg.is-selected {
+	box-shadow: 0 0 0 2px var(--modal-background, #1c1c1c), 0 0 0 4px #d6d6d6;
+}
+
+.theme-light .rv-priority-seg.is-selected {
+	box-shadow: 0 0 0 2px #fff, 0 0 0 4px oklch(from var(--rv-priority-accent, #1f8a4c) 0.22 0.03 h);
+}
+
+.modal.rv-locator-modal button.rv-priority-seg,
+.modal.rv-locator-modal button.rv-priority-seg.is-selected {
+	background: var(--rv-visit-btn-bg) !important;
+	background-color: var(--rv-visit-btn-bg) !important;
+	color: #fff !important;
+	border-color: transparent !important;
+}
+
+.rv-visit-share.rv-modal-section {
+	border: 0;
+	border-top: 0;
+	margin-top: 0;
+	padding-top: 0;
+}
+
+.modal.rv-locator-modal:not(.rv-edit-attributes) .modal-content {
+	padding-left: 16px;
+	padding-right: 16px;
+}
+
+.modal.rv-locator-modal:not(.rv-edit-attributes) .modal-content > .setting-item:not(.rv-modal-actions),
+.modal.rv-locator-modal:not(.rv-edit-attributes) .rv-share-list > .setting-item,
+.modal.rv-locator-modal:not(.rv-edit-attributes) .rv-study-optional {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 0;
+	margin-bottom: 0;
+	padding-top: 16px;
+	padding-bottom: 16px;
+}
+
+.modal.rv-locator-modal:not(.rv-edit-attributes) .modal-content > .setting-item:not(.rv-modal-actions):first-child {
+	border-top: 0;
+	padding-top: 0;
+}
+
+.modal.rv-locator-modal:not(.rv-edit-attributes) .rv-study-optional .setting-item {
+	border-top: 0;
+	margin-top: 0;
+	padding-top: 6px;
+	padding-bottom: 6px;
+}
+
+.modal.rv-locator-modal:not(.rv-edit-attributes) .setting-item.rv-modal-actions {
+	border-top: 1px solid var(--background-modifier-border);
+	margin-top: 0;
+	padding-top: 16px;
+}
+
+.rv-locator-modal .rv-suggest-host {
+	align-items: stretch;
+}
+
+.rv-locator-modal .rv-suggest-host > input,
+.rv-locator-modal .rv-suggest-host > button.rv-suggest-chevron,
+.rv-locator-modal button.rv-age-symbol {
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+	box-sizing: border-box;
+}
+
+.rv-locator-modal button.rv-age-symbol {
+	width: 40px;
+	min-width: 40px;
+	font-size: 16px;
+	font-weight: 700;
+}
+
+.rv-qf-chip.is-revealed {
+	height: auto;
+	max-height: none;
+	overflow: visible;
+	z-index: 2;
+	align-items: flex-start;
+	white-space: normal;
+}
+
+.rv-qf-chip.is-revealed .rv-qf-chip-group {
+	flex-wrap: wrap;
+	white-space: normal;
+}
+
+.rv-qf-chip.is-revealed .rv-qf-chip-title {
+	white-space: normal;
+	overflow: visible;
+	text-overflow: clip;
+}
+
+.rv-qf-chip.is-blank {
+	color: var(--text-muted);
+}
+
+body.rv-hide-mobile-nav .mobile-navbar {
+	display: none !important;
+}
+
+body.rv-hide-mobile-nav.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar {
+	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-title {
+	font-size: 0 !important;
+	text-align: center;
+}
+
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-title > * {
+	display: none !important;
+}
+
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-title::after {
+	content: 'Return Visits';
+	font-size: var(--font-ui-medium, 16px);
+	font-weight: 600;
+	line-height: 1.4;
+	color: var(--text-normal);
 }

@@ -6,7 +6,7 @@ import { rvDisplayTitle } from './stamp-mask';
 export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
 	constructor(app: App, private onPick: (file: TFile) => void) {
 		super(app);
-		this.setPlaceholder('Add a hub note');
+		this.setPlaceholder('Optional');
 	}
 
 	getItems(): TFile[] {

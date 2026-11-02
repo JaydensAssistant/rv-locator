@@ -1,16 +1,26 @@
 import { stampAgeCount } from './dates';
 
 const RV_DASHBOARD_CLASS = 'rv-dashboard';
+const RV_HUB_CLASS = 'rv-locator-full-base';
 const STAMP_AGE_SELECTOR = '.rv-stamp-ago';
 const STAMP_HOST_SELECTOR = 'h1, h2, h3, h4, h5, h6, .cm-line';
 
 /** An RV note lists `rv-dashboard` under `cssclasses` (or the older `cssclass`). */
 export function isRvDashboardNote(frontmatter: Record<string, unknown> | null | undefined): boolean {
+	return noteHasCssClass(frontmatter, RV_DASHBOARD_CLASS);
+}
+
+/** Hub notes and RV notes are the leaves that hide the phone navbar. */
+export function isRvLocatorSurface(frontmatter: Record<string, unknown> | null | undefined): boolean {
+	return noteHasCssClass(frontmatter, RV_DASHBOARD_CLASS) || noteHasCssClass(frontmatter, RV_HUB_CLASS);
+}
+
+function noteHasCssClass(frontmatter: Record<string, unknown> | null | undefined, wanted: string): boolean {
 	if (!frontmatter) return false;
 	for (const key of Object.keys(frontmatter)) {
 		const name = key.toLowerCase();
 		if (name !== 'cssclasses' && name !== 'cssclass') continue;
-		if (cssClassList(frontmatter[key]).includes(RV_DASHBOARD_CLASS)) return true;
+		if (cssClassList(frontmatter[key]).includes(wanted)) return true;
 	}
 	return false;
 }

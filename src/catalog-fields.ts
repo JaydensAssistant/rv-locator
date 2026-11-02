@@ -69,7 +69,7 @@ export function mountShareFields(
 				shareTitles(share.publications, share.publicationList),
 				(query) => catalogSuggestions(options.publications, [], query, publicationAliases),
 				(values) => publish({ publications: values[0] ?? '', publicationList: values }),
-				'Tract or book (optional)',
+				'Optional (e.g. Will Suffering Ever End?)',
 			);
 			mountTitleList(
 				parent,
@@ -78,7 +78,7 @@ export function mountShareFields(
 				shareTitles(share.media, share.mediaList),
 				(query) => catalogSuggestions(options.media, [], query, mediaAliases),
 				(values) => publish({ media: values[0] ?? '', mediaList: values }),
-				'Video (optional)',
+				'Optional (e.g. Why Study the Bible?)',
 			);
 		};
 		if (options.literatureCollapsed) mountDisclosure(contentEl, 'Literature and media', paintLists);
@@ -90,7 +90,7 @@ export function mountShareFields(
 			contentEl,
 			'What publisher came with you?',
 			'',
-			'Companion (optional)',
+			'Optional (e.g. Sister Johnson)',
 			share.companion ?? '',
 			(query) => companionChoices(options.companions ?? [], query).map((item) => item.label),
 			(value) => publish({ companion: value }),

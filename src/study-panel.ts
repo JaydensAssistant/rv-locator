@@ -292,7 +292,7 @@ function openChange(
 	if (!panel.style.getPropertyValue('--rv-menu-ink')) panel.style.setProperty('--rv-menu-ink', '#1f8a4c');
 	host.ownerDocument.body.appendChild(panel);
 	panel.createEl('p', { cls: 'rv-study-change-title', text: 'Change study' });
-	const input = panel.createEl('input', { attr: { type: 'search', placeholder: 'Search lessons' } });
+	const input = panel.createEl('input', { attr: { type: 'search', placeholder: 'Optional (e.g. lesson 3)' } });
 	const list = panel.createDiv('rv-study-change-list');
 	let picked = share.lesson;
 	let startIndex = 0;

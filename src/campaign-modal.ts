@@ -41,7 +41,7 @@ export class CampaignModal extends Modal {
 		new Setting(contentEl)
 			.setName('Name')
 			.addText((text) => {
-				text.setPlaceholder('Campaign name');
+				text.setPlaceholder('Required (e.g. Memorial)');
 				text.setValue(this.name);
 				text.onChange((value) => { this.name = value; });
 			});
@@ -50,16 +50,16 @@ export class CampaignModal extends Modal {
 			.setName('Start date')
 			.addText((text) => {
 				text.inputEl.type = 'date';
+				text.setPlaceholder('Optional (e.g. 2026-04-01)');
 				text.setValue(this.start);
 				text.onChange((value) => { this.start = value; });
 			});
 		new Setting(contentEl)
 			.setClass('rv-date-line')
 			.setName('End date')
-			.setDesc('Optional.')
 			.addText((text) => {
 				text.inputEl.type = 'date';
-				text.setPlaceholder('');
+				text.setPlaceholder('Optional (e.g. 2026-04-01)');
 				text.setValue(this.end);
 				text.onChange((value) => { this.end = value; });
 			});

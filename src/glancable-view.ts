@@ -693,22 +693,17 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const embed = this.root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
 		if (!(embed instanceof HTMLElement)) return;
 		const fullBase = embed.closest('.rv-locator-full-base');
-		if (fullBase instanceof HTMLElement) {
-			embed.classList.remove('is-embed-capped');
-			embed.style.removeProperty('--rv-embed-cap');
-			embed.style.removeProperty('height');
-			embed.style.removeProperty('max-height');
-			embed.style.setProperty('overflow', 'visible', 'important');
-			concealRawBaseEmbed(fullBase);
-			return;
-		}
+		const full = fullBase instanceof HTMLElement;
+		if (full) concealRawBaseEmbed(fullBase);
 		const release = (): void => {
 			embed.classList.remove('is-embed-capped');
 			embed.style.removeProperty('--rv-embed-cap');
 			embed.style.removeProperty('height');
 			embed.style.removeProperty('max-height');
+			embed.style.removeProperty('overflow');
+			embed.style.removeProperty('transform');
 		};
-		if (!this.wideHubFrame() || !this.stackedLayout) {
+		if (!full && (!this.wideHubFrame() || !this.stackedLayout)) {
 			release();
 			return;
 		}
@@ -717,10 +712,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const chrome = embedChromePx(this.root.ownerDocument);
 		const rect = typeof embed.getBoundingClientRect === 'function' ? embed.getBoundingClientRect() : null;
 		const top = rect ? rect.top : 0;
-		const fromFrame = top > 1 ? Math.round(viewport - Math.max(0, top)) : stackedEmbedCap(viewport, chrome);
-		const cap = Math.max(160, fromFrame);
+		const fromFrame = top > 1
+			? Math.round(viewport - Math.max(0, top))
+			: (full ? Math.round(viewport) : stackedEmbedCap(viewport, chrome));
+		const cap = Math.max(160, fromFrame || 0);
 		embed.style.setProperty('width', '100%', 'important');
+		embed.style.setProperty('transform', 'none', 'important');
 		embed.style.setProperty('scrollbar-gutter', 'auto', 'important');
+		embed.style.setProperty('overflow', 'hidden', 'important');
 		if (embed.dataset.rvCapScroll !== '1') {
 			embed.dataset.rvCapScroll = '1';
 			const scroller = embed.closest('.markdown-preview-view, .cm-scroller, .view-content');
@@ -729,8 +728,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		embed.classList.add('is-embed-capped');
 		embed.style.setProperty('--rv-embed-cap', `${cap}px`);
-		embed.style.height = `${cap}px`;
-		embed.style.maxHeight = `${cap}px`;
+		embed.style.setProperty('height', `${cap}px`, 'important');
+		embed.style.setProperty('max-height', `${cap}px`, 'important');
 	}
 
 	private bindHubHandle(handle: HTMLElement): void {
