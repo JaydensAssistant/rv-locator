@@ -700,17 +700,25 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(sameLeaf, /setViewState\(\{ type: 'empty', state: \{\} \}\)/);
 		assert.match(sameLeaf, /leaf\.openFile\(file/);
 		assert.doesNotMatch(sameLeaf, /getLeaf\('tab'\)/);
-		assert.match(main, /FOCUS_ATTEMPTS = 80/);
-		const focus = main.slice(main.indexOf('private async focusVisitNotes'), main.indexOf('private openPicker'));
+		assert.doesNotMatch(main, /FOCUS_ATTEMPTS = 80/);
+		const focus = main.slice(main.indexOf('private async focusVisitNotes'), main.indexOf('private markdownRoot'));
 		assert.match(focus, /setActiveLeaf\(leaf, \{ focus: true \}\)/);
-		assert.match(focus, /armVisitNoteFocus\(view\.containerEl, name \?\? ''/);
+		assert.match(focus, /openInReadingView\(file, true\)/);
+		assert.match(focus, /armVisitNoteFocus\(view\.containerEl, name \?\? '', \(\) => this\.markdownRoot\(file\.path\), true\)/);
+		assert.doesNotMatch(focus, /scrollIntoView/);
+		assert.doesNotMatch(focus, /FOCUS_ATTEMPTS/);
+		const openMap = main.slice(main.indexOf('async openMapSoon'), main.indexOf('private noteMapHandle'));
+		assert.ok(openMap.indexOf('this.stopVisitFocus') < openMap.indexOf('this.noteMapOpen && this.mapFocusPath'));
+		assert.match(main, /bindMapFocusRelease/);
 		assert.match(css, /\.modal\.rv-edit-attributes \.rv-modal-actions \{[^}]*padding-top:\s*16px/);
 		assert.match(css, /--file-margins:\s*0px/);
 		const visit = read('src/visit-display.ts');
 		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));
 		assert.match(arm, /requestAnimationFrame/);
 		assert.match(arm, /placeCaret/);
+		assert.match(arm, /pointerdown/);
 		assert.doesNotMatch(arm, /setTimeout/);
+		assert.doesNotMatch(arm, /focusin/);
 	});
 
 	it('marks unknown home counties, enlarges callout titles, and pads the study block', () => {

@@ -6,7 +6,7 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import type { App } from 'obsidian';
 import { refreshVisitPreviewEffect, visitPreviewExtension } from '../src/visit-live-preview';
-import { attachVisitNoteArea, clearVisitNoteCaches, mountVisitNotesInSection } from '../src/visit-notes-field';
+import { VisitNotesField, attachVisitNoteArea, clearVisitNoteCaches, mountVisitNotesInSection } from '../src/visit-notes-field';
 import { applyExternalVisitNotes, bindVisitNoteFlush, flushVisitNotes, setVisitNoteFocus, visitNoteValue } from '../src/visit-notes-store';
 import { classifyVisitSection, clearOlderVisitsState, markPreviewOlderVisits, olderVisitsOpen } from '../src/visit-older';
 
@@ -499,6 +499,94 @@ describe('visit notes rewrite', () => {
 			area.remove();
 			clearVisitNoteCaches();
 		}
+	});
+
+	it('RV-168B flushes on blur and does not refocus after the user left', async () => {
+		clearVisitNoteCaches();
+		const writes: string[] = [];
+		bindVisitNoteFlush((_path, batch) => {
+			writes.push(batch.sVisit2Notes ?? '');
+		});
+		const block = section('sVisit2Notes', NEWEST);
+		window.document.body.appendChild(block);
+		mountNotes(block, DALE, { sVisit2Notes: '' });
+		const area = areaIn(block, 'sVisit2Notes');
+		typeInto(area, 'left mid-typing');
+		assert.deepEqual(writes, []);
+		const elsewhere = window.document.createElement('div');
+		elsewhere.textContent = 'Visit Facts';
+		block.appendChild(elsewhere);
+		elsewhere.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+		assert.notEqual(window.document.activeElement, area);
+		assert.deepEqual(writes, ['left mid-typing']);
+		await new Promise((resolve) => setTimeout(resolve, 40));
+		assert.notEqual(window.document.activeElement, area);
+		block.remove();
+		clearVisitNoteCaches();
+	});
+
+	it('RV-168B restores the caret on remount only while that box still had it', () => {
+		clearVisitNoteCaches();
+		bindVisitNoteFlush(() => {});
+		const host = window.document.createElement('code');
+		host.textContent = 'INPUT[textArea:sVisit2Notes]';
+		window.document.body.appendChild(host);
+		const field = new VisitNotesField(host, DALE, 'sVisit2Notes');
+		field.onload();
+		const area = areaIn(host, 'sVisit2Notes');
+		area.value = 'still here';
+		area.dispatchEvent(new window.Event('input', { bubbles: true }));
+		area.focus();
+		const calls: Array<FocusOptions | undefined> = [];
+		const proto = window.HTMLTextAreaElement.prototype;
+		const orig = proto.focus;
+		proto.focus = function focus(this: HTMLTextAreaElement, options?: FocusOptions) {
+			calls.push(options);
+			return orig.call(this, options);
+		};
+		try {
+			field.onunload();
+			const next = window.document.createElement('code');
+			window.document.body.appendChild(next);
+			const again = new VisitNotesField(next, DALE, 'sVisit2Notes');
+			again.onload();
+			const restored = areaIn(next, 'sVisit2Notes');
+			assert.equal(restored.value, 'still here');
+			assert.equal(window.document.activeElement, restored);
+			assert.equal(calls.some((options) => options?.preventScroll === true), true);
+			again.onunload();
+			next.remove();
+		} finally {
+			proto.focus = orig;
+		}
+		host.remove();
+
+		const olderHost = window.document.createElement('code');
+		olderHost.textContent = 'INPUT[textArea:sVisit1Notes]';
+		const newerHost = window.document.createElement('code');
+		newerHost.textContent = 'INPUT[textArea:sVisit2Notes]';
+		window.document.body.append(olderHost, newerHost);
+		const older = new VisitNotesField(olderHost, DALE, 'sVisit1Notes');
+		const newer = new VisitNotesField(newerHost, DALE, 'sVisit2Notes');
+		older.onload();
+		newer.onload();
+		const olderArea = areaIn(olderHost, 'sVisit1Notes');
+		const newerArea = areaIn(newerHost, 'sVisit2Notes');
+		olderArea.focus();
+		newerArea.focus();
+		older.onunload();
+		const remount = window.document.createElement('code');
+		window.document.body.appendChild(remount);
+		const olderAgain = new VisitNotesField(remount, DALE, 'sVisit1Notes');
+		olderAgain.onload();
+		assert.equal(window.document.activeElement, newerArea);
+		assert.notEqual(window.document.activeElement, areaIn(remount, 'sVisit1Notes'));
+		olderAgain.onunload();
+		newer.onunload();
+		remount.remove();
+		olderHost.remove();
+		newerHost.remove();
+		clearVisitNoteCaches();
 	});
 
 	it('credits Meta Bind and does not carry the old caret or tail machinery', () => {

@@ -4,7 +4,7 @@ import { isReturnSuggestionsLine } from './attempt-digest';
 import { coveredCampaignFor, stampDateTime } from './schedule';
 import { paintLiveVisitHeading, publisherForVisit } from './visit-controls';
 import { mountHeadingChevron, visitStampLine } from './visit-display';
-import { attachVisitNoteArea } from './visit-notes-field';
+import { attachVisitNoteArea, restoreVisitNoteCaret } from './visit-notes-field';
 import { visitNoteValue } from './visit-notes-store';
 import { olderVisitsOpen, setOlderVisitsOpenState } from './visit-older';
 
@@ -199,7 +199,10 @@ class VisitNoteWidget extends WidgetType {
 			saved.el.classList.toggle('rv-note-under-strip', this.underStrip);
 			saved.el.classList.remove('rv-older-hidden', 'rv-mb-locked');
 			const area = saved.el.querySelector('textarea');
-			if (area instanceof HTMLTextAreaElement) unlockNoteArea(area);
+			if (area instanceof HTMLTextAreaElement) {
+				unlockNoteArea(area);
+				restoreVisitNoteCaret(area, this.path, this.key);
+			}
 			return saved.el;
 		}
 		const doc = view.dom.ownerDocument;
@@ -220,6 +223,7 @@ class VisitNoteWidget extends WidgetType {
 		}
 		const unload = attachVisitNoteArea(area, this.path, this.key);
 		noteUnloads.set(host, unload);
+		restoreVisitNoteCaret(area, this.path, this.key);
 		return host;
 	}
 

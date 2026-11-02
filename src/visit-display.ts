@@ -1,6 +1,7 @@
 import { stripStampAge } from './dates';
 import { stampDateTime } from './schedule';
 import { markPreviewOlderVisits } from './visit-older';
+import { installVisitNoteRelease, isVisitNotesArea, releaseVisitNoteCaret } from './visit-notes-field';
 
 export interface VisitStampRef {
 	text: string;
@@ -497,20 +498,25 @@ export function watchVisitNoteFocus(root: HTMLElement, ms = 12000): void {
 
 /**
  * Focus the first visit textarea after Templater finishes, including the
- * Householder name prompt. Nothing is on a clock: the prompt blocks focus,
- * and a textarea that appears on the file's first render is focused whenever
- * the title (or the body) takes the caret. The watcher stays until the caller
- * stops it, so a later preview remount can still find the new textarea.
+ * Householder name prompt. The prompt blocks focus. The waiter ends at the
+ * first successful placement, on any pointerdown outside that box, or when
+ * the caller stops it. It does not keep pulling the caret back.
+ * `scrollOnce` scrolls the new box into view one time (a Home visit). Later
+ * tries, and every other caller, use preventScroll.
  */
 export function armVisitNoteFocus(
 	root: HTMLElement,
 	notesKey = '',
 	currentRoot?: () => HTMLElement | null,
+	scrollOnce = false,
 ): () => void {
 	let stop = false;
+	let scrolled = false;
 	const doc = root.ownerDocument;
 	const until = Date.now() + 8000;
-	const observer = new MutationObserver(() => { focusArea(); });
+	installVisitNoteRelease(doc);
+	let observer: MutationObserver | null = null;
+	let docObserver: MutationObserver | null = null;
 	let observed: HTMLElement | null = null;
 	const hostNow = (): HTMLElement | null => {
 		if (currentRoot) {
@@ -524,7 +530,7 @@ export function armVisitNoteFocus(
 		return root.isConnected ? root : null;
 	};
 	const watchHost = (host: HTMLElement): void => {
-		if (observed === host) return;
+		if (observed === host || stop || !observer) return;
 		observer.disconnect();
 		observed = host;
 		observer.observe(host, { childList: true, subtree: true });
@@ -565,7 +571,23 @@ export function armVisitNoteFocus(
 		const tag = node.tagName;
 		const field = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || node.isContentEditable;
 		if (!field) return false;
-		return !isVisitTextArea(node);
+		// Another notes box is the user's caret. Do not pull it back.
+		return true;
+	};
+	const onPointer = (event: Event): void => {
+		if (stop || promptOpen()) return;
+		const target = event.target;
+		const active = doc.activeElement;
+		if (isVisitNotesArea(active) && target instanceof Node && (target === active || active.contains(target))) return;
+		releaseVisitNoteCaret(doc, target);
+		disarm();
+	};
+	const disarm = (): void => {
+		if (stop) return;
+		stop = true;
+		observer?.disconnect();
+		docObserver?.disconnect();
+		doc.removeEventListener('pointerdown', onPointer, true);
 	};
 	const focusArea = (): boolean => {
 		if (stop || promptOpen()) return false;
@@ -576,40 +598,48 @@ export function armVisitNoteFocus(
 		if (!area) return false;
 		const active = doc.activeElement;
 		if (active === area) return true;
-		// Leave the Templater prompt and any other field alone so Enter still submits.
-		if (editingElsewhere(active instanceof Element ? active : null)) return false;
+		if (editingElsewhere(active instanceof Element ? active : null)) {
+			disarm();
+			return false;
+		}
 		revealForFocus(area);
+		if (scrollOnce && !scrolled) {
+			scrolled = true;
+			try {
+				area.scrollIntoView({ block: 'center' });
+			} catch {
+				/* The box is not in a scrollport yet. */
+			}
+		}
 		placeCaret(area);
 		return doc.activeElement === area;
 	};
+	const settle = (): void => {
+		if (stop) return;
+		if (Date.now() > until) {
+			disarm();
+			return;
+		}
+		if (focusArea()) disarm();
+	};
+	observer = new MutationObserver(() => { settle(); });
+	docObserver = new MutationObserver(() => { settle(); });
 	const initial = hostNow();
 	if (initial) watchHost(initial);
-	const docObserver = new MutationObserver(() => { focusArea(); });
 	const watch = doc.documentElement ?? doc.body;
 	if (watch) docObserver.observe(watch, { childList: true, subtree: true });
-	const onFocus = (event: Event): void => {
-		if (!promptOpen()) blurNoteTitle(doc);
-		if (event.target instanceof HTMLElement && isFocusThief(event.target) && !promptOpen()) {
-			event.target.blur();
-		}
-		focusArea();
-	};
-	doc.addEventListener('focusin', onFocus, true);
+	doc.addEventListener('pointerdown', onPointer, true);
 	if (!promptOpen()) blurNoteTitle(doc);
-	focusArea();
+	settle();
 	const tick = (): void => {
-		if (stop || Date.now() > until) return;
-		focusArea();
+		if (stop) return;
+		settle();
+		if (stop) return;
 		const view = doc.defaultView;
 		if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(tick);
 	};
 	tick();
-	return () => {
-		stop = true;
-		observer.disconnect();
-		docObserver.disconnect();
-		doc.removeEventListener('focusin', onFocus, true);
-	};
+	return disarm;
 }
 
 /** Focus the stamp's notes box, or the first visit textarea when the stamp has not painted yet. */
@@ -633,15 +663,15 @@ function revealForFocus(area: HTMLElement): void {
 	}
 }
 
-/** Focus the notes box and leave the caret in it. */
+/** Focus the notes box without scrolling the note to follow the caret. */
 function placeCaret(area: HTMLTextAreaElement): void {
 	area.tabIndex = 0;
 	const end = area.value.length;
 	try {
-		area.focus();
+		area.focus({ preventScroll: true });
 	} catch {
 		try {
-			area.focus({ preventScroll: true });
+			area.focus();
 		} catch {
 			/* The box cannot take focus yet. */
 		}

@@ -4,6 +4,7 @@ import {
 	applyExternalVisitNotes,
 	clearVisitNoteStore,
 	releaseClosedVisitNotes as releaseStorePaths,
+	flushVisitNotes,
 	setVisitNoteFocus,
 	subscribeVisitNote,
 	unsubscribeVisitNote,
@@ -16,6 +17,80 @@ const INPUT_KEY = /INPUT\[textArea:(sVisit\d+Notes)\]/;
 
 /** The file the open editor is showing. Writes are still stored per path. */
 let activeNotePath = '';
+
+/**
+ * Set when the user is still in a notes box at the moment that box leaves
+ * the document. A remount may put the caret back only for that same key.
+ */
+let caretHold: { path: string; key: string } | null = null;
+
+const releasedDocs = new WeakSet<Document>();
+
+export function isVisitNotesArea(node: EventTarget | null | undefined): node is HTMLTextAreaElement {
+	return node instanceof HTMLTextAreaElement && (
+		node.classList.contains('rv-native-notes-area') || node.classList.contains('rv-visit-note')
+	);
+}
+
+/**
+ * Mobile reading view does not blur a textarea when the tap lands on a div,
+ * a callout title, or the map button. Release the caret on any pointerdown
+ * outside the box that currently has it. The listener does not stop the event.
+ */
+export function installVisitNoteRelease(doc: Document): void {
+	if (releasedDocs.has(doc)) return;
+	releasedDocs.add(doc);
+	doc.addEventListener('pointerdown', (event) => {
+		releaseVisitNoteCaret(doc, event.target);
+	}, true);
+}
+
+/** Blur the notes box that has the caret, unless the event is inside that box. */
+export function releaseVisitNoteCaret(doc: Document, target?: EventTarget | null): void {
+	const active = doc.activeElement;
+	if (!isVisitNotesArea(active)) return;
+	if (target instanceof Node && (target === active || active.contains(target))) return;
+	active.blur();
+}
+
+export function rememberVisitNoteCaret(path: string, key: string): void {
+	caretHold = { path, key };
+}
+
+export function forgetVisitNoteCaret(path: string, key: string): void {
+	if (caretHold?.path === path && caretHold.key === key) caretHold = null;
+}
+
+/**
+ * Put the caret back after a remount only when this box still owned it.
+ * Another field that already took focus is left alone. `preventScroll` so a
+ * flush cannot jump the note to an off-screen box.
+ */
+export function restoreVisitNoteCaret(area: HTMLTextAreaElement, path: string, key: string): boolean {
+	if (!caretHold || caretHold.path !== path || caretHold.key !== key) return false;
+	const active = area.ownerDocument.activeElement;
+	caretHold = null;
+	if (active instanceof HTMLElement && active.isConnected && active !== area) {
+		const tag = active.tagName;
+		if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable) return false;
+	}
+	const end = area.value.length;
+	try {
+		area.focus({ preventScroll: true });
+	} catch {
+		try {
+			area.focus();
+		} catch {
+			return false;
+		}
+	}
+	try {
+		area.setSelectionRange(end, end);
+	} catch {
+		/* The box is not editable yet. */
+	}
+	return area.ownerDocument.activeElement === area;
+}
 
 export function setActiveVisitNote(path: string): void {
 	activeNotePath = path;
@@ -109,8 +184,19 @@ export function attachVisitNoteArea(area: HTMLTextAreaElement, path: string, key
 		writeVisitNote(path, key, area.value, id);
 		fitArea(area);
 	};
-	const onFocus = (): void => setVisitNoteFocus(path, key, true);
-	const onBlur = (): void => setVisitNoteFocus(path, key, false);
+	const onFocus = (): void => {
+		setVisitNoteFocus(path, key, true);
+		rememberVisitNoteCaret(path, key);
+	};
+	const onBlur = (): void => {
+		// A tap away saves immediately. A remount blur (the node is already
+		// gone) keeps the caret token so the replacement can take it back.
+		if (area.value !== visitNoteValue(path, key)) writeVisitNote(path, key, area.value, id);
+		flushVisitNotes(path);
+		setVisitNoteFocus(path, key, false);
+		if (area.isConnected) forgetVisitNoteCaret(path, key);
+	};
+	installVisitNoteRelease(area.ownerDocument);
 	area.addEventListener('input', onInput);
 	area.addEventListener('focus', onFocus);
 	area.addEventListener('blur', onBlur);
@@ -129,6 +215,8 @@ export function attachVisitNoteArea(area: HTMLTextAreaElement, path: string, key
 	fitArea(area);
 	lastWidth = area.clientWidth;
 	return () => {
+		if (area.value !== visitNoteValue(path, key)) writeVisitNote(path, key, area.value, id);
+		flushVisitNotes(path);
 		resize?.disconnect();
 		unsubscribeVisitNote(id);
 		area.removeEventListener('input', onInput);
@@ -167,12 +255,19 @@ export class VisitNotesField extends MarkdownRenderChild {
 		area.value = visitNoteValue(this.path, this.key);
 		this.unloadArea = attachVisitNoteArea(area, this.path, this.key);
 		host.dataset.rvNotesLive = this.key;
+		restoreVisitNoteCaret(area, this.path, this.key);
 	}
 
 	onunload(): void {
+		const area = this.containerEl.querySelector('textarea.rv-native-notes-area');
+		if (area instanceof HTMLTextAreaElement && area.value !== visitNoteValue(this.path, this.key)) {
+			writeVisitNote(this.path, this.key, area.value, null);
+		}
+		const focused = area instanceof HTMLTextAreaElement && area.ownerDocument.activeElement === area;
+		if (focused) rememberVisitNoteCaret(this.path, this.key);
+		else forgetVisitNoteCaret(this.path, this.key);
 		this.unloadArea?.();
 		this.unloadArea = null;
-		const area = this.containerEl.querySelector('textarea.rv-native-notes-area');
 		area?.remove();
 		delete this.containerEl.dataset.rvNotesLive;
 	}

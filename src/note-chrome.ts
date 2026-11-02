@@ -159,6 +159,7 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	const hosts = urgencyStyleHosts(start);
 	const data = host.frontmatter(path);
 	if (!data) {
+		clearUrgencySurfaces(start);
 		if (forceReady) markUrgencyReady(hosts);
 		else clearUrgencyPaint(hosts);
 		return;
@@ -177,6 +178,9 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 		setPaint(el, '--rv-urgency-ink', ink);
 		if (el.classList.contains('rv-locator-return-suggestions')) setPaint(el, '--callout-color', accent);
 	}
+	// RV-166A. A chrome-less pass still has to repaint the dashboard and every
+	// RV callout. Their own inline accent would otherwise keep the old color.
+	paintUrgencySurfaces(start, accent, ink, snoozed);
 	start.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		setPaint(node, '--rv-urgency-accent', accent);
@@ -221,6 +225,33 @@ function setPaint(el: HTMLElement | SVGElement, name: string, value: string, imp
 	if (el.style.getPropertyValue(name) === value && el.style.getPropertyPriority(name) === priority) return;
 	if (important) el.style.setProperty(name, value, 'important');
 	else el.style.setProperty(name, value);
+}
+
+/** The dashboard and every RV callout under `start`, including `start` itself. */
+function urgencyPaintTargets(start: HTMLElement): HTMLElement[] {
+	const found: HTMLElement[] = [];
+	if (start.matches('.rv-dashboard, .callout[data-callout="rv"]')) found.push(start);
+	start.querySelectorAll('.rv-dashboard, .callout[data-callout="rv"]').forEach((node) => {
+		if (node instanceof HTMLElement) found.push(node);
+	});
+	return found;
+}
+
+function paintUrgencySurfaces(start: HTMLElement, accent: string, ink: string, snoozed: boolean): void {
+	for (const el of urgencyPaintTargets(start)) {
+		setPaint(el, '--rv-urgency-accent', accent);
+		paintUrgencyInk(el, accent);
+		if (!el.style.getPropertyValue('--rv-urgency-ink').trim()) setPaint(el, '--rv-urgency-ink', ink || accent);
+		if (el.classList.contains('rv-dashboard')) el.classList.toggle('is-snoozed', snoozed);
+	}
+}
+
+function clearUrgencySurfaces(start: HTMLElement): void {
+	for (const el of urgencyPaintTargets(start)) {
+		el.style.removeProperty('--rv-urgency-accent');
+		el.style.removeProperty('--rv-urgency-ink');
+		if (el.classList.contains('rv-dashboard')) el.classList.remove('is-snoozed');
+	}
 }
 
 function markSnoozedDashboard(start: HTMLElement, hosts: readonly HTMLElement[], snoozed: boolean): void {

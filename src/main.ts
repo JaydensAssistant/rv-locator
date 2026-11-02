@@ -30,7 +30,7 @@ import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
-import { armVisitNoteFocus, blurNoteTitle, layoutVisitNotes, placeVisitNoteFocus } from './visit-display';
+import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from './visit-display';
 import { watchVisitSurface } from './visit-surface';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
@@ -46,10 +46,10 @@ import { EditAttributesModal, NewRvIdentityModal, type NewRvIdentity } from './n
 import { PrioritySliderModal } from './priority-modal';
 import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
-import { clearVisitNoteCaches, focusVisitNoteField, mountVisitNotesInSection, noteValuesFromFrontmatter, releaseClosedVisitNotes, setActiveVisitNote } from './visit-notes-field';
+import { clearVisitNoteCaches, installVisitNoteRelease, mountVisitNotesInSection, noteValuesFromFrontmatter, releaseClosedVisitNotes, releaseVisitNoteCaret, setActiveVisitNote } from './visit-notes-field';
 import { applyExternalVisitNotes, bindVisitNoteFlush } from './visit-notes-store';
 import { classifyVisitSection } from './visit-older';
-import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, stripStampAge } from './dates';
+import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant } from './dates';
 import { clearInkCache } from './color-math';
 import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteName, stripFilenameStamp } from './note-name';
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
@@ -109,9 +109,6 @@ const ACCENT_CHECK_MS = 5_000;
 const AGE_REFRESH_DELAYS_MS = [0, 250, 1_000] as const;
 /** Meta Bind mounts its textAreas after the section renders, sometimes well after. */
 const NOTES_FIT_DELAYS_MS = [0, 250, 1_000, 2_500] as const;
-/** How long to look for a new visit's notes box after the note re-renders. */
-const FOCUS_ATTEMPTS = 80;
-const FOCUS_STEP_MS = 100;
 /**
  * The note's Home button is still dispatching its click when Templater asks
  * for a companion. Opening in that turn lets the click land on the suggester
@@ -520,12 +517,33 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Map earth, archive label, Quick Facts, and the shared Hub row. Meta Bind may remount, so this runs again. */
 	private decorateOpenNote(element: HTMLElement, path: string): void {
+		installVisitNoteRelease(element.ownerDocument);
+		this.bindMapFocusRelease(element);
 		decorateMapLink(element, () => { void this.openMapSoon(path); });
 		this.bindAddressMapClick(element, path);
 		decorateArchiveButton(element, this.pathIsInactive(path));
 		decorateNoteChrome(element, path, this.noteChromeHost());
 		this.layoutOpenVisits(element, path);
 		applyLiveUrgency(element, path, this.noteChromeHost(), true);
+	}
+
+	/**
+	 * RV-167A. A map tap has to drop the notes caret before the click toggles
+	 * the map. Otherwise the focused box scrolls into view and the first tap misses.
+	 */
+	private bindMapFocusRelease(element: HTMLElement): void {
+		if (element.dataset.rvMapFocusRelease === '1') return;
+		element.dataset.rvMapFocusRelease = '1';
+		const release = (event: Event): void => {
+			const target = event.target;
+			if (!(target instanceof Element)) return;
+			if (!target.closest('a.rv-map-button, .rv-map-button, a.rv-address-link, .rv-address-link, .rv-note-map, .rv-note-map-handle')) return;
+			this.stopVisitFocus?.();
+			this.stopVisitFocus = null;
+			releaseVisitNoteCaret(element.ownerDocument, target);
+		};
+		element.addEventListener('pointerdown', release, true);
+		element.addEventListener('click', release, true);
 	}
 
 	/** Address text is a link Obsidian may handle before the bubble listener. Capture it. */
@@ -2006,6 +2024,8 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	async openMapSoon(path?: string): Promise<void> {
+		this.stopVisitFocus?.();
+		this.stopVisitFocus = null;
 		if (path && this.noteMapOpen && this.mapFocusPath === path) {
 			this.noteMapOpen = false;
 			this.hubMapOpen = false;
@@ -3929,10 +3949,9 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Open the note (or bring its tab forward) and put the caret in the new
-	 * notes box. One scroll lands on that box. The source line is not scrolled
-	 * first, so the preview does not jump away and come back. On iOS the
-	 * keyboard may stay down, because focus here does not come straight from a tap.
+	 * Open the note in reading view and put the caret in the new notes box once.
+	 * One scroll, then preventScroll. The waiter ends when that focus lands,
+	 * or as soon as the user taps anywhere outside the box.
 	 */
 	private async focusVisitNotes(file: TFile, property: string | null): Promise<void> {
 		if (this.unloaded) return;
@@ -3946,13 +3965,6 @@ export default class RVLocatorPlugin extends Plugin {
 		const lines = data.split('\n');
 		const name = property ?? highestNotesProperty(data.slice(info.contentStart));
 		const fieldAt = name ? lines.findIndex((line) => line.includes(`INPUT[textArea:${name}]`)) : -1;
-		const heading = fieldAt > 0
-			? /^(?:###|#####)\s+(.+?)\s*$/.exec((lines[fieldAt - 1] ?? '').replace(/\r$/, ''))
-			: null;
-		const stamp = heading ? stripStampAge(heading[1] ?? '') : '';
-		const ordinal = stamp
-			? lines.slice(0, fieldAt - 1).filter((line) => line.includes(stamp) && /^#{3,5}\s/.test(line)).length
-			: 0;
 
 		let leaf = this.app.workspace.getLeavesOfType('markdown')
 			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === file.path);
@@ -3967,19 +3979,9 @@ export default class RVLocatorPlugin extends Plugin {
 		this.app.workspace.setActiveLeaf(leaf, { focus: true });
 		this.openInReadingView(file, true);
 		this.stopVisitFocus?.();
-		this.stopVisitFocus = armVisitNoteFocus(view.containerEl, name ?? '', () => this.markdownRoot(file.path));
+		this.stopVisitFocus = null;
 		if (!name || fieldAt < 1) return;
-		for (let attempt = 0; attempt < FOCUS_ATTEMPTS; attempt += 1) {
-			if (this.unloaded) return;
-			await new Promise((resolve) => window.setTimeout(resolve, FOCUS_STEP_MS));
-			blurNoteTitle(view.containerEl.ownerDocument);
-			const area = focusVisitNoteField(view.containerEl, name) ?? placeVisitNoteFocus(view.containerEl, stamp, ordinal);
-			if (!area) continue;
-			fitNotesBox(area);
-			area.scrollIntoView({ block: 'center' });
-			if (area.ownerDocument.activeElement === area) return;
-		}
-		void ordinal;
+		this.stopVisitFocus = armVisitNoteFocus(view.containerEl, name ?? '', () => this.markdownRoot(file.path), true);
 	}
 
 	/** The markdown leaf for `path`, after a preview remount replaces the old root. */

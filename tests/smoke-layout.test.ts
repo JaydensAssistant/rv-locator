@@ -8,7 +8,7 @@ import { shouldHideStatusBar } from '../src/status-bar';
 import { refreshStampAgeLabels } from '../src/rv-note-view';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { decorateReadingSurface, decorateVisitControls, refitItemStrip, rehoistVisitNotes, stripContentBudget, visitLayoutMissing } from '../src/visit-controls';
-import { clearVisitNoteCaches, mountVisitNotesInSection, setActiveVisitNote } from '../src/visit-notes-field';
+import { clearVisitNoteCaches, installVisitNoteRelease, mountVisitNotesInSection, releaseVisitNoteCaret, setActiveVisitNote } from '../src/visit-notes-field';
 import { SUGGEST_MATCH_LIMIT, mountAlwaysChevron, suggestionListenerCount } from '../src/suggest-field';
 import { expandCallout } from '../src/callout-fold';
 import { emptyShare } from '../src/catalog';
@@ -32,6 +32,7 @@ hostGlobals.window = window;
 hostGlobals.document = window.document;
 hostGlobals.HTMLElement = window.HTMLElement;
 hostGlobals.HTMLInputElement = window.HTMLInputElement;
+hostGlobals.HTMLTextAreaElement = window.HTMLTextAreaElement;
 hostGlobals.HTMLAnchorElement = window.HTMLAnchorElement;
 hostGlobals.Element = window.Element;
 hostGlobals.Node = window.Node;
@@ -1139,6 +1140,39 @@ describe('smoke layout', () => {
 		assert.equal(after, '#1f8a4c');
 	});
 
+	it('RV-166A repaints a nested dashboard and Visit Facts callout without chrome', () => {
+		const root = window.document.createElement('div');
+		root.className = 'workspace-leaf-content';
+		const dashboard = window.document.createElement('div');
+		dashboard.className = 'rv-dashboard';
+		dashboard.style.setProperty('--rv-urgency-accent', '#d63c3c');
+		dashboard.style.setProperty('--rv-urgency-ink', '#d63c3c');
+		const callout = window.document.createElement('div');
+		callout.className = 'callout';
+		callout.setAttribute('data-callout', 'rv');
+		callout.style.setProperty('--rv-urgency-accent', '#d63c3c');
+		callout.style.setProperty('--rv-urgency-ink', '#d63c3c');
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		title.textContent = 'Visit Facts';
+		callout.appendChild(title);
+		dashboard.appendChild(callout);
+		root.appendChild(dashboard);
+		const now = new Date();
+		const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T08:00:00`;
+		applyLiveUrgency(root, 'RVs/Ada.md', chromeHost({
+			Status: 'Active',
+			Priority: 1,
+			'Last Spoke': stamp,
+			'Last Attempted': stamp,
+		}, { count: 0 }), true);
+		assert.equal(dashboard.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		assert.equal(callout.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		assert.notEqual(dashboard.style.getPropertyValue('--rv-urgency-ink').toLowerCase(), '#d63c3c');
+		assert.notEqual(callout.style.getPropertyValue('--rv-urgency-ink').trim(), '');
+		assert.notEqual(callout.style.getPropertyValue('--rv-urgency-ink').toLowerCase(), '#d63c3c');
+	});
+
 	it('focuses the first visit note and puts the caret back if it falls on the body', () => {
 		const root = window.document.createElement('div');
 		root.className = 'markdown-preview-view rv-dashboard';
@@ -1416,6 +1450,76 @@ describe('smoke layout', () => {
 		await new Promise((resolve) => window.setTimeout(resolve, 20));
 		assert.equal(window.document.activeElement, area);
 		stop();
+		root.remove();
+	});
+
+	it('RV-168B drops the notes caret on a Visit Facts tap and does not put it back', async () => {
+		hostGlobals.MutationObserver = window.MutationObserver;
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const facts = window.document.createElement('div');
+		facts.className = 'callout';
+		facts.setAttribute('data-callout', 'rv');
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		title.textContent = 'Visit Facts';
+		facts.appendChild(title);
+		root.appendChild(facts);
+		const stop = armVisitNoteFocus(root, 'sVisit9Notes', undefined, true);
+		let scrolls = 0;
+		title.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+		const area = window.document.createElement('textarea');
+		area.className = 'rv-native-notes-area';
+		area.dataset.rvNotesKey = 'sVisit9Notes';
+		area.scrollIntoView = () => { scrolls += 1; };
+		root.appendChild(area);
+		facts.classList.toggle('is-collapsed');
+		await new Promise((resolve) => window.setTimeout(resolve, 40));
+		assert.notEqual(window.document.activeElement, area);
+		assert.equal(scrolls, 0);
+		stop();
+		root.remove();
+	});
+
+	it('RV-168B lets another notes box keep the caret', async () => {
+		hostGlobals.MutationObserver = window.MutationObserver;
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const older = window.document.createElement('textarea');
+		older.className = 'rv-native-notes-area';
+		older.dataset.rvNotesKey = 'sVisit1Notes';
+		const newer = window.document.createElement('textarea');
+		newer.className = 'rv-native-notes-area';
+		newer.dataset.rvNotesKey = 'sVisit2Notes';
+		root.append(older, newer);
+		newer.focus();
+		const stop = armVisitNoteFocus(root, 'sVisit2Notes', undefined, true);
+		older.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+		older.focus();
+		await new Promise((resolve) => window.setTimeout(resolve, 40));
+		assert.equal(window.document.activeElement, older);
+		stop();
+		root.remove();
+	});
+
+	it('RV-167A blurs an off-screen notes box on the map button without scrolling', () => {
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const area = window.document.createElement('textarea');
+		area.className = 'rv-native-notes-area';
+		const map = window.document.createElement('a');
+		map.className = 'rv-map-button';
+		map.setAttribute('href', '#');
+		root.append(area, map);
+		installVisitNoteRelease(window.document);
+		let scrolls = 0;
+		area.scrollIntoView = () => { scrolls += 1; };
+		area.focus();
+		assert.equal(window.document.activeElement, area);
+		map.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+		releaseVisitNoteCaret(window.document, map);
+		assert.notEqual(window.document.activeElement, area);
+		assert.equal(scrolls, 0);
 		root.remove();
 	});
 
