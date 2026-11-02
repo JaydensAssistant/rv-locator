@@ -97,6 +97,12 @@ describe('locked next build', () => {
 		assert.match(main, /isRvLocatorSurface/);
 		assert.match(css, /body\.rv-hide-mobile-nav \.mobile-navbar \{[^}]*display:\s*none !important/);
 		assert.match(css, /content:\s*'Return Visits'/);
-		assert.match(css, /body\.is-phone \.workspace-leaf-content:has\(\.rv-locator-full-base\) \.view-header-title/);
+		assert.match(css, /body\.is-phone \.workspace-leaf-content:has\(\.rv-locator-full-base\) > \.view-header::after/);
+		assert.match(css, /body\.is-phone \.markdown-preview-view\.rv-locator-full-base[\s\S]*overflow:\s*hidden !important/);
+		assert.match(css, /\.modal\.rv-locator-modal button\.rv-priority-seg\.is-selected \{[^}]*box-shadow:[^}]*0 0 0 4px #d6d6d6 !important/);
+		const edit = source('src/new-rv-modal.ts').slice(source('src/new-rv-modal.ts').indexOf('export class EditAttributesModal'));
+		assert.ok(edit.indexOf("mountGenderButton(button, 'Woman'") < edit.indexOf("mountGenderButton(button, 'Man'"));
+		assert.match(source('src/main.ts'), /pointNewNoteAtLogTemplates/);
+		assert.match(source('src/main.ts'), /scheduleReadingDecorate/);
 	});
 });

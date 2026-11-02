@@ -675,7 +675,8 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(dash, /renameNote\(path\)/);
 		assert.doesNotMatch(dash, /new Menu|sliders-horizontal/);
 		assert.doesNotMatch(chrome, /aria-label': 'Rename'/);
-		assert.match(css, /\.rv-edit-attributes \.rv-attr-fields > \.setting-item\.rv-gender-choice \{[^}]*margin-top:\s*12px !important/);
+		assert.match(css, /\.modal\.rv-locator-modal\.rv-edit-attributes \.rv-attr-fields > \.setting-item \{[^}]*padding-top:\s*16px !important[^}]*padding-bottom:\s*16px !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes\.rv-locator-modal \.setting-item\.rv-gender-choice \.setting-item-control \{[^}]*gap:\s*4px/);
 		assert.match(glance, /rv-locator-full-base/);
 		assert.match(glance, /wideHubFrame/);
 		assert.match(settings, /Copy class/);
@@ -703,7 +704,7 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		const focus = main.slice(main.indexOf('private async focusVisitNotes'), main.indexOf('private openPicker'));
 		assert.match(focus, /setActiveLeaf\(leaf, \{ focus: true \}\)/);
 		assert.match(focus, /armVisitNoteFocus\(view\.containerEl, name \?\? ''/);
-		assert.match(css, /\.modal\.rv-edit-attributes \.rv-modal-actions \{[^}]*margin-top:\s*12px !important/);
+		assert.match(css, /\.modal\.rv-edit-attributes \.rv-modal-actions \{[^}]*padding-top:\s*16px/);
 		assert.match(css, /--file-margins:\s*0px/);
 		const visit = read('src/visit-display.ts');
 		const arm = visit.slice(visit.indexOf('export function armVisitNoteFocus'), visit.indexOf('export function placeVisitNoteFocus'));

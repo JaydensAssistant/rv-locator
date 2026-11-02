@@ -1641,6 +1641,40 @@ describe('smoke layout', () => {
 		host.remove();
 	});
 
+	it('RV-67A repaints the reading-view Visit Facts callout from the new frontmatter', () => {
+		const callout = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div><div class="callout-content"><span class="stale">2/3</span></div></div>';
+		const root = window.document.createElement('div');
+		root.className = 'workspace-leaf-content';
+		root.innerHTML = `<div class="markdown-source-view">${callout}</div><div class="markdown-preview-view markdown-reading-view">${callout}</div>`;
+		const logged = {
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			Priority: 4,
+			Visits: 4,
+			'Successful Visits': 3,
+			'Last Spoke': '2026-11-02T22:51:13',
+			'Last Attempted': '2026-11-02T22:51:13',
+			Met: '2026-10-01T10:00:00',
+		};
+		decorateNoteChrome(root, 'People/Eve.md', chromeHost(logged, { count: 0 }));
+		const reading = root.querySelector('.markdown-preview-view');
+		const sourceView = root.querySelector('.markdown-source-view');
+		assert.equal(reading?.querySelector('.rv-qf-head-ratio')?.textContent, '3/4 (75%)');
+		assert.equal(sourceView?.querySelector('.rv-qf-head-ratio')?.textContent, '3/4 (75%)');
+		assert.equal(reading?.querySelector('.rv-cal-day')?.textContent, '2');
+		const edited = {
+			...logged,
+			Visits: 2,
+			'Successful Visits': 1,
+			'Last Spoke': '2026-10-27T22:25:00',
+			'Last Attempted': '2026-10-27T22:25:00',
+		};
+		decorateNoteChrome(root, 'People/Eve.md', chromeHost(edited, { count: 0 }));
+		assert.equal(reading?.querySelector('.rv-qf-head-ratio')?.textContent, '1/2 (50%)');
+		assert.equal(reading?.querySelector('.rv-cal-day')?.textContent, '27');
+		assert.equal(reading?.querySelector('.stale'), null);
+	});
+
 	it('drops suggestion listeners after the log-visit modal closes', async () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const before = suggestionListenerCount();

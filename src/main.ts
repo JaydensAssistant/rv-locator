@@ -15,7 +15,7 @@ import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fi
 import { countyFilterParam, decideGeocodePick, hitInHomeCounties, mergeHomeFirst, preferHomeRegion } from './home-base';
 import { HUB_STACK_BELOW_PX } from './hub-layout';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
-import { resolveExtrasPlacement, type ExtrasPlacement } from './extras-sync';
+import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
 import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
@@ -650,15 +650,16 @@ export default class RVLocatorPlugin extends Plugin {
 		this.scheduleReadingDecorate(file);
 	}
 
-	/** Reading view paints section by section. Run the visit decorate pass again after each of those paints. */
+	/** Reading view paints section by section, and a cached section skips the post-processor. Paint again after each of those paints. */
 	private scheduleReadingDecorate(file: TFile): void {
 		const path = file.path;
-		for (const delay of NOTES_FIT_DELAYS_MS) {
-			window.setTimeout(() => {
-				if (this.unloaded) return;
-				this.refreshVisitCards(path, undefined, false, true);
-			}, delay);
-		}
+		const run = (): void => {
+			if (this.unloaded) return;
+			this.refreshOpenNoteChrome();
+			this.refreshVisitCards(path, undefined, false, true);
+		};
+		run();
+		for (const delay of NOTES_FIT_DELAYS_MS) window.setTimeout(run, delay);
 	}
 
 	/** Counter ink follows the palette and the theme on notes that are already open. */
@@ -718,7 +719,10 @@ export default class RVLocatorPlugin extends Plugin {
 		);
 		applyLiveUrgency(surface, shown, this.noteChromeHost(), true);
 		if (chrome) this.decorateOpenNote(surface, shown);
-		else this.layoutOpenVisits(surface, shown);
+		else {
+			this.layoutOpenVisits(surface, shown);
+			decorateNoteChrome(surface, shown, this.noteChromeHost());
+		}
 		this.bindVisitSurface(surface, shown);
 		void notesFallback;
 	}
@@ -890,7 +894,16 @@ export default class RVLocatorPlugin extends Plugin {
 			return openFile.call(this, file, plugin.previewStateFor(file, openState));
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
-			return setViewState.call(this, plugin.previewViewState(this, viewState), eState);
+			const result = setViewState.call(this, plugin.previewViewState(this, viewState), eState);
+			const repaintReading = (): void => {
+				if (plugin.unloaded) return;
+				const view = this.view;
+				if (!(view instanceof MarkdownView) || !view.file || view.getMode() !== 'preview') return;
+				plugin.scheduleReadingDecorate(view.file);
+			};
+			if (result instanceof Promise) return result.then((value) => { repaintReading(); return value; });
+			repaintReading();
+			return result;
 		};
 		this.register(() => {
 			proto.openFile = openFile;
@@ -1125,6 +1138,7 @@ export default class RVLocatorPlugin extends Plugin {
 				try {
 					await this.suffixCollidingName(created);
 					if (draft) await this.writeNewRvShare(created, draft);
+					await this.pointNewNoteAtLogTemplates(created);
 					await this.refreshAttemptDigest(created);
 					if (sourcePath) await this.linkHousehold(sourcePath, created);
 				} catch (error) {
@@ -1146,6 +1160,37 @@ export default class RVLocatorPlugin extends Plugin {
 			this.creatingNewRv = false;
 			this.newRvDraft = null;
 			this.housemateSourcePath = null;
+		}
+	}
+
+	/**
+	 * The New RV template may still say `Templates/RV Log Home.md`. Point the
+	 * new note's buttons at the file that is actually in the templates folder.
+	 * A note that already names an existing file is left on that path.
+	 */
+	private async pointNewNoteAtLogTemplates(file: TFile): Promise<void> {
+		const templater = readTemplaterPlugin(this.app);
+		const folder = typeof templater?.settings?.templates_folder === 'string' ? templater.settings.templates_folder : '';
+		const exists = (path: string): boolean => this.app.vault.getFileByPath(path) != null;
+		const home = resolveTemplatePath(folder, this.settings.homeLogTemplateFile, DEFAULT_HOME_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, exists);
+		const miss = resolveTemplatePath(folder, this.settings.missLogTemplateFile, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, exists);
+		const homeName = home.slice(home.lastIndexOf('/') + 1);
+		const missName = miss.slice(miss.lastIndexOf('/') + 1);
+		const templatesFolder = home.slice(0, Math.max(0, home.lastIndexOf('/')));
+		try {
+			await this.app.vault.process(file, (data) => {
+				try {
+					return rewriteNewRvTemplate(data, {
+						templatesFolder,
+						homeLogFileName: homeName,
+						missLogFileName: missName,
+					});
+				} catch {
+					return data;
+				}
+			});
+		} catch {
+			/* A note without those buttons stays as Templater wrote it. */
 		}
 	}
 

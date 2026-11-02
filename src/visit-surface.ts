@@ -10,6 +10,8 @@ const SELF_PAINT = [
 	'.rv-stamp-row',
 	'.rv-visit-more',
 	'.rv-qf-badges',
+	'.rv-qf-body',
+	'.rv-qf-head',
 	'.rv-fit',
 	'.rv-stamp-source',
 	'.heading-collapse-indicator',

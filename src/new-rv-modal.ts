@@ -464,16 +464,16 @@ export class EditAttributesModal extends Modal {
 			});
 		};
 		gender.addButton((button) => {
-			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
+			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
 			button.onClick(() => {
-				this.gender = 'Man';
+				this.gender = 'Woman';
 				paint();
 			});
 		});
 		gender.addButton((button) => {
-			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
+			mountGenderButton(button, 'Man', RESTROOM_MAN, this.gender === 'Man');
 			button.onClick(() => {
-				this.gender = 'Woman';
+				this.gender = 'Man';
 				paint();
 			});
 		});

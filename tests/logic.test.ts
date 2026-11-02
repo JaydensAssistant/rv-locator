@@ -7,7 +7,7 @@ import { createCompanionPromptGate } from '../src/companion-prompt';
 import { appendCompanionTaken, companionChoices, companionFrontmatterBlock, companionRecency, formatStoredCompanion, matchingCompanion, recentCompanionNames, RECENT_COMPANION_LIMIT, stabilizeCompanionFrontmatter } from '../src/companions';
 import { CampaignModal } from '../src/campaign-modal';
 import { CompanionSuggestModal } from '../src/modals';
-import { EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
+import { DEFAULT_HOME_LOG_TEMPLATE_FILE, EXTRAS_MAX_FILE_BYTES, EXTRAS_SYNC_FILES, EXTRAS_SYNC_REF, LEGACY_HOME_LOG_TEMPLATE_FILE, NEW_RV_TEMPLATE_REPO, assertExtrasDownloadUrl, downloadExtras, extrasDestinations, extrasFileUrl, extrasRedirectUrl, isAllowlistedExtrasPath, pathInsideFolder, planExtrasWrite, resolveTemplatePath, rewriteNewRvTemplate, safeTemplateFileName, safeVaultFolder, sha256Hex } from '../src/extras-sync';
 import { applyTemplateSettingChange, planTemplateRename, rewriteTemplateFilePaths, type TemplateRenameVault } from '../src/template-rename';
 import { requiredSetupGaps, setupChecklist, shouldPersistSetupWizardCompleted, shouldShowSetupNudge, type SetupSnapshot } from '../src/setup-check';
 import { SetupWizardModal, shouldAutoOpenSetupWizard } from '../src/setup-wizard';
@@ -1378,6 +1378,35 @@ describe('extras sync', () => {
 		const note = plan.files.find((file) => file.vaultPath === 'Templates/99 New RV.md');
 		assert.equal(note?.contents.startsWith('body:https://raw.githubusercontent.com/'), true);
 		assert.equal(note?.sha256, await sha256Hex(note?.contents ?? ''));
+	});
+
+	it('resolves the Home template that is actually in the folder', () => {
+		const exists = (path: string) => path === 'Templates/99 RV Log Home.md';
+		assert.equal(
+			resolveTemplatePath('Templates', DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_HOME_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, exists),
+			'Templates/99 RV Log Home.md',
+		);
+		const onlyLegacy = (path: string) => path === 'Templates/RV Log Home.md';
+		assert.equal(
+			resolveTemplatePath('', '99 RV Log Home.md', DEFAULT_HOME_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, onlyLegacy),
+			'Templates/RV Log Home.md',
+		);
+		assert.equal(
+			resolveTemplatePath('Templates', '99 RV Log Home.md', DEFAULT_HOME_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, () => false),
+			'Templates/99 RV Log Home.md',
+		);
+		const source = readFileSync('extras/templater-metabind/New RV.md', 'utf8');
+		const pointed = rewriteNewRvTemplate(source, {
+			templatesFolder: 'Templates',
+			homeLogFileName: '99 RV Log Home.md',
+			missLogFileName: '99 RV Log Miss.md',
+		});
+		assert.equal(pointed.includes('templateFile: Templates/99 RV Log Home.md'), true);
+		assert.equal(pointed.includes('templateFile: Templates/RV Log Home.md'), false);
+		assert.equal(source.includes('templateFile: Templates/RV Log Home.md'), true);
+		const main = readFileSync('src/main.ts', 'utf8');
+		const launch = main.slice(main.indexOf('private async launchNewRvTemplate'), main.indexOf('private async pointNewNoteAtLogTemplates'));
+		assert.match(launch, /pointNewNoteAtLogTemplates\(created\)/);
 	});
 
 	it('rewrites New RV templateFile paths to the resolved Home and Not home templates', async () => {

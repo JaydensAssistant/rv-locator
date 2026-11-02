@@ -5,6 +5,7 @@ import { pickDayJump, type DayJumpCandidate } from './day-jump';
 import { calendarDaysSince, dateTextFromUnknown, formatDriveDate, formatGlanceableCounter, parseDriveInstant, visibleStampText } from './dates';
 import { parseLogBullet, stampDateTime } from './schedule';
 import { readProperty } from './frontmatter';
+import { pinnedText } from './visit-paint-guard';
 import { hubRefs, resolveReturnHub, type HubRef } from './hub-row';
 import { displayedUrgency } from './row-score';
 import { urgencyAccentColor, urgencyMark } from './scoring';
@@ -246,11 +247,53 @@ function clearUrgencyPaint(hosts: readonly HTMLElement[]): void {
 }
 
 function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
-	const callout = quickFactsCallout(root);
-	if (!callout) return;
+	for (const callout of visitFactsCallouts(root)) paintQuickFactsCallout(callout, path, data, host);
+}
+
+/**
+ * Every Visit Facts callout under the root. Reading view and the hidden
+ * live-preview clone are both in the leaf. Painting only the first one
+ * left the visible reading callout on the previous visit.
+ */
+function visitFactsCallouts(root: HTMLElement): HTMLElement[] {
+	const list = root.matches('.callout[data-callout="rv"]')
+		? [root]
+		: Array.from(root.querySelectorAll('.callout[data-callout="rv"]'));
+	const found: HTMLElement[] = [];
+	for (const node of list) {
+		if (!(node instanceof HTMLElement)) continue;
+		const title = node.querySelector(':scope > .callout-title');
+		const text = title?.textContent ?? '';
+		if (text.includes('Visit Facts') || text.includes('Quick Facts') || node.querySelector('.rv-qf-body')) found.push(node);
+	}
+	return found;
+}
+
+/** Frontmatter fields the reading-view callout shows. A match skips a second paint. */
+function factsPaintKey(data: Record<string, unknown>): string {
+	const fields = [
+		'Last Spoke',
+		'Last Attempted',
+		'Last Studied',
+		'Met',
+		'Visits',
+		'Successful Visits',
+		'Left Publications',
+		'Shared Media',
+		'Lessons Studied',
+		'Taken',
+		'Met With',
+		'Status',
+		'Priority',
+	];
+	return fields.map((key) => pinnedText(readProperty(data, key))).join('\u0001');
+}
+
+function paintQuickFactsCallout(callout: HTMLElement, path: string, data: Record<string, unknown>, host: NoteChromeHost): void {
 	const title = callout.querySelector(':scope > .callout-title');
 	const content = callout.querySelector(':scope > .callout-content');
 	if (!title || !content || !(title instanceof HTMLElement) || !(content instanceof HTMLElement)) return;
+	const key = factsPaintKey(data);
 	const priority = finiteNumber(readProperty(data, 'Priority'));
 	const status = resolveStatus(readProperty(data, 'Status'), priority);
 	const urgency = noteUrgency(path, data, priority, host);
@@ -265,21 +308,10 @@ function decorateQuickFacts(root: HTMLElement, path: string, data: Record<string
 		dashboard.style.setProperty('--rv-urgency-accent', accent);
 		paintUrgencyInk(dashboard, accent);
 	}
+	if (content.dataset.rvFactsPaint === key && content.classList.contains('rv-qf-body') && content.childElementCount > 0) return;
 	paintFactsTitle(title, path, data, status, priority, urgency, host);
 	paintFactsBody(content, path, data, status, priority, host);
-}
-
-function quickFactsCallout(root: HTMLElement): HTMLElement | null {
-	const list = root.matches('.callout[data-callout="rv"]')
-		? [root]
-		: Array.from(root.querySelectorAll('.callout[data-callout="rv"]'));
-	for (const node of list) {
-		if (!(node instanceof HTMLElement)) continue;
-		const title = node.querySelector(':scope > .callout-title');
-		const text = title?.textContent ?? '';
-		if (text.includes('Visit Facts') || text.includes('Quick Facts')) return node;
-	}
-	return null;
+	content.dataset.rvFactsPaint = key;
 }
 
 /** Fractional part in [0, 1). */

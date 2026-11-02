@@ -28,6 +28,9 @@ export const DEFAULT_HOME_LOG_TEMPLATE_FILE = '99 RV Log Home.md';
 export const DEFAULT_MISS_LOG_TEMPLATE_FILE = '99 RV Log Miss.md';
 /** Previous New RV file name. The + button still accepts it. */
 export const LEGACY_NEW_RV_TEMPLATE_FILE = 'New RV.md';
+/** Short names an older New RV template still writes into the Home and Not home buttons. */
+export const LEGACY_HOME_LOG_TEMPLATE_FILE = 'RV Log Home.md';
+export const LEGACY_MISS_LOG_TEMPLATE_FILE = 'RV Log Miss.md';
 
 export interface ExtrasPlacement {
 	templatesFolder: string;
@@ -149,6 +152,29 @@ export function extrasDestinations(
 		repo: file.repo,
 		vault: vaultPathFor(file, place),
 	}));
+}
+
+/**
+ * Vault path of a log template. The configured name wins when that file exists.
+ * Otherwise the legacy short name, when that file exists. Otherwise the
+ * configured path, so a new note is not left on a missing hardcoded path.
+ */
+export function resolveTemplatePath(
+	folder: unknown,
+	configuredName: unknown,
+	fallbackName: string,
+	legacyName: string,
+	exists: (path: string) => boolean,
+): string {
+	const dir = safeVaultFolder(folder, DEFAULT_TEMPLATES_FOLDER);
+	const configured = safeTemplateFileName(configuredName, fallbackName);
+	const legacy = safeTemplateFileName(legacyName, fallbackName);
+	const names = legacy.toLowerCase() === configured.toLowerCase() ? [configured] : [configured, legacy];
+	for (const name of names) {
+		const path = `${dir}/${name}`;
+		if (pathInsideFolder(dir, path) && exists(path)) return path;
+	}
+	return `${dir}/${configured}`;
 }
 
 /**
