@@ -1200,6 +1200,51 @@ describe('smoke layout', () => {
 		assert.notEqual(callout.style.getPropertyValue('--rv-urgency-ink').toLowerCase(), '#d63c3c');
 	});
 
+	it('RV-166A paints a cached address and badge in the same pass as the Home buttons', () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const gold = '#c8960a';
+		const address = window.document.createElement('div');
+		address.className = 'el-p';
+		address.style.setProperty('--rv-urgency-accent', gold);
+		const link = window.document.createElement('a');
+		link.className = 'rv-address-link';
+		link.textContent = '12 Oak';
+		address.appendChild(link);
+		const facts = window.document.createElement('div');
+		facts.className = 'callout';
+		facts.setAttribute('data-callout', 'rv');
+		facts.style.setProperty('--rv-urgency-accent', gold);
+		const badge = window.document.createElement('button');
+		badge.className = 'rv-locator-urgency';
+		const month = window.document.createElement('span');
+		month.className = 'rv-cal-month';
+		facts.append(badge, month);
+		const buttons = window.document.createElement('div');
+		buttons.className = 'el-pre';
+		buttons.style.setProperty('--rv-urgency-accent', gold);
+		const suggestions = window.document.createElement('div');
+		suggestions.className = 'callout rv-locator-return-suggestions';
+		suggestions.setAttribute('data-callout', 'quote');
+		suggestions.style.setProperty('--rv-urgency-accent', gold);
+		suggestions.style.setProperty('--callout-color', gold);
+		preview.append(address, facts, buttons, suggestions);
+		const now = new Date();
+		const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T08:00:00`;
+		applyLiveUrgency(buttons, 'People/Eve.md', chromeHost({
+			Status: 'Active',
+			Priority: 1,
+			'Last Spoke': stamp,
+			'Last Attempted': stamp,
+		}, { count: 0 }), true);
+		const green = '#1f8a4c';
+		for (const node of [address, facts, badge, month, buttons, suggestions]) {
+			assert.equal(node.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), green);
+		}
+		assert.equal(link.closest('.el-p'), address);
+		assert.equal(suggestions.style.getPropertyValue('--callout-color').toLowerCase(), green);
+	});
+
 	it('focuses the first visit note and puts the caret back if it falls on the body', () => {
 		const root = window.document.createElement('div');
 		root.className = 'markdown-preview-view rv-dashboard';

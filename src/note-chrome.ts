@@ -135,6 +135,18 @@ function decorateNoteTitle(root: HTMLElement, data: Record<string, unknown>): vo
 }
 
 /**
+ * Reading view reuses a cached section and skips its post-processor.
+ * A Home log re-renders the buttons and suggestions, and leaves the address
+ * and the facts badge on that cached HTML, still carrying the old accent.
+ * Paint from the preview so those siblings update in the same pass.
+ */
+export function readingUrgencyScope(start: HTMLElement): HTMLElement {
+	if (typeof start.closest !== 'function') return start;
+	const preview = start.closest('.markdown-preview-view, .markdown-reading-view');
+	return preview instanceof HTMLElement ? preview : start;
+}
+
+/**
  * The note, its preview, and the leaf, walking up from `start`.
  * Custom properties inherit, so the leaf is enough for chrome that mounts later.
  */
@@ -156,10 +168,11 @@ export function urgencyStyleHosts(start: HTMLElement): HTMLElement[] {
  * `forceReady` unhides after the last remount even if frontmatter never arrives.
  */
 export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChromeHost, forceReady = false): void {
-	const hosts = urgencyStyleHosts(start);
 	const data = host.frontmatter(path);
+	const scope = data ? readingUrgencyScope(start) : start;
+	const hosts = urgencyStyleHosts(scope);
 	if (!data) {
-		clearUrgencySurfaces(start);
+		clearUrgencySurfaces(scope);
 		if (forceReady) markUrgencyReady(hosts);
 		else clearUrgencyPaint(hosts);
 		return;
@@ -180,14 +193,16 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	}
 	// RV-166A. A chrome-less pass still has to repaint the dashboard and every
 	// RV callout. Their own inline accent would otherwise keep the old color.
-	paintUrgencySurfaces(start, accent, ink, snoozed);
-	start.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
+	// Home leaves the address and the badge in a cached section, so the scope
+	// is the preview, not only the section that just re-rendered.
+	paintUrgencySurfaces(scope, accent, ink, snoozed);
+	scope.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		setPaint(node, '--rv-urgency-accent', accent);
 		setPaint(node, '--rv-urgency-ink', ink);
 		setPaint(node, '--callout-color', accent);
 	});
-	start.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
+	scope.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		setPaint(node, '--rv-urgency-accent', accent);
 		paintUrgencyInk(node, accent);
@@ -195,7 +210,7 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 		setPaint(node, 'color', nodeInk, true);
 	});
 	markUrgencyReady(hosts);
-	paintUrgencyDetails(start, accent);
+	paintUrgencyDetails(scope, accent);
 }
 
 /** Address, hub, item icons, campaign, and badge strokes follow the accent after a visit. */
@@ -241,8 +256,8 @@ function urgencyPaintTargets(start: HTMLElement): HTMLElement[] {
 		seen.add(node);
 		found.push(node);
 	};
-	if (start.matches('.rv-dashboard, .callout[data-callout="rv"]')) take(start);
-	start.querySelectorAll('.rv-dashboard, .callout[data-callout="rv"], [style*="--rv-urgency-accent"]').forEach((node) => {
+	if (start.matches('.rv-dashboard, .callout[data-callout="rv"], .rv-locator-urgency, .rv-cal-month')) take(start);
+	start.querySelectorAll('.rv-dashboard, .callout[data-callout="rv"], [style*="--rv-urgency-accent"], .rv-locator-urgency, .rv-cal-month').forEach((node) => {
 		if (node instanceof HTMLElement) take(node);
 	});
 	return found;
