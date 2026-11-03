@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
+import { GLANCE_MATCH_SCOPE, glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
 import { stripRenameState } from '../src/rename-guard';
 import { isRvLocatorSurface } from '../src/rv-note-view';
 import { pinMatches, storeFrontmatter } from '../src/visit-paint-guard';
@@ -151,6 +151,42 @@ describe('locked next build', () => {
 		const field = view.slice(view.indexOf('private ensureSearchField'), view.indexOf('private clearSearch'));
 		assert.match(field, /addEventListener\('input', \(\) => \{\s*this\.glanceQuery = input\.value;\s*this\.renderBody\(\);\s*\}\)/);
 		assert.equal(field.includes('isTrusted'), false);
+		assert.equal(GLANCE_MATCH_SCOPE, 'all');
+		const daypart = glanceRecordFromNote({
+			name: 'Jordan Hale',
+			address: '1 Oak',
+			city: 'Orlando',
+			frontmatter: null,
+			body: '| Mor | Aft | Eve |',
+		});
+		const eve = parseGlanceQuery('Eve', new Date());
+		assert.equal(matchesGlanceQuery(daypart, eve), true);
+		assert.equal(matchesGlanceQuery(daypart, eve, 'name-address'), false);
+		assert.equal(matchesGlanceQuery(glanceRecordFromNote({
+			name: 'Eve Carter',
+			address: '',
+			city: '',
+			frontmatter: null,
+		}), eve, 'name-address'), true);
+		const nearby = source('src/nearby-view.ts');
+		const paint = nearby.slice(nearby.indexOf('private paintSortPresets'), nearby.indexOf('protected paintSortExtras'));
+		assert.match(paint, /refillKeepingFocus\(this\.sortEl, search/);
+		assert.equal(paint.includes('search.remove()'), false);
+		assert.equal(paint.includes('this.sortEl.empty()'), false);
+	});
+
+	it('RV-173 restores the note-map classes when fullscreen returns', () => {
+		const main = source('src/main.ts');
+		const sync = main.slice(main.indexOf('private syncNoteMap'), main.indexOf('private watchNoteMapBox'));
+		assert.match(sync, /mountHubMap\(map, 'split'\)/);
+		const opened = main.slice(main.indexOf('private onNoteOpened'), main.indexOf('private scheduleReadingDecorate'));
+		assert.match(opened, /this\.noteMapOpen && file && file\.path !== this\.mapFocusPath/);
+		const watch = main.slice(main.indexOf('private watchNoteMapBox'), main.indexOf('private armNewRvFocus'));
+		assert.match(watch, /applyNoteMapFrame\(content, width\)/);
+		const map = source('src/map-view.ts');
+		assert.match(map, /keepSplitMapFrame\(\)/);
+		assert.match(map, /keepNoteMapLayout\?\.\(\)/);
+		assert.match(map, /scope: 'hub' \| 'split' = 'hub'/);
 	});
 
 	it('RV-171 anchors the stacked note when the map closes', () => {

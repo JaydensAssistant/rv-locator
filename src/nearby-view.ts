@@ -1,5 +1,6 @@
 import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { refillKeepingFocus } from './keep-focus';
 import { applyControlSizedPills, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
 import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
@@ -447,9 +448,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.releaseSortSize();
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		const search = this.searchSlot;
-		if (search?.parentElement === this.sortEl) search.remove();
-		this.sortEl.empty();
 		const glancable = this.mode === 'glancable';
+		refillKeepingFocus(this.sortEl, search, () => {
 		const actions = glancable && !this.sortMenuOpen ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
 		const showPills = !glancable || this.sortMenuOpen;
@@ -539,7 +539,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			});
 		}
 		equalizeSortPills(pillHost);
-		if (search) this.sortEl.appendChild(search);
+		if (search && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
+		});
 		this.sortButtonsEl.scrollLeft = savedScroll;
 		if (glancable && this.sortMenuOpen) {
 			this.bindSortWheel(this.sortButtonsEl);

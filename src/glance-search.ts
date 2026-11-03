@@ -27,6 +27,15 @@ export interface GlanceDateFacet {
 	range: GlanceDayRange;
 }
 
+/**
+ * `all` matches name, address, and the note body (today's behavior).
+ * `name-address` is the switch Jayden may pick: name, address, and city only.
+ */
+export type GlanceMatchScope = 'all' | 'name-address';
+
+/** Leave this on `all` until the name-and-address decision is locked. */
+export const GLANCE_MATCH_SCOPE: GlanceMatchScope = 'all';
+
 /** AND of every facet. An empty query matches every record. */
 export interface GlanceQuery {
 	dates: GlanceDateFacet[];
@@ -110,7 +119,7 @@ export function parseGlanceQuery(raw: string, now: Date): GlanceQuery {
 	return query;
 }
 
-export function matchesGlanceQuery(record: GlanceRecord, query: GlanceQuery): boolean {
+export function matchesGlanceQuery(record: GlanceRecord, query: GlanceQuery, scope: GlanceMatchScope = GLANCE_MATCH_SCOPE): boolean {
 	if (!queryHasFacets(query)) return true;
 	for (const facet of query.dates) {
 		if (!inDayRange(record[facet.field], facet.range)) return false;
@@ -119,17 +128,19 @@ export function matchesGlanceQuery(record: GlanceRecord, query: GlanceQuery): bo
 	if (!includesAll(record.media, query.media)) return false;
 	if (!includesAll(record.lessons, query.lessons)) return false;
 	if (!includesAll(`${record.taken} ${record.notes}`, query.taken)) return false;
-	const haystack = [
-		record.name,
-		record.address,
-		record.city,
-		record.notes,
-		record.literature,
-		record.media,
-		record.lessons,
-		record.taken,
-	].join(' ');
-	return query.terms.every((term) => termIn(haystack, term));
+	const haystack = scope === 'name-address'
+		? [record.name, record.address, record.city]
+		: [
+			record.name,
+			record.address,
+			record.city,
+			record.notes,
+			record.literature,
+			record.media,
+			record.lessons,
+			record.taken,
+		];
+	return query.terms.every((term) => termIn(haystack.join(' '), term));
 }
 
 /** Frontmatter plus stamp markup. Visit-note properties and the note body both count as notes. */

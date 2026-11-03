@@ -1,5 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { glancableCardWidthPx } from './glancable-density';
+import { applyNoteMapFrame } from './hub-layout';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
@@ -37,6 +38,8 @@ export interface MapHost {
 	popupLeafPx?(noteMap: boolean): number;
 	/** Scrollbar that leaf actually reserves. Overlay is 0. */
 	popupScrollbarPx?(noteMap: boolean): number;
+	/** Re-apply note-map leaf classes after this map leaves fullscreen. */
+	keepNoteMapLayout?(): void;
 	/** Keep the note-map distance in step with this map's GPS fix. */
 	rememberLiveFix?(fix: { lat: number; lon: number } | null): void;
 	tileCacheEpoch?: number;
@@ -277,8 +280,21 @@ export class RvMapView extends ItemView {
 		if (this.fullscreenScope === 'hub') this.host.setHubMapFullscreen?.(on);
 		else this.mapFullscreen = on;
 		this.syncFullscreen();
+		this.keepSplitMapFrame();
 		this.paint();
 		this.repaintAfterLayout();
+	}
+
+	/** Side-by-side classes live on the leaf, not on the fullscreen map. */
+	private keepSplitMapFrame(): void {
+		if (this.fullscreenScope !== 'split') return;
+		const leaf = this.contentEl?.closest?.('.workspace-leaf-content');
+		if (leaf instanceof HTMLElement) {
+			const box = leaf.getBoundingClientRect();
+			const width = box.width > 0 ? box.width : leaf.clientWidth;
+			applyNoteMapFrame(leaf, width);
+		}
+		this.host.keepNoteMapLayout?.();
 	}
 
 	/** Drop the pin outline when the same 1600ms card flash would end. */
@@ -294,7 +310,10 @@ export class RvMapView extends ItemView {
 
 	/** Layout from the fullscreen class is not settled on the same turn. */
 	private repaintAfterLayout(): void {
-		const paint = (): void => { this.paint(); };
+		const paint = (): void => {
+			this.keepSplitMapFrame();
+			this.paint();
+		};
 		const raf = typeof requestAnimationFrame === 'function'
 			? requestAnimationFrame
 			: ((fn: FrameRequestCallback): number => {
@@ -1244,6 +1263,7 @@ function spread(values: number[]): number {
 export function mountEmbeddedMap(
 	parent: HTMLElement,
 	host: MapHost,
+	scope: 'hub' | 'split' = 'hub',
 ): {
 	destroy(): void;
 	refresh(): void;
@@ -1253,7 +1273,7 @@ export function mountEmbeddedMap(
 } {
 	const map = Object.create(RvMapView.prototype) as RvMapView;
 	map.contentEl = parent;
-	map.bindHost(host, 'hub');
+	map.bindHost(host, scope);
 	void map.onOpen();
 	return {
 		destroy: () => { void map.onClose(); },

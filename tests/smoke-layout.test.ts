@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { decorateAttemptLog, isLogCalloutTitle } from '../src/attempt-digest';
-import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
+import { GLANCE_MATCH_SCOPE, glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
+import { refillKeepingFocus } from '../src/keep-focus';
 import { EditAttributesModal, NewRvIdentityModal, type NewRvIdentity } from '../src/new-rv-modal';
 import { applyReadingPlace, keepReadingPlace, noteReadingScroller } from '../src/reading-anchor';
 import { stampAgeCount } from '../src/dates';
@@ -18,7 +19,7 @@ import { emptyShare } from '../src/catalog';
 import { LiteraturePromptModal } from '../src/visit-modals';
 import { armVisitNoteFocus, blurNoteTitle, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
-import { placeGlanceStage } from '../src/hub-layout';
+import { applyNoteMapFrame, placeGlanceStage } from '../src/hub-layout';
 import { ancestorTileBackground, RvMapView, tileReady, unloadedAncestorTile } from '../src/map-view';
 import type { MapPin } from '../src/map-pins';
 import { popupClearOfChrome } from '../src/map-pins';
@@ -1856,6 +1857,71 @@ describe('smoke layout', () => {
 		const field = handler.slice(handler.indexOf('private ensureSearchField'), handler.indexOf('private clearSearch'));
 		assert.match(field, /this\.glanceQuery = input\.value/);
 		assert.equal(field.includes('isTrusted'), false);
+	});
+
+	it('RV-169 keeps focus and the caret through sequential keystrokes', () => {
+		const host = window.document.createElement('div');
+		const search = window.document.createElement('div');
+		search.className = 'rv-locator-search-slot';
+		const input = window.document.createElement('input');
+		input.className = 'rv-locator-search-input';
+		search.appendChild(input);
+		host.appendChild(search);
+		window.document.body.appendChild(host);
+		input.focus();
+		let blurs = 0;
+		input.addEventListener('blur', () => { blurs += 1; });
+		input.addEventListener('input', () => {
+			refillKeepingFocus(host, search, () => {
+				const bar = window.document.createElement('div');
+				bar.className = 'rv-locator-sort-scroll';
+				host.appendChild(bar);
+			});
+		});
+		for (const char of 'Eve') {
+			const start = input.selectionStart ?? input.value.length;
+			const end = input.selectionEnd ?? start;
+			input.value = `${input.value.slice(0, start)}${char}${input.value.slice(end)}`;
+			input.setSelectionRange(start + 1, start + 1);
+			input.dispatchEvent(new window.KeyboardEvent('keydown', { key: char, bubbles: true }));
+			input.dispatchEvent(new window.InputEvent('beforeinput', { bubbles: true, data: char, inputType: 'insertText' }));
+			input.dispatchEvent(new window.Event('input', { bubbles: true }));
+		}
+		assert.equal(input.value, 'Eve');
+		assert.equal(window.document.activeElement, input);
+		assert.equal(input.selectionStart, 3);
+		assert.equal(input.selectionEnd, 3);
+		assert.equal(blurs, 0);
+		assert.equal(input.isConnected, true);
+		assert.equal(GLANCE_MATCH_SCOPE, 'all');
+		host.remove();
+	});
+
+	it('RV-173 restores is-note-map and is-note-map-side after fullscreen', () => {
+		const leaf = window.document.createElement('div');
+		leaf.className = 'workspace-leaf-content';
+		const map = window.document.createElement('div');
+		map.className = 'rv-note-map rv-map is-fullscreen';
+		leaf.appendChild(map);
+		window.document.body.appendChild(leaf);
+		Object.defineProperty(leaf, 'clientWidth', { configurable: true, get: () => 793 });
+		applyNoteMapFrame(leaf, 793);
+		assert.equal(leaf.classList.contains('is-note-map'), true);
+		assert.equal(leaf.classList.contains('is-note-map-side'), true);
+		applyNoteMapFrame(leaf, 0);
+		assert.equal(leaf.classList.contains('is-note-map'), true);
+		assert.equal(leaf.classList.contains('is-note-map-side'), true);
+		leaf.className = 'workspace-leaf-content';
+		map.classList.remove('is-fullscreen');
+		const width = 793;
+		applyNoteMapFrame(leaf, width);
+		assert.equal(leaf.classList.contains('is-note-map'), true);
+		assert.equal(leaf.classList.contains('is-note-map-side'), true);
+		assert.equal(map.isConnected, true);
+		applyNoteMapFrame(leaf, 390);
+		assert.equal(leaf.classList.contains('is-note-map'), true);
+		assert.equal(leaf.classList.contains('is-note-map-side'), false);
+		leaf.remove();
 	});
 
 	it('RV-171 keeps the reading offset when the grown viewport would clamp it', () => {

@@ -13,7 +13,7 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { countyFilterParam, decideGeocodePick, hitInHomeCounties, mergeHomeFirst, preferHomeRegion } from './home-base';
-import { HUB_STACK_BELOW_PX } from './hub-layout';
+import { HUB_STACK_BELOW_PX, applyNoteMapFrame } from './hub-layout';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
@@ -647,7 +647,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.scheduleNotesFit();
 		this.maybeSessionLocationNotice();
 		this.maskFilenameStamps();
-		if (this.noteMapOpen && file?.path !== this.mapFocusPath) {
+		if (this.noteMapOpen && file && file.path !== this.mapFocusPath) {
 			this.noteMapOpen = false;
 			this.hubMapOpen = false;
 			this.syncNoteMap();
@@ -2120,7 +2120,7 @@ export default class RVLocatorPlugin extends Plugin {
 			map = content.createDiv('rv-note-map');
 		}
 		if (!(map instanceof HTMLElement)) return;
-		if (!this.noteMapHandle) this.noteMapHandle = this.mountHubMap(map);
+		if (!this.noteMapHandle) this.noteMapHandle = this.mountHubMap(map, 'split');
 		for (const delay of [0, 250]) {
 			window.setTimeout(() => {
 				if (this.unloaded || !this.noteMapOpen) return;
@@ -2134,7 +2134,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const apply = (): void => {
 			const box = content.getBoundingClientRect();
 			const width = box.width > 0 ? box.width : content.clientWidth;
-			content.classList.toggle('is-note-map-side', width >= HUB_STACK_BELOW_PX);
+			applyNoteMapFrame(content, width);
 			this.syncNoteMapStatus(content);
 		};
 		apply();
@@ -2263,6 +2263,17 @@ export default class RVLocatorPlugin extends Plugin {
 		this.syncNoteMapStatus(null);
 	}
 
+	/** Put the note-map classes back after fullscreen leaves the leaf unmeasured. */
+	keepNoteMapLayout(): void {
+		if (!this.noteMapOpen) return;
+		const content = this.noteMapHost();
+		if (!content) return;
+		const box = content.getBoundingClientRect();
+		const width = box.width > 0 ? box.width : content.clientWidth;
+		applyNoteMapFrame(content, width);
+		this.syncNoteMapStatus(content);
+	}
+
 	hubMapIsFullscreen(): boolean {
 		return this.hubMapFullscreen;
 	}
@@ -2322,8 +2333,8 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.mapCanvases.delete(canvas); };
 	}
 
-	mountHubMap(parent: HTMLElement): { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } {
-		const handle = mountEmbeddedMap(parent, this);
+	mountHubMap(parent: HTMLElement, scope: 'hub' | 'split' = 'hub'): { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } {
+		const handle = mountEmbeddedMap(parent, this, scope);
 		return {
 			destroy: () => { handle.destroy(); },
 			applyRenderedOrder: (paths) => { handle.applyRenderedOrder(paths); },

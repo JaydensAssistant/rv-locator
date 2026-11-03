@@ -20,7 +20,7 @@ import { cardReturnLead } from './schedule';
 import { SNOOZE_SLATE, snoozeCardCaption } from './snooze';
 import { calendarDaysSince, formatGlanceableCounter } from './dates';
 import { readProperty } from './frontmatter';
-import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceQuery } from './glance-search';
+import { GLANCE_MATCH_SCOPE, glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceQuery } from './glance-search';
 import { formatStudyFraction } from './catalog';
 import { resolveStatus, sanitizeGender, statusIcon } from './status';
 import { ageCaption, appendPersonMeta } from './person-meta';
@@ -191,7 +191,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				rows: group.rows.filter((row) => {
 					if (!this.plugin.passesSnoozeFilter(row.path)) return false;
 					if (!query) return true;
-					return matchesGlanceQuery(this.recordFor(row), query);
+					return matchesGlanceQuery(this.recordFor(row), query, GLANCE_MATCH_SCOPE);
 				}),
 			}))
 			.filter((group) => group.rows.length > 0);

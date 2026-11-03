@@ -1,6 +1,15 @@
 /** Stack the map in the hub below this width, and on a real phone. */
 export const HUB_STACK_BELOW_PX = 600;
 
+/**
+ * Note-map leaf classes. A width of 0 is an unmeasured or fullscreen frame:
+ * keep the side class already on the leaf instead of dropping the layout.
+ */
+export function applyNoteMapFrame(content: HTMLElement, width: number): void {
+	content.classList.add('is-note-map');
+	if (width > 0) content.classList.toggle('is-note-map-side', width >= HUB_STACK_BELOW_PX);
+}
+
 /** Visible drag strip, and the two-row bar without a safe-area inset. */
 export const STACKED_HANDLE_PX = 14;
 export const STACKED_BAR_PX = 84;

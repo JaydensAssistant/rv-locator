@@ -480,20 +480,56 @@ describe('studied a lesson on every visit modal', () => {
 		throw new Error(`No control labeled ${text}`);
 	}
 
-	it('stays collapsed until opened, then prefills lesson 1 and does not open a suggester', () => {
+	function hasLabel(root: { children: Array<{ text: string; children: never[] }> }, text: string): boolean {
+		const stack = [root];
+		while (stack.length > 0) {
+			const current = stack.pop();
+			if (!current) continue;
+			if (current.text === text) return true;
+			stack.push(...current.children);
+		}
+		return false;
+	}
+
+	it('RV-174 records a study only after a studied option is chosen', () => {
 		const seen: VisitShare[] = [];
 		const root = new Modal(null).contentEl;
 		const share = mountShareFields(root, options(), (next) => { seen.push(next); });
 		assert.equal(share.lesson, '');
 		assert.equal(seen.length, 0);
 		clickLabeled(root as never, 'Study');
+		assert.equal(share.lesson, '');
+		assert.equal(seen.length, 0);
+		assert.equal(hasLabel(root as never, 'Did study'), true);
+		assert.equal(hasLabel(root as never, "Didn't study"), false);
+		assert.equal(hasLabel(root as never, 'Partway'), false);
+		clickLabeled(root as never, 'Did study');
 		assert.equal(seen.at(-1)?.lesson, LESSON_1);
 		assert.equal(seen.at(-1)?.lessonFrom, 'Intro');
 		assert.equal(seen.at(-1)?.lessonTo, 'Outro');
+		assert.equal(hasLabel(root as never, "Didn't study"), true);
+		clickLabeled(root as never, "Didn't study");
+		assert.equal(seen.at(-1)?.lesson, '');
 		clickLabeled(root as never, 'Study');
 		assert.equal(seen.at(-1)?.lesson, '');
 		assert.equal(seen.at(-1)?.lessonFrom, '');
 		assert.equal(seen.at(-1)?.lessonTo, '');
+
+		const opened: VisitShare[] = [];
+		const modal = new LiteraturePromptModal({} as never, options(), (next) => { opened.push(next as VisitShare); });
+		modal.open();
+		clickLabeled(modal.contentEl as never, 'Study');
+		clickLabeled(modal.contentEl as never, 'Log visit');
+		assert.equal(opened[0]?.lesson, '');
+		const chosen: VisitShare[] = [];
+		const again = new LiteraturePromptModal({} as never, options(), (next) => { chosen.push(next as VisitShare); });
+		again.open();
+		clickLabeled(again.contentEl as never, 'Study');
+		clickLabeled(again.contentEl as never, 'Did study');
+		clickLabeled(again.contentEl as never, 'Log visit');
+		assert.equal(chosen[0]?.lesson, LESSON_1);
+		assert.equal(chosen[0]?.lessonFrom, 'Intro');
+		assert.equal(chosen[0]?.lessonTo, 'Outro');
 	});
 
 	it('keeps a lesson already on the visit when the section is opened', () => {
@@ -535,6 +571,7 @@ describe('studied a lesson on every visit modal', () => {
 		const again = new LiteraturePromptModal({} as never, options(), (share) => { studied.push(share as VisitShare); });
 		again.open();
 		clickLabeled(again.contentEl as never, 'Study');
+		clickLabeled(again.contentEl as never, 'Did study');
 		clickLabeled(again.contentEl as never, 'Log visit');
 		assert.equal(studied[0]?.lesson, LESSON_1);
 		assert.equal(studied[0]?.lessonFrom, 'Intro');
@@ -547,6 +584,7 @@ describe('studied a lesson on every visit modal', () => {
 		});
 		companion.open();
 		clickLabeled(companion.contentEl as never, 'Study');
+		clickLabeled(companion.contentEl as never, 'Did study');
 		assert.equal(shared.at(-1)?.lesson, LESSON_1);
 
 		const past: Array<{ lesson?: string; lessonFrom?: string; lessonTo?: string }> = [];
@@ -558,6 +596,7 @@ describe('studied a lesson on every visit modal', () => {
 		});
 		pastModal.open();
 		clickLabeled(pastModal.contentEl as never, 'Study');
+		clickLabeled(pastModal.contentEl as never, 'Did study');
 		clickLabeled(pastModal.contentEl as never, 'Log visit');
 		assert.equal(past[0]?.lesson, LESSON_1);
 		const body = insertVisit('', {
@@ -844,6 +883,7 @@ describe('phone-first visit surfaces', () => {
 		}, { name: 'Memorial', pronoun: 'them', onDecision: () => {} });
 		modal.open();
 		clickLabeled(modal.contentEl as never, 'Study');
+		clickLabeled(modal.contentEl as never, 'Did study');
 		const inputs = collectInputs(modal.contentEl as never);
 		assert.ok(inputs.length >= 2);
 		inputs[0]?.emit?.('input', 'Enjoy Life Forever');
@@ -882,6 +922,7 @@ describe('phone-first visit surfaces', () => {
 		inputs[0]?.emit?.('blur');
 		inputs[1]?.emit?.('input', 'Video');
 		inputs[1]?.emit?.('blur');
+		clickLabeled(modal.contentEl as never, 'Did study');
 		clickLabeled(modal.contentEl as never, 'Log visit');
 		assert.equal(logged[0]?.lesson, LESSON_1);
 		assert.equal(logged[0]?.publications, 'Tract');
@@ -905,6 +946,7 @@ describe('phone-first visit surfaces', () => {
 		inputs[2]?.emit?.('input', 'Video');
 		inputs[2]?.emit?.('blur');
 		clickLabeled(companion.contentEl as never, 'Study');
+		clickLabeled(companion.contentEl as never, 'Did study');
 		const priorWindow = (globalThis as { window?: unknown }).window;
 		(globalThis as { window?: { setTimeout: (fn: () => void, ms?: number) => number } }).window = {
 			setTimeout: (fn) => {
@@ -936,6 +978,7 @@ describe('phone-first visit surfaces', () => {
 		fields[3]?.emit?.('input', 'Video');
 		fields[3]?.emit?.('blur');
 		clickLabeled(past.contentEl as never, 'Study');
+		clickLabeled(past.contentEl as never, 'Did study');
 		clickLabeled(past.contentEl as never, 'Log visit');
 		assert.equal(saved[0]?.publications, 'Tract');
 		assert.equal(saved[0]?.media, 'Video');
