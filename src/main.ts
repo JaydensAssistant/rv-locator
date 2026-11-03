@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type ViewState } from 'obsidian';
+import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type QueryController, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
@@ -27,6 +27,7 @@ import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLog
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
+import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, isHubSwapFile, releaseHubSwapCover } from './hub-cover';
 import { paintedHubLeaf } from './hub-open';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
@@ -62,7 +63,7 @@ import { navigatingToFile, withReadingPreview } from './reading-open';
 import { isRvDashboardNote, isRvLocatorSurface, refreshStampAgeLabels } from './rv-note-view';
 import { dismissNoteTitleModal, installRenameSwallow } from './rename-guard';
 import { storeFrontmatter } from './visit-paint-guard';
-import { NearbyGlancableView } from './glancable-view';
+import { clearBadgeStrokeCache, NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, UrgencySnoozeModal } from './score-modals';
@@ -290,7 +291,9 @@ export default class RVLocatorPlugin extends Plugin {
 			const file = this.app.vault.getFileByPath(path);
 			if (!(file instanceof TFile) || this.unloaded) return;
 			void this.app.fileManager.processFrontMatter(file, (data) => {
-				for (const [key, value] of Object.entries(writes)) data[key] = value;
+				const record = data as Record<string, unknown>;
+				for (const [key, value] of Object.entries(writes)) record[key] = value;
+				this.pinFrontmatter(file.path, record);
 			});
 		});
 		const openVisitMenuFromStamp = (evt: Event): void => {
@@ -425,6 +428,7 @@ export default class RVLocatorPlugin extends Plugin {
 				const pin = this.visitPaint.get(file.path);
 				const decision = storeFrontmatter(frontmatter, pin ? visitPaintRecord(pin) : null);
 				this.cachedFrontmatter.set(file.path, decision.stored);
+				clearGlanceHold();
 				if (decision.clearPin) this.visitPaint.delete(file.path);
 				applyExternalVisitNotes(file.path, noteValuesFromFrontmatter(decision.stored));
 			}
@@ -454,6 +458,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.installStampMask();
 		this.registerEvent(this.app.workspace.on('css-change', () => {
 			clearInkCache();
+			clearBadgeStrokeCache();
 			for (const callback of this.viewRefreshers) callback();
 			this.repaintOpenUrgency();
 			window.requestAnimationFrame(() => this.repaintOpenUrgency());
@@ -913,7 +918,12 @@ export default class RVLocatorPlugin extends Plugin {
 		const setViewState = proto.setViewState;
 		const plugin = this;
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
-			if (!plugin.unloaded && plugin.coversHubOpen(file)) holdLeafForHubPaint(this.view?.containerEl);
+			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
+				holdLeafForHubPaint(this.view?.containerEl, {
+					title: file.basename,
+					mount: (host) => plugin.mountHubSnapshot(host),
+				});
+			}
 			return openFile.call(this, file, plugin.previewStateFor(file, openState));
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
@@ -1669,6 +1679,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.applyLayoutClasses();
 		this.refreshOpenNoteChrome();
 		clearInkCache();
+		clearBadgeStrokeCache();
 		this.refreshVisitPreviewEditors();
 		this.repaintOpenUrgency();
 		window.requestAnimationFrame(() => this.repaintOpenUrgency());
@@ -1697,10 +1708,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	snoozeUntilFor(path: string): Date | null {
-		const file = this.app.vault.getFileByPath(path);
-		if (!file) return null;
-		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-		return parseSnoozeUntil(readProperty(frontmatter, URGENCY_SNOOZE_PROPERTY));
+		return parseSnoozeUntil(readProperty(this.noteFrontmatter(path), URGENCY_SNOOZE_PROPERTY));
 	}
 
 	private pathIsInactive(path: string): boolean {
@@ -1726,7 +1734,10 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		const active = this.app.workspace.getMostRecentLeaf();
-		holdLeafForHubPaint(active?.view?.containerEl);
+		holdLeafForHubPaint(active?.view?.containerEl, {
+			title: dest?.basename ?? target,
+			mount: (host) => this.mountHubSnapshot(host),
+		});
 		void this.app.workspace.openLinkText(target, sourcePath);
 	}
 
@@ -1793,7 +1804,22 @@ export default class RVLocatorPlugin extends Plugin {
 			visits: readProperty(data, 'Visits'),
 			successful: readProperty(data, 'Successful Visits'),
 		});
+		this.pinFrontmatter(path, data);
+	}
+
+	/**
+	 * The write that just happened, before metadataCache catches up.
+	 * Drop the last hub list so the next paint reads this head, not the stale hold.
+	 */
+	private pinFrontmatter(path: string, data: Record<string, unknown>): void {
 		this.cachedFrontmatter.set(path, { ...data });
+		clearGlanceHold();
+	}
+
+	/** Cached hub drawn into the swap cover. The same painter the real view uses. */
+	private mountHubSnapshot(host: HTMLElement): () => void {
+		const view = new NearbyGlancableView({ app: this.app } as unknown as QueryController, host, this);
+		return () => { view.onunload(); };
 	}
 
 	/** Frontmatter lands first so a later body `changed` event cannot revive the old head. */
@@ -1901,6 +1927,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const next = applyStatusPriority({ status: current, priority }, { status });
 			assignProperty(data, 'Status', next.status);
 			assignProperty(data, 'Priority', next.priority);
+			this.pinFrontmatter(file.path, data);
 		});
 		for (const callback of this.viewRefreshers) callback();
 	}
@@ -1914,6 +1941,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const next = applyStatusPriority({ status: current, priority: currentPriority }, { priority: requested });
 			assignProperty(data, 'Status', next.status);
 			assignProperty(data, 'Priority', next.priority);
+			this.pinFrontmatter(file.path, data);
 		});
 		for (const callback of this.viewRefreshers) callback();
 	}
@@ -3364,9 +3392,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	snoozeLabelFor(path: string): string {
-		const file = this.app.vault.getFileByPath(path);
-		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
-		const label = readProperty(frontmatter, SNOOZE_LABEL_PROPERTY);
+		const label = readProperty(this.noteFrontmatter(path), SNOOZE_LABEL_PROPERTY);
 		return typeof label === 'string' ? label.trim() : '';
 	}
 
@@ -3759,6 +3785,7 @@ export default class RVLocatorPlugin extends Plugin {
 				assignProperty(data, 'Age', years);
 				assignProperty(data, 'Age Exact', next.ageExact);
 			}
+			this.pinFrontmatter(file.path, data);
 		});
 		const current = this.app.vault.getFileByPath(file.path) ?? file;
 		const nextBase = replacePersonName(current.basename, next.name);
@@ -4051,6 +4078,7 @@ export default class RVLocatorPlugin extends Plugin {
 			);
 			assignProperty(data, 'Status', next.status);
 			assignProperty(data, 'Priority', next.priority);
+			this.pinFrontmatter(file.path, data);
 		});
 		for (const callback of this.viewRefreshers) callback();
 		new Notice(archive ? `Archived “${file.basename}”. Priority is 0.` : `Unarchived “${file.basename}”. Priority is 1.`);
@@ -4489,19 +4517,18 @@ export default class RVLocatorPlugin extends Plugin {
 				removeProperty(data, URGENCY_SNOOZE_PROPERTY);
 				removeProperty(data, SNOOZE_START_PROPERTY);
 				removeProperty(data, SNOOZE_LABEL_PROPERTY);
-				return;
-			}
-			if (typeof choice === 'string') {
+			} else if (typeof choice === 'string') {
 				const now = new Date();
 				assignProperty(data, URGENCY_SNOOZE_PROPERTY, formatSnoozeUntil(choice, now));
 				assignProperty(data, SNOOZE_START_PROPERTY, formatSnoozeStart(now));
 				removeProperty(data, SNOOZE_LABEL_PROPERTY);
-				return;
+			} else {
+				assignProperty(data, URGENCY_SNOOZE_PROPERTY, choice.until);
+				assignProperty(data, SNOOZE_START_PROPERTY, choice.start);
+				if (choice.label) assignProperty(data, SNOOZE_LABEL_PROPERTY, choice.label);
+				else removeProperty(data, SNOOZE_LABEL_PROPERTY);
 			}
-			assignProperty(data, URGENCY_SNOOZE_PROPERTY, choice.until);
-			assignProperty(data, SNOOZE_START_PROPERTY, choice.start);
-			if (choice.label) assignProperty(data, SNOOZE_LABEL_PROPERTY, choice.label);
-			else removeProperty(data, SNOOZE_LABEL_PROPERTY);
+			this.pinFrontmatter(file.path, data);
 		});
 		this.refreshOpenNoteChrome();
 		for (const callback of this.viewRefreshers) callback();

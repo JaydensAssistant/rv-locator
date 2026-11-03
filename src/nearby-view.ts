@@ -161,6 +161,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (!this.glanceDataSeen) this.root.addClass('is-glance-pending');
 	}
 
+	/** A hidden embed was shown. Bases data wins once it has arrived; otherwise the cache. */
+	protected resumeAfterShow(): void {
+		if (this.glanceDataSeen || this.chromeReady) this.renderBody();
+		else this.adoptHeldGlance();
+	}
+
 	/** Re-read vault frontmatter until Bases has delivered this view. */
 	protected refreshHubCacheGroups(): void {
 		if (!this.glanceFromCache || this.glanceDataSeen) return;
@@ -358,7 +364,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			genderFilter: this.mode === 'glancable' ? this.plugin.settings.genderFilter : undefined,
 			campaignListFilter: this.mode === 'glancable' ? this.plugin.settings.campaignListFilter : undefined,
 			campaignMark: (path) => this.plugin.campaignMark(path),
-			noteValue: (file, name) => readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, name),
+			noteValue: (file, name) => readProperty(this.plugin.noteFrontmatter(file.path), name),
 		});
 		this.columns = model.columns;
 		this.groups = model.groups;

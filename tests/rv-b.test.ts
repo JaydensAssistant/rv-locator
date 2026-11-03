@@ -307,7 +307,7 @@ describe('RV-B3 hub click blank', () => {
 	});
 });
 
-function daleFile(address = '1800 N Orange Ave, Orlando, FL'): HubCacheFile {
+function daleFile(address = '1800 N Orange Ave, Orlando, FL', lastSpoke = '2026-11-01'): HubCacheFile {
 	return {
 		path: 'People/Dale.md',
 		name: 'Dale Red',
@@ -317,14 +317,14 @@ function daleFile(address = '1800 N Orange Ave, Orlando, FL'): HubCacheFile {
 			Priority: 4,
 			Status: 'Active',
 			Address: address,
-			'Last Spoke': '2026-11-01',
+			'Last Spoke': lastSpoke,
 			Location: '28.5383, -81.3792',
 		},
 	};
 }
 
-function daleCache(address = '1800 N Orange Ave, Orlando, FL') {
-	return hubGroupsFromCache([daleFile(address)], {
+function daleCache(address = '1800 N Orange Ave, Orlando, FL', lastSpoke = '2026-11-01') {
+	return hubGroupsFromCache([daleFile(address, lastSpoke)], {
 		returnScope: 'active',
 		genderFilter: 'all',
 		campaignListFilter: 'all',
@@ -334,6 +334,53 @@ function daleCache(address = '1800 N Orange Ave, Orlando, FL') {
 		cityProperty: 'City',
 	});
 }
+
+describe('RV-184 fresh hub paint', () => {
+	it('drops a stale held list after a visit write so the first card is the new urgency', () => {
+		clearGlanceHold();
+		const stale = daleCache('1800 N Orange Ave, Orlando, FL', '2025-01-01');
+		rememberGlanceGroups(stale.groups, stale.columns);
+		const warmParent = window.document.createElement('div');
+		window.document.body.append(warmParent);
+		const warmBucket = { refresh: null as (() => void) | null };
+		const freshModel = () => daleCache('1800 N Orange Ave, Orlando, FL', '2026-11-03');
+		new NearbyGlancableView({} as QueryController, warmParent, glancePlugin(warmBucket, {
+			hubCacheModel: freshModel,
+		}));
+		const warm = warmParent.querySelector('.rv-locator-card');
+		assert.ok(warm instanceof window.HTMLElement);
+		assert.equal(warm.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#d63c3c');
+
+		clearGlanceHold();
+		const freshParent = window.document.createElement('div');
+		window.document.body.append(freshParent);
+		const freshBucket = { refresh: null as (() => void) | null };
+		new NearbyGlancableView({} as QueryController, freshParent, glancePlugin(freshBucket, {
+			hubCacheModel: freshModel,
+		}));
+		const fresh = freshParent.querySelector('.rv-locator-card');
+		assert.ok(fresh instanceof window.HTMLElement);
+		assert.equal(fresh.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		warmParent.remove();
+		freshParent.remove();
+		clearGlanceHold();
+
+		const main = source('src/main.ts');
+		const pin = main.slice(main.indexOf('private pinVisitPaint'), main.indexOf('private async writeVisitHeadThenBody'));
+		assert.match(pin, /pinFrontmatter\(path, data\)/);
+		const changed = main.slice(main.indexOf("metadataCache.on('changed'"), main.indexOf("vault.on('modify'"));
+		assert.match(changed, /clearGlanceHold\(\)/);
+		assert.match(main.slice(main.indexOf('private async writePriority'), main.indexOf('private promptAddHub')), /pinFrontmatter/);
+		assert.match(main.slice(main.indexOf('private async writeStatus'), main.indexOf('private async writePriority')), /pinFrontmatter/);
+		assert.match(main.slice(main.indexOf('private async applySnooze'), main.indexOf('private async maybeNudgePriority')), /pinFrontmatter/);
+		assert.match(main.slice(main.indexOf('snoozeUntilFor'), main.indexOf('private pathIsInactive')), /noteFrontmatter\(path\)/);
+		const glance = source('src/glancable-view.ts');
+		assert.match(glance.slice(glance.indexOf('private noteFrontmatter'), glance.indexOf('private frontmatterDateSlot')), /plugin\.noteFrontmatter/);
+		assert.match(source('src/nearby-view.ts'), /noteValue: \(file, name\) => readProperty\(this\.plugin\.noteFrontmatter\(file\.path\), name\)/);
+		assert.match(glance, /hostIsHidden\(this\.root\)/);
+		assert.match(source('styles.css'), /\.rv-hub-snapshot-body/);
+	});
+});
 
 describe('RV-B9 cache first paint', () => {
 	it('paints vault-cache cards before Bases and patches one changed card', () => {
@@ -449,14 +496,97 @@ describe('RV-B9 swap cover', () => {
 		parent.remove();
 
 		const main = source('src/main.ts');
-		assert.match(main, /holdLeafForHubPaint\(active\?\.view\?\.containerEl\)/);
-		assert.match(main, /holdLeafForHubPaint\(this\.view\?\.containerEl\)/);
+		assert.match(main, /holdLeafForHubPaint\(active\?\.view\?\.containerEl,/);
+		assert.match(main, /holdLeafForHubPaint\(this\.view\?\.containerEl,/);
 		assert.match(main, /coversHubOpen\(file\)/);
 		assert.match(main, /releaseHubSwapCover\(document, true\)/);
 		const glance = source('src/glancable-view.ts');
 		const read = glance.slice(glance.indexOf('private readStacked'), glance.indexOf('private ensureStage'));
 		assert.match(read, /is-phone/);
 		assert.match(read, /is-mobile/);
+	});
+
+	it('draws the cached hub into the cover and ignores a 0×0 embed', async () => {
+		window.document.body.classList.add('is-phone');
+		const leaf = hubLeaf('Lisa Study Test');
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		preview.textContent = 'Recent notes and the hub chip';
+		leaf.append(preview);
+		placeDock(leaf, 40);
+		window.document.body.append(leaf);
+		const stopCover = async (): Promise<void> => {
+			releaseHubSwapCover(window.document);
+			await frame();
+			await frame();
+		};
+		try {
+			holdLeafForHubPaint(leaf, {
+				title: 'Return Visits',
+				mount(host) {
+					const bucket = { refresh: null as (() => void) | null };
+					new NearbyGlancableView({} as QueryController, host, glancePlugin(bucket, {
+						hubCacheModel: () => daleCache(),
+					}));
+				},
+			});
+			const cover = leaf.querySelector(':scope > .rv-hub-swap-cover');
+			assert.ok(cover instanceof window.HTMLElement);
+			assert.match(cover.textContent ?? '', /Return Visits/);
+			assert.match(cover.textContent ?? '', /Dale Red/);
+			assert.equal((cover.textContent ?? '').includes('Recent notes'), false);
+			assert.ok(cover.querySelector('.rv-locator-card'));
+			assert.ok(cover.querySelector('.rv-locator-toolbar-actions button'));
+			assert.equal(hubFrameReady(leaf, true), false, 'cards inside the cover are not the real hub');
+			await stopCover();
+
+			holdLeafForHubPaint(leaf, {
+				title: 'Return Visits',
+				mount() { throw new Error('snapshot failed'); },
+			});
+			const fallback = leaf.querySelector(':scope > .rv-hub-swap-cover');
+			assert.ok(fallback instanceof window.HTMLElement);
+			assert.match(fallback.textContent ?? '', /Lisa Study Test/);
+			await stopCover();
+
+			const ghost = window.document.createElement('div');
+			ghost.className = 'bases-embed';
+			ghost.style.display = 'none';
+			ghost.getBoundingClientRect = zeroRect;
+			leaf.append(ghost);
+			paintHub(ghost, true);
+			placeDock(leaf, 720);
+			assert.equal(hubFrameReady(leaf, true), false, 'a hidden 0×0 embed is not the first paint');
+			ghost.style.display = '';
+			ghost.getBoundingClientRect = box(0, 690);
+			titleOf(leaf).textContent = 'Return Visits';
+			assert.equal(hubFrameReady(leaf, true), true);
+		} finally {
+			window.document.body.classList.remove('is-phone', 'rv-hide-mobile-nav', 'rv-hub-swapping');
+			leaf.remove();
+			releaseHubSwapCover(window.document);
+			clearGlanceHold();
+		}
+	});
+
+	it('does not paint cards into a hidden markdown mode', async () => {
+		clearGlanceHold();
+		rememberGlanceGroups([{ label: null, rows: [sampleRow()] }]);
+		const hidden = window.document.createElement('div');
+		hidden.className = 'markdown-reading-view';
+		hidden.style.display = 'none';
+		window.document.body.append(hidden);
+		const bucket = { refresh: null as (() => void) | null };
+		try {
+			new NearbyGlancableView({} as QueryController, hidden, glancePlugin(bucket));
+			assert.equal(hidden.querySelector('.rv-locator-card'), null);
+			hidden.style.display = '';
+			await frame();
+			assert.ok(hidden.querySelector('.rv-locator-card') instanceof window.HTMLElement);
+		} finally {
+			hidden.remove();
+			clearGlanceHold();
+		}
 	});
 });
 
@@ -500,6 +630,24 @@ function paintHub(leaf: HTMLElement, stacked: boolean): void {
 	sort.append(actions);
 	glance.append(card, sort);
 	leaf.append(glance);
+}
+
+function zeroRect(): DOMRect {
+	return box(0, 0)();
+}
+
+function box(top: number, height: number): () => DOMRect {
+	return () => ({
+		top,
+		left: 0,
+		width: height > 0 ? 382 : 0,
+		height,
+		bottom: top + height,
+		right: height > 0 ? 382 : 0,
+		x: 0,
+		y: top,
+		toJSON() { return {}; },
+	}) as DOMRect;
 }
 
 function placeDock(leaf: HTMLElement, sortTop: number): void {

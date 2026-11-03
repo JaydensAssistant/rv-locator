@@ -358,8 +358,13 @@ export function separatePalette(hexes: readonly string[]): string[] {
 const inkCache = new Map<string, string>();
 
 /** Drop cached ink after a theme or palette change. */
+let themeBackgroundKey = 0;
+let themeBackground: { key: number; value: string } | null = null;
+
 export function clearInkCache(): void {
 	inkCache.clear();
+	themeBackgroundKey += 1;
+	themeBackground = null;
 }
 
 /**
@@ -379,16 +384,24 @@ export function cachedUrgencyInk(color: string, background: string): string {
 
 /** Theme page color. A missing variable follows the theme class, not a dark fallback. */
 export function themePageBackground(el: HTMLElement): string {
+	if (themeBackground && themeBackground.key === themeBackgroundKey) return themeBackground.value;
 	const doc = el.ownerDocument;
 	const body = doc?.body ?? el;
 	const view = doc?.defaultView;
 	const probe = view?.getComputedStyle(body);
 	const variable = probe?.getPropertyValue('--background-primary').trim() ?? '';
-	if (variable && parseCssColor(variable)) return variable;
-	const painted = probe?.backgroundColor ?? '';
-	if (painted && painted !== 'rgba(0, 0, 0, 0)' && painted !== 'transparent' && parseCssColor(painted)) return painted;
-	const dark = body.classList.contains('theme-dark') || el.closest('.theme-dark') != null;
-	return dark ? '#1e1e1e' : '#ffffff';
+	let value = '';
+	if (variable && parseCssColor(variable)) value = variable;
+	else {
+		const painted = probe?.backgroundColor ?? '';
+		if (painted && painted !== 'rgba(0, 0, 0, 0)' && painted !== 'transparent' && parseCssColor(painted)) value = painted;
+		else {
+			const dark = body.classList.contains('theme-dark') || el.closest('.theme-dark') != null;
+			value = dark ? '#1e1e1e' : '#ffffff';
+		}
+	}
+	themeBackground = { key: themeBackgroundKey, value };
+	return value;
 }
 
 /**

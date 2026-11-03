@@ -9507,12 +9507,14 @@ body.rv-hub-swapping .mobile-navbar {
 	display: none !important;
 }
 
-/* The note stays inside the leaf while Obsidian swaps the view, so the phone
-   paints the note instead of the empty "No file" frame. */
+/* The cached hub stays inside the leaf while Obsidian builds the real view,
+   so the phone paints that hub instead of the old note or an empty frame. */
 .workspace-leaf > .rv-hub-swap-cover {
 	position: absolute !important;
 	inset: 0 !important;
 	z-index: 50 !important;
+	display: flex;
+	flex-direction: column;
 	width: 100% !important;
 	height: 100% !important;
 	overflow: hidden !important;
@@ -9520,6 +9522,35 @@ body.rv-hub-swapping .mobile-navbar {
 	margin: 0 !important;
 	pointer-events: auto;
 	background: var(--background-primary);
+}
+
+.workspace-leaf > .rv-hub-swap-cover > .view-header {
+	flex: 0 0 auto;
+	pointer-events: none;
+}
+
+/* Same top inset the full-base preview uses, so the cover cards sit where the
+   real hub cards sit on both the hub link and a direct base. */
+.rv-hub-snapshot-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+	box-sizing: border-box;
+	padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+	background: var(--background-primary);
+	pointer-events: none;
+}
+
+.rv-hub-snapshot-body > .rv-locator-view {
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
+}
+
+.rv-hub-snapshot-body .rv-locator-glancable.is-stacked .rv-locator-sortbar {
+	padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 body.rv-hide-mobile-nav.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar {

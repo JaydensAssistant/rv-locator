@@ -41,6 +41,43 @@ function layoutHeight(el: HTMLElement): number {
 }
 
 /**
+ * Obsidian's markdown view builds reading mode and live preview together.
+ * The mode that is not showing is hidden with `display: none` (`Element.hide`).
+ * Its `.bases-embed` stays in the document at 0×0. That is the ghost.
+ */
+export function hostIsHidden(node: HTMLElement): boolean {
+	let current: HTMLElement | null = node;
+	while (current) {
+		if (current.style?.display === 'none') return true;
+		if (current.classList?.contains('is-hidden')) return true;
+		if (typeof current.hasAttribute === 'function' && current.hasAttribute('hidden')) return true;
+		const parent: HTMLElement | null = current.parentElement;
+		if (!parent || parent === current) break;
+		current = parent;
+	}
+	const mode = node.closest?.('.markdown-source-view, .markdown-reading-view, .markdown-preview-view');
+	if (!isElement(mode)) return false;
+	const view = mode.ownerDocument?.defaultView;
+	if (view && typeof view.getComputedStyle === 'function') {
+		try {
+			if (view.getComputedStyle(mode).display === 'none') return true;
+		} catch {
+			// A detached node has nothing to measure.
+		}
+	}
+	return false;
+}
+
+/** A card inside a hidden or not-yet-laid-out embed is not the hub frame. */
+function embedPaints(node: HTMLElement): boolean {
+	const embed = node.closest?.('.bases-embed, .block-language-base');
+	if (!isElement(embed)) return true;
+	if (hostIsHidden(embed)) return false;
+	const rect = embed.getBoundingClientRect();
+	return rect.width >= 2 || rect.height >= 2;
+}
+
+/**
  * The hub's first paint: cards, a laid-out plugin toolbar, and a header that
  * is no longer the empty "No file" bases frame. On a phone the toolbar has
  * to sit on the bottom of the leaf, which is where `is-stacked` puts it.
@@ -52,6 +89,7 @@ export function hubFrameReady(leaf: HTMLElement, phone: boolean): boolean {
 	for (let index = 0; index < cards.length; index += 1) {
 		const node = cards[index];
 		if (!isElement(node) || node.closest(`.${COVER_CLASS}`)) continue;
+		if (!embedPaints(node)) continue;
 		card = node;
 		break;
 	}
@@ -60,14 +98,23 @@ export function hubFrameReady(leaf: HTMLElement, phone: boolean): boolean {
 	for (let index = 0; index < toolbars.length; index += 1) {
 		const node = toolbars[index];
 		if (!isElement(node) || node.closest(`.${COVER_CLASS}`)) continue;
+		if (!embedPaints(node)) continue;
 		if (!node.querySelector('button') || layoutHeight(node) < 8) continue;
 		toolbar = node;
 		break;
 	}
 	if (!card || !toolbar) return false;
 	if (!phone) return true;
-	const glance = leaf.querySelector('.rv-locator-glancable');
-	if (!isElement(glance) || !glance.classList.contains('is-stacked')) return false;
+	const glances = leaf.querySelectorAll('.rv-locator-glancable');
+	let glance: HTMLElement | null = null;
+	for (let index = 0; index < glances.length; index += 1) {
+		const node = glances[index];
+		if (!isElement(node) || node.closest(`.${COVER_CLASS}`)) continue;
+		if (!embedPaints(node)) continue;
+		glance = node;
+		break;
+	}
+	if (!glance || !glance.classList.contains('is-stacked')) return false;
 	const sortbar = toolbar.closest('.rv-locator-sortbar');
 	const dock = isElement(sortbar) ? sortbar : toolbar;
 	const bar = dock.getBoundingClientRect();
@@ -119,12 +166,52 @@ export function releaseHubSwapCover(doc: Document, keepNav = false): void {
 	delete body.dataset.rvHubNavHeld;
 }
 
+export interface HubCoverPaint {
+	/** Title written onto the cloned header while the real leaf still says the old note. */
+	title?: string;
+	/**
+	 * Paint the cached hub into `host` before the browser frames the swap.
+	 * Return a disposer. No cards, or a throw, keeps the note clone instead of a blank frame.
+	 */
+	mount?: (host: HTMLElement) => (() => void) | void;
+}
+
+function snapshotReady(host: HTMLElement): boolean {
+	return host.querySelector('.rv-locator-card') != null
+		&& host.querySelector('.rv-locator-toolbar-actions button') != null;
+}
+
+function clonedHeader(leaf: HTMLElement, doc: Document, title: string | undefined): HTMLElement {
+	const headers = leaf.querySelectorAll('.view-header');
+	let source: HTMLElement | null = null;
+	for (let index = 0; index < headers.length; index += 1) {
+		const header = headers[index];
+		if (!isElement(header) || header.closest(`.${COVER_CLASS}`)) continue;
+		source = header;
+		break;
+	}
+	const header = source ? source.cloneNode(true) as HTMLElement : doc.createElement('div');
+	if (!source) header.className = 'view-header';
+	if (!title) return header;
+	const titles = header.querySelectorAll('.view-header-title');
+	const first = titles[0];
+	if (isElement(first)) {
+		first.textContent = title;
+		return header;
+	}
+	const el = doc.createElement('div');
+	el.className = 'view-header-title';
+	el.textContent = title;
+	header.append(el);
+	return header;
+}
+
 /**
- * Keep the leaf's current pixels up until the hub's cards and toolbar are in
- * the DOM. Obsidian paints empty frames before the view factory; this cover
- * is what the phone shows instead of those frames.
+ * Cover the leaf the moment the hub is requested. When `mount` paints cards,
+ * the cover is the cached hub, so the phone never sits on the old note. The
+ * note clone remains the fallback when that paint has nothing to show.
  */
-export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined): void {
+export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, options?: HubCoverPaint): void {
 	const climbed = leafEl?.closest?.('.workspace-leaf');
 	const leaf = isElement(climbed) ? climbed : leafEl;
 	if (!leaf || typeof leaf.cloneNode !== 'function' || typeof leaf.getBoundingClientRect !== 'function') return;
@@ -138,18 +225,12 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined): voi
 	const cover = doc.createElement('div');
 	cover.className = COVER_CLASS;
 	cover.setAttribute('aria-hidden', 'true');
-	const clone = leaf.cloneNode(true) as HTMLElement;
-	clone.style.width = '100%';
-	clone.style.height = '100%';
-	clone.style.margin = '0';
-	clone.style.pointerEvents = 'none';
-	copyScroll(leaf, clone);
-	cover.appendChild(clone);
 	if (body.classList.contains('rv-hide-mobile-nav')) body.dataset.rvHubNavHeld = '1';
 	body.classList.add(SWAP_CLASS, 'rv-hide-mobile-nav');
 	const phone = body.classList.contains('is-phone') || body.classList.contains('is-mobile');
 	const started = view?.performance?.now() ?? Date.now();
 	let stopped = false;
+	let dispose: (() => void) | void = undefined;
 	const host = (): HTMLElement | null => {
 		if (leaf.isConnected) return leaf;
 		const next = doc.querySelector('.workspace-leaf.mod-active');
@@ -164,10 +245,20 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined): voi
 		if (stopped) return;
 		stopped = true;
 		observer.disconnect();
+		try {
+			dispose?.();
+		} catch {
+			// The snapshot view is leaving with the cover.
+		}
+		dispose = undefined;
 		releaseHubSwapCover(doc, keepNav);
 	};
 	const observer = new MutationObserver(() => {
 		if (stopped) return;
+		if (!cover.isConnected) {
+			stop(body.classList.contains('rv-hide-mobile-nav'));
+			return;
+		}
 		const current = host();
 		const elapsed = (view?.performance?.now() ?? Date.now()) - started;
 		const decision = current ? hubSwapDecision(current, phone, elapsed) : 'drop';
@@ -177,10 +268,43 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined): voi
 		}
 		park();
 	});
+	const noteClone = leaf.cloneNode(true) as HTMLElement;
+	noteClone.style.width = '100%';
+	noteClone.style.height = '100%';
+	noteClone.style.margin = '0';
+	noteClone.style.pointerEvents = 'none';
+	copyScroll(leaf, noteClone);
 	park();
+	let painted = false;
+	if (options?.mount) {
+		const header = clonedHeader(leaf, doc, options.title);
+		const snapshot = doc.createElement('div');
+		snapshot.className = 'rv-hub-snapshot-body';
+		cover.append(header, snapshot);
+		try {
+			dispose = options.mount(snapshot);
+			painted = snapshotReady(snapshot);
+		} catch {
+			painted = false;
+		}
+		if (!painted) {
+			try {
+				dispose?.();
+			} catch {
+				// A failed snapshot must not leave a half-built view behind the note.
+			}
+			dispose = undefined;
+			cover.replaceChildren();
+		}
+	}
+	if (!painted) cover.appendChild(noteClone);
 	observer.observe(doc.body, { childList: true, subtree: true });
 	const tick = (): void => {
 		if (stopped) return;
+		if (!cover.isConnected) {
+			stop(body.classList.contains('rv-hide-mobile-nav'));
+			return;
+		}
 		const current = host();
 		const elapsed = (view?.performance?.now() ?? Date.now()) - started;
 		const decision = current ? hubSwapDecision(current, phone, elapsed) : 'drop';

@@ -240,7 +240,20 @@ describe('idle visit surface', () => {
 		assert.deepEqual(created, []);
 		assert.equal(button.style.getPropertyValue('border-width'), '2px');
 		assert.equal(button.style.getPropertyPriority('border-width'), 'important');
+		const other = window.document.createElement('button');
+		other.className = 'rv-locator-urgency';
+		window.document.body.appendChild(other);
+		const again: string[] = [];
+		window.document.createElement = ((tag: string) => {
+			again.push(tag);
+			return real(tag);
+		}) as typeof window.document.createElement;
+		pinBadgeStroke(other);
+		window.document.createElement = real;
+		assert.deepEqual(again, [], 'a second badge reuses the document stroke');
+		assert.equal(other.style.getPropertyValue('border-width'), '2px');
 		button.remove();
+		other.remove();
 		const glance = source('src/glancable-view.ts');
 		const stroke = glance.slice(
 			glance.indexOf('export function pinBadgeStroke'),

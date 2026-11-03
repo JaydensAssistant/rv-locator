@@ -11,6 +11,7 @@ import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
+import { hostIsHidden } from './hub-cover';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
@@ -51,6 +52,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
 	private hubFillNodes: HTMLElement[] = [];
+	private hiddenWatch: MutationObserver | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -71,13 +73,44 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}, this.root));
 		this.stackedLayout = this.readStacked();
 		this.root.toggleClass('is-stacked', this.stackedLayout);
-		this.adoptHeldGlance();
+		// A markdown file builds both reading and live-preview modes. The hidden
+		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
+		// delays the real hub. Paint when that mode is actually shown.
+		if (hostIsHidden(this.root)) this.deferUntilShown();
+		else this.adoptHeldGlance();
 	}
 
 	override onunload(): void {
 		this.root.ownerDocument.body.classList.remove('rv-hide-backlinks');
 		this.clearBasesChrome();
 		super.onunload();
+	}
+
+	/**
+	 * The hidden markdown mode stays in the leaf. Watch its style until Obsidian
+	 * shows it, then paint once. A timer would keep waking a mode the user never opens.
+	 */
+	private deferUntilShown(): void {
+		if (this.hiddenWatch) return;
+		const mode = this.root.closest('.markdown-source-view, .markdown-reading-view, .markdown-preview-view');
+		const target = mode instanceof HTMLElement ? mode : this.root.parentElement;
+		if (!target) return;
+		const observer = new MutationObserver(() => {
+			if (hostIsHidden(this.root)) return;
+			observer.disconnect();
+			this.hiddenWatch = null;
+			this.resumeAfterShow();
+		});
+		this.hiddenWatch = observer;
+		observer.observe(target, { attributes: true, attributeFilter: ['style', 'class'] });
+		const leaf = this.root.closest('.workspace-leaf-content');
+		if (leaf instanceof HTMLElement && leaf !== target) {
+			observer.observe(leaf, { attributes: true, attributeFilter: ['style', 'class'] });
+		}
+		this.register(() => {
+			observer.disconnect();
+			if (this.hiddenWatch === observer) this.hiddenWatch = null;
+		});
 	}
 
 	protected override afterRender(): void {
@@ -204,6 +237,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	protected override renderBody(): void {
+		if (hostIsHidden(this.root)) {
+			this.deferUntilShown();
+			return;
+		}
 		super.renderBody();
 		if (this.totalRows() === 0) this.publishPinOrder([]);
 		this.sizeEmbedFrame();
@@ -714,9 +751,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private noteFrontmatter(path: string): Record<string, unknown> | null {
-		const file = this.plugin.app.vault.getFileByPath(path);
-		if (!file) return null;
-		return this.plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? null;
+		return this.plugin.noteFrontmatter(path);
 	}
 
 	private frontmatterDateSlot(
@@ -929,20 +964,57 @@ export class NearbyGlancableView extends NearbyBasesView {
 		);
 	}
 
-	/** Card rows and the blocks above them land on whole pixels, with no badge transform. */
+	/**
+	 * Card rows land on whole pixels. Widths are read together, heights are
+	 * cleared together, then one layout supplies every card and badge measure
+	 * before any height is written back.
+	 */
 	private snapCardFrames(): void {
 		if (!this.scrollEl) return;
 		snapEdges(this.scrollEl);
+		const cards: HTMLElement[] = [];
 		for (const node of Array.from(this.scrollEl.children)) {
-			if (!(node instanceof HTMLElement)) continue;
-			if (node.classList.contains('rv-locator-card-grid')) {
-				for (const card of Array.from(node.children)) {
-					if (card instanceof HTMLElement) snapFlowBox(card, true);
-				}
-				continue;
+			if (!(node instanceof HTMLElement) || !node.classList.contains('rv-locator-card-grid')) continue;
+			for (const card of Array.from(node.children)) {
+				if (card instanceof HTMLElement && card.classList.contains('rv-locator-card')) cards.push(card);
 			}
-			snapFlowBox(node, false);
 		}
+		if (cards.length === 0) return;
+		const widths = cards.map((el) => Math.round(el.getBoundingClientRect().width));
+		const pending: HTMLElement[] = [];
+		for (let index = 0; index < cards.length; index += 1) {
+			const el = cards[index];
+			const widthNow = widths[index] ?? 0;
+			if (!el || widthNow < 1) continue;
+			if (el.dataset.rvSnapWidth === String(widthNow) && el.style.height) continue;
+			el.style.height = '';
+			el.style.minHeight = '';
+			pending.push(el);
+		}
+		if (pending.length === 0) return;
+		const measured = pending.map((el) => ({
+			rect: el.getBoundingClientRect(),
+			border: verticalBorder(el),
+			stack: badgeStack(el),
+		}));
+		const snapped: HTMLElement[] = [];
+		for (let index = 0; index < pending.length; index += 1) {
+			const el = pending[index];
+			const read = measured[index];
+			if (!el || !read || read.rect.height < 1) continue;
+			el.style.height = `${wholeCardHeight(read.rect.height, read.border, read.stack)}px`;
+			snapped.push(el);
+		}
+		const snappedWidths = snapped.map((el) => Math.round(el.getBoundingClientRect().width));
+		const rails: HTMLElement[] = [];
+		for (let index = 0; index < snapped.length; index += 1) {
+			const el = snapped[index];
+			if (!el) continue;
+			el.dataset.rvSnapWidth = String(snappedWidths[index] ?? 0);
+			const rail = el.querySelector(':scope > .rv-locator-card-actions');
+			if (rail instanceof HTMLElement) rails.push(rail);
+		}
+		snapActionRails(rails);
 	}
 
 	/** The list scroller's own scrollbar. A hidden scroller is not a measurement, and a side map is not a gutter. */
@@ -1060,6 +1132,17 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
  */
 const STROKE_TARGET_PX = 2;
 
+/**
+ * Zoom is a document fact, not a per-badge fact. One probe per document is
+ * reused by every later badge until a theme or css change bumps the generation.
+ */
+let strokeGeneration = 0;
+const strokeByDocument = new WeakMap<Document, { generation: number; px: string }>();
+
+export function clearBadgeStrokeCache(): void {
+	strokeGeneration += 1;
+}
+
 function strokeLabel(px: number): string {
 	const rounded = Math.round(px * 1000) / 1000;
 	return `${rounded}px`;
@@ -1081,24 +1164,10 @@ export function correctedStrokePx(usedPx: number, specifiedPx = STROKE_TARGET_PX
 }
 
 /**
- * Used border of `host` after `specifiedPx` is applied.
- * getComputedStyle already includes the zoom that changes the border, so this
- * does not multiply by currentCSSZoom or an ancestor transform. When the
- * computed width is still the specified width, a 2px probe in the same
- * parent supplies the painted ratio (its border box versus the unzoomed
- * offset width) and that ratio is applied once.
+ * Painted width of a 2px border divided by 2. The probe is not the badge, so
+ * measuring it does not write the badge and does not depend on reading layout
+ * between card writes. getComputedStyle already includes zoom.
  */
-function usedBorderPx(host: HTMLElement, specifiedPx: number): number {
-	const view = host.ownerDocument.defaultView;
-	if (!view || typeof view.getComputedStyle !== 'function') return specifiedPx;
-	host.style.setProperty('border-width', strokeLabel(specifiedPx), 'important');
-	const computed = Number.parseFloat(view.getComputedStyle(host).borderTopWidth);
-	if (Number.isFinite(computed) && computed > 0 && Math.abs(computed - specifiedPx) > 0.02) return computed;
-	const probed = probeBorderRatio(host);
-	if (probed > 0 && Math.abs(probed - 1) > 0.02) return specifiedPx * probed;
-	return Number.isFinite(computed) && computed > 0 ? computed : specifiedPx;
-}
-
 function probeBorderRatio(host: HTMLElement): number {
 	const doc = host.ownerDocument;
 	const view = doc.defaultView;
@@ -1134,22 +1203,41 @@ function probeBorderRatio(host: HTMLElement): number {
 	return ratio > 0 ? ratio : 1;
 }
 
-/** Specified width whose painted border is 2 CSS px. Measured, then adjusted again. */
+/**
+ * Specified width whose painted border is 2 CSS px.
+ * One off-badge probe per document. The badge itself is only written in
+ * `applyBadgeStroke`, so the first card and the fifteenth get the same markup.
+ */
 function badgeStrokePx(host: HTMLElement): string {
 	if (!host.isConnected) return '2px';
+	const doc = host.ownerDocument;
+	const cached = doc ? strokeByDocument.get(doc) : undefined;
+	if (cached && cached.generation === strokeGeneration) return cached.px;
+	const ratio = probeBorderRatio(host);
 	let specified = STROKE_TARGET_PX;
-	for (let pass = 0; pass < 4; pass += 1) {
-		const used = usedBorderPx(host, specified);
-		if (!Number.isFinite(used) || used <= 0.01) return '2px';
-		if (Math.abs(used - STROKE_TARGET_PX) <= 0.05) return strokeLabel(specified);
-		const next = Number.parseFloat(correctedStrokePx(used, specified));
-		if (!Number.isFinite(next) || Math.abs(next - specified) < 0.01) return strokeLabel(specified);
-		specified = next;
+	let resolved = '2px';
+	if (ratio > 0 && Math.abs(ratio - 1) > 0.02) {
+		for (let pass = 0; pass < 4; pass += 1) {
+			const used = specified * ratio;
+			if (!Number.isFinite(used) || used <= 0.01) break;
+			if (Math.abs(used - STROKE_TARGET_PX) <= 0.05) {
+				resolved = strokeLabel(specified);
+				break;
+			}
+			const next = Number.parseFloat(correctedStrokePx(used, specified));
+			if (!Number.isFinite(next) || Math.abs(next - specified) < 0.01) {
+				resolved = strokeLabel(specified);
+				break;
+			}
+			specified = next;
+			resolved = strokeLabel(specified);
+		}
 	}
-	return strokeLabel(specified);
+	if (doc) strokeByDocument.set(doc, { generation: strokeGeneration, px: resolved });
+	return resolved;
 }
 
-/** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. Measured once per host. */
+/** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. Measured once per document. */
 export function pinBadgeStroke(host: HTMLElement): void {
 	const ghost = host.classList.contains('is-ghost');
 	const style = ghost ? 'dashed' : 'solid';
@@ -1262,6 +1350,12 @@ export function snapFlowBox(el: HTMLElement, card = false): void {
 	if (actions instanceof HTMLElement) snapActionsColumn(actions);
 }
 
+interface ActionRailRead {
+	rect: DOMRect;
+	gap: number;
+	badgeHeights: number[];
+}
+
 /**
  * The action rail is pinned to the card's right edge. A fractional card width
  * leaves that edge off the pixel, so the rail's own top and left are rounded
@@ -1269,8 +1363,36 @@ export function snapFlowBox(el: HTMLElement, card = false): void {
  */
 function snapActionsColumn(actions: HTMLElement): void {
 	actions.style.transform = '';
+	const read = readActionRail(actions);
+	if (read) writeActionRail(actions, read);
+}
+
+/** Clear every rail, read them in one layout, then write. */
+function snapActionRails(rails: readonly HTMLElement[]): void {
+	for (const actions of rails) actions.style.transform = '';
+	const reads = rails.map((actions) => readActionRail(actions));
+	for (let index = 0; index < rails.length; index += 1) {
+		const actions = rails[index];
+		const read = reads[index];
+		if (actions && read) writeActionRail(actions, read);
+	}
+}
+
+function readActionRail(actions: HTMLElement): ActionRailRead | null {
 	const rect = actions.getBoundingClientRect();
-	if (rect.width < 1 || rect.height < 1) return;
+	if (rect.width < 1 || rect.height < 1) return null;
+	const badges = Array.from(actions.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
+	const style = getComputedStyle(actions);
+	const gap = Math.round(parseFloat(style.rowGap || style.gap) || 4);
+	return {
+		rect,
+		gap,
+		badgeHeights: badges.map((badge) => badge.getBoundingClientRect().height),
+	};
+}
+
+function writeActionRail(actions: HTMLElement, read: ActionRailRead): void {
+	const rect = read.rect;
 	const dx = Math.round(rect.left) - rect.left;
 	const dy = Math.round(rect.top) - rect.top;
 	const heightOff = Math.abs(rect.height - Math.round(rect.height)) >= 0.05;
@@ -1282,13 +1404,8 @@ function snapActionsColumn(actions: HTMLElement): void {
 	const current = parseFloat(actions.style.top) || 0;
 	if (Math.abs(dy) >= 0.05) actions.style.top = `${px(current + dy)}px`;
 	actions.style.bottom = 'auto';
-	const badges = Array.from(actions.children).filter((node): node is HTMLElement => node instanceof HTMLElement);
-	const gap = Math.round(parseFloat(getComputedStyle(actions).rowGap || getComputedStyle(actions).gap) || 4);
-	let stack = gap * Math.max(0, badges.length - 1);
-	for (const badge of badges) {
-		const height = badge.getBoundingClientRect().height;
-		stack += height > 0 ? Math.round(height) : 28;
-	}
+	let stack = read.gap * Math.max(0, read.badgeHeights.length - 1);
+	for (const height of read.badgeHeights) stack += height > 0 ? Math.round(height) : 28;
 	let height = Math.max(Math.round(rect.height), stack);
 	if (stack > 0 && (height - stack) % 2 !== 0) height += 1;
 	actions.style.height = `${height}px`;
