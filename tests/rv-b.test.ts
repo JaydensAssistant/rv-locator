@@ -11,6 +11,7 @@ import { hubEmbedCapPx } from '../src/hub-layout';
 import { shouldHideMobileNav } from '../src/status-bar';
 import { LESSONS, emptyShare, studyPrefill, type VisitShare } from '../src/catalog';
 import { mountShareFields, type ShareFieldOptions } from '../src/catalog-fields';
+import { assignStudySlider } from '../src/study-panel';
 import { opticalChipGapPx, opticalModalGapPx } from '../src/icon-optical';
 import type { RowModel } from '../src/model';
 import { fitEndEllipsis, mountFittedTitle } from '../src/title-fit';
@@ -661,6 +662,99 @@ describe('RV-B14 lesson pills and ticks', () => {
 		assert.ok(Number(ticks.style.getPropertyValue('--tick-count')) > 1);
 		window.document.querySelector('.rv-study-change-modal')?.remove();
 		root.remove();
+	});
+});
+
+describe('RV-181 study slider thumb', () => {
+	it('uses the menu ink and keeps the chosen stop after max grows from 0', () => {
+		const css = source('styles.css');
+		assert.match(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*background:\s*var\(--rv-menu-ink, #1f8a4c\);/);
+		assert.match(css, /input\.rv-study-slider\[type="range"\]::-moz-range-thumb \{[^}]*background:\s*var\(--rv-menu-ink, #1f8a4c\);/);
+		assert.doesNotMatch(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*var\(--interactive-accent\)/);
+		assert.doesNotMatch(css, /input\.rv-study-slider\[type="range"\]::-moz-range-thumb \{[^}]*var\(--interactive-accent\)/);
+		assert.match(css, /\.rv-study-tick:first-child:not\(:last-child\)::before \{[^}]*transform:\s*translateX\(-0\.5px\);/);
+		assert.match(css, /\.rv-study-tick:last-child:not\(:first-child\)::before \{[^}]*transform:\s*translateX\(0\.5px\);/);
+		assert.doesNotMatch(css, /\.rv-snooze-slider \{[^}]*--rv-menu-ink/);
+
+		const clamped = window.document.createElement('input');
+		clamped.type = 'range';
+		clamped.max = '0';
+		clamped.value = '4';
+		assert.equal(clamped.value, '0');
+		assignStudySlider(clamped, 4, 7);
+		assert.equal(clamped.max, '7');
+		assert.equal(clamped.value, '4');
+
+		const modal = window.document.createElement('div');
+		modal.className = 'modal';
+		modal.style.setProperty('--rv-menu-ink', '#d63c3c');
+		modal.style.setProperty('--rv-modal-accent', '#d63c3c');
+		const root = window.document.createElement('div');
+		modal.append(root);
+		window.document.body.append(modal);
+		mountShareFields(root, shareOptions(), () => {});
+		clickText(root, 'Study');
+		const study = root.querySelector('.rv-study-panel');
+		assert.ok(study instanceof window.HTMLElement);
+		assert.equal(study.style.getPropertyValue('--rv-menu-ink').trim(), '#d63c3c');
+		clickText(root, 'Change');
+		const panel = window.document.querySelector('.rv-study-change-modal');
+		assert.ok(panel instanceof window.HTMLElement);
+		assert.equal(panel.style.getPropertyValue('--rv-menu-ink').trim(), '#d63c3c');
+		const slider = panel.querySelector('input.rv-study-slider');
+		assert.ok(slider instanceof window.HTMLInputElement);
+		assert.equal(slider.hidden, true);
+		assert.equal(slider.max, '0');
+		const lesson = panel.querySelector('.rv-study-change-list button');
+		assert.ok(lesson instanceof window.HTMLElement);
+		lesson.click();
+		assert.equal(slider.hidden, false);
+		assert.equal(slider.max, '7');
+		assert.equal(slider.value, '0');
+		slider.value = '4';
+		slider.dispatchEvent(new window.Event('input'));
+		assert.equal(slider.value, '4');
+		assert.equal(panel.querySelector('.rv-study-start-label')?.textContent, 'Start at 4');
+		const current = panel.querySelector('.rv-study-tick.is-current');
+		assert.equal(current?.textContent, '4');
+		panel.remove();
+		modal.remove();
+	});
+
+	it('seeds the in-modal slider on the current stop for partway and next', () => {
+		const modal = window.document.createElement('div');
+		modal.className = 'modal';
+		modal.style.setProperty('--rv-menu-ink', '#d6a100');
+		const root = window.document.createElement('div');
+		modal.append(root);
+		window.document.body.append(modal);
+		const share = {
+			...emptyShare(),
+			lesson: '37 What the Bible Says About Work and Money',
+			lessonFrom: 'Intro',
+			lessonTo: '4',
+		};
+		mountShareFields(root, shareOptions({ showLesson: true, optionalLesson: false, initial: share }), () => {});
+		const panel = root.querySelector('.rv-study-panel');
+		assert.ok(panel instanceof window.HTMLElement);
+		assert.equal(panel.style.getPropertyValue('--rv-menu-ink').trim(), '#d6a100');
+		const slider = root.querySelector('input.rv-study-slider');
+		assert.ok(slider instanceof window.HTMLInputElement);
+		assert.equal(slider.max, '7');
+		assert.equal(slider.value, '4');
+		clickText(root, 'Finished');
+		assert.equal(root.querySelector('input.rv-study-slider'), null);
+		clickText(root, 'Partway');
+		const again = root.querySelector('input.rv-study-slider');
+		assert.ok(again instanceof window.HTMLInputElement);
+		assert.equal(again.max, '7');
+		assert.equal(again.value, '1');
+		clickText(root, 'Next lesson');
+		const next = root.querySelector('input.rv-study-slider');
+		assert.ok(next instanceof window.HTMLInputElement);
+		assert.equal(next.max, '6');
+		assert.equal(next.value, '0');
+		modal.remove();
 	});
 });
 

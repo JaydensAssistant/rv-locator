@@ -7246,7 +7246,7 @@ input.rv-study-slider[type="range"]::-webkit-slider-thumb {
 	margin-top: -6px;
 	border: 0;
 	border-radius: 999px;
-	background: var(--interactive-accent);
+	background: var(--rv-menu-ink, #1f8a4c);
 }
 
 input.rv-study-slider[type="range"]::-moz-range-track {
@@ -7261,7 +7261,7 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	height: var(--rv-thumb);
 	border: 0;
 	border-radius: 999px;
-	background: var(--interactive-accent);
+	background: var(--rv-menu-ink, #1f8a4c);
 }
 
 .rv-study-ticks {
@@ -7307,6 +7307,8 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 .rv-study-tick:first-child:not(:last-child)::before {
 	margin-left: 0;
 	margin-right: auto;
+	/* Left edge sits on the thumb center. Shift half the 1px mark so the centers match. */
+	transform: translateX(-0.5px);
 }
 
 .rv-study-tick:last-child:not(:first-child) {
@@ -7321,6 +7323,7 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 .rv-study-tick:last-child:not(:first-child)::before {
 	margin-left: auto;
 	margin-right: 0;
+	transform: translateX(0.5px);
 }
 
 .rv-study-panel,

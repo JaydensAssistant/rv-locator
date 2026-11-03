@@ -17,6 +17,49 @@ export interface StudyPanelOptions {
 
 type StudyMode = 'partway' | 'finished' | 'next';
 
+const STUDY_INK = '--rv-menu-ink';
+const STUDY_INK_FALLBACK = '#1f8a4c';
+
+function inkStyle(node: unknown): { getPropertyValue: (name: string) => string } | null {
+	if (!node || typeof node !== 'object') return null;
+	const style = (node as { style?: { getPropertyValue?: (name: string) => string } }).style;
+	if (typeof style?.getPropertyValue !== 'function') return null;
+	return style as { getPropertyValue: (name: string) => string };
+}
+
+/** Urgency ink from the open modal. Zero urgency and general modals use the green. */
+function readMenuInk(source: HTMLElement): string {
+	const modal = typeof source.closest === 'function' ? source.closest('.modal') : null;
+	const modalInk = inkStyle(modal)?.getPropertyValue(STUDY_INK).trim() ?? '';
+	if (modalInk) return modalInk;
+	const own = inkStyle(source)?.getPropertyValue(STUDY_INK).trim() ?? '';
+	return own || STUDY_INK_FALLBACK;
+}
+
+function applyMenuInk(target: HTMLElement, source: HTMLElement): void {
+	if (typeof target.style?.setProperty !== 'function') return;
+	target.style.setProperty(STUDY_INK, readMenuInk(source));
+}
+
+/**
+ * Write min, max, then value. A range clamps a value against the max in force
+ * at that moment and keeps the clamp after max grows, so the value is written
+ * again when the first write does not stick.
+ */
+export function assignStudySlider(slider: HTMLElement, index: number, max: number): void {
+	const limit = Math.max(0, max);
+	const next = String(Math.max(0, Math.min(index, limit)));
+	slider.setAttribute('min', '0');
+	slider.setAttribute('max', String(limit));
+	slider.setAttribute('value', next);
+	const input = slider as HTMLInputElement;
+	if (!('value' in input)) return;
+	input.min = '0';
+	input.max = String(limit);
+	input.value = next;
+	if (input.value !== next) input.value = next;
+}
+
 /**
  * Study row: lesson line, Change at the row midpoint, Didn't study pinned right,
  * then Partway | Finished | Next lesson. The stop slider shows only for Partway
@@ -33,6 +76,7 @@ export function mountStudyPanel(
 	let mode: StudyMode = initialMode(share, options);
 	let stopIndex = stopIndexFor(share, options, mode);
 	const host = parent.createDiv('rv-study-panel');
+	applyMenuInk(host, host);
 
 	const paint = (): void => {
 		host.empty();
@@ -111,9 +155,9 @@ export function mountStudyPanel(
 			});
 		}
 		stop.createEl('p', { cls: 'rv-study-done', text: copy.done });
-		const slider = stop.createEl('input', { attr: { type: 'range', min: '0', max: String(Math.max(0, parts.length - 1)), value: String(stopIndex) } });
+		const slider = stop.createEl('input', { attr: { type: 'range', min: '0', max: '0', value: '0' } });
 		slider.classList.add('rv-study-slider');
-		if ('value' in slider) (slider as HTMLInputElement).value = String(stopIndex);
+		assignStudySlider(slider, stopIndex, Math.max(0, parts.length - 1));
 		const ticks = stop.createDiv('rv-study-ticks');
 		const paintTicks = (): void => {
 			paintStopTicks(ticks, parts, stopIndex);
@@ -286,12 +330,12 @@ function openChange(
 	panel.className = 'rv-study-change-modal';
 	const modal = host.closest('.modal');
 	if (modal instanceof HTMLElement) {
-		for (const name of ['--rv-menu-ink', '--rv-modal-accent', '--rv-modal-ink'] as const) {
+		for (const name of ['--rv-modal-accent', '--rv-modal-ink'] as const) {
 			const value = modal.style.getPropertyValue(name);
 			if (value) panel.style.setProperty(name, value);
 		}
 	}
-	if (!panel.style.getPropertyValue('--rv-menu-ink')) panel.style.setProperty('--rv-menu-ink', '#1f8a4c');
+	applyMenuInk(panel, host);
 	host.ownerDocument.body.appendChild(panel);
 	panel.createEl('p', { cls: 'rv-study-change-title', text: 'Change study' });
 	const input = panel.createEl('input', { attr: { type: 'search', placeholder: 'Optional (e.g. lesson 3)' } });
@@ -317,9 +361,7 @@ function openChange(
 		const live = partsNow();
 		const max = Math.max(0, live.length - 1);
 		if (startIndex > max) startIndex = 0;
-		slider.setAttribute('max', String(max));
-		slider.setAttribute('value', String(startIndex));
-		if ('value' in slider) (slider as HTMLInputElement).value = String(startIndex);
+		assignStudySlider(slider, startIndex, max);
 		paintStopTicks(ticks, live, startIndex);
 		const current = live[startIndex] ?? '';
 		startLabel.textContent = current ? `Start at ${current}` : 'Start at';
