@@ -1,4 +1,5 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
+import { armIconTooltip } from './title-fit';
 import { hubUsesStackedMap, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
@@ -66,6 +67,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
 			return width > 1 ? width : 0;
 		}, this.root));
+		this.adoptHeldGlance();
 	}
 
 	override onunload(): void {
@@ -270,8 +272,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 		});
 		const clear = row.createEl('button', {
 			cls: 'rv-locator-toolbar-quiet',
-			attr: { type: 'button', 'aria-label': 'Close search', title: 'Close search' },
+			attr: { type: 'button', 'aria-label': 'Close search' },
 		});
+		armIconTooltip(clear, 'Close search');
 		setIcon(clear, 'x');
 		clear.addEventListener('click', () => {
 			this.searchReplacesBar(false);

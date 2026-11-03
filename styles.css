@@ -459,6 +459,16 @@
 	overflow-x: hidden;
 }
 
+/* An empty hub shell stays invisible until the first rows, or a real empty result. */
+.bases-embed:has(.rv-locator-glancable.is-glance-pending),
+.block-language-base:has(.rv-locator-glancable.is-glance-pending),
+.internal-embed:has(.rv-locator-glancable.is-glance-pending),
+.markdown-embed:has(.rv-locator-glancable.is-glance-pending),
+.bases-view:has(.rv-locator-glancable.is-glance-pending),
+.rv-locator-glancable.is-glance-pending {
+	visibility: hidden;
+}
+
 .rv-locator-glancable .rv-locator-scroll {
 	display: flex;
 	flex-direction: column;
@@ -5517,6 +5527,32 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	margin: auto;
 }
 
+/* 16px box. The glyph shifts toward the label so clapperboard and book-marked match book-open. */
+.rv-item-icon,
+.rv-modal-icon {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+}
+
+.rv-item-icon svg,
+.rv-modal-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.rv-item-icon[data-rv-glyph="clapperboard"] svg,
+.rv-modal-icon[data-rv-glyph="clapperboard"] svg {
+	transform: translateX(0.67px);
+}
+
+.rv-item-icon[data-rv-glyph="book-marked"] svg,
+.rv-item-icon[data-rv-glyph="book-check"] svg,
+.rv-modal-icon[data-rv-glyph="book-marked"] svg,
+.rv-modal-icon[data-rv-glyph="book-check"] svg {
+	transform: translateX(1.33px);
+}
+
 .rv-locator-glancable .rv-locator-campaign-mark,
 .rv-dashboard .rv-dash-campaign,
 .rv-dashboard .rv-dash-campaign svg,
@@ -9122,10 +9158,18 @@ h5.rv-visit-stamp + .rv-item-strip {
 	order: 2;
 }
 
-.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-age-choice):not(.rv-priority-nudge) .setting-item-control > button:not(.mod-cta),
+.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-priority-nudge) .setting-item-control > button:not(.mod-cta),
 .modal.rv-locator-modal .rv-modal-actions:not(.rv-priority-nudge) button:not(.mod-cta),
 .modal.rv-locator-modal .modal-button-container button:not(.mod-cta),
 .rv-locator-setup-actions button:not(.mod-cta) {
+	background: transparent !important;
+	background-color: transparent !important;
+	color: var(--rv-menu-ink, #1f8a4c) !important;
+	border-color: transparent !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+}
+
+.modal.rv-locator-modal button.rv-age-symbol {
 	background: transparent !important;
 	background-color: transparent !important;
 	color: var(--rv-menu-ink, #1f8a4c) !important;

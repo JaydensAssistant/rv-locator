@@ -1,4 +1,69 @@
+import { displayTooltip } from 'obsidian';
 import { splitTitleSuffix, stripTitleQuotes } from './catalog';
+
+const TIP_PRESS_MS = 450;
+
+function phoneTooltipHost(el: HTMLElement): boolean {
+	const body = el.ownerDocument?.body;
+	if (!body) return false;
+	return body.classList.contains('is-phone') || body.classList.contains('is-mobile');
+}
+
+/**
+ * Obsidian tooltip, same placement as the visit buttons. The native `title`
+ * attribute stays off so the OS tooltip does not also appear.
+ * `touch: false` leaves click and long-press to the control that already owns them.
+ */
+export function armHoverTooltip(el: HTMLElement, text: string, opts?: { touch?: boolean }): void {
+	const full = text.replace(/\s+/g, ' ').trim();
+	if (typeof el.removeAttribute === 'function') el.removeAttribute('title');
+	if (!el.dataset || typeof el.addEventListener !== 'function') return;
+	if (!full) {
+		delete el.dataset.rvTip;
+		return;
+	}
+	el.dataset.rvTip = full;
+	if (el.dataset.rvTipArmed === '1') return;
+	el.dataset.rvTipArmed = '1';
+	el.addEventListener('mouseenter', () => {
+		if (phoneTooltipHost(el)) return;
+		const tip = el.dataset.rvTip?.trim();
+		if (!tip) return;
+		displayTooltip(el, tip, { placement: 'top' });
+	});
+	if (opts?.touch === false) return;
+	let timer: number | null = null;
+	const clear = (): void => {
+		if (timer == null) return;
+		window.clearTimeout(timer);
+		timer = null;
+	};
+	el.addEventListener('pointerdown', (event) => {
+		if (event.pointerType === 'mouse') return;
+		clear();
+		const doc = el.ownerDocument;
+		const release = (): void => {
+			clear();
+			doc.removeEventListener('pointerup', release, true);
+			doc.removeEventListener('pointercancel', release, true);
+		};
+		doc.addEventListener('pointerup', release, true);
+		doc.addEventListener('pointercancel', release, true);
+		timer = window.setTimeout(() => {
+			timer = null;
+			if (!el.isConnected) return;
+			const tip = el.dataset.rvTip?.trim();
+			if (tip) displayTooltip(el, tip, { placement: 'top' });
+		}, TIP_PRESS_MS);
+	});
+}
+
+/** Icon button: keep the accessible name and show it from the Obsidian tooltip. */
+export function armIconTooltip(el: HTMLElement, label: string): void {
+	const text = label.trim();
+	if (text) el.setAttribute('aria-label', text);
+	armHoverTooltip(el, text, { touch: true });
+}
 
 export type TitleKind = 'literature' | 'media' | 'lesson' | 'plain';
 
@@ -74,7 +139,7 @@ export function mountFittedTitle(parent: HTMLElement, title: string, kind: Title
 	const full = parts.suffix ? `${parts.text} ${parts.suffix}` : parts.text;
 	host.setAttribute('data-full', full);
 	host.setAttribute('data-stem', parts.text);
-	host.setAttribute('title', full);
+	armHoverTooltip(host, full, { touch: false });
 	const stem = host.createSpan('rv-fit-stem');
 	stem.textContent = parts.text;
 	if (parts.suffix) host.createSpan({ cls: 'rv-type', text: paintedSuffix(parts.suffix) });
@@ -239,7 +304,7 @@ export function mountClosedTitle(
 		overlay.append(closedSpan(input, 'rv-title-text', stem));
 		if (suffix) overlay.append(closedSpan(input, 'rv-title-suffix', ` ${suffix}`));
 		overlay.hidden = false;
-		overlay.title = suffix ? `${parts.text} ${suffix}` : parts.text;
+		armHoverTooltip(overlay, suffix ? `${parts.text} ${suffix}` : parts.text, { touch: false });
 		input.classList.add('is-title-closed');
 	};
 	input.addEventListener('focus', paint);
@@ -267,7 +332,7 @@ function slotWidth(el: HTMLElement): number {
 export function fitEndEllipsis(el: HTMLElement, full: string): void {
 	const text = full.replace(/\s+/g, ' ').trim();
 	el.dataset.full = text;
-	el.title = text;
+	armHoverTooltip(el, text, { touch: false });
 	const apply = (): void => {
 		const source = (el.dataset.full || text).replace(/\s+/g, ' ').trim();
 		el.textContent = source;
@@ -313,7 +378,7 @@ export function fitEndEllipsis(el: HTMLElement, full: string): void {
 export function fitMiddleEllipsis(el: HTMLElement, full: string): void {
 	const text = full.replace(/\s+/g, ' ').trim();
 	el.dataset.full = text;
-	el.title = text;
+	armHoverTooltip(el, text, { touch: false });
 	const apply = (): void => {
 		const source = (el.dataset.full || text).replace(/\s+/g, ' ').trim();
 		el.textContent = source;

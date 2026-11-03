@@ -1,4 +1,4 @@
-import { mountClosedTitle } from './title-fit';
+import { armHoverTooltip, mountClosedTitle } from './title-fit';
 
 const CHEVRON_DOWN = 'm6 9 6 6 6-6';
 
@@ -188,7 +188,7 @@ export function mountAlwaysChevron(
 				suffix.className = 'rv-title-suffix';
 				suffix.textContent = shown.suffix.startsWith(' ') ? shown.suffix : ` ${shown.suffix}`;
 				row.append(main, suffix);
-				row.title = item;
+				armHoverTooltip(row, item, { touch: false });
 			} else {
 				row.textContent = item;
 			}

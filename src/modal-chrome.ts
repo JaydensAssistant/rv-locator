@@ -217,6 +217,7 @@ function paintIcon(node: Element, icon: string): void {
 	if (!(node instanceof HTMLElement) || node.querySelector('.rv-modal-icon')) return;
 	const mark = node.ownerDocument.createElement('span');
 	mark.className = 'rv-modal-icon';
+	mark.dataset.rvGlyph = icon;
 	node.prepend(mark);
 	setIcon(mark, icon);
 }
@@ -246,6 +247,7 @@ export function nameWithIcon(setting: Setting, icon: string, name: string): Sett
 	if (node instanceof HTMLElement && !node.querySelector('.rv-modal-icon')) {
 		const mark = node.ownerDocument.createElement('span');
 		mark.className = 'rv-modal-icon';
+		mark.dataset.rvGlyph = icon;
 		node.prepend(mark);
 		setIcon(mark, icon);
 	}

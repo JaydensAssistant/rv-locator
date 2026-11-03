@@ -422,12 +422,18 @@ export class MarkdownRenderChild extends Component {
 }
 
 export class ItemView {}
-export class BasesView {}
+export class BasesView {
+	register(_cb: () => void): void {}
+	onunload(): void {}
+}
 export class HoverPopover {}
 export const Keymap = { isModEvent: () => false };
 export function addIcon(_id?: string, _svg?: string): void {}
 export function getIcon(_id?: string): null { return null; }
-export function displayTooltip(_el?: unknown, _text?: string): void {}
+export function displayTooltip(el?: unknown, text?: string, options?: { placement?: string }): void {
+	const hook = (globalThis as { __rvTooltip?: (el: unknown, text?: string, options?: { placement?: string }) => void }).__rvTooltip;
+	if (hook) hook(el, text, options);
+}
 export class BooleanValue {}
 export class DateValue {}
 export class ListValue {}

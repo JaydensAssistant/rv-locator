@@ -26,6 +26,7 @@ import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIc
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
+import { paintedHubLeaf } from './hub-open';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
@@ -1680,6 +1681,20 @@ export default class RVLocatorPlugin extends Plugin {
 		return resolveStatus(readProperty(frontmatter, 'Status'), priority) === 'Inactive';
 	}
 
+	/**
+	 * A hub that already has cards is revealed. Opening the link again would
+	 * mount a new embed and leave the toolbar empty until Bases returns rows.
+	 */
+	private openHubLink(sourcePath: string, target: string): void {
+		const dest = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
+		const leaf = paintedHubLeaf(this.app.workspace.getLeavesOfType('markdown'), dest?.path ?? null, target);
+		if (leaf) {
+			void this.app.workspace.revealLeaf(leaf);
+			return;
+		}
+		void this.app.workspace.openLinkText(target, sourcePath);
+	}
+
 	private noteChromeHost(): NoteChromeHost {
 		return {
 			frontmatter: (path) => this.noteFrontmatter(path),
@@ -1693,7 +1708,7 @@ export default class RVLocatorPlugin extends Plugin {
 			openUrgency: (path, name, event) => { this.promptUrgencyMenu(path, name, event); },
 			openPriority: (path, name) => { this.promptPriority(path, name); },
 			openRoute: (path) => { void this.openRoute(path); },
-			openHub: (path, target) => { void this.app.workspace.openLinkText(target, path); },
+			openHub: (path, target) => { this.openHubLink(path, target); },
 			addHub: (path) => { this.promptAddHub(path); },
 			removeHub: (path, label) => { void this.removeHub(path, label); },
 			moveHub: (path, label) => { void this.moveHub(path, label); },

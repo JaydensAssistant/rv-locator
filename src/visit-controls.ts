@@ -526,6 +526,7 @@ function paintStripChip(strip: HTMLElement, item: { icon: string; title: string;
 	if (item.campaign) chip.classList.add('is-campaign');
 	const icon = doc.createElement('span');
 	icon.className = 'rv-item-icon';
+	icon.dataset.rvGlyph = item.icon;
 	setIcon(icon, item.icon);
 	chip.appendChild(icon);
 	strip.appendChild(chip);

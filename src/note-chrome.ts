@@ -17,7 +17,7 @@ import type { RVLocatorSettings } from './types';
 import { formatStudyFraction, lessonPillLabel } from './catalog';
 import { paintUrgencyInk } from './color-math';
 import { SNOOZE_SLATE } from './snooze';
-import { displayTitle, fitEndEllipsis, showTitlePopover } from './title-fit';
+import { armHoverTooltip, displayTitle, fitEndEllipsis, showTitlePopover } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { ageCaption, appendPersonMeta } from './person-meta';
 import { urgencyColorsFor } from './urgency-palette';
@@ -167,6 +167,15 @@ function decorateNoteTitle(root: HTMLElement, data: Record<string, unknown>): vo
 }
 
 /**
+ * Cards and Bases embeds paint their own accent. A note pass must not
+ * overwrite them, or an embedded hub goes grey with the note's faint ink.
+ */
+function noteChromeOwnsUrgency(node: HTMLElement): boolean {
+	if (typeof node.closest !== 'function') return true;
+	return node.closest('.rv-locator-glancable, .rv-locator-card, .bases-embed, .block-language-base') == null;
+}
+
+/**
  * Reading view reuses a cached section and skips its post-processor.
  * A Home log re-renders the buttons and suggestions, and leaves the address
  * and the facts badge on that cached HTML, still carrying the old accent.
@@ -229,13 +238,13 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	// is the preview, not only the section that just re-rendered.
 	paintUrgencySurfaces(scope, accent, ink, snoozed);
 	scope.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
+		if (!(node instanceof HTMLElement) || !noteChromeOwnsUrgency(node)) return;
 		setPaint(node, '--rv-urgency-accent', accent);
 		setPaint(node, '--rv-urgency-ink', ink);
 		setPaint(node, '--callout-color', accent);
 	});
 	scope.querySelectorAll('.rv-stamp-count, .rv-stamp-ago').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
+		if (!(node instanceof HTMLElement) || !noteChromeOwnsUrgency(node)) return;
 		setPaint(node, '--rv-urgency-accent', accent);
 		paintUrgencyInk(node, accent);
 		const nodeInk = node.style.getPropertyValue('--rv-urgency-ink').trim() || accent;
@@ -253,7 +262,7 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 		'.rv-stamp-kind',
 	].join(', ');
 	start.querySelectorAll(colorOf).forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
+		if (!(node instanceof HTMLElement) || !noteChromeOwnsUrgency(node)) return;
 		setPaint(node, 'color', accent, true);
 		node.querySelectorAll('svg').forEach((svg) => {
 			if (!(svg instanceof SVGElement)) return;
@@ -262,7 +271,7 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 		});
 	});
 	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
-		if (!(node instanceof HTMLElement)) return;
+		if (!(node instanceof HTMLElement) || !noteChromeOwnsUrgency(node)) return;
 		pinBadgeStroke(node);
 	});
 }
@@ -284,7 +293,7 @@ function urgencyPaintTargets(start: HTMLElement): HTMLElement[] {
 	const found: HTMLElement[] = [];
 	const seen = new Set<HTMLElement>();
 	const take = (node: HTMLElement): void => {
-		if (seen.has(node)) return;
+		if (!noteChromeOwnsUrgency(node) || seen.has(node)) return;
 		seen.add(node);
 		found.push(node);
 	};
@@ -658,7 +667,7 @@ function factDateRow(parent: HTMLElement, icon: string, label: string, value: un
 	}
 	pill.createSpan({ cls: 'rv-qf-when-lead', text: lead });
 	if (days != null) pill.createSpan({ cls: 'rv-stamp-ago', text: formatGlanceableCounter(days) });
-	pill.setAttr('title', display.title || raw);
+	armHoverTooltip(pill, display.title || raw, { touch: false });
 	if (!instant) return;
 	pill.setAttr('role', 'link');
 	pill.addEventListener('click', (event) => {
@@ -1449,7 +1458,7 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 	link.appendChild(ellipsis);
 	link.href = hub.target;
 	link.dataset.href = hub.target;
-	link.title = hub.label;
+	armHoverTooltip(link, hub.label, { touch: false });
 	link.addEventListener('click', (event) => {
 		if (link.dataset.rvMenu === '1') {
 			link.dataset.rvMenu = '';

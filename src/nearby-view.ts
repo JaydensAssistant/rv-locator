@@ -12,7 +12,9 @@ import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
 import { buildViewModel, iconForColumn, type CellModel, type ColumnModel, type GroupModel, type RowModel } from './model';
 import type RVLocatorPlugin from './main';
+import { heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
 import { annotateRowScores } from './row-score';
+import { armHoverTooltip, armIconTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
 import type { LatLon } from './types';
@@ -50,6 +52,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private resultRetry: number | null = null;
 	private resultFollowUps = 0;
 	private resultQueued = false;
+	/** True after Bases has delivered this view's query. A hold is not that delivery. */
+	private glanceDataSeen = false;
 
 	protected constructor(
 		controller: QueryController,
@@ -74,6 +78,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			this.localSort = { ...this.plugin.nearbySort };
 			this.syncPositionSource();
 			if (this.data) this.onDataUpdated();
+			else if (this.mode === 'glancable' && !this.glanceDataSeen && this.totalRows() === 0) return;
 			else this.renderBody();
 		});
 		this.register(() => this.unsubSettings?.());
@@ -87,6 +92,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	onDataUpdated(): void {
+		this.glanceDataSeen = true;
 		this.rebuildModel();
 		this.renderChrome();
 	}
@@ -102,12 +108,17 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.distanceEls.clear();
 		this.distanceRows.clear();
 		if (this.totalRows() === 0) {
-			this.scrollEl.createDiv({
-				cls: 'rv-locator-empty',
-				text: 'No notes match this view.',
-			});
+			if (!(this.mode === 'glancable' && !this.glanceDataSeen)) {
+				this.scrollEl.createDiv({
+					cls: 'rv-locator-empty',
+					text: 'No notes match this view.',
+				});
+				this.root.removeClass('is-glance-pending');
+			}
 		} else {
 			this.paint();
+			if (this.mode === 'glancable') rememberGlanceGroups(this.groups);
+			this.root.removeClass('is-glance-pending');
 		}
 		this.paintListTail();
 		this.scrollEl.scrollTop = top;
@@ -119,6 +130,21 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	/** Glancable retags the Bases toolbar after each paint. */
 	protected afterRender(): void {}
+
+	/**
+	 * Paint the last non-empty hub immediately. Without one, keep the shell
+	 * hidden until Bases delivers rows so the toolbar does not flash empty.
+	 */
+	protected adoptHeldGlance(): void {
+		if (this.mode !== 'glancable') return;
+		const held = heldGlanceGroups();
+		if (held) {
+			this.groups = held;
+			this.renderBody();
+			return;
+		}
+		if (!this.glanceDataSeen) this.root.addClass('is-glance-pending');
+	}
 
 	/** Last thing in the scrolling list. Glancable puts the disclaimer here. */
 	protected paintListTail(): void {}
@@ -413,7 +439,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				el.toggleClass('is-live', live);
 				el.toggleClass('is-missing', !live);
 				el.setAttr('aria-label', live ? `Distance ${distance}` : 'Distance unavailable');
-				el.setAttr('title', live ? distance : 'No position');
+				armHoverTooltip(el, live ? distance : 'No position', { touch: false });
 				continue;
 			}
 			el.setText(row ? this.distanceLabel(row) : '—');
@@ -498,8 +524,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (glancable && !this.sortMenuOpen) {
 			const sortButton = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Sort', title: 'Sort' },
+				attr: { type: 'button', 'aria-label': 'Sort' },
 			});
+			armIconTooltip(sortButton, 'Sort');
 			setIcon(sortButton, 'arrow-up-down');
 			sortButton.addEventListener('click', () => {
 				this.sortMenuOpen = true;
@@ -507,21 +534,24 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			});
 			const searchButton = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Search', title: 'Search' },
+				attr: { type: 'button', 'aria-label': 'Search' },
 			});
+			armIconTooltip(searchButton, 'Search');
 			setIcon(searchButton, 'search');
 			searchButton.addEventListener('click', () => { this.openGlanceSearch(); });
 			const map = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Map', title: 'Map' },
+				attr: { type: 'button', 'aria-label': 'Map' },
 			});
+			armIconTooltip(map, 'Map');
 			setIcon(map, 'earth');
 			map.toggleClass('is-on', this.plugin.hubMapOpen);
 			map.addEventListener('click', () => { void this.plugin.openMapSoon(); });
 			const campaign = actionHost.createEl('button', {
 				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Campaign', title: 'Campaign' },
+				attr: { type: 'button', 'aria-label': 'Campaign' },
 			});
+			armIconTooltip(campaign, 'Campaign');
 			setIcon(campaign, 'flag');
 			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
 			this.paintFilterButton(actionHost);
@@ -530,9 +560,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				attr: {
 					type: 'button',
 					'aria-label': 'New RV',
-					title: 'New RV',
 				},
 			});
+			armIconTooltip(create, 'New RV');
 			setIcon(create, 'plus');
 			create.addEventListener('click', () => {
 				void this.plugin.createNewRv();
@@ -590,8 +620,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const narrowed = filtersDifferFromDefault(scope, gender, campaignFilter, snooze);
 		const button = host.createEl('button', {
 			cls: `rv-locator-toolbar-quiet rv-locator-filter${narrowed ? ' is-filtering' : ''}`,
-			attr: { type: 'button', 'aria-label': 'Filters', title: 'Filters' },
+			attr: { type: 'button', 'aria-label': 'Filters' },
 		});
+		armIconTooltip(button, 'Filters');
 		setIcon(button, 'list-filter');
 		if (narrowed) button.createSpan({ cls: 'rv-filter-dot', attr: { 'aria-hidden': 'true' } });
 		button.addEventListener('click', (event) => {

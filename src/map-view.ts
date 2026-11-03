@@ -1,4 +1,5 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
+import { armHoverTooltip, armIconTooltip } from './title-fit';
 import { glancableCardWidthPx } from './glancable-density';
 import { applyNoteMapFrame } from './hub-layout';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
@@ -166,12 +167,15 @@ export class RvMapView extends ItemView {
 		const bar = this.stage.createDiv('rv-map-bar');
 		const fullscreen = bar.createEl('button', {
 			cls: 'rv-map-fullscreen',
-			attr: { type: 'button', 'aria-label': 'Full screen', title: 'Full screen' },
+			attr: { type: 'button', 'aria-label': 'Full screen' },
 		});
+		armIconTooltip(fullscreen, 'Full screen');
 		setIcon(fullscreen, 'expand');
-		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location', title: 'My location' } });
+		const locate = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'My location' } });
+		armIconTooltip(locate, 'My location');
 		setIcon(locate, 'locate');
-		const fit = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Show all', title: 'Show all' } });
+		const fit = bar.createEl('button', { attr: { type: 'button', 'aria-label': 'Show all' } });
+		armIconTooltip(fit, 'Show all');
 		setIcon(fit, 'maximize');
 		fullscreen.addEventListener('click', () => {
 			this.setFullscreen(!this.isFullscreen());
@@ -180,8 +184,9 @@ export class RvMapView extends ItemView {
 		fit.addEventListener('click', () => this.fitAll());
 		const hide = bar.createEl('button', {
 			cls: 'rv-map-hide',
-			attr: { type: 'button', 'aria-label': 'Hide map', title: 'Hide map' },
+			attr: { type: 'button', 'aria-label': 'Hide map' },
 		});
+		armIconTooltip(hide, 'Hide map');
 		setIcon(hide, 'chevron-down');
 		hide.addEventListener('click', () => this.host.hideSplitMap?.());
 		this.hideMapButton = hide;
@@ -342,7 +347,7 @@ export class RvMapView extends ItemView {
 		if (!(button instanceof HTMLElement)) return;
 		const label = on ? 'Back to Hub' : 'Full screen';
 		button.setAttr('aria-label', label);
-		button.setAttr('title', label);
+		armIconTooltip(button, label);
 		button.empty();
 		setIcon(button, on ? 'arrow-left' : 'expand');
 		this.hideMapButton?.toggleClass('is-hidden', on);
@@ -572,7 +577,7 @@ export class RvMapView extends ItemView {
 		const point = this.project(this.user.lat, this.user.lon, width, height, cx, cy);
 		dot.style.left = `${point.x}px`;
 		dot.style.top = `${point.y}px`;
-		dot.setAttr('title', 'Current location');
+		armHoverTooltip(dot, 'Current location', { touch: true });
 	}
 
 	private paintTiles(
