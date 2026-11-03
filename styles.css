@@ -8440,57 +8440,86 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 }
 
 /* Quick Facts pills share one height. The date tile inside a pill is 18px. */
-.rv-qf-head {
+/* RV-163. Visit Facts matches the Attempt Log title: 16px / 600 / muted / 1.2. */
+.rv-dashboard .rv-qf-head {
 	display: inline-flex;
 	align-items: center;
 	gap: 0;
 	min-width: 0;
 	color: var(--text-muted);
-	font-weight: 400;
+	font-weight: var(--bold-weight, 600);
 }
 
-.rv-qf-head-label {
-	font-size: 13px;
-	font-weight: 400;
-	line-height: 13px;
+.rv-dashboard .rv-qf-head-label {
+	font-size: 16px;
+	font-weight: var(--bold-weight, 600);
+	line-height: 1.2;
+	letter-spacing: normal;
+	color: var(--text-muted);
 }
 
-.rv-qf-head-dot {
+/* RV-164. Visible ink is 8px from the s of Facts to the dot, and 8px from the dot to the visit icon.
+   The icon's negative margin cancels the lucide viewBox inset. Right-side badges are not in this row. */
+.rv-dashboard .rv-qf-head-dot {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	flex: 0 0 auto;
-	margin-inline: 6px;
-	font-size: 13px;
+	margin-left: 9px;
+	margin-right: 8px;
+	font-size: 16px;
 	font-weight: 400;
-	line-height: 13px;
-	height: 13px;
+	line-height: 1.2;
+	height: auto;
 }
 
-.rv-qf-head-count,
-.rv-qf-head-icon {
+.rv-dashboard .rv-qf-head-count {
 	display: inline-flex;
 	align-items: center;
 	gap: 4px;
-	font-size: 11px;
+	padding-left: 0;
+	margin-left: 0;
+	font-size: 10px;
 	font-weight: 400;
-	line-height: 12px;
+	line-height: 11px;
 }
 
-.theme-dark .rv-qf-head-count,
-.theme-dark .rv-qf-head-icon {
+.rv-dashboard .rv-qf-head-ratio {
+	font-size: 10px;
+	line-height: 11px;
+	font-weight: 400;
+}
+
+.rv-dashboard .rv-qf-head-icon {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	margin-left: -3px;
+	padding-left: 0;
+	font-size: 10px;
+	font-weight: 400;
+	line-height: 11px;
+}
+
+.theme-dark .rv-dashboard .rv-qf-head-count,
+.theme-dark .rv-dashboard .rv-qf-head-icon {
 	color: #666;
 }
 
-.theme-light .rv-qf-head-count,
-.theme-light .rv-qf-head-icon {
+.theme-light .rv-dashboard .rv-qf-head-count,
+.theme-light .rv-dashboard .rv-qf-head-icon {
 	color: #ababab;
 }
 
-.rv-qf-head-icon svg {
+.rv-dashboard .rv-qf-head-icon svg {
 	display: block;
-	width: 12px;
-	height: 12px;
+	width: 11px;
+	height: 11px;
+}
+
+.rv-dashboard .callout[data-callout="rv"] > .callout-title > .callout-fold {
+	color: var(--text-muted);
+	font-weight: var(--bold-weight, 600);
 }
 
 .rv-qf-row {
@@ -9387,6 +9416,17 @@ body.rv-hide-mobile-nav .mobile-navbar {
 
 body.rv-hide-mobile-nav.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar {
 	padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* RV-162. Phone reading view only. The first dashboard quote drops Obsidian's
+   1em callout top margin, and its section pulls up 5px. That lands the quote
+   about 10px under the header buttons. Desktop and live preview keep the default. */
+body.is-phone .markdown-preview-view.rv-dashboard .markdown-preview-sizer > .el-div > .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) {
+	margin-top: 0 !important;
+}
+
+body.is-phone .markdown-preview-view.rv-dashboard .markdown-preview-sizer > .el-div:has(> .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) {
+	margin-top: -5px !important;
 }
 
 body.is-phone .markdown-preview-view.rv-locator-full-base,

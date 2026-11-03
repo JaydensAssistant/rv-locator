@@ -105,4 +105,26 @@ describe('locked next build', () => {
 		assert.match(source('src/main.ts'), /pointNewNoteAtLogTemplates/);
 		assert.match(source('src/main.ts'), /scheduleReadingDecorate/);
 	});
+
+	it('RV-162 through RV-165 lock the phone forehead and the Visit Facts row', () => {
+		const css = source('styles.css');
+		const phoneAt = css.indexOf('/* RV-162.');
+		const phoneQuote = css.slice(phoneAt, css.indexOf('body.is-phone .markdown-preview-view.rv-locator-full-base', phoneAt));
+		assert.match(phoneQuote, /body\.is-phone \.markdown-preview-view\.rv-dashboard \.markdown-preview-sizer > \.el-div > \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\) \{\s*margin-top:\s*0 !important;\s*\}/);
+		assert.match(phoneQuote, /body\.is-phone \.markdown-preview-view\.rv-dashboard \.markdown-preview-sizer > \.el-div:has\(> \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\)\) \{\s*margin-top:\s*-5px !important;\s*\}/);
+		assert.equal(phoneQuote.includes('markdown-source-view'), false);
+		const headAt = css.indexOf('/* RV-163.');
+		const head = css.slice(headAt, css.indexOf('.rv-qf-row {', headAt));
+		assert.match(head, /\.rv-dashboard \.rv-qf-head \{[^}]*gap:\s*0;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-label \{[^}]*font-size:\s*16px;[^}]*font-weight:\s*var\(--bold-weight, 600\);[^}]*line-height:\s*1\.2;[^}]*letter-spacing:\s*normal;[^}]*color:\s*var\(--text-muted\);/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-dot \{[^}]*margin-left:\s*9px;[^}]*margin-right:\s*8px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-count \{[^}]*font-size:\s*10px;[^}]*font-weight:\s*400;[^}]*line-height:\s*11px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-ratio \{[^}]*font-size:\s*10px;[^}]*line-height:\s*11px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-icon \{[^}]*margin-left:\s*-3px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-icon svg \{[^}]*width:\s*11px;[^}]*height:\s*11px;/);
+		assert.match(head, /\.rv-dashboard \.callout\[data-callout="rv"\] > \.callout-title > \.callout-fold \{[^}]*color:\s*var\(--text-muted\);[^}]*font-weight:\s*var\(--bold-weight, 600\);/);
+		assert.equal(head.includes('font-size: 13px'), false);
+		assert.equal(head.includes('font-size: 11px'), false);
+		assert.equal(head.includes('.rv-qf-badges'), false);
+	});
 });
