@@ -1008,6 +1008,8 @@ export class VisitButtonLongPress {
 	private timer: number | null = null;
 	private swallowUntil = 0;
 	private hovered: HTMLElement | null = null;
+	private releaseDoc: Document | null = null;
+	private readonly release = (): void => { this.cancel(); };
 
 	hover(evt: MouseEvent): void {
 		const button = visitButtonAt(evt.target);
@@ -1022,8 +1024,14 @@ export class VisitButtonLongPress {
 		const button = visitButtonAt(evt.target);
 		const label = button?.getAttribute('aria-label')?.trim();
 		if (!button || !label) return;
+		const doc = button.ownerDocument;
+		this.releaseDoc = doc;
+		doc.addEventListener('pointerup', this.release, true);
+		doc.addEventListener('pointercancel', this.release, true);
 		this.timer = window.setTimeout(() => {
 			this.timer = null;
+			this.unbindRelease();
+			if (!button.isConnected) return;
 			this.swallowUntil = Date.now() + LONG_PRESS_CLICK_GRACE_MS;
 			displayTooltip(button, label, { placement: 'top' });
 		}, LONG_PRESS_MS);
@@ -1032,6 +1040,15 @@ export class VisitButtonLongPress {
 	cancel(): void {
 		if (this.timer != null) window.clearTimeout(this.timer);
 		this.timer = null;
+		this.unbindRelease();
+	}
+
+	private unbindRelease(): void {
+		const doc = this.releaseDoc;
+		this.releaseDoc = null;
+		if (!doc) return;
+		doc.removeEventListener('pointerup', this.release, true);
+		doc.removeEventListener('pointercancel', this.release, true);
 	}
 
 	/** Capture-phase click and contextmenu handler. */

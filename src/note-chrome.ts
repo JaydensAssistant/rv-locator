@@ -48,6 +48,37 @@ export interface NoteChromeHost {
 
 const LONG_PRESS_MS = 500;
 
+/**
+ * Hold still opens the action. A refresh that replaces the node never
+ * delivers pointerup to it, so the release is watched on the document.
+ * A node that is already gone does not run the action.
+ */
+function armLongPress(el: HTMLElement, run: (event: PointerEvent) => void, allowMouse = true): void {
+	let timer = 0;
+	const doc = el.ownerDocument;
+	const clear = (): void => {
+		window.clearTimeout(timer);
+		timer = 0;
+		doc.removeEventListener('pointerup', clear, true);
+		doc.removeEventListener('pointercancel', clear, true);
+	};
+	el.addEventListener('pointerdown', (event) => {
+		if (event.pointerType === 'mouse' && (!allowMouse || event.button !== 0)) return;
+		clear();
+		doc.addEventListener('pointerup', clear, true);
+		doc.addEventListener('pointercancel', clear, true);
+		timer = window.setTimeout(() => {
+			timer = 0;
+			doc.removeEventListener('pointerup', clear, true);
+			doc.removeEventListener('pointercancel', clear, true);
+			if (!el.isConnected) return;
+			run(event);
+		}, LONG_PRESS_MS);
+	});
+	el.addEventListener('pointerleave', clear);
+	el.addEventListener('pointercancel', clear);
+}
+
 /** Leaves and previews that own the urgency custom properties. */
 const URGENCY_READY_SELECTOR = '.workspace-leaf-content, .markdown-preview-view, .markdown-reading-view, .rv-dashboard';
 
@@ -77,9 +108,14 @@ function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<
 		const raw = (node.dataset.rvNamed === '1' ? 'RV Dashboard' : (node.textContent ?? '')).replace(/\s+/g, ' ').trim();
 		if (raw !== 'RV Dashboard' && node.dataset.rvNamed !== '1') return;
 		node.dataset.rvNamed = '1';
-		node.replaceChildren();
 		const status = resolveStatus(readProperty(data, 'Status'), finiteNumber(readProperty(data, 'Priority')));
 		const mark = host.campaignMark(path);
+		const age = ageCaption(readProperty(data, 'Age'), readProperty(data, 'Age Exact'));
+		const gender = sanitizeGender(readProperty(data, 'Gender')) ?? '';
+		const dashKey = [status, mark ?? '', host.noteTitle(path), age, gender].join('\u0001');
+		if (node.dataset.rvDash === dashKey && node.querySelector(':scope > .rv-dash-name')) return;
+		node.dataset.rvDash = dashKey;
+		node.replaceChildren();
 		if (mark) {
 			const icon = node.createSpan('rv-dash-campaign');
 			setIcon(icon, mark === 'covered' ? 'book-check' : 'book-alert');
@@ -89,11 +125,7 @@ function decorateDashboardHeading(root: HTMLElement, path: string, data: Record<
 		setIcon(statusEl, statusIcon(status));
 		statusEl.setAttribute('aria-label', status);
 		node.createSpan({ cls: 'rv-dash-name', text: host.noteTitle(path) });
-		appendPersonMeta(
-			node,
-			ageCaption(readProperty(data, 'Age'), readProperty(data, 'Age Exact')),
-			sanitizeGender(readProperty(data, 'Gender')),
-		);
+		appendPersonMeta(node, age, gender);
 		const more = node.createEl('button', {
 			cls: 'rv-dash-rename clickable-icon',
 			attr: { type: 'button', 'aria-label': 'Edit attributes' },
@@ -574,13 +606,7 @@ function paintClampList(host: HTMLElement, items: readonly string[]): void {
 	};
 	host.addEventListener('click', reveal);
 	host.addEventListener('mouseenter', () => showTitlePopover(host, full));
-	host.addEventListener('pointerdown', (event) => {
-		if (!(event instanceof PointerEvent) || event.pointerType === 'mouse') return;
-		const timer = window.setTimeout(() => reveal(event), LONG_PRESS_MS);
-		const stop = (): void => window.clearTimeout(timer);
-		host.addEventListener('pointerup', stop, { once: true });
-		host.addEventListener('pointercancel', stop, { once: true });
-	});
+	armLongPress(host, (event) => reveal(event), false);
 	host.addEventListener('keydown', (event) => {
 		if (!(event instanceof KeyboardEvent)) return;
 		if (event.key !== 'Enter' && event.key !== ' ') return;
@@ -869,18 +895,10 @@ function armChipOverlay(el: HTMLElement, full: string): void {
 		if (el.classList.contains('is-revealed')) collapseChipReveal();
 		else show();
 	});
-	let timer = 0;
-	el.addEventListener('pointerdown', (event) => {
-		if (!(event instanceof PointerEvent) || event.pointerType === 'mouse') return;
-		timer = window.setTimeout(() => {
-			ignoreChipClick = true;
-			show();
-		}, LONG_PRESS_MS);
-	});
-	const clear = (): void => { window.clearTimeout(timer); };
-	el.addEventListener('pointerup', clear);
-	el.addEventListener('pointerleave', clear);
-	el.addEventListener('pointercancel', clear);
+	armLongPress(el, () => {
+		ignoreChipClick = true;
+		show();
+	}, false);
 }
 
 interface DayJumpTarget extends DayJumpCandidate {
@@ -1075,16 +1093,21 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 			row = stray instanceof HTMLElement ? stray : line.createSpan('rv-hub-row');
 			if (row.parentElement !== line) line.appendChild(row);
 		}
-		row.empty();
-		hubLabel.textContent = 'Hub:';
+		if (!(row instanceof HTMLElement)) continue;
+		if (hubLabel.textContent !== 'Hub:') hubLabel.textContent = 'Hub:';
 		pinPairLabel(hubLabel);
 		if (!(line instanceof HTMLElement)) continue;
 		pinSharedLine(line);
-		const hubs = hubRefs(readProperty(data, 'Hub'));
-		const returnHub = host.settings.returnHubNote;
-		hubs.forEach((hub, index) => {
-			row.appendChild(hubChip(paragraph.ownerDocument, path, resolveReturnHub(hub, returnHub), index, host));
-		});
+		const hubs = hubRefs(readProperty(data, 'Hub')).map((hub) => resolveReturnHub(hub, host.settings.returnHubNote));
+		const signature = hubs.map((hub) => `${hub.label}\u0000${hub.target}`).join('\u0001');
+		const chips = row.querySelectorAll(':scope > .rv-hub-chip');
+		if (row.dataset.rvHubs !== signature || chips.length !== hubs.length) {
+			row.dataset.rvHubs = signature;
+			row.empty();
+			hubs.forEach((hub, index) => {
+				row.appendChild(hubChip(paragraph.ownerDocument, path, hub, index, host));
+			});
+		}
 		armHubOverflow(row);
 		let add = line.querySelector(':scope > .rv-hub-add');
 		if (!(add instanceof HTMLElement)) {
@@ -1168,6 +1191,19 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	assembleAddressLine(paragraph);
 }
 
+/** Append these nodes only when they are not already the trailing children, in order. */
+function placeTail(parent: HTMLElement, nodes: Node[]): void {
+	if (nodes.length === 0) return;
+	let cursor: Node | null = parent.lastChild;
+	for (let index = nodes.length - 1; index >= 0; index -= 1) {
+		if (cursor !== nodes[index]) {
+			parent.append(...nodes);
+			return;
+		}
+		cursor = cursor.previousSibling;
+	}
+}
+
 function assembleAddressLine(paragraph: HTMLElement): void {
 	const address = labeledStrong(paragraph, 'address');
 	if (!address) return;
@@ -1184,13 +1220,17 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 		field = doc.createElement('span');
 		field.className = 'rv-address-field';
 	}
+	if (!(field instanceof HTMLElement)) return;
 	const input = paragraph.querySelector('input.rv-address-input');
 	const link = paragraph.querySelector('a.rv-address-link');
 	const earth = paragraph.querySelector('a.rv-map-button');
-	line.append(address, field);
-	if (input) field.append(input);
-	if (link instanceof HTMLElement) field.append(link);
-	if (earth instanceof HTMLElement) line.append(earth);
+	const fieldKids: Node[] = [];
+	if (input) fieldKids.push(input);
+	if (link instanceof HTMLElement) fieldKids.push(link);
+	placeTail(field, fieldKids);
+	const lineKids: Node[] = [address, field];
+	if (earth instanceof HTMLElement) lineKids.push(earth);
+	placeTail(line, lineKids);
 	if (!(line instanceof HTMLElement) || !(field instanceof HTMLElement)) return;
 	pinSharedLine(line);
 	line.style.setProperty('grid-template-rows', 'auto', 'important');
@@ -1256,8 +1296,8 @@ function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChrom
 function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 	if (link.dataset.rvEdit === '1') return;
 	link.dataset.rvEdit = '1';
-	let timer = 0;
 	const start = (): void => {
+		if (!link.isConnected) return;
 		link.hidden = true;
 		input.hidden = false;
 		link.style.setProperty('display', 'none', 'important');
@@ -1269,14 +1309,7 @@ function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {
 		event.preventDefault();
 		start();
 	});
-	link.addEventListener('pointerdown', () => {
-		window.clearTimeout(timer);
-		timer = window.setTimeout(start, LONG_PRESS_MS);
-	});
-	const cancel = (): void => { window.clearTimeout(timer); };
-	link.addEventListener('pointerup', cancel);
-	link.addEventListener('pointerleave', cancel);
-	link.addEventListener('pointercancel', cancel);
+	armLongPress(link, () => start());
 }
 
 /** Hub and Address share one grid so both text boxes stay the same width. */
@@ -1356,7 +1389,7 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	link.style.setProperty('max-height', 'none', 'important');
 	const text = input.value.trim();
 	link.classList.toggle('is-empty', !text);
-	link.textContent = text || 'Add an address';
+	if (link.textContent !== (text || 'Add an address')) link.textContent = text || 'Add an address';
 	const editing = paragraph.ownerDocument.activeElement === input;
 	const showInput = editing || text.length === 0;
 	link.hidden = showInput;
@@ -1429,6 +1462,10 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 		host.openHub(path, hub.target);
 	});
 	const openMenu = (event: MouseEvent) => {
+		if (!link.isConnected) {
+			link.dataset.rvMenu = '';
+			return;
+		}
 		event.preventDefault();
 		event.stopPropagation();
 		link.dataset.rvMenu = '1';
@@ -1454,19 +1491,7 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 		window.setTimeout(() => { link.dataset.rvMenu = ''; }, 400);
 	};
 	link.addEventListener('contextmenu', openMenu);
-	let timer: number | null = null;
-	const clear = () => {
-		if (timer != null) window.clearTimeout(timer);
-		timer = null;
-	};
-	link.addEventListener('pointerdown', (event) => {
-		if (event.pointerType === 'mouse' && event.button !== 0) return;
-		clear();
-		timer = window.setTimeout(() => openMenu(event), LONG_PRESS_MS);
-	});
-	link.addEventListener('pointerup', clear);
-	link.addEventListener('pointerleave', clear);
-	link.addEventListener('pointercancel', clear);
+	armLongPress(link, (event) => openMenu(event));
 	return link;
 }
 
@@ -1486,17 +1511,20 @@ function decorateSlotOverride(root: HTMLElement, path: string, data: Record<stri
 		callout.style.setProperty('--rv-urgency-accent', accent);
 		let badges = title.querySelector(':scope > .rv-qf-badges');
 		if (!(badges instanceof HTMLElement)) badges = title.createSpan('rv-qf-badges');
-		badges.empty();
-		const button = badges.createEl('button', {
-			cls: 'rv-locator-urgency rv-attempt-override',
-			attr: { type: 'button', 'aria-label': 'Mark a daypart Try or Avoid' },
-		});
-		setIcon(button, 'calendar-plus-2');
-		button.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			host.openSlotOverride(path);
-		});
+		const button = badges.querySelector(':scope > button.rv-attempt-override');
+		if (!(button instanceof HTMLElement)) {
+			badges.empty();
+			const created = badges.createEl('button', {
+				cls: 'rv-locator-urgency rv-attempt-override',
+				attr: { type: 'button', 'aria-label': 'Mark a daypart Try or Avoid' },
+			});
+			setIcon(created, 'calendar-plus-2');
+			created.addEventListener('click', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				host.openSlotOverride(path);
+			});
+		}
 	}
 }
 

@@ -4,7 +4,10 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { pinBadgeStroke } from '../src/glancable-view';
 import { livePreviewShouldPaint } from '../src/visit-live-preview';
-import { decorateVisitControls } from '../src/visit-controls';
+import { Menu } from 'obsidian';
+import { decorateNoteChrome, type NoteChromeHost } from '../src/note-chrome';
+import { DEFAULT_SETTINGS } from '../src/types';
+import { decorateVisitControls, VisitButtonLongPress } from '../src/visit-controls';
 import { mountHeadingChevron } from '../src/visit-display';
 import { recordIsMeasureSpans, visitSurfaceRecordsMatter, watchVisitSurface } from '../src/visit-surface';
 
@@ -14,6 +17,9 @@ const hostGlobals = globalThis as typeof globalThis & Record<string, unknown>;
 hostGlobals.window = window;
 hostGlobals.document = window.document;
 hostGlobals.HTMLElement = window.HTMLElement;
+hostGlobals.HTMLInputElement = window.HTMLInputElement;
+hostGlobals.HTMLAnchorElement = window.HTMLAnchorElement;
+hostGlobals.SVGElement = window.SVGElement;
 hostGlobals.Element = window.Element;
 hostGlobals.Node = window.Node;
 hostGlobals.MutationObserver = window.MutationObserver;
@@ -54,6 +60,13 @@ proto.createEl = function createEl(this: HTMLElement, tag: string, spec?: string
 };
 proto.createSpan = function createSpan(this: HTMLElement, spec?: string | { cls?: string; text?: string }) {
 	return this.createEl('span', typeof spec === 'string' ? { cls: spec } : spec);
+};
+proto.createDiv = function createDiv(this: HTMLElement, spec?: string | { cls?: string; text?: string }) {
+	return this.createEl('div', typeof spec === 'string' ? { cls: spec } : spec);
+};
+proto.setText = function setText(this: HTMLElement, text: string) {
+	this.textContent = text;
+	return this;
 };
 
 const frames: FrameRequestCallback[] = [];
@@ -165,6 +178,16 @@ describe('idle visit surface', () => {
 		assert.equal(visitSurfaceRecordsMatter([inside]), false);
 		const real = { addedNodes: [window.document.createElement('p')], removedNodes: [], target: root } as unknown as MutationRecord;
 		assert.equal(visitSurfaceRecordsMatter([real]), true);
+		for (const className of ['rv-hub-row', 'rv-hub-chip', 'rv-address-line', 'rv-address-link', 'rv-qf-body']) {
+			const painted = window.document.createElement('span');
+			painted.className = className;
+			const record = { addedNodes: [window.document.createElement('span')], removedNodes: [], target: painted } as unknown as MutationRecord;
+			assert.equal(visitSurfaceRecordsMatter([record]), false, className);
+		}
+		const dash = window.document.createElement('div');
+		dash.dataset.rvDash = 'Return';
+		const dashRecord = { addedNodes: [window.document.createElement('span')], removedNodes: [], target: dash } as unknown as MutationRecord;
+		assert.equal(visitSurfaceRecordsMatter([dashRecord]), false);
 	});
 
 	it('repaints live preview on geometry only when the content width changes', () => {
@@ -249,4 +272,283 @@ describe('idle visit surface', () => {
 		assert.equal(svgs, 1);
 		surface.remove();
 	});
+
+	it('keeps an idle note from rebuilding the hub row', async () => {
+		const data: Record<string, unknown> = {
+			cssclasses: ['rv-dashboard'],
+			Hub: '[[Return Visits Hub]]',
+			Address: '12 Oak Street',
+			Status: 'Return',
+			Priority: 1,
+		};
+		const opened = { hub: 0 };
+		const host = noteHost(data, opened);
+		const surface = window.document.createElement('div');
+		surface.className = 'markdown-preview-view';
+		surface.innerHTML = `
+			<div class="callout" data-callout="quote">
+				<div class="callout-title"><div class="callout-title-inner">RV Dashboard</div></div>
+			</div>
+			<p><strong>Hub:</strong> <strong>Address:</strong> 12 Oak Street</p>
+			<div class="callout" data-callout="rv">
+				<div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div>
+				<div class="callout-content"></div>
+			</div>
+			<div class="callout" data-callout="note">
+				<div class="callout-title"><div class="callout-title-inner">Log</div></div>
+			</div>`;
+		window.document.body.appendChild(surface);
+		decorateNoteChrome(surface, 'People/Eve.md', host);
+		await turn();
+		drain();
+		const chip = surface.querySelector('.rv-hub-chip');
+		const dash = surface.querySelector('.rv-dash-name');
+		const address = surface.querySelector('a.rv-address-link');
+		const slot = surface.querySelector('.rv-attempt-override');
+		const fact = surface.querySelector('.rv-qf-body')?.firstElementChild ?? null;
+		assert.ok(chip instanceof window.HTMLElement);
+		assert.ok(dash instanceof window.HTMLElement);
+		assert.ok(address instanceof window.HTMLElement);
+		assert.ok(slot instanceof window.HTMLElement);
+		assert.ok(fact instanceof window.HTMLElement);
+
+		let refreshes = 0;
+		let hubRebuilds = 0;
+		const watch = watchVisitSurface(surface, () => {
+			refreshes += 1;
+			const before = surface.querySelector('.rv-hub-chip');
+			decorateNoteChrome(surface, 'People/Eve.md', host);
+			if (surface.querySelector('.rv-hub-chip') !== before) hubRebuilds += 1;
+		});
+		for (let frame = 0; frame < 40; frame += 1) {
+			await turn();
+			drain();
+		}
+		assert.equal(refreshes, 0);
+		assert.equal(hubRebuilds, 0);
+		assert.equal(surface.querySelector('.rv-hub-chip'), chip);
+		assert.equal(surface.querySelector('.rv-dash-name'), dash);
+		assert.equal(surface.querySelector('a.rv-address-link'), address);
+		assert.equal(surface.querySelector('.rv-attempt-override'), slot);
+		assert.equal(surface.querySelector('.rv-qf-body')?.firstElementChild ?? null, fact);
+
+		const row = surface.querySelector('.rv-hub-row');
+		assert.ok(row instanceof window.HTMLElement);
+		row.appendChild(window.document.createElement('span'));
+		const line = surface.querySelector('.rv-address-line');
+		assert.ok(line instanceof window.HTMLElement);
+		line.appendChild(window.document.createElement('span'));
+		dash.appendChild(window.document.createElement('span'));
+		await turn();
+		drain();
+		assert.equal(refreshes, 0);
+		assert.equal(hubRebuilds, 0);
+
+		watch.schedule();
+		await turn();
+		drain();
+		await turn();
+		drain();
+		assert.equal(refreshes, 1);
+		assert.equal(hubRebuilds, 0);
+		assert.equal(surface.querySelector('.rv-hub-chip'), chip);
+
+		data.Hub = '[[North Hub]]';
+		const edited = window.document.createElement('p');
+		edited.textContent = 'The hub list changed.';
+		surface.appendChild(edited);
+		await turn();
+		drain();
+		assert.equal(refreshes, 2);
+		assert.equal(hubRebuilds, 1);
+		assert.equal(surface.querySelector('.rv-hub-chip-label')?.textContent, 'North Hub');
+		await turn();
+		drain();
+		assert.equal(refreshes, 2);
+		watch.stop();
+		surface.remove();
+	});
+
+	it('opens the hub on a left click and does not open the menu from a detached chip', () => {
+		const timers = holdTimers();
+		const shown: Event[] = [];
+		const original = Menu.prototype.showAtMouseEvent;
+		Menu.prototype.showAtMouseEvent = function show(event: MouseEvent): void {
+			shown.push(event);
+			original.call(this, event);
+		};
+		try {
+			const data: Record<string, unknown> = {
+				cssclasses: ['rv-dashboard'],
+				Hub: '[[Return Visits Hub]]',
+				Address: '12 Oak Street',
+			};
+			const opened = { hub: 0 };
+			const host = noteHost(data, opened);
+			const surface = window.document.createElement('div');
+			surface.className = 'markdown-preview-view';
+			surface.innerHTML = '<p><strong>Hub:</strong> <strong>Address:</strong> 12 Oak Street</p>';
+			window.document.body.appendChild(surface);
+			decorateNoteChrome(surface, 'People/Eve.md', host);
+			const link = surface.querySelector('a.rv-hub-chip');
+			assert.ok(link instanceof window.HTMLAnchorElement);
+			press(link, 'mouse');
+			window.document.dispatchEvent(pointer('pointerup', 'mouse'));
+			timers.fire();
+			link.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+			assert.equal(opened.hub, 1);
+			assert.equal(shown.length, 0);
+			assert.equal(link.dataset.rvMenu ?? '', '');
+
+			press(link, 'mouse');
+			link.remove();
+			timers.fire();
+			assert.equal(shown.length, 0);
+			assert.equal(link.dataset.rvMenu ?? '', '');
+
+			decorateNoteChrome(surface, 'People/Eve.md', host);
+			const again = surface.querySelector('a.rv-hub-chip');
+			assert.ok(again instanceof window.HTMLAnchorElement);
+			press(again, 'touch');
+			timers.fire();
+			assert.equal(shown.length, 1);
+			assert.equal(again.dataset.rvMenu, '1');
+			timers.fire();
+			assert.equal(again.dataset.rvMenu ?? '', '');
+
+			const address = surface.querySelector('a.rv-address-link');
+			const input = surface.querySelector('input.rv-address-input');
+			assert.ok(address instanceof window.HTMLElement);
+			assert.ok(input instanceof window.HTMLInputElement);
+			assert.equal(input.hidden, true);
+			press(address, 'mouse');
+			window.document.dispatchEvent(pointer('pointerup', 'mouse'));
+			timers.fire();
+			assert.equal(input.hidden, true);
+			press(address, 'mouse');
+			address.remove();
+			timers.fire();
+			assert.equal(input.hidden, true);
+			surface.remove();
+		} finally {
+			Menu.prototype.showAtMouseEvent = original;
+			timers.restore();
+		}
+	});
+
+	it('does not treat a replaced visit button as a completed long press', () => {
+		const timers = holdTimers();
+		try {
+			const press = new VisitButtonLongPress();
+			const wrap = window.document.createElement('div');
+			wrap.className = 'mb-button rv-visit-btn';
+			const button = window.document.createElement('button');
+			button.setAttribute('aria-label', 'Not home');
+			wrap.appendChild(button);
+			window.document.body.appendChild(wrap);
+			press.start({ target: button } as TouchEvent);
+			button.remove();
+			timers.fire();
+			const liveWrap = window.document.createElement('div');
+			liveWrap.className = 'mb-button rv-visit-btn';
+			const live = window.document.createElement('button');
+			live.setAttribute('aria-label', 'Not home');
+			liveWrap.appendChild(live);
+			window.document.body.appendChild(liveWrap);
+			const click = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+			live.dispatchEvent(click);
+			press.swallow(click);
+			assert.equal(click.defaultPrevented, false);
+
+			const held = window.document.createElement('button');
+			held.setAttribute('aria-label', 'Not home');
+			liveWrap.appendChild(held);
+			press.start({ target: held } as TouchEvent);
+			window.document.dispatchEvent(pointer('pointerup', 'touch'));
+			timers.fire();
+			const lift = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+			held.dispatchEvent(lift);
+			press.swallow(lift);
+			assert.equal(lift.defaultPrevented, false);
+			wrap.remove();
+			liveWrap.remove();
+		} finally {
+			timers.restore();
+		}
+	});
 });
+
+function noteHost(data: Record<string, unknown>, opened: { hub: number }): NoteChromeHost {
+	return {
+		frontmatter: () => data,
+		settings: { ...DEFAULT_SETTINGS },
+		snoozeUntil: () => null,
+		setStatus: () => {},
+		setPriority: () => {},
+		openUrgency: () => {},
+		openPriority: () => {},
+		openRoute: () => {},
+		openHub: () => { opened.hub += 1; },
+		addHub: () => {},
+		removeHub: () => {},
+		moveHub: () => {},
+		openSlotOverride: () => {},
+		setAddress: () => {},
+		openMap: () => {},
+		openCompanion: () => {},
+		campaignMark: () => null,
+		noteTitle: () => 'Eve',
+		renameNote: () => {},
+		mapOpen: () => false,
+		ghostIcon: () => null,
+	};
+}
+
+function drain(): void {
+	const batch = frames.splice(0);
+	for (const cb of batch) cb(0);
+}
+
+function pointer(type: string, pointerType: string): Event {
+	const Ctor = typeof window.PointerEvent === 'function' ? window.PointerEvent : window.MouseEvent;
+	const event = new Ctor(type, { bubbles: true, cancelable: true, button: 0 });
+	Object.defineProperty(event, 'pointerType', { value: pointerType });
+	return event;
+}
+
+function press(el: HTMLElement, pointerType: string): void {
+	el.dispatchEvent(pointer('pointerdown', pointerType));
+}
+
+function holdTimers(): { fire: () => void; restore: () => void } {
+	const pending = new Map<number, () => void>();
+	let nextId = 1_000_000;
+	const realSet = window.setTimeout.bind(window);
+	const realClear = window.clearTimeout.bind(window);
+	const held = new Set([400, 450, 500]);
+	window.setTimeout = ((fn: TimerHandler, delay?: number) => {
+		if (typeof fn === 'function' && held.has(delay ?? 0)) {
+			const id = nextId;
+			nextId += 1;
+			pending.set(id, () => { fn(); });
+			return id;
+		}
+		return realSet(fn, delay);
+	}) as typeof window.setTimeout;
+	window.clearTimeout = ((id?: number) => {
+		if (id != null && pending.delete(id)) return;
+		realClear(id);
+	}) as typeof window.clearTimeout;
+	return {
+		fire: () => {
+			const batch = [...pending.values()];
+			pending.clear();
+			for (const fn of batch) fn();
+		},
+		restore: () => {
+			window.setTimeout = realSet;
+			window.clearTimeout = realClear;
+			pending.clear();
+		},
+	};
+}

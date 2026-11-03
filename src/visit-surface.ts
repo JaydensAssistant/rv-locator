@@ -16,6 +16,15 @@ const SELF_PAINT = [
 	'.rv-stamp-source',
 	'.heading-collapse-indicator',
 	'.collapse-indicator',
+	'.rv-hub-line',
+	'.rv-hub-row',
+	'.rv-hub-chip',
+	'.rv-hub-add',
+	'.rv-address-line',
+	'.rv-address-field',
+	'.rv-address-link',
+	'.rv-map-button',
+	'[data-rv-dash]',
 	'[aria-hidden="true"]',
 ].join(', ');
 
