@@ -69,6 +69,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
 			return width > 1 ? width : 0;
 		}, this.root));
+		this.stackedLayout = this.readStacked();
+		this.root.toggleClass('is-stacked', this.stackedLayout);
 		this.adoptHeldGlance();
 	}
 
@@ -128,12 +130,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	/** Width of this view. An embedded base is the embed, not the window. */
 	private readStacked(): boolean {
+		const body = this.root.ownerDocument?.body;
+		const phone = Boolean(Platform.isMobile || Platform.isMobileApp)
+			|| body?.classList.contains('is-phone') === true
+			|| body?.classList.contains('is-mobile') === true;
 		const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
-		const stacked = hubUsesStackedMap(
-			Boolean(Platform.isMobile || Platform.isMobileApp),
-			width,
-			this.plugin.hubPaneNarrow,
-		);
+		const stacked = hubUsesStackedMap(phone, width, this.plugin.hubPaneNarrow);
 		if (width > 0) this.plugin.hubPaneNarrow = stacked;
 		return stacked;
 	}

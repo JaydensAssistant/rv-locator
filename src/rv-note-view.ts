@@ -15,6 +15,11 @@ export function isRvLocatorSurface(frontmatter: Record<string, unknown> | null |
 	return noteHasCssClass(frontmatter, RV_DASHBOARD_CLASS) || noteHasCssClass(frontmatter, RV_HUB_CLASS);
 }
 
+/** A note with cssclass `rv-locator-full-base` is the hub the phone opens from a chip. */
+export function isRvHubNote(frontmatter: Record<string, unknown> | null | undefined): boolean {
+	return noteHasCssClass(frontmatter, RV_HUB_CLASS);
+}
+
 function noteHasCssClass(frontmatter: Record<string, unknown> | null | undefined, wanted: string): boolean {
 	if (!frontmatter) return false;
 	for (const key of Object.keys(frontmatter)) {

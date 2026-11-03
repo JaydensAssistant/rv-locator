@@ -6,6 +6,7 @@ import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
 import { clearGlanceHold, rememberGlanceGroups } from '../src/glance-hold';
 import { NearbyGlancableView } from '../src/glancable-view';
 import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
+import { holdLeafForHubPaint, hubFrameReady, hubSwapDecision, isHubSwapFile, releaseHubSwapCover } from '../src/hub-cover';
 import { hubClickFrames, paintedHubLeaf } from '../src/hub-open';
 import { hubEmbedCapPx } from '../src/hub-layout';
 import { shouldHideMobileNav } from '../src/status-bar';
@@ -373,21 +374,167 @@ describe('RV-B9 cache first paint', () => {
 	});
 });
 
+describe('RV-B9 swap cover', () => {
+	it('covers a hub open until the phone toolbar is docked under the cards', async () => {
+		assert.equal(isHubSwapFile('base', null), true);
+		assert.equal(isHubSwapFile('BASE', null), true);
+		assert.equal(isHubSwapFile('md', { cssclass: 'rv-locator-full-base' }), true);
+		assert.equal(isHubSwapFile('md', { cssclasses: ['rv-dashboard'] }), false);
+		assert.equal(isHubSwapFile('md', null), false);
+
+		const empty = hubLeaf('No file');
+		window.document.body.append(empty);
+		assert.equal(hubFrameReady(empty, true), false);
+		paintHub(empty, true);
+		placeDock(empty, 720);
+		assert.equal(hubFrameReady(empty, true), false, 'the empty "No file" frame stays covered');
+		const title = empty.querySelector('.view-header-title');
+		assert.ok(title);
+		title.textContent = 'Return Visits';
+		empty.querySelector('.rv-locator-glancable')?.classList.remove('is-stacked');
+		assert.equal(hubFrameReady(empty, true), false, 'a phone hub waits for the stacked toolbar');
+		empty.querySelector('.rv-locator-glancable')?.classList.add('is-stacked');
+		assert.equal(hubFrameReady(empty, true), true);
+		placeDock(empty, 40);
+		assert.equal(hubFrameReady(empty, true), false, 'a toolbar still at the top is not the first paint');
+		assert.equal(hubSwapDecision(empty, true, 10), 'hold');
+		assert.equal(hubSwapDecision(empty, true, 800), 'drop');
+		placeDock(empty, 720);
+		assert.equal(hubFrameReady(empty, false), true);
+		empty.remove();
+
+		window.document.body.classList.add('is-phone');
+		const leaf = hubLeaf('Lisa Study Test');
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		preview.textContent = 'Recent notes and the hub chip';
+		leaf.append(preview);
+		placeDock(leaf, 40);
+		window.document.body.append(leaf);
+		try {
+			holdLeafForHubPaint(leaf);
+			const cover = leaf.querySelector(':scope > .rv-hub-swap-cover');
+			assert.ok(cover instanceof window.HTMLElement);
+			assert.match(cover.textContent ?? '', /Lisa Study Test/);
+			assert.equal(window.document.body.classList.contains('rv-hub-swapping'), true);
+			assert.equal(window.document.body.classList.contains('rv-hide-mobile-nav'), true);
+			titleOf(leaf).textContent = 'No file';
+			preview.textContent = '';
+			await frame();
+			const held = leaf.querySelector(':scope > .rv-hub-swap-cover');
+			assert.ok(held instanceof window.HTMLElement, 'the note stays up through the empty frame');
+			assert.match(held.textContent ?? '', /Lisa Study Test/);
+			assert.equal(hubFrameReady(leaf, true), false);
+			paintHub(leaf, true);
+			titleOf(leaf).textContent = 'Return Visits';
+			placeDock(leaf, 720);
+			await frame();
+			await frame();
+			assert.equal(leaf.querySelector('.rv-hub-swap-cover'), null);
+			assert.equal(window.document.body.classList.contains('rv-hub-swapping'), false);
+			assert.equal(window.document.body.classList.contains('rv-hide-mobile-nav'), true);
+		} finally {
+			window.document.body.classList.remove('is-phone', 'rv-hide-mobile-nav', 'rv-hub-swapping');
+			leaf.remove();
+			releaseHubSwapCover(window.document);
+		}
+
+		const parent = window.document.createElement('div');
+		window.document.body.classList.add('is-phone');
+		window.document.body.append(parent);
+		const bucket = { refresh: null as (() => void) | null };
+		new NearbyGlancableView({} as QueryController, parent, glancePlugin(bucket));
+		assert.equal(parent.querySelector('.rv-locator-glancable')?.classList.contains('is-stacked'), true);
+		window.document.body.classList.remove('is-phone');
+		parent.remove();
+
+		const main = source('src/main.ts');
+		assert.match(main, /holdLeafForHubPaint\(active\?\.view\?\.containerEl\)/);
+		assert.match(main, /holdLeafForHubPaint\(this\.view\?\.containerEl\)/);
+		assert.match(main, /coversHubOpen\(file\)/);
+		assert.match(main, /releaseHubSwapCover\(document, true\)/);
+		const glance = source('src/glancable-view.ts');
+		const read = glance.slice(glance.indexOf('private readStacked'), glance.indexOf('private ensureStage'));
+		assert.match(read, /is-phone/);
+		assert.match(read, /is-mobile/);
+	});
+});
+
+function frame(): Promise<void> {
+	return new Promise((resolve) => {
+		window.requestAnimationFrame(() => resolve());
+	});
+}
+
+function titleOf(leaf: HTMLElement): HTMLElement {
+	const titles = leaf.querySelectorAll('.view-header-title');
+	for (let index = 0; index < titles.length; index += 1) {
+		const title = titles[index];
+		if (title instanceof window.HTMLElement && !title.closest('.rv-hub-swap-cover')) return title;
+	}
+	throw new Error('missing title');
+}
+
+function hubLeaf(title: string): HTMLElement {
+	const leaf = window.document.createElement('div');
+	leaf.className = 'workspace-leaf mod-active';
+	const header = window.document.createElement('div');
+	header.className = 'view-header-title';
+	header.textContent = title;
+	leaf.append(header);
+	return leaf;
+}
+
+function paintHub(leaf: HTMLElement, stacked: boolean): void {
+	const glance = window.document.createElement('div');
+	glance.className = stacked ? 'rv-locator-glancable is-stacked' : 'rv-locator-glancable';
+	const card = window.document.createElement('div');
+	card.className = 'rv-locator-card';
+	const sort = window.document.createElement('div');
+	sort.className = 'rv-locator-sortbar';
+	const actions = window.document.createElement('div');
+	actions.className = 'rv-locator-toolbar-actions';
+	const button = window.document.createElement('button');
+	button.textContent = 'Sort';
+	actions.append(button);
+	sort.append(actions);
+	glance.append(card, sort);
+	leaf.append(glance);
+}
+
+function placeDock(leaf: HTMLElement, sortTop: number): void {
+	const rect = (top: number, height: number) => () => ({
+		top,
+		left: 0,
+		width: 382,
+		height,
+		bottom: top + height,
+		right: 382,
+		x: 0,
+		y: top,
+		toJSON() { return {}; },
+	});
+	leaf.getBoundingClientRect = rect(0, 800);
+	const actions = leaf.querySelector('.rv-locator-toolbar-actions');
+	const sort = leaf.querySelector('.rv-locator-sortbar');
+	if (actions instanceof window.HTMLElement) actions.getBoundingClientRect = rect(sortTop + 8, 40);
+	if (sort instanceof window.HTMLElement) sort.getBoundingClientRect = rect(sortTop, 80);
+}
+
 describe('RV-B7 hub forehead', () => {
-	it('drops the markdown top slack and folds the remaining pad into the embed cap', () => {
+	it('keeps the safe area and the 6px the direct base sits lower', () => {
 		const css = source('styles.css');
-		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: env\(safe-area-inset-top, 0px\) !important;\s*\}/);
+		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: calc\(env\(safe-area-inset-top, 0px\) \+ 6px\) !important;\s*\}/);
 		assert.match(css, /env\(safe-area-inset-top, 0px\)/);
 		assert.equal(css.includes('--view-top-spacing-markdown: 0'), false);
 		const phoneAt = css.indexOf('/* RV-162.');
 		const phoneQuote = css.slice(phoneAt, css.indexOf('body.is-phone .markdown-preview-view.rv-locator-full-base', phoneAt));
 		assert.match(phoneQuote, /margin-top:\s*-5px !important/);
 		assert.equal(phoneQuote.includes('safe-area-inset-top'), false);
-		const header = 104;
-		const cardInset = 11;
-		const direct = header + cardInset;
-		const link = header + 0 + cardInset;
-		assert.ok(Math.abs(link - direct) <= 2, `link ${link} direct ${direct}`);
+		const liveDirect = 117;
+		const liveLink = 111.09;
+		const linkPad = 6;
+		assert.ok(Math.abs((liveLink + linkPad) - liveDirect) <= 2, `link ${liveLink + linkPad} direct ${liveDirect}`);
 		assert.equal(hubEmbedCapPx(800, 223, 119), 800 - 223);
 		assert.equal(hubEmbedCapPx(800, 0, 119), 800 - 119);
 		assert.equal(hubEmbedCapPx(800, 104, 0), 800 - 104);
@@ -648,8 +795,12 @@ describe('RV-B14 lesson pills and ticks', () => {
 		const css = source('styles.css');
 		assert.match(css, /\.rv-study-change-list > button > \.rv-study-change-label \{[^}]*display:\s*block;[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/);
 		assert.match(css, /\.rv-study-tick \{[^}]*max-width:\s*calc\(\(100% - var\(--rv-thumb, 16px\)\) \/ max\(var\(--tick-count, 2\) - 1, 1\) \* 0\.62\);/);
-		assert.doesNotMatch(css, /\.rv-study-tick:first-child:not\(:last-child\) \{[^}]*max-width:\s*none/);
-		assert.doesNotMatch(css, /\.rv-study-tick:last-child:not\(:first-child\) \{[^}]*overflow:\s*visible/);
+		assert.match(css, /\.rv-study-tick \{[^}]*text-overflow:\s*ellipsis;/);
+		assert.match(css, /\.rv-study-tick:first-child:not\(:last-child\) \{[^}]*max-width:\s*none;/);
+		assert.match(css, /\.rv-study-tick:first-child:not\(:last-child\) \{[^}]*overflow:\s*visible;/);
+		assert.match(css, /\.rv-study-tick:last-child:not\(:first-child\) \{[^}]*max-width:\s*none;/);
+		assert.match(css, /\.rv-study-tick:last-child:not\(:first-child\) \{[^}]*overflow:\s*visible;/);
+		assert.match(css, /\.rv-study-tick:last-child:not\(:first-child\) \{[^}]*text-overflow:\s*clip;/);
 		const root = window.document.createElement('div');
 		window.document.body.append(root);
 		mountShareFields(root, shareOptions({ lessonExpanded: true }), () => {});

@@ -7299,9 +7299,10 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	left: calc((var(--rv-thumb, 16px) / 2) + (100% - var(--rv-thumb, 16px)) * var(--stop, 0));
 	transform: none;
 	text-align: left;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: calc((100% - var(--rv-thumb, 16px)) / max(var(--tick-count, 2) - 1, 1) * 0.62);
+	/* Intro stays whole. Middle ticks keep the slot ellipsis. */
+	overflow: visible;
+	text-overflow: clip;
+	max-width: none;
 }
 
 .rv-study-tick:first-child:not(:last-child)::before {
@@ -7315,9 +7316,10 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	left: calc((var(--rv-thumb, 16px) / 2) + (100% - var(--rv-thumb, 16px)) * var(--stop, 1));
 	transform: translateX(-100%);
 	text-align: right;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	max-width: calc((100% - var(--rv-thumb, 16px)) / max(var(--tick-count, 2) - 1, 1) * 0.62);
+	/* Outro stays whole. Middle ticks keep the slot ellipsis. */
+	overflow: visible;
+	text-overflow: clip;
+	max-width: none;
 }
 
 .rv-study-tick:last-child:not(:first-child)::before {
@@ -8353,13 +8355,13 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	overflow-y: auto;
 }
 
-/* RV-B7. The hub note is a markdown preview, so the floating-header pad
-   pushes the first card down. The direct base has no such pad. Keep the
-   real safe area and drop the rest. */
+/* RV-B7. Live phone, safe area 0: the hub-link first card sat at 111px and
+   the base opened directly sat at 117px. Keep the safe area, and add the
+   6px the direct base still has so the two tops land together. */
 .markdown-preview-view.rv-locator-full-base,
 .markdown-reading-view.rv-locator-full-base {
 	--view-top-spacing-markdown: env(safe-area-inset-top, 0px);
-	padding-top: env(safe-area-inset-top, 0px) !important;
+	padding-top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
 }
 
 .markdown-preview-view.rv-locator-full-base::-webkit-scrollbar,
@@ -9499,6 +9501,25 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 body.rv-hide-mobile-nav .mobile-navbar {
 	display: none !important;
+}
+
+body.rv-hub-swapping .mobile-navbar {
+	display: none !important;
+}
+
+/* The note stays inside the leaf while Obsidian swaps the view, so the phone
+   paints the note instead of the empty "No file" frame. */
+.workspace-leaf > .rv-hub-swap-cover {
+	position: absolute !important;
+	inset: 0 !important;
+	z-index: 50 !important;
+	width: 100% !important;
+	height: 100% !important;
+	overflow: hidden !important;
+	box-sizing: border-box;
+	margin: 0 !important;
+	pointer-events: auto;
+	background: var(--background-primary);
 }
 
 body.rv-hide-mobile-nav.is-mobile .workspace-leaf-content .rv-locator-glancable.is-stacked .rv-locator-sortbar {

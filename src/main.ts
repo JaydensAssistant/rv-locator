@@ -27,6 +27,7 @@ import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLog
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
+import { holdLeafForHubPaint, isHubSwapFile, releaseHubSwapCover } from './hub-cover';
 import { paintedHubLeaf } from './hub-open';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -912,6 +913,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const setViewState = proto.setViewState;
 		const plugin = this;
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
+			if (!plugin.unloaded && plugin.coversHubOpen(file)) holdLeafForHubPaint(this.view?.containerEl);
 			return openFile.call(this, file, plugin.previewStateFor(file, openState));
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
@@ -1257,6 +1259,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
+		releaseHubSwapCover(document, true);
 		this.stopMetaBindSweep?.();
 		this.stopMetaBindSweep = null;
 		clearVisitNoteCaches();
@@ -1722,7 +1725,16 @@ export default class RVLocatorPlugin extends Plugin {
 			void this.app.workspace.revealLeaf(leaf);
 			return;
 		}
+		const active = this.app.workspace.getMostRecentLeaf();
+		holdLeafForHubPaint(active?.view?.containerEl);
 		void this.app.workspace.openLinkText(target, sourcePath);
+	}
+
+	/** Phone frames before the hub view exists stay covered by the note. */
+	private coversHubOpen(file: TFile): boolean {
+		const cached = this.cachedFrontmatter.get(file.path);
+		const stored = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+		return isHubSwapFile(file.extension, cached ?? stored ?? null);
 	}
 
 	/** Every open leaf, so a hub in a non-markdown leaf is still reused. */
