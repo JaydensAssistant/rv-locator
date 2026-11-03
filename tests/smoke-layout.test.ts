@@ -1416,11 +1416,14 @@ describe('smoke layout', () => {
 		assert.ok(more);
 		assert.match(more?.textContent ?? '', /^\+\d+$/);
 		assert.ok(strip.querySelector(':scope > .rv-item.is-campaign:not([hidden])'));
+		const seen: string[] = [];
+		(globalThis as { __rvTooltip?: (el: unknown, text?: unknown) => void }).__rvTooltip = (_el, text) => {
+			seen.push(typeof text === 'string' ? text : (text as { textContent?: string } | null)?.textContent ?? '');
+		};
 		more?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-		const pop = window.document.querySelector('.rv-title-popover');
-		assert.ok(pop);
-		assert.match(pop?.textContent ?? '', /Enjoy Life Forever|Why Study the Bible|How Can the Bible/);
-		pop?.remove();
+		assert.equal(window.document.querySelector('.rv-title-popover'), null);
+		assert.match(seen.join('\n'), /Enjoy Life Forever|Why Study the Bible|How Can the Bible/);
+		delete (globalThis as { __rvTooltip?: unknown }).__rvTooltip;
 	});
 
 	it('refits a strip from its parent and drops a pinned width before measuring', () => {

@@ -416,20 +416,70 @@ export function fitMiddleEllipsis(el: HTMLElement, full: string): void {
 	}
 }
 
-export function showTitlePopover(anchor: HTMLElement, text: string): void {
+/** The visible string is shorter than the full title, or the box itself is clipped. */
+export function plainTitleTruncated(el: HTMLElement): boolean {
+	const full = (el.dataset.full || el.dataset.rvTip || '').replace(/\s+/g, ' ').trim();
+	const shown = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+	if (full && shown && shown !== full) return true;
+	return el.clientWidth > 0 && el.scrollWidth > el.clientWidth + 1;
+}
+
+let titleTooltipDismiss: (() => void) | null = null;
+
+function hideShownTooltip(doc: Document): void {
+	doc.querySelectorAll('.tooltip, .rv-title-popover').forEach((node) => node.remove());
+}
+
+function tooltipContent(anchor: HTMLElement, text: string): string | DocumentFragment {
+	if (!text.includes('\n')) return text;
+	const block = anchor.ownerDocument.createElement('div');
+	block.style.whiteSpace = 'pre-line';
+	block.textContent = text;
+	const frag = anchor.ownerDocument.createDocumentFragment();
+	frag.append(block);
+	return frag;
+}
+
+/**
+ * Same Obsidian tooltip the visit buttons use. A later tap or a scroll
+ * removes it. The opening tap does not, so the readout can stay up.
+ */
+function armTitleTooltipDismiss(anchor: HTMLElement): void {
+	titleTooltipDismiss?.();
 	const doc = anchor.ownerDocument;
-	doc.querySelectorAll('.rv-title-popover').forEach((node) => node.remove());
-	const pop = doc.createElement('div');
-	pop.className = 'rv-title-popover';
-	pop.style.whiteSpace = 'pre-line';
-	pop.textContent = text;
-	doc.body.appendChild(pop);
-	const box = anchor.getBoundingClientRect();
-	pop.style.left = `${box.left}px`;
-	pop.style.top = `${box.bottom + 4}px`;
-	const close = (): void => {
-		pop.remove();
-		doc.removeEventListener('pointerdown', close);
+	const view = doc.defaultView ?? window;
+	const close = (event: Event): void => {
+		if (event.type === 'pointerdown') {
+			const target = event.target;
+			if (!(target instanceof Node)) return;
+			if (anchor.contains(target)) return;
+			const tip = target instanceof Element ? target.closest('.tooltip') : null;
+			if (tip) return;
+		}
+		hideShownTooltip(doc);
+		stop();
 	};
-	window.setTimeout(() => doc.addEventListener('pointerdown', close), 0);
+	const stop = (): void => {
+		doc.removeEventListener('pointerdown', close, true);
+		doc.removeEventListener('scroll', close, true);
+		view.removeEventListener('scroll', close, true);
+		if (titleTooltipDismiss === stop) titleTooltipDismiss = null;
+	};
+	titleTooltipDismiss = stop;
+	view.setTimeout(() => {
+		if (titleTooltipDismiss !== stop) return;
+		doc.addEventListener('pointerdown', close, true);
+		doc.addEventListener('scroll', close, true);
+		view.addEventListener('scroll', close, true);
+	}, 0);
+}
+
+/** Plain title readout. Phone taps and desktop clicks both use displayTooltip. */
+export function showTitlePopover(anchor: HTMLElement, text: string): void {
+	const full = text.replace(/\s+/g, ' ').trim();
+	const doc = anchor.ownerDocument;
+	if (!full || !doc || typeof doc.querySelectorAll !== 'function') return;
+	doc.querySelectorAll('.rv-title-popover').forEach((node) => node.remove());
+	displayTooltip(anchor, tooltipContent(anchor, full), { placement: 'top' });
+	armTitleTooltipDismiss(anchor);
 }

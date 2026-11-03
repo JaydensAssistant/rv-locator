@@ -17,7 +17,7 @@ import type { RVLocatorSettings } from './types';
 import { formatStudyFraction, lessonPillLabel } from './catalog';
 import { paintUrgencyInk } from './color-math';
 import { SNOOZE_SLATE } from './snooze';
-import { armHoverTooltip, displayTitle, fitEndEllipsis, showTitlePopover } from './title-fit';
+import { armHoverTooltip, displayTitle, fitEndEllipsis, plainTitleTruncated, showTitlePopover } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { ageCaption, appendPersonMeta } from './person-meta';
 import { urgencyColorsFor } from './urgency-palette';
@@ -614,7 +614,10 @@ function paintClampList(host: HTMLElement, items: readonly string[]): void {
 		showTitlePopover(host, full);
 	};
 	host.addEventListener('click', reveal);
-	host.addEventListener('mouseenter', () => showTitlePopover(host, full));
+	host.addEventListener('mouseenter', () => {
+		if (chipHostIsPhone(host)) return;
+		showTitlePopover(host, full);
+	});
 	armLongPress(host, (event) => reveal(event), false);
 	host.addEventListener('keydown', (event) => {
 		if (!(event instanceof KeyboardEvent)) return;
@@ -673,6 +676,10 @@ function factDateRow(parent: HTMLElement, icon: string, label: string, value: un
 	pill.addEventListener('click', (event) => {
 		event.preventDefault();
 		event.stopPropagation();
+		if (chipHostIsPhone(pill) && plainTitleTruncated(pill)) {
+			showTitlePopover(pill, pill.dataset.rvTip || display.title || raw);
+			return;
+		}
 		jumpToQuickFactDay(pill, instant);
 	});
 }
@@ -1359,6 +1366,16 @@ function pinPairLabel(label: HTMLElement): void {
 	label.style.setProperty('overflow', 'hidden', 'important');
 }
 
+function openAddress(link: HTMLElement, path: string, host: NoteChromeHost, event: Event): void {
+	event.preventDefault();
+	event.stopPropagation();
+	if (chipHostIsPhone(link) && plainTitleTruncated(link)) {
+		showTitlePopover(link, link.dataset.rvTip || link.textContent || '');
+		return;
+	}
+	host.openMap(path);
+}
+
 function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: string, host: NoteChromeHost): void {
 	const found = paragraph.querySelector(':scope > a.rv-address-link, :scope > .rv-address-line a.rv-address-link');
 	const link = found instanceof HTMLElement ? found : paragraph.ownerDocument.createElement('a');
@@ -1367,21 +1384,13 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 		link.setAttribute('href', '#');
 		if (typeof input.insertAdjacentElement === 'function') input.insertAdjacentElement('afterend', link);
 		else paragraph.appendChild(link);
-		link.addEventListener('click', (event) => {
-			event.preventDefault();
-			event.stopPropagation();
-			host.openMap(path);
-		});
+		link.addEventListener('click', (event) => openAddress(link, path, host, event));
 		armAddressEdit(link, input);
 	}
 	link.classList.toggle('is-on', host.mapOpen());
 	link.classList.remove('rv-address-hidden');
 	link.dataset.rvMapOpen = '1';
-	link.onclick = (event) => {
-		event.preventDefault();
-		event.stopPropagation();
-		host.openMap(path);
-	};
+	link.onclick = (event) => openAddress(link, path, host, event);
 	link.style.setProperty('display', 'block', 'important');
 	link.style.setProperty('grid-column', 'auto', 'important');
 	link.style.setProperty('width', '100%', 'important');
@@ -1399,6 +1408,7 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	const text = input.value.trim();
 	link.classList.toggle('is-empty', !text);
 	if (link.textContent !== (text || 'Add an address')) link.textContent = text || 'Add an address';
+	if (text) armHoverTooltip(link, text, { touch: false });
 	const editing = paragraph.ownerDocument.activeElement === input;
 	const showInput = editing || text.length === 0;
 	link.hidden = showInput;
@@ -1468,6 +1478,11 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 		}
 		event.preventDefault();
 		event.stopPropagation();
+		const label = link.querySelector('.rv-hub-chip-label');
+		if (label instanceof HTMLElement && chipHostIsPhone(link) && plainTitleTruncated(label)) {
+			showTitlePopover(label, label.dataset.full || label.dataset.rvTip || hub.label);
+			return;
+		}
 		host.openHub(path, hub.target);
 	});
 	const openMenu = (event: MouseEvent) => {

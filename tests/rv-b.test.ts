@@ -301,30 +301,46 @@ describe('RV-B4 age outline', () => {
 });
 
 describe('RV-B5 hover tooltips', () => {
-	it('uses displayTooltip on a strip title and keeps the phone popover', () => {
+	it('uses displayTooltip for a truncated phone tap and dismisses it', async () => {
 		const calls: Array<{ text?: string; placement?: string }> = [];
-		(globalThis as { __rvTooltip?: (el: unknown, text?: string, options?: { placement?: string }) => void }).__rvTooltip = (_el, text, options) => {
-			calls.push({ text, placement: options?.placement });
+		(globalThis as { __rvTooltip?: (el: unknown, text?: unknown, options?: { placement?: string }) => void }).__rvTooltip = (el, text, options) => {
+			const value = typeof text === 'string' ? text : (text as { textContent?: string } | null)?.textContent ?? '';
+			calls.push({ text: value, placement: options?.placement });
+			const doc = (el as HTMLElement).ownerDocument;
+			doc.querySelectorAll('.tooltip').forEach((node) => node.remove());
+			const tip = doc.createElement('div');
+			tip.className = 'tooltip';
+			tip.textContent = value;
+			doc.body.append(tip);
 		};
 		const parent = window.document.createElement('div');
+		let parentClicks = 0;
+		parent.addEventListener('click', () => { parentClicks += 1; });
 		window.document.body.append(parent);
-		const host = mountFittedTitle(parent, 'Why Study the Bible?', 'media');
+		const host = mountFittedTitle(parent, 'You Are Invited: 2026 Eternal Happiness', 'media');
 		assert.equal(host.getAttribute('title'), null);
-		assert.equal(host.dataset.rvTip, 'Why Study the Bible? Video');
+		assert.equal(host.dataset.rvTip, 'You Are Invited: 2026 Eternal Happiness Video');
 		host.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
-		assert.deepEqual(calls, [{ text: 'Why Study the Bible? Video', placement: 'top' }]);
+		assert.equal(calls.length, 1);
+		assert.equal(calls[0]?.placement, 'top');
 		window.document.body.classList.add('is-mobile');
 		host.dispatchEvent(new window.MouseEvent('mouseenter', { bubbles: true }));
 		assert.equal(calls.length, 1);
-		window.document.body.classList.remove('is-mobile');
 		const stem = host.querySelector('.rv-fit-stem');
 		assert.ok(stem);
-		stem.textContent = 'Why…';
+		stem.textContent = 'You Are…';
 		host.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
-		const pop = window.document.querySelector('.rv-title-popover');
-		assert.ok(pop);
-		assert.match(pop.textContent ?? '', /Why Study the Bible\? Video/);
-		pop.remove();
+		assert.equal(parentClicks, 0);
+		assert.equal(window.document.querySelector('.rv-title-popover'), null);
+		assert.equal(window.document.querySelector('.tooltip')?.textContent, 'You Are Invited: 2026 Eternal Happiness Video');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		window.document.body.dispatchEvent(new window.MouseEvent('pointerdown', { bubbles: true }));
+		assert.equal(window.document.querySelector('.tooltip'), null);
+		host.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		window.document.dispatchEvent(new window.Event('scroll'));
+		assert.equal(window.document.querySelector('.tooltip'), null);
+		window.document.body.classList.remove('is-mobile');
 		parent.remove();
 
 		const label = window.document.createElement('span');
@@ -345,6 +361,11 @@ describe('RV-B5 hover tooltips', () => {
 		assert.doesNotMatch(chrome, /link\.title = /);
 		assert.match(chrome, /armHoverTooltip\(pill,/);
 		assert.match(chrome, /armHoverTooltip\(link, hub\.label/);
+		assert.match(chrome, /plainTitleTruncated\(pill\)/);
+		assert.match(chrome, /plainTitleTruncated\(label\)/);
+		assert.match(chrome, /plainTitleTruncated\(link\)/);
+		assert.match(titleFit, /displayTooltip\(anchor, tooltipContent/);
+		assert.doesNotMatch(titleFit, /className = 'rv-title-popover'/);
 		const nearby = source('src/nearby-view.ts');
 		assert.doesNotMatch(nearby, /setAttr\('title'/);
 		assert.doesNotMatch(nearby, /title: 'Sort'|title: 'Search'|title: 'Map'|title: 'Campaign'|title: 'New RV'|title: 'Filters'/);
