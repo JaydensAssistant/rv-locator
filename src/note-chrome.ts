@@ -227,12 +227,23 @@ function setPaint(el: HTMLElement | SVGElement, name: string, value: string, imp
 	else el.style.setProperty(name, value);
 }
 
-/** The dashboard and every RV callout under `start`, including `start` itself. */
+/**
+ * Dashboard, RV callouts, and any node that already carries an inline accent.
+ * Reading view stamps `--rv-urgency-accent` on each section (`.el-p`, `.el-div`,
+ * `.el-pre`). Those sit closer than the dashboard, so a later pass has to
+ * repaint them or the address and visit buttons keep the old color.
+ */
 function urgencyPaintTargets(start: HTMLElement): HTMLElement[] {
 	const found: HTMLElement[] = [];
-	if (start.matches('.rv-dashboard, .callout[data-callout="rv"]')) found.push(start);
-	start.querySelectorAll('.rv-dashboard, .callout[data-callout="rv"]').forEach((node) => {
-		if (node instanceof HTMLElement) found.push(node);
+	const seen = new Set<HTMLElement>();
+	const take = (node: HTMLElement): void => {
+		if (seen.has(node)) return;
+		seen.add(node);
+		found.push(node);
+	};
+	if (start.matches('.rv-dashboard, .callout[data-callout="rv"]')) take(start);
+	start.querySelectorAll('.rv-dashboard, .callout[data-callout="rv"], [style*="--rv-urgency-accent"]').forEach((node) => {
+		if (node instanceof HTMLElement) take(node);
 	});
 	return found;
 }

@@ -63,7 +63,7 @@ interface TextControl {
  * Companion is optional. Create with it blank leaves Met With and Taken blank.
  */
 export class NewRvIdentityModal extends Modal {
-	private gender: RvGender = 'Man';
+	private gender: RvGender | null = null;
 	private name = '';
 	private address = '';
 	private companion = '';
@@ -109,6 +109,7 @@ export class NewRvIdentityModal extends Modal {
 			});
 		}
 		const gender = new Setting(contentEl).setName('Man / Woman');
+		gender.nameEl?.createSpan({ cls: 'rv-required-label', text: 'Required' });
 		gender.settingEl?.addClass('rv-gender-choice');
 		gender.addButton((button) => {
 			mountGenderButton(button, 'Woman', RESTROOM_WOMAN, this.gender === 'Woman');
@@ -261,12 +262,17 @@ export class NewRvIdentityModal extends Modal {
 			new Notice('Address is required.');
 			return;
 		}
+		if (this.gender !== 'Woman' && this.gender !== 'Man') {
+			new Notice('Gender is required.');
+			return;
+		}
+		const gender = this.gender;
 		const verified = this.verifiedHit && addressesMatchOneForOne(address, this.verifiedHit.formattedAddress)
 			? this.verifiedHit
 			: null;
 		this.settled = true;
 		this.onDone({
-			gender: this.gender,
+			gender,
 			name: this.name.trim(),
 			address,
 			companion: this.companion.trim(),

@@ -187,7 +187,10 @@ export class SuggestModal<T> extends Modal {
 export class FuzzySuggestModal<T> extends SuggestModal<T> {}
 
 export class Notice {
-	constructor(public message?: string) {}
+	constructor(public message?: string) {
+		const hook = (globalThis as { __rvNotice?: (message: string) => void }).__rvNotice;
+		hook?.(message ?? '');
+	}
 	hide(): void {}
 }
 

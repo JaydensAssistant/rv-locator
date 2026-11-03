@@ -37,6 +37,7 @@ import { pagePreviewDecision } from './page-preview';
 import { shouldHideStatusBar } from './status-bar';
 import { paintNoteGlanceCard } from './glance-card';
 import { elementScrollbarGutterPx } from './glancable-density';
+import { keepReadingPlace, noteReadingScroller } from './reading-anchor';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import { listedUsCounties } from './us-county-index';
 import type { MapPin } from './map-pins';
@@ -44,7 +45,7 @@ import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './
 import { shadeHeats } from './map-shade';
 import { EditAttributesModal, NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
-import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvGender, type RvStatus, type SnoozeListFilter } from './status';
+import { applyStatusPriority, resolveStatus, sanitizeCampaignListFilter, sanitizeGender, sanitizeGenderFilter, sanitizeReturnScope, sanitizeSnoozeListFilter, statusForNewNote, type CampaignListFilter, type GenderFilter, type ReturnScope, type RvStatus, type SnoozeListFilter } from './status';
 import { fitNotesBox, fitNotesBoxes, isNotesBox } from './notes-autosize';
 import { clearVisitNoteCaches, installVisitNoteRelease, mountVisitNotesInSection, noteValuesFromFrontmatter, releaseClosedVisitNotes, releaseVisitNoteCaret, setActiveVisitNote } from './visit-notes-field';
 import { applyExternalVisitNotes, bindVisitNoteFlush } from './visit-notes-store';
@@ -1068,7 +1069,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (this.creatingNewRv) return;
 		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
 		const address = readAddress(frontmatter, this.settings.addressProperty) ?? '';
-		const gender = housemateGender(readProperty(frontmatter, 'Gender'));
+		const gender = sanitizeGender(readProperty(frontmatter, 'Gender'));
 		const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? this.settings.defaultNewRvPriority;
 		const identity = await new Promise<NewRvIdentity | null>((resolve) => {
 			new NewRvIdentityModal(this.app, {
@@ -1085,7 +1086,7 @@ export default class RVLocatorPlugin extends Plugin {
 				suggestBroad: (query) => this.suggestAddressBroad(query),
 				addressCache: () => this.addressSuggestCacheMap(),
 				preset: {
-					gender,
+					...(gender ? { gender } : {}),
 					address,
 					priority: Math.max(1, Math.min(5, Math.round(priority))),
 				},
@@ -2015,18 +2016,21 @@ export default class RVLocatorPlugin extends Plugin {
 	 * The hub map icon only toggles the embedded map.
 	 */
 	hideSplitMap(): void {
+		const restore = this.noteMapOpen ? this.holdReadingPlace() : null;
 		this.hubMapOpen = false;
 		this.noteMapOpen = false;
 		this.setHubMapFullscreen(false);
 		this.applyLayoutClasses();
 		this.syncNoteMap();
 		for (const callback of this.viewRefreshers) callback();
+		this.settleReadingPlace(restore);
 	}
 
 	async openMapSoon(path?: string): Promise<void> {
 		this.stopVisitFocus?.();
 		this.stopVisitFocus = null;
 		if (path && this.noteMapOpen && this.mapFocusPath === path) {
+			const restore = this.holdReadingPlace();
 			this.noteMapOpen = false;
 			this.hubMapOpen = false;
 			this.setHubMapFullscreen(false);
@@ -2034,6 +2038,7 @@ export default class RVLocatorPlugin extends Plugin {
 			this.syncNoteMap();
 			for (const callback of this.viewRefreshers) callback();
 			this.refreshVisitCards(path, undefined, true);
+			this.settleReadingPlace(restore);
 			return;
 		}
 		if (path) {
@@ -2192,6 +2197,30 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!note || this.unloaded) return;
 		this.pendingNewRvPath = note.path;
 		await this.activateNewRvNote(note);
+	}
+
+	/**
+	 * Stacked note map (phone). Side-by-side close does not grow the scroller.
+	 * Captured before the map class comes off.
+	 */
+	private holdReadingPlace(): (() => void) | null {
+		const content = this.noteMapHost();
+		if (!content?.classList.contains('is-note-map') || content.classList.contains('is-note-map-side')) return null;
+		const scroller = noteReadingScroller(content);
+		if (!scroller) return null;
+		return keepReadingPlace(scroller);
+	}
+
+	/** Put the same line back at the top after the dock unmounts and the viewport grows. */
+	private settleReadingPlace(restore: (() => void) | null): void {
+		if (!restore) return;
+		restore();
+		const win = this.noteMapHost()?.ownerDocument.defaultView;
+		if (!win?.requestAnimationFrame) return;
+		win.requestAnimationFrame(() => {
+			restore();
+			win.requestAnimationFrame(restore);
+		});
 	}
 
 	private noteMapHost(): HTMLElement | null {
@@ -4638,10 +4667,6 @@ function locationCopyNames(settings: RVLocatorSettings): string[] {
 		out.push(trimmed);
 	}
 	return out;
-}
-
-function housemateGender(value: unknown): RvGender {
-	return value === 'Woman' ? 'Woman' : 'Man';
 }
 
 function hubLabelList(value: unknown): string {

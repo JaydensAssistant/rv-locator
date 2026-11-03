@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
 import { stripRenameState } from '../src/rename-guard';
 import { isRvLocatorSurface } from '../src/rv-note-view';
 import { pinMatches, storeFrontmatter } from '../src/visit-paint-guard';
@@ -50,6 +51,11 @@ describe('locked next build', () => {
 		assert.match(launch, /installRenameSwallow\(WorkspaceLeaf\)/);
 		assert.match(launch, /dismissNoteTitleModal/);
 		assert.match(source('src/new-rv-modal.ts'), /Address is required\./);
+		assert.match(source('src/new-rv-modal.ts'), /Gender is required\./);
+		assert.match(source('src/new-rv-modal.ts'), /private gender: RvGender \| null = null/);
+		const created = source('src/new-rv-modal.ts').slice(0, source('src/new-rv-modal.ts').indexOf('export class EditAttributesModal'));
+		assert.ok(created.indexOf("mountGenderButton(button, 'Woman'") < created.indexOf("mountGenderButton(button, 'Man'"));
+		assert.match(created, /rv-required-label/);
 		assert.match(source('src/new-rv-modal.ts'), /setLimits\(1,\s*5\)/);
 	});
 
@@ -99,6 +105,8 @@ describe('locked next build', () => {
 		assert.match(css, /content:\s*'Return Visits'/);
 		assert.match(css, /body\.is-phone \.workspace-leaf-content:has\(\.rv-locator-full-base\) > \.view-header::after/);
 		assert.match(css, /body\.is-phone \.markdown-preview-view\.rv-locator-full-base[\s\S]*overflow:\s*hidden !important/);
+		assert.match(css, /body\.is-phone \.markdown-preview-view\.rv-locator-full-base,\s*\nbody\.is-phone \.markdown-reading-view\.rv-locator-full-base[\s\S]*scrollbar-width:\s*none !important/);
+		assert.equal(css.includes('--scrollbar-width: 0px'), false);
 		assert.match(css, /\.modal\.rv-locator-modal button\.rv-priority-seg\.is-selected \{[^}]*box-shadow:[^}]*0 0 0 4px #d6d6d6 !important/);
 		const edit = source('src/new-rv-modal.ts').slice(source('src/new-rv-modal.ts').indexOf('export class EditAttributesModal'));
 		assert.ok(edit.indexOf("mountGenderButton(button, 'Woman'") < edit.indexOf("mountGenderButton(button, 'Man'"));
@@ -117,7 +125,8 @@ describe('locked next build', () => {
 		const head = css.slice(headAt, css.indexOf('.rv-qf-row {', headAt));
 		assert.match(head, /\.rv-dashboard \.rv-qf-head \{[^}]*gap:\s*0;/);
 		assert.match(head, /\.rv-dashboard \.rv-qf-head-label \{[^}]*font-size:\s*16px;[^}]*font-weight:\s*var\(--bold-weight, 600\);[^}]*line-height:\s*1\.2;[^}]*letter-spacing:\s*normal;[^}]*color:\s*var\(--text-muted\);/);
-		assert.match(head, /\.rv-dashboard \.rv-qf-head-dot \{[^}]*margin-left:\s*9px;[^}]*margin-right:\s*8px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-dot \{[^}]*margin-left:\s*6\.5px;[^}]*margin-right:\s*8\.75px;/);
+		assert.match(head, /body\.is-phone \.rv-dashboard \.rv-qf-head-dot \{[^}]*margin-left:\s*9\.5px;[^}]*margin-right:\s*8\.5px;/);
 		assert.match(head, /\.rv-dashboard \.rv-qf-head-count \{[^}]*font-size:\s*10px;[^}]*font-weight:\s*400;[^}]*line-height:\s*11px;/);
 		assert.match(head, /\.rv-dashboard \.rv-qf-head-ratio \{[^}]*font-size:\s*10px;[^}]*line-height:\s*11px;/);
 		assert.match(head, /\.rv-dashboard \.rv-qf-head-icon \{[^}]*margin-left:\s*-3px;/);
@@ -126,5 +135,36 @@ describe('locked next build', () => {
 		assert.equal(head.includes('font-size: 13px'), false);
 		assert.equal(head.includes('font-size: 11px'), false);
 		assert.equal(head.includes('.rv-qf-badges'), false);
+	});
+
+	it('RV-169 keeps a typed name through the search input handler', () => {
+		const names = ['Jordan Lee', 'Sam Rivera', 'Eve Carter', 'Alexandra Kim', 'Casey Ng', 'Morgan Dale', 'Pat Quinn', 'Riley Quinn'];
+		const query = parseGlanceQuery('Eve', new Date());
+		const kept = names.filter((name) => matchesGlanceQuery(glanceRecordFromNote({
+			name,
+			address: '',
+			city: '',
+			frontmatter: null,
+		}), query));
+		assert.deepEqual(kept, ['Eve Carter']);
+		const view = source('src/glancable-view.ts');
+		const field = view.slice(view.indexOf('private ensureSearchField'), view.indexOf('private clearSearch'));
+		assert.match(field, /addEventListener\('input', \(\) => \{\s*this\.glanceQuery = input\.value;\s*this\.renderBody\(\);\s*\}\)/);
+		assert.equal(field.includes('isTrusted'), false);
+	});
+
+	it('RV-171 anchors the stacked note when the map closes', () => {
+		const main = source('src/main.ts');
+		const openMap = main.slice(main.indexOf('async openMapSoon'), main.indexOf('private noteMapHandle'));
+		const close = openMap.slice(openMap.indexOf('this.noteMapOpen && this.mapFocusPath'), openMap.indexOf('if (path) {'));
+		assert.ok(openMap.indexOf('this.stopVisitFocus') < openMap.indexOf('this.noteMapOpen && this.mapFocusPath'));
+		assert.match(close, /holdReadingPlace/);
+		assert.match(close, /settleReadingPlace/);
+		assert.equal(close.includes('scrollIntoView'), false);
+		assert.equal(close.includes('.focus('), false);
+		assert.match(main, /noteReadingScroller/);
+		const rewrite = main.slice(main.indexOf('private async pointNewNoteAtLogTemplates'), main.indexOf('private async writeNewRvShare'));
+		assert.match(rewrite, /process\(file/);
+		assert.equal(rewrite.includes('getMarkdownFiles'), false);
 	});
 });

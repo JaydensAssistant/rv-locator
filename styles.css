@@ -5918,6 +5918,13 @@ body.rv-center-visit-notes .rv-older-heading {
 	overflow: auto;
 }
 
+/* RV-171. Bottom spacer so a stacked map close can keep the old scroll offset. */
+.rv-reading-anchor {
+	flex: 0 0 auto;
+	width: 100%;
+	pointer-events: none;
+}
+
 .workspace-leaf-content.is-note-map > .rv-note-map-handle {
 	grid-column: 1;
 	grid-row: 3;
@@ -8459,18 +8466,24 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 }
 
 /* RV-164. Visible ink is 8px from the s of Facts to the dot, and 8px from the dot to the visit icon.
+   Desktop Inter needs 6.5 / 8.75. Phone ink was already near 8, so the phone margins stay a half pixel wider on the left.
    The icon's negative margin cancels the lucide viewBox inset. Right-side badges are not in this row. */
 .rv-dashboard .rv-qf-head-dot {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
 	flex: 0 0 auto;
-	margin-left: 9px;
-	margin-right: 8px;
+	margin-left: 6.5px;
+	margin-right: 8.75px;
 	font-size: 16px;
 	font-weight: 400;
 	line-height: 1.2;
 	height: auto;
+}
+
+body.is-phone .rv-dashboard .rv-qf-head-dot {
+	margin-left: 9.5px;
+	margin-right: 8.5px;
 }
 
 .rv-dashboard .rv-qf-head-count {
@@ -9244,6 +9257,12 @@ h5.rv-visit-stamp + .rv-item-strip {
 	margin: 0 0 6px !important;
 }
 
+.modal.rv-locator-modal.rv-new-rv .rv-required-label {
+	margin-left: 6px;
+	color: var(--text-muted);
+	font-weight: 400;
+}
+
 .modal.rv-locator-modal.rv-new-rv .setting-item.rv-gender-choice .setting-item-control {
 	width: 100% !important;
 	flex: 1 1 auto !important;
@@ -9429,13 +9448,23 @@ body.is-phone .markdown-preview-view.rv-dashboard .markdown-preview-sizer > .el-
 	margin-top: -5px !important;
 }
 
+/* RV-160D. Hide the outer preview bar only. `--scrollbar-width` inherits, so
+   zeroing it here also collapsed the list scroller and made embed cards wider
+   than the standalone base. The list keeps the theme scrollbar. */
 body.is-phone .markdown-preview-view.rv-locator-full-base,
 body.is-phone .markdown-reading-view.rv-locator-full-base,
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content {
 	overflow: hidden !important;
 	scrollbar-gutter: auto !important;
+	scrollbar-width: none !important;
 	padding-right: 0 !important;
-	--scrollbar-width: 0px;
+}
+
+body.is-phone .markdown-preview-view.rv-locator-full-base::-webkit-scrollbar,
+body.is-phone .markdown-reading-view.rv-locator-full-base::-webkit-scrollbar,
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content::-webkit-scrollbar {
+	width: 0 !important;
+	height: 0 !important;
 }
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-title {

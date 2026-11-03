@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { decorateAttemptLog, isLogCalloutTitle } from '../src/attempt-digest';
+import { glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
+import { EditAttributesModal, NewRvIdentityModal, type NewRvIdentity } from '../src/new-rv-modal';
+import { applyReadingPlace, keepReadingPlace, noteReadingScroller } from '../src/reading-anchor';
 import { stampAgeCount } from '../src/dates';
 import { applyLiveUrgency, decorateNoteChrome, revealAttemptLogWhenReady, type NoteChromeHost } from '../src/note-chrome';
 import { shouldHideStatusBar } from '../src/status-bar';
@@ -33,6 +36,7 @@ hostGlobals.document = window.document;
 hostGlobals.HTMLElement = window.HTMLElement;
 hostGlobals.HTMLInputElement = window.HTMLInputElement;
 hostGlobals.HTMLTextAreaElement = window.HTMLTextAreaElement;
+hostGlobals.HTMLButtonElement = window.HTMLButtonElement;
 hostGlobals.HTMLAnchorElement = window.HTMLAnchorElement;
 hostGlobals.Element = window.Element;
 hostGlobals.Node = window.Node;
@@ -1157,7 +1161,25 @@ describe('smoke layout', () => {
 		title.textContent = 'Visit Facts';
 		callout.appendChild(title);
 		dashboard.appendChild(callout);
-		root.appendChild(dashboard);
+		const address = window.document.createElement('div');
+		address.className = 'el-p';
+		address.style.setProperty('--rv-urgency-accent', '#d63c3c');
+		const link = window.document.createElement('a');
+		link.className = 'rv-address-link';
+		link.textContent = '12 Oak';
+		address.appendChild(link);
+		const buttons = window.document.createElement('div');
+		buttons.className = 'el-pre';
+		buttons.style.setProperty('--rv-urgency-accent', '#d63c3c');
+		const home = window.document.createElement('span');
+		home.className = 'mb-button rv-visit-btn';
+		home.textContent = 'Home';
+		buttons.appendChild(home);
+		const outside = window.document.createElement('div');
+		outside.className = 'mb-button-container';
+		outside.style.setProperty('--rv-urgency-accent', '#d63c3c');
+		dashboard.append(address, buttons);
+		root.append(dashboard, outside);
 		const now = new Date();
 		const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}T08:00:00`;
 		applyLiveUrgency(root, 'RVs/Ada.md', chromeHost({
@@ -1168,6 +1190,10 @@ describe('smoke layout', () => {
 		}, { count: 0 }), true);
 		assert.equal(dashboard.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
 		assert.equal(callout.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		assert.equal(address.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		assert.equal(buttons.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		assert.equal(outside.style.getPropertyValue('--rv-urgency-accent').toLowerCase(), '#1f8a4c');
+		assert.equal(address.classList.contains('is-snoozed'), false);
 		assert.notEqual(dashboard.style.getPropertyValue('--rv-urgency-ink').toLowerCase(), '#d63c3c');
 		assert.notEqual(callout.style.getPropertyValue('--rv-urgency-ink').trim(), '');
 		assert.notEqual(callout.style.getPropertyValue('--rv-urgency-ink').toLowerCase(), '#d63c3c');
@@ -1807,6 +1833,140 @@ describe('smoke layout', () => {
 			shell.remove();
 		}
 		assert.equal(suggestionListenerCount(), before);
+	});
+
+	it('RV-169 filters when the search field value is set and input is dispatched', () => {
+		const names = ['Jordan Lee', 'Sam Rivera', 'Eve Carter', 'Alexandra Kim', 'Casey Ng', 'Morgan Dale', 'Pat Quinn', 'Riley Quinn'];
+		const input = window.document.createElement('input');
+		input.className = 'rv-locator-search-input';
+		let painted = names.slice();
+		input.addEventListener('input', () => {
+			const parsed = parseGlanceQuery(input.value, new Date());
+			painted = names.filter((name) => matchesGlanceQuery(glanceRecordFromNote({
+				name,
+				address: '',
+				city: '',
+				frontmatter: null,
+			}), parsed));
+		});
+		input.value = 'Eve';
+		input.dispatchEvent(new window.Event('input', { bubbles: true }));
+		assert.deepEqual(painted, ['Eve Carter']);
+		const handler = readFileSync('src/glancable-view.ts', 'utf8');
+		const field = handler.slice(handler.indexOf('private ensureSearchField'), handler.indexOf('private clearSearch'));
+		assert.match(field, /this\.glanceQuery = input\.value/);
+		assert.equal(field.includes('isTrusted'), false);
+	});
+
+	it('RV-171 keeps the reading offset when the grown viewport would clamp it', () => {
+		const leaf = window.document.createElement('div');
+		leaf.className = 'workspace-leaf-content is-note-map';
+		const view = window.document.createElement('div');
+		view.className = 'view-content';
+		leaf.appendChild(view);
+		window.document.body.appendChild(leaf);
+		let content = 935;
+		Object.defineProperty(view, 'scrollHeight', {
+			configurable: true,
+			get() {
+				const spacer = view.querySelector('.rv-reading-anchor');
+				const extra = spacer instanceof HTMLElement ? parseFloat(spacer.style.height) || 0 : 0;
+				return content + extra;
+			},
+		});
+		Object.defineProperty(view, 'clientHeight', { configurable: true, get: () => 400 });
+		let top = 876;
+		Object.defineProperty(view, 'scrollTop', {
+			configurable: true,
+			get: () => top,
+			set: (value: number) => { top = value; },
+		});
+		assert.equal(noteReadingScroller(leaf), view);
+		const restore = keepReadingPlace(view);
+		content = 935;
+		restore();
+		const spacer = view.querySelector('.rv-reading-anchor');
+		assert.ok(spacer instanceof HTMLElement);
+		assert.equal(spacer.style.height, '341px');
+		assert.equal(view.scrollTop, 876);
+		restore();
+		assert.equal(view.querySelector('.rv-reading-anchor'), spacer);
+		assert.equal(view.scrollTop, 876);
+		content = 2000;
+		applyReadingPlace(view, 100);
+		assert.equal(view.querySelector('.rv-reading-anchor'), null);
+		assert.equal(view.scrollTop, 100);
+		leaf.classList.add('is-note-map-side');
+		leaf.remove();
+	});
+
+	it('RV-172 requires a gender on New RV and keeps the saved gender in Edit attributes', () => {
+		const notices: string[] = [];
+		(globalThis as { __rvNotice?: (message: string) => void }).__rvNotice = (message) => { notices.push(message); };
+		const content = window.document.createElement('div');
+		window.document.body.appendChild(content);
+		let created: NewRvIdentity | null = null;
+		let finished = false;
+		const modal = new NewRvIdentityModal({} as never, {
+			defaultPriority: 4,
+			companions: [],
+			publications: [],
+			media: [],
+			lessons: [],
+		}, (value) => {
+			finished = true;
+			created = value;
+		});
+		const live = modal as unknown as { contentEl: HTMLElement };
+		live.contentEl = content;
+		modal.open();
+		const woman = content.querySelector<HTMLButtonElement>('[data-gender="Woman"]');
+		const man = content.querySelector<HTMLButtonElement>('[data-gender="Man"]');
+		assert.ok(woman);
+		assert.ok(man);
+		assert.ok(woman.compareDocumentPosition(man) & window.Node.DOCUMENT_POSITION_FOLLOWING);
+		assert.equal(woman.classList.contains('is-selected'), false);
+		assert.equal(man.classList.contains('is-selected'), false);
+		assert.equal(content.querySelector('.rv-required-label')?.textContent, 'Required');
+		const create = Array.from(content.querySelectorAll('button')).find((button) => button.textContent?.includes('Create'));
+		assert.ok(create);
+		create.click();
+		assert.equal(notices.at(-1), 'Address is required.');
+		assert.equal(finished, false);
+		const address = content.querySelector<HTMLInputElement>('input[placeholder="Required (e.g. 123 Oak St)"]');
+		assert.ok(address);
+		address.value = '123 Oak St';
+		address.dispatchEvent(new window.Event('input', { bubbles: true }));
+		create.click();
+		assert.equal(notices.at(-1), 'Gender is required.');
+		assert.equal(created, null);
+		woman.click();
+		assert.equal(woman.classList.contains('is-selected'), true);
+		assert.equal(man.classList.contains('is-selected'), false);
+		create.click();
+		assert.equal(created?.gender, 'Woman');
+		assert.equal(created?.address, '123 Oak St');
+		content.remove();
+
+		const editHost = window.document.createElement('div');
+		const edit = new EditAttributesModal({} as never, {
+			name: 'Eve',
+			gender: 'Woman',
+			status: 'Active',
+			age: '',
+			ageExact: false,
+		}, () => {});
+		(edit as unknown as { contentEl: HTMLElement }).contentEl = editHost;
+		edit.open();
+		assert.equal(editHost.querySelector('[data-gender="Woman"]')?.classList.contains('is-selected'), true);
+		assert.equal(editHost.querySelector('[data-gender="Man"]')?.classList.contains('is-selected'), false);
+		const womanButton = editHost.querySelector('[data-gender="Woman"]');
+		const manButton = editHost.querySelector('[data-gender="Man"]');
+		assert.ok(womanButton);
+		assert.ok(manButton);
+		assert.ok(womanButton.compareDocumentPosition(manButton) & window.Node.DOCUMENT_POSITION_FOLLOWING);
+		edit.close();
+		delete (globalThis as { __rvNotice?: (message: string) => void }).__rvNotice;
 	});
 
 });
