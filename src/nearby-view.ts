@@ -12,7 +12,8 @@ import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
 import { buildViewModel, iconForColumn, type CellModel, type ColumnModel, type GroupModel, type RowModel } from './model';
 import type RVLocatorPlugin from './main';
-import { heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
+import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
+import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
 import { armHoverTooltip, armIconTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
@@ -53,7 +54,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private resultFollowUps = 0;
 	private resultQueued = false;
 	/** True after Bases has delivered this view's query. A hold is not that delivery. */
-	private glanceDataSeen = false;
+	protected glanceDataSeen = false;
+	/** Cold first paint came from vault frontmatter, so a refresh can re-read it. */
+	private glanceFromCache = false;
+	private sortPaintStampSeen = '';
 
 	protected constructor(
 		controller: QueryController,
@@ -102,6 +106,17 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected renderBody(): void {
 		if (!this.chromeReady) this.ensureChrome();
 		this.paintSortPresets();
+		this.fillScroll();
+		this.syncResultCount();
+		this.armResultFollowUps();
+		this.afterRender();
+	}
+
+	/**
+	 * Replace the list. Glancable overrides this so an unchanged card stays
+	 * the same node and the scroll offset is left alone.
+	 */
+	protected fillScroll(): void {
 		const top = this.scrollEl.scrollTop;
 		const left = this.scrollEl.scrollLeft;
 		this.scrollEl.empty();
@@ -117,33 +132,60 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 		} else {
 			this.paint();
-			if (this.mode === 'glancable') rememberGlanceGroups(this.groups);
+			if (this.mode === 'glancable') rememberGlanceGroups(this.groups, this.columns);
 			this.root.removeClass('is-glance-pending');
 		}
 		this.paintListTail();
 		this.scrollEl.scrollTop = top;
 		this.scrollEl.scrollLeft = left;
-		this.syncResultCount();
-		this.armResultFollowUps();
-		this.afterRender();
 	}
 
 	/** Glancable retags the Bases toolbar after each paint. */
 	protected afterRender(): void {}
 
 	/**
-	 * Paint the last non-empty hub immediately. Without one, keep the shell
-	 * hidden until Bases delivers rows so the toolbar does not flash empty.
+	 * Paint cards before the first browser frame. A warm hub replays the last
+	 * list. A cold hub paints the vault cache. Bases reconciles later.
 	 */
 	protected adoptHeldGlance(): void {
 		if (this.mode !== 'glancable') return;
 		const held = heldGlanceGroups();
 		if (held) {
+			this.glanceFromCache = false;
 			this.groups = held;
+			this.columns = heldGlanceColumns() ?? hubCacheColumns(this.plugin.settings.locationProperty);
 			this.renderBody();
 			return;
 		}
+		if (this.paintFromHubCache()) return;
 		if (!this.glanceDataSeen) this.root.addClass('is-glance-pending');
+	}
+
+	/** Re-read vault frontmatter until Bases has delivered this view. */
+	protected refreshHubCacheGroups(): void {
+		if (!this.glanceFromCache || this.glanceDataSeen) return;
+		const cached = this.readHubCache();
+		if (!cached) return;
+		this.columns = cached.columns;
+		this.groups = cached.groups;
+	}
+
+	private paintFromHubCache(): boolean {
+		const cached = this.readHubCache();
+		if (!cached) return false;
+		this.columns = cached.columns;
+		this.groups = cached.groups;
+		this.glanceFromCache = true;
+		this.renderBody();
+		return true;
+	}
+
+	private readHubCache(): { columns: ColumnModel[]; groups: GroupModel[] } | null {
+		const read = this.plugin.hubCacheModel;
+		if (typeof read !== 'function') return null;
+		const cached = read.call(this.plugin);
+		if (!cached || cached.groups.every((group) => group.rows.length === 0)) return null;
+		return cached;
 	}
 
 	/** Last thing in the scrolling list. Glancable puts the disclaimer here. */
@@ -470,7 +512,27 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		return column?.id ?? property;
 	}
 
+	private sortPaintStamp(): string {
+		const settings = this.plugin.settings;
+		const chips = visibleSortPresets(settings.sortChips).map((preset) => preset.id).join(',');
+		return [
+			this.localSort.property,
+			this.localSort.direction,
+			this.sortMenuOpen ? '1' : '0',
+			this.mode,
+			chips,
+			this.plugin.hubMapOpen ? '1' : '0',
+			settings.returnScope,
+			settings.genderFilter,
+			settings.campaignListFilter,
+			settings.snoozeListFilter,
+		].join('|');
+	}
+
 	private paintSortPresets(): void {
+		const stamp = this.sortPaintStamp();
+		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll')) return;
+		this.sortPaintStampSeen = stamp;
 		this.releaseSortSize();
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		const search = this.searchSlot;

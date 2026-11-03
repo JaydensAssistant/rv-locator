@@ -26,6 +26,7 @@ import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIc
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
+import { hubGroupsFromCache } from './hub-cache';
 import { paintedHubLeaf } from './hub-open';
 import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -35,7 +36,7 @@ import { armVisitNoteFocus, layoutVisitNotes, placeVisitNoteFocus } from './visi
 import { watchVisitSurface } from './visit-surface';
 import { dispatchVisitPreviewRefresh, visitPreviewExtension } from './visit-live-preview';
 import { pagePreviewDecision } from './page-preview';
-import { shouldHideStatusBar } from './status-bar';
+import { shouldHideMobileNav, shouldHideStatusBar } from './status-bar';
 import { paintNoteGlanceCard } from './glance-card';
 import { elementScrollbarGutterPx } from './glancable-density';
 import { keepReadingPlace, noteReadingScroller } from './reading-anchor';
@@ -486,10 +487,10 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-full-width-callout', on && this.settings.fullWidthCallout);
 		body.toggleClass('rv-map-open', on && this.hubMapOpen);
 		body.toggleClass('rv-hide-statusbar', on && shouldHideStatusBar(this.noteHidesStatusBar(), this.settings.hideStatusBar, this.standaloneBaseOpen()));
-		body.toggleClass('rv-hide-mobile-nav', on && this.activeLocatorSurface());
+		body.toggleClass('rv-hide-mobile-nav', on && shouldHideMobileNav(this.activeLocatorSurface(), this.standaloneBaseOpen()));
 	}
 
-	/** Hub notes and RV notes hide the phone navbar. Any other note brings it back. */
+	/** Hub notes, RV notes, and a base opened on its own hide the phone navbar. */
 	private activeLocatorSurface(): boolean {
 		const file = this.app.workspace.getActiveFile();
 		if (!file) return false;
@@ -1465,6 +1466,35 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
+	/**
+	 * Hub rows from the same frontmatter cache the map and urgency use.
+	 * The glancable view paints this before Bases calls `onDataUpdated`.
+	 */
+	hubCacheModel(): ReturnType<typeof hubGroupsFromCache> | null {
+		const files = this.app.vault.getMarkdownFiles().map((file) => {
+			const cached = this.cachedFrontmatter.get(file.path);
+			const stored = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+			const frontmatter = cached ?? (stored ? { ...stored } : null);
+			const folder = file.parent?.path && file.parent.path !== '/' ? file.parent.path : '';
+			return {
+				path: file.path,
+				name: file.basename || file.name.replace(/\.md$/i, ''),
+				folder,
+				frontmatter,
+			};
+		});
+		const model = hubGroupsFromCache(files, {
+			returnScope: this.settings.returnScope,
+			genderFilter: this.settings.genderFilter,
+			campaignListFilter: this.settings.campaignListFilter,
+			campaignMark: (path) => this.campaignMark(path),
+			addressProperty: this.settings.addressProperty,
+			locationProperty: this.settings.locationProperty,
+			cityProperty: this.settings.cityProperty,
+		});
+		return model.groups.length > 0 ? model : null;
+	}
+
 	/** Hub filters return to their defaults each time the hub view is created. */
 	resetHubFilters(): void {
 		if (this.settings.returnScope === 'active' && this.settings.genderFilter === 'all' && this.settings.campaignListFilter === 'all' && this.settings.snoozeListFilter === 'all') return;
@@ -1682,17 +1712,28 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * A hub that already has cards is revealed. Opening the link again would
-	 * mount a new embed and leave the toolbar empty until Bases returns rows.
+	 * A hub file that is already open is revealed, cards or not. Opening the
+	 * link again would mount a new embed and flash the Bases toolbar.
 	 */
 	private openHubLink(sourcePath: string, target: string): void {
 		const dest = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
-		const leaf = paintedHubLeaf(this.app.workspace.getLeavesOfType('markdown'), dest?.path ?? null, target);
+		const leaf = paintedHubLeaf(this.workspaceLeaves(), dest?.path ?? null, target);
 		if (leaf) {
 			void this.app.workspace.revealLeaf(leaf);
 			return;
 		}
 		void this.app.workspace.openLinkText(target, sourcePath);
+	}
+
+	/** Every open leaf, so a hub in a non-markdown leaf is still reused. */
+	private workspaceLeaves(): WorkspaceLeaf[] {
+		const leaves: WorkspaceLeaf[] = [];
+		if (typeof this.app.workspace.iterateAllLeaves === 'function') {
+			this.app.workspace.iterateAllLeaves((leaf) => { leaves.push(leaf); });
+			if (leaves.length > 0) return leaves;
+		}
+		for (const type of ['markdown', 'bases']) leaves.push(...this.app.workspace.getLeavesOfType(type));
+		return leaves;
 	}
 
 	private noteChromeHost(): NoteChromeHost {

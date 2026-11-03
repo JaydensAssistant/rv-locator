@@ -5,7 +5,12 @@ import { describe, it } from 'node:test';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
 import { clearGlanceHold, rememberGlanceGroups } from '../src/glance-hold';
 import { NearbyGlancableView } from '../src/glancable-view';
-import { paintedHubLeaf } from '../src/hub-open';
+import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
+import { hubClickFrames, paintedHubLeaf } from '../src/hub-open';
+import { hubEmbedCapPx } from '../src/hub-layout';
+import { shouldHideMobileNav } from '../src/status-bar';
+import { LESSONS, emptyShare, studyPrefill, type VisitShare } from '../src/catalog';
+import { mountShareFields, type ShareFieldOptions } from '../src/catalog-fields';
 import { opticalChipGapPx, opticalModalGapPx } from '../src/icon-optical';
 import type { RowModel } from '../src/model';
 import { fitEndEllipsis, mountFittedTitle } from '../src/title-fit';
@@ -146,7 +151,7 @@ function sampleRow(): RowModel {
 	};
 }
 
-function glancePlugin(bucket: { refresh: (() => void) | null }): RVLocatorPlugin {
+function glancePlugin(bucket: { refresh: (() => void) | null }, extra: Record<string, unknown> = {}): RVLocatorPlugin {
 	const base: Record<string, unknown> = {
 		nearbySort: { property: 'file.name', direction: 'ASC' },
 		settings: { ...DEFAULT_SETTINGS, distanceTest: true },
@@ -173,6 +178,7 @@ function glancePlugin(bucket: { refresh: (() => void) | null }): RVLocatorPlugin
 		cardOverrideLabel: () => null,
 		cardReturnBucket: () => '',
 		ghostIconForCard: () => null,
+		...extra,
 	};
 	return new Proxy(base, {
 		get(target, prop, receiver) {
@@ -275,13 +281,130 @@ describe('RV-B3 hub click blank', () => {
 			},
 		};
 		assert.equal(paintedHubLeaf([empty, painted], 'Return Visits Hub.md', 'Return Visits Hub'), painted);
-		assert.equal(paintedHubLeaf([empty], null, 'Return Visits Hub'), null);
+		assert.equal(paintedHubLeaf([empty], null, 'Return Visits Hub'), empty);
+		assert.equal(paintedHubLeaf([{ view: { file: { path: 'People/Dale.md' }, containerEl: { querySelector: () => null } } }], 'Return Visits Hub.md', 'Return Visits Hub'), null);
 		const main = source('src/main.ts');
-		assert.match(main, /paintedHubLeaf\(/);
+		assert.match(main, /paintedHubLeaf\(this\.workspaceLeaves\(\)/);
+		assert.match(main, /iterateAllLeaves/);
 		assert.match(main, /revealLeaf\(leaf\)/);
 		const css = source('styles.css');
-		assert.match(css, /\.bases-embed:has\(\.rv-locator-glancable\.is-glance-pending\)/);
-		assert.match(css, /\.rv-locator-glancable\.is-glance-pending \{\s*visibility: hidden;/);
+		assert.match(css, /\.rv-locator-full-base \.bases-toolbar,/);
+		assert.match(css, /\.workspace-leaf-content:has\(\.rv-locator-glancable\) \.bases-toolbar,/);
+		assert.doesNotMatch(css, /is-glance-pending/);
+		const frames = hubClickFrames({ existingLeaf: false, existingCards: 0, heldCards: 0, cacheCards: 15 });
+		assert.deepEqual(frames.map((frame) => frame.phase), ['cards']);
+		assert.equal(frames.some((frame) => frame.viewsToolbarVisible || frame.blankBodyVisible), false);
+		assert.equal(frames[0]?.cards, 15);
+		const revealed = hubClickFrames({ existingLeaf: true, existingCards: 15, heldCards: 0 });
+		assert.equal(revealed.length, 1);
+		assert.equal(revealed[0]?.revealedExisting, true);
+		assert.equal(revealed[0]?.cards, 15);
+		const missed = hubClickFrames({ existingLeaf: false, existingCards: 0, heldCards: 0, cacheCards: 0 });
+		assert.equal(missed[0]?.blankBodyVisible, true);
+		console.log(`RV-B9-FRAMES ${JSON.stringify(frames)}`);
+	});
+});
+
+function daleFile(address = '1800 N Orange Ave, Orlando, FL'): HubCacheFile {
+	return {
+		path: 'People/Dale.md',
+		name: 'Dale Red',
+		folder: 'People',
+		frontmatter: {
+			Hub: ['[[Return Visits Hub]]'],
+			Priority: 4,
+			Status: 'Active',
+			Address: address,
+			'Last Spoke': '2026-11-01',
+			Location: '28.5383, -81.3792',
+		},
+	};
+}
+
+function daleCache(address = '1800 N Orange Ave, Orlando, FL') {
+	return hubGroupsFromCache([daleFile(address)], {
+		returnScope: 'active',
+		genderFilter: 'all',
+		campaignListFilter: 'all',
+		campaignMark: () => null,
+		addressProperty: 'Address',
+		locationProperty: 'Location',
+		cityProperty: 'City',
+	});
+}
+
+describe('RV-B9 cache first paint', () => {
+	it('paints vault-cache cards before Bases and patches one changed card', () => {
+		clearGlanceHold();
+		let address = '1800 N Orange Ave, Orlando, FL';
+		const bucket = { refresh: null as (() => void) | null };
+		const parent = window.document.createElement('div');
+		window.document.body.append(parent);
+		const plugin = glancePlugin(bucket, {
+			hubCacheModel: () => daleCache(address),
+		});
+		new NearbyGlancableView({} as QueryController, parent, plugin);
+		const card = parent.querySelector('.rv-locator-card');
+		assert.ok(card instanceof window.HTMLElement);
+		assert.equal(card.getAttribute('data-rv-path'), 'People/Dale.md');
+		assert.ok(card.getAttribute('data-rv-paint'));
+		const accent = card.style.getPropertyValue('--rv-urgency-accent');
+		assert.ok(accent.trim().length > 0, 'card accent is painted');
+		assert.equal(parent.querySelector('.is-glance-pending'), null);
+		assert.equal(parent.querySelector('.rv-locator-empty'), null);
+		assert.match(parent.textContent ?? '', /1800 N Orange Ave/);
+		const scroll = parent.querySelector('.rv-locator-scroll');
+		assert.ok(scroll instanceof window.HTMLElement);
+		scroll.scrollTop = 48;
+		bucket.refresh?.();
+		assert.equal(parent.querySelector('.rv-locator-card'), card);
+		assert.equal(scroll.scrollTop, 48);
+		address = '99 Main St, Orlando, FL';
+		bucket.refresh?.();
+		const next = parent.querySelector('.rv-locator-card');
+		assert.ok(next instanceof window.HTMLElement);
+		assert.notEqual(next, card);
+		assert.equal(parent.querySelectorAll('.rv-locator-card').length, 1);
+		assert.match(parent.textContent ?? '', /99 Main St/);
+		assert.equal(scroll.scrollTop, 48);
+		parent.remove();
+		clearGlanceHold();
+	});
+});
+
+describe('RV-B7 hub forehead', () => {
+	it('drops the markdown top slack and folds the remaining pad into the embed cap', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: env\(safe-area-inset-top, 0px\) !important;\s*\}/);
+		assert.match(css, /env\(safe-area-inset-top, 0px\)/);
+		assert.equal(css.includes('--view-top-spacing-markdown: 0'), false);
+		const phoneAt = css.indexOf('/* RV-162.');
+		const phoneQuote = css.slice(phoneAt, css.indexOf('body.is-phone .markdown-preview-view.rv-locator-full-base', phoneAt));
+		assert.match(phoneQuote, /margin-top:\s*-5px !important/);
+		assert.equal(phoneQuote.includes('safe-area-inset-top'), false);
+		const header = 104;
+		const cardInset = 11;
+		const direct = header + cardInset;
+		const link = header + 0 + cardInset;
+		assert.ok(Math.abs(link - direct) <= 2, `link ${link} direct ${direct}`);
+		assert.equal(hubEmbedCapPx(800, 223, 119), 800 - 223);
+		assert.equal(hubEmbedCapPx(800, 0, 119), 800 - 119);
+		assert.equal(hubEmbedCapPx(800, 104, 0), 800 - 104);
+		const view = source('src/glancable-view.ts');
+		const frame = view.slice(view.indexOf('private sizeEmbedFrame'), view.indexOf('private bindHubHandle'));
+		assert.match(frame, /hubEmbedCapPx\(viewport, top, pad\)/);
+		assert.match(frame, /Math\.max\(160/);
+	});
+});
+
+describe('RV-B8 standalone base nav', () => {
+	it('hides the phone navbar on a base opened by itself', () => {
+		assert.equal(shouldHideMobileNav(false, true), true);
+		assert.equal(shouldHideMobileNav(true, false), true);
+		assert.equal(shouldHideMobileNav(false, false), false);
+		const main = source('src/main.ts');
+		const layout = main.slice(main.indexOf('applyLayoutClasses'), main.indexOf('private activeLocatorSurface'));
+		assert.match(layout, /shouldHideMobileNav\(this\.activeLocatorSurface\(\), this\.standaloneBaseOpen\(\)\)/);
 	});
 });
 
@@ -418,5 +541,135 @@ describe('RV-B6 icon optical gap', () => {
 		assert.equal(stampBody.includes('data-rv-glyph'), false);
 		console.log(`RV-B6-MEASURE chip ${JSON.stringify(gaps)}`);
 		console.log(`RV-B6-MEASURE modal literature ${modalLiterature.toFixed(2)} media ${opticalModalGapPx('clapperboard').toFixed(2)} lesson ${opticalModalGapPx('book-marked').toFixed(2)} campaign ${opticalModalGapPx('book-check').toFixed(2)}`);
+	});
+});
+
+const LESSON_1 = '01 How Can the Bible Help You?';
+const LESSON_2 = '02 The Bible Gives Hope';
+
+function shareOptions(extra: Partial<ShareFieldOptions> = {}): ShareFieldOptions {
+	return {
+		publications: [],
+		media: [],
+		customLessons: [],
+		lessons: [...LESSONS],
+		showLiterature: true,
+		showLesson: false,
+		optionalLesson: true,
+		lessonPrefill: studyPrefill(null),
+		initial: emptyShare(),
+		...extra,
+	};
+}
+
+function clickText(root: ParentNode, text: string): void {
+	const nodes = root.querySelectorAll('button');
+	for (const node of nodes) {
+		if (node.textContent === text) {
+			node.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+			return;
+		}
+	}
+	throw new Error(`No control labeled ${text}`);
+}
+
+describe('RV-B10 study log default', () => {
+	it('logs the next lesson when Study starts open, and nothing when it is opened by hand', () => {
+		const seen: VisitShare[] = [];
+		const root = window.document.createElement('div');
+		window.document.body.append(root);
+		const share = mountShareFields(root, shareOptions({ lessonExpanded: true }), (next) => { seen.push(next); });
+		assert.equal(share.lesson, LESSON_1);
+		assert.equal(share.lessonFrom, 'Intro');
+		assert.equal(share.lessonTo, 'Outro');
+		assert.equal(seen.at(-1)?.lesson, LESSON_1);
+		assert.equal(root.querySelector('.rv-study-label')?.textContent?.includes('No study'), false);
+		assert.equal(root.querySelector('.rv-study-skip')?.textContent, "Didn't study");
+		clickText(root, "Didn't study");
+		assert.equal(seen.at(-1)?.lesson, '');
+
+		const plainSeen: VisitShare[] = [];
+		const plain = window.document.createElement('div');
+		window.document.body.append(plain);
+		const plainShare = mountShareFields(plain, shareOptions(), (next) => { plainSeen.push(next); });
+		assert.equal(plainShare.lesson, '');
+		clickText(plain, 'Study');
+		assert.equal(plainShare.lesson, '');
+		assert.equal(plainSeen.length, 0);
+		assert.equal(plain.querySelector('.rv-study-skip')?.textContent, 'Did study');
+		assert.equal(plain.querySelector('.rv-study-label')?.textContent, 'No study');
+		root.remove();
+		plain.remove();
+	});
+
+	it('defaults the next log to lesson 02 after lesson 01 was finished', () => {
+		const prefill = studyPrefill({ lesson: LESSON_1, to: 'Outro' });
+		assert.equal(prefill.lesson, LESSON_2);
+		assert.equal(prefill.from, 'Intro');
+		const seen: VisitShare[] = [];
+		const root = window.document.createElement('div');
+		window.document.body.append(root);
+		mountShareFields(root, shareOptions({ lessonExpanded: true, lessonPrefill: prefill }), (next) => { seen.push(next); });
+		assert.equal(seen.at(-1)?.lesson, LESSON_2);
+		assert.equal(seen.at(-1)?.lessonFrom, 'Intro');
+		assert.equal(seen.at(-1)?.lessonTo, 'Outro');
+		root.remove();
+	});
+});
+
+describe('RV-B12 change study slider', () => {
+	it('hides the slider until a lesson is picked', () => {
+		const root = window.document.createElement('div');
+		window.document.body.append(root);
+		mountShareFields(root, shareOptions(), () => {});
+		clickText(root, 'Study');
+		clickText(root, 'Change');
+		const slider = window.document.querySelector('.rv-study-change-modal input.rv-study-slider');
+		const ticks = window.document.querySelector('.rv-study-change-modal .rv-study-ticks');
+		assert.ok(slider instanceof window.HTMLElement);
+		assert.ok(ticks instanceof window.HTMLElement);
+		assert.equal(slider.hidden, true);
+		assert.equal(ticks.hidden, true);
+		assert.equal(ticks.querySelector('.rv-study-tick'), null);
+		const lesson = window.document.querySelector('.rv-study-change-list button');
+		assert.ok(lesson instanceof window.HTMLElement);
+		lesson.click();
+		assert.equal(slider.hidden, false);
+		assert.equal(ticks.hidden, false);
+		assert.ok(ticks.querySelector('.rv-study-tick'));
+		window.document.querySelector('.rv-study-change-modal')?.remove();
+		root.remove();
+	});
+});
+
+describe('RV-B14 lesson pills and ticks', () => {
+	it('ellipsizes the pill label and keeps tick labels inside their slots', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-study-change-list > button > \.rv-study-change-label \{[^}]*display:\s*block;[^}]*min-width:\s*0;[^}]*text-overflow:\s*ellipsis;/);
+		assert.match(css, /\.rv-study-tick \{[^}]*max-width:\s*calc\(\(100% - var\(--rv-thumb, 16px\)\) \/ max\(var\(--tick-count, 2\) - 1, 1\) \* 0\.62\);/);
+		assert.doesNotMatch(css, /\.rv-study-tick:first-child:not\(:last-child\) \{[^}]*max-width:\s*none/);
+		assert.doesNotMatch(css, /\.rv-study-tick:last-child:not\(:first-child\) \{[^}]*overflow:\s*visible/);
+		const root = window.document.createElement('div');
+		window.document.body.append(root);
+		mountShareFields(root, shareOptions({ lessonExpanded: true }), () => {});
+		clickText(root, 'Change');
+		const label = window.document.querySelector('.rv-study-change-label');
+		assert.ok(label instanceof window.HTMLElement);
+		assert.equal(label.parentElement?.tagName, 'BUTTON');
+		const ticks = window.document.querySelector('.rv-study-ticks');
+		assert.ok(ticks instanceof window.HTMLElement);
+		assert.ok(Number(ticks.style.getPropertyValue('--tick-count')) > 1);
+		window.document.querySelector('.rv-study-change-modal')?.remove();
+		root.remove();
+	});
+});
+
+describe('RV-B15 snoozed visit gradient', () => {
+	it('keeps the slate accent and lets the five buttons step', () => {
+		const css = source('styles.css');
+		assert.doesNotMatch(css, /\.rv-dashboard\.is-snoozed \.mb-button-group[\s\S]*?#6b7a99 !important/);
+		assert.match(css, /\.rv-dashboard\.is-snoozed button\.rv-locator-urgency \{[^}]*color:\s*#6b7a99 !important;/);
+		assert.match(css, /\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(1\) > button\.mb-button-inner \{[^}]*clamp\(0\.46, l, 0\.80\)/);
+		assert.match(css, /\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(5\) > button\.mb-button-inner \{[^}]*clamp\(0\.34, calc\(l - 0\.24\), 0\.56\)/);
 	});
 });

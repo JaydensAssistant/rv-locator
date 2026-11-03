@@ -215,6 +215,8 @@ function paintStopTicks(ticks: HTMLElement, parts: readonly string[], current: n
 	if (typeof clearer.empty === 'function') clearer.empty();
 	else if (typeof clearer.replaceChildren === 'function') clearer.replaceChildren();
 	const denom = Math.max(1, parts.length - 1);
+	const host = ticks as HTMLElement & { style?: { setProperty?: (name: string, value: string) => void } };
+	if (typeof host.style?.setProperty === 'function') host.style.setProperty('--tick-count', String(Math.max(parts.length, 1)));
 	parts.forEach((part, index) => {
 		const tick = ticks.createSpan({ cls: 'rv-study-tick', text: part });
 		const ratio = parts.length <= 1 ? '0' : String(index / denom);
@@ -302,6 +304,16 @@ function openChange(
 	const ticks = panel.createDiv('rv-study-ticks');
 	const partsNow = (): readonly string[] => lessonPartOptions(lessonByTitle(picked, names));
 	const paintSlider = (): void => {
+		const show = picked.trim().length > 0;
+		slider.hidden = !show;
+		ticks.hidden = !show;
+		if (!show) {
+			const clearer = ticks as HTMLElement & { empty?: () => void; replaceChildren?: () => void };
+			if (typeof clearer.empty === 'function') clearer.empty();
+			else if (typeof clearer.replaceChildren === 'function') clearer.replaceChildren();
+			startLabel.textContent = 'Start at';
+			return;
+		}
 		const live = partsNow();
 		const max = Math.max(0, live.length - 1);
 		if (startIndex > max) startIndex = 0;
@@ -315,7 +327,8 @@ function openChange(
 	const paintList = (query: string): void => {
 		list.replaceChildren();
 		for (const title of rankSuggestions(query, names)) {
-			const row = list.createEl('button', { text: title, attr: { type: 'button' } });
+			const row = list.createEl('button', { attr: { type: 'button' } });
+			row.createSpan({ cls: 'rv-study-change-label', text: title });
 			if (title === picked) row.classList.add('is-selected');
 			row.addEventListener('click', (event) => {
 				event?.preventDefault?.();

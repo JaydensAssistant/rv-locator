@@ -5,3 +5,8 @@
 export function shouldHideStatusBar(noteHasClass: boolean, setting: boolean, standalone: boolean): boolean {
 	return noteHasClass || (setting && standalone);
 }
+
+/** Phone navbar hides on an RV note, a hub note, and a base opened on its own. */
+export function shouldHideMobileNav(locatorSurface: boolean, standaloneBase: boolean): boolean {
+	return locatorSurface || standaloneBase;
+}

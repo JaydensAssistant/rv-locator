@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { hubUsesStackedMap, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
+import { hubEmbedCapPx, hubUsesStackedMap, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -10,6 +10,8 @@ import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePie
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
+import { rememberGlanceGroups } from './glance-hold';
+import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { rowPriority, rowUrgency } from './row-score';
 import { badgeLineOpticalKey, urgencyOpticalKey } from './badge-glyph';
@@ -203,6 +205,43 @@ export class NearbyGlancableView extends NearbyBasesView {
 		super.renderBody();
 		if (this.totalRows() === 0) this.publishPinOrder([]);
 		this.sizeEmbedFrame();
+	}
+
+	/**
+	 * Keep each card node when its paint key still matches. A Bases delivery
+	 * that paints the same list must not empty the scroller or move scroll.
+	 */
+	protected override fillScroll(): void {
+		this.refreshHubCacheGroups();
+		const groups = this.sortedGroups();
+		const rows = groups.flatMap((group) => group.rows);
+		const labeled = groups.some((group) => group.label);
+		const cards = this.glanceCards();
+		if (labeled || rows.length === 0 || cards.length === 0) {
+			super.fillScroll();
+			return;
+		}
+		if (this.cardsMatch(cards, rows)) {
+			this.root.removeClass('is-glance-pending');
+			if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
+			rememberGlanceGroups(this.groups, this.columns);
+			this.applyDensity();
+			this.applyColumnSnap();
+			this.publishPinOrder(rows.map((row) => row.path));
+			return;
+		}
+		const top = this.scrollEl.scrollTop;
+		const left = this.scrollEl.scrollLeft;
+		this.patchGlanceCards(rows);
+		this.root.removeClass('is-glance-pending');
+		if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
+		rememberGlanceGroups(this.groups, this.columns);
+		this.applyDensity();
+		this.applyColumnSnap();
+		this.snapCardFrames();
+		this.publishPinOrder(rows.map((row) => row.path));
+		if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
+		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
 	}
 
 	protected paint(): void {
@@ -523,6 +562,84 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (compactDates && (showSpoke || showAttempted || showMet || showStudied)) lines.push('dates');
 		if (this.lineOn('met-with') || this.lineOn('visits')) lines.push('foot');
 		this.paintActions(card, rank, row, urgency, priority, compactDates ? lines : null);
+		card.dataset.rvPaint = this.paintSignature(row);
+	}
+
+	private paintSignature(row: RowModel): string {
+		const facts = this.noteFrontmatter(row.path);
+		return cardPaintKey(row, {
+			locationProperty: this.plugin.settings.locationProperty,
+			snoozed: this.plugin.snoozeActiveFor(row.path),
+			campaign: this.plugin.campaignMark(row.path),
+			age: ageCaption(readProperty(facts, 'Age'), readProperty(facts, 'Age Exact')),
+		});
+	}
+
+	private glanceCards(): HTMLElement[] {
+		const grid = this.scrollEl?.querySelector('.rv-locator-card-grid');
+		if (!(grid instanceof HTMLElement)) return [];
+		return Array.from(grid.children).filter((node): node is HTMLElement => (
+			node instanceof HTMLElement && node.classList.contains('rv-locator-card')
+		));
+	}
+
+	private cardsMatch(cards: readonly HTMLElement[], rows: readonly RowModel[]): boolean {
+		if (cards.length !== rows.length) return false;
+		return rows.every((row, index) => {
+			const card = cards[index];
+			return card?.getAttribute('data-rv-path') === row.path
+				&& card.getAttribute('data-rv-paint') === this.paintSignature(row);
+		});
+	}
+
+	private patchGlanceCards(rows: readonly RowModel[]): void {
+		this.distanceEls.clear();
+		this.distanceRows.clear();
+		this.scrollEl.querySelectorAll('.rv-locator-group-label, .rv-locator-empty').forEach((node) => node.remove());
+		const grid = this.ensureCardGrid();
+		const pool = new Map<string, HTMLElement>();
+		for (const card of Array.from(grid.children)) {
+			if (!(card instanceof HTMLElement) || !card.classList.contains('rv-locator-card')) continue;
+			const path = card.getAttribute('data-rv-path') ?? '';
+			if (path && !pool.has(path)) pool.set(path, card);
+		}
+		let cursor: ChildNode | null = grid.firstChild;
+		rows.forEach((row, index) => {
+			const signature = this.paintSignature(row);
+			const key = `0:${index}:${row.path}`;
+			const existing = pool.get(row.path) ?? null;
+			if (existing && existing.getAttribute('data-rv-paint') === signature) {
+				pool.delete(row.path);
+				if (cursor !== existing) grid.insertBefore(existing, cursor);
+				else cursor = existing.nextSibling;
+				this.rebindDistance(existing, row, key);
+				return;
+			}
+			const holder = grid.ownerDocument.createElement('div');
+			this.paintCard(holder, row, key);
+			const fresh = holder.firstElementChild;
+			if (!(fresh instanceof HTMLElement)) return;
+			if (existing) {
+				pool.delete(row.path);
+				if (cursor === existing) cursor = existing.nextSibling;
+				existing.replaceWith(fresh);
+			} else grid.insertBefore(fresh, cursor);
+		});
+		for (const leftover of pool.values()) leftover.remove();
+	}
+
+	private ensureCardGrid(): HTMLElement {
+		const found = this.scrollEl.querySelector('.rv-locator-card-grid');
+		if (found instanceof HTMLElement) return found;
+		const grid = this.scrollEl.createDiv('rv-locator-card-grid');
+		const tail = this.scrollEl.querySelector('.rv-locator-list-disclaimer');
+		if (tail) this.scrollEl.insertBefore(grid, tail);
+		return grid;
+	}
+
+	private rebindDistance(card: HTMLElement, row: RowModel, key: string): void {
+		const dist = card.querySelector('.rv-locator-distance-lg');
+		if (dist instanceof HTMLElement) this.rememberDistance(key, dist, row);
 	}
 
 	private paintCampaignMark(parent: HTMLElement, path: string): void {
@@ -715,10 +832,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const chrome = embedChromePx(this.root.ownerDocument);
 		const rect = typeof embed.getBoundingClientRect === 'function' ? embed.getBoundingClientRect() : null;
 		const top = rect ? rect.top : 0;
-		const fromFrame = top > 1
-			? Math.round(viewport - Math.max(0, top))
-			: (full ? Math.round(viewport) : stackedEmbedCap(viewport, chrome));
-		const cap = Math.max(160, fromFrame || 0);
+		const pad = full ? markdownPreviewPadPx(embed) : 0;
+		const cap = top > 1 || full
+			? hubEmbedCapPx(viewport, top, pad)
+			: Math.max(160, stackedEmbedCap(viewport, chrome));
 		embed.style.setProperty('width', '100%', 'important');
 		embed.style.setProperty('transform', 'none', 'important');
 		embed.style.setProperty('scrollbar-gutter', 'auto', 'important');
@@ -1323,6 +1440,15 @@ function collapseBasesBar(host: HTMLElement, hide: boolean): void {
  * sits on the frame, not above a padding gap. An embed stops at the embed.
  * A base opened on its own stops at the leaf.
  */
+function markdownPreviewPadPx(embed: HTMLElement): number {
+	const preview = embed.closest('.markdown-preview-view, .markdown-reading-view');
+	if (!(preview instanceof HTMLElement)) return 0;
+	const view = embed.ownerDocument?.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return 0;
+	const pad = Number.parseFloat(view.getComputedStyle(preview).paddingTop);
+	return Number.isFinite(pad) && pad > 0 ? pad : 0;
+}
+
 function embedChromePx(doc: Document): number {
 	if (typeof doc.querySelector !== 'function' || typeof getComputedStyle !== 'function') return 0;
 	const style = getComputedStyle(doc.documentElement);

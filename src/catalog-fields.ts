@@ -144,8 +144,15 @@ function mountOptionalLesson(
 	const reveal = (): void => {
 		if (opened) return;
 		opened = true;
-		// Opening the section shows the choice. A study is written only after
-		// Did study, Change, or a mode — not from the prefill sitting behind the panel.
+		const prefill = options.lessonPrefill;
+		// Study status opens this section on its own and logs that next lesson.
+		// A manual expand still waits for Did study, Change, or a mode.
+		if (startOpen && !share.lesson.trim() && prefill?.lesson) {
+			share.lesson = prefill.lesson;
+			share.lessonFrom = prefill.from;
+			share.lessonTo = prefill.to;
+			publish({ lesson: prefill.lesson, lessonFrom: prefill.from, lessonTo: prefill.to });
+		}
 		mountStudyPanel(body, options, share, publish);
 	};
 	if (startOpen) reveal();

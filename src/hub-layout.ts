@@ -27,6 +27,19 @@ export function stackedEmbedCap(viewportPx: number, chromePx: number): number {
 	return Math.max(0, viewportPx - chrome);
 }
 
+/**
+ * Height of a hub embed so the sort bar stays inside the preview.
+ * A laid-out embed top already includes the markdown pad. A top of 0
+ * still has to give that pad back, or the bar is clipped.
+ */
+export function hubEmbedCapPx(viewportPx: number, embedTopPx: number, previewPadPx: number): number {
+	const viewport = Math.max(0, viewportPx);
+	const top = Math.max(0, embedTopPx);
+	const pad = Math.max(0, previewPadPx);
+	const occupied = top > 1 ? top : pad;
+	return Math.max(160, Math.round(viewport - occupied));
+}
+
 /** Map is `mapRatio` of the stage. The handle is the rest of the stage after the cards. */
 export function stackedStageSplit(stagePx: number, handlePx = STACKED_HANDLE_PX, mapRatio = DEFAULT_MAP_RATIO): { cards: number; map: number } {
 	const map = Math.round(stagePx * mapRatio);

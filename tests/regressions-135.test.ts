@@ -922,7 +922,6 @@ describe('phone-first visit surfaces', () => {
 		inputs[0]?.emit?.('blur');
 		inputs[1]?.emit?.('input', 'Video');
 		inputs[1]?.emit?.('blur');
-		clickLabeled(modal.contentEl as never, 'Did study');
 		clickLabeled(modal.contentEl as never, 'Log visit');
 		assert.equal(logged[0]?.lesson, LESSON_1);
 		assert.equal(logged[0]?.publications, 'Tract');
