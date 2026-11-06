@@ -153,6 +153,21 @@ export function mountFittedTitle(parent: HTMLElement, title: string, kind: Title
 	return host;
 }
 
+/** Keep an overlay on the chip. Pull it inside the screen only when the chip itself would cross the edge. */
+export function overlayOnChip(
+	box: { left: number; width: number },
+	viewWidth: number,
+	margin = 8,
+): { left: number; width: number } {
+	const room = Math.max(0, viewWidth - margin * 2);
+	let width = Math.max(0, box.width);
+	let left = box.left;
+	if (width > room) width = room;
+	if (left < margin) left = margin;
+	if (left + width > viewWidth - margin) left = Math.max(margin, viewWidth - margin - width);
+	return { left, width };
+}
+
 export function fitTitleRow(row: HTMLElement): void {
 	const items = Array.from(row.querySelectorAll<HTMLElement>(':scope > .rv-item .rv-fit, :scope > .rv-fit'));
 	if (items.length === 0) return;

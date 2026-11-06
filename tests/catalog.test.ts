@@ -740,8 +740,8 @@ describe('round 1.3.5 callouts, embeds, and modals', () => {
 		assert.match(css, /justify-self: end !important/);
 		assert.match(css, /\.rv-modal-section \{[^}]*margin-top:\s*12px/);
 		assert.match(css, /\.rv-modal-section \{[^}]*padding-top:\s*12px/);
-		assert.match(css, /\.rv-locator-modal \.rv-share-list \{[^}]*border-top: 1px solid var\(--background-modifier-border\)/);
-		assert.match(css, /\.rv-locator-modal \.rv-share-list \{[^}]*margin-top:\s*12px/);
-		assert.match(css, /\.rv-share-list \+ \.rv-share-list \{[^}]*margin-top:\s*12px/);
+		assert.match(css, /\.rv-locator-modal \.rv-share-list \{[^}]*border-top:\s*0/);
+		assert.match(css, /\.rv-locator-modal \.rv-share-list \{[^}]*margin-top:\s*0/);
+		assert.match(css, /\.rv-share-list \+ \.rv-share-list \{[^}]*margin-top:\s*0/);
 	});
 });

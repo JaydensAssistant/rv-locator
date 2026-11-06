@@ -28,9 +28,9 @@ import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, w
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { holdLeafForHubPaint, isHubSwapFile, releaseHubSwapCover } from './hub-cover';
+import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, releaseHubSwapCover, waitForDashboard } from './hub-cover';
 import { paintedHubLeaf } from './hub-open';
-import { hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
+import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
@@ -168,6 +168,9 @@ export default class RVLocatorPlugin extends Plugin {
 	private glanceLayouts = new Set<{ read: () => number; root: HTMLElement | null }>();
 	/** Set while Add a housemate is creating a note. The template skips geocode. */
 	housemateSourcePath: string | null = null;
+	/** RV note that opened the hub. The first painted card with this path gets the land tint. */
+	private hubArrivalPath: string | null = null;
+	private newRvCoverRelease: (() => void) | null = null;
 	private homeBiasKey = '';
 	private homeBiasPoint: GeocodeBias | null = null;
 	/** Hub lists written before the metadata cache catches up, so the chip row updates immediately. */
@@ -264,6 +267,12 @@ export default class RVLocatorPlugin extends Plugin {
 				if (file && !checking) this.confirmArchive(file);
 				return file != null;
 			},
+		});
+
+		this.addCommand({
+			id: 'link-households',
+			name: 'Link households',
+			callback: () => { void this.linkAllHouseholds(); },
 		});
 
 		this.addCommand({
@@ -1142,6 +1151,8 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async launchNewRvTemplate(): Promise<void> {
 		this.creatingNewRv = true;
+		this.newRvCoverRelease?.();
+		this.newRvCoverRelease = mountNewRvCover(document);
 		const releaseRename = installRenameSwallow(WorkspaceLeaf);
 		const dismissRename = (): void => { dismissNoteTitleModal(document); };
 		for (const delay of [0, 50, 200, 600, 1200]) window.setTimeout(dismissRename, delay);
@@ -1173,7 +1184,7 @@ export default class RVLocatorPlugin extends Plugin {
 					if (draft) await this.writeNewRvShare(created, draft);
 					await this.pointNewNoteAtLogTemplates(created);
 					await this.refreshAttemptDigest(created);
-					if (sourcePath) await this.linkHousehold(sourcePath, created);
+					await this.linkHousehold(sourcePath, created);
 				} catch (error) {
 					const reason = error instanceof Error && error.message ? error.message : 'New RV could not finish setup.';
 					new Notice(reason);
@@ -1190,6 +1201,7 @@ export default class RVLocatorPlugin extends Plugin {
 				dismissRename();
 				releaseRename();
 			}, 2000);
+			this.releaseNewRvCover();
 			this.creatingNewRv = false;
 			this.newRvDraft = null;
 			this.housemateSourcePath = null;
@@ -1727,6 +1739,7 @@ export default class RVLocatorPlugin extends Plugin {
 	 * link again would mount a new embed and flash the Bases toolbar.
 	 */
 	private openHubLink(sourcePath: string, target: string): void {
+		this.hubArrivalPath = sourcePath;
 		const dest = this.app.metadataCache.getFirstLinkpathDest(target, sourcePath);
 		const leaf = paintedHubLeaf(this.workspaceLeaves(), dest?.path ?? null, target);
 		if (leaf) {
@@ -1894,6 +1907,7 @@ export default class RVLocatorPlugin extends Plugin {
 				return data.slice(0, info.contentStart) + appendLogLine(ensureAttemptLog(data.slice(info.contentStart)), line);
 			});
 			if (next) void this.geocodeFile(file);
+			void this.linkHousehold(null, file);
 		} finally {
 			if (this.addressCommit.get(path) === next) this.addressCommit.delete(path);
 		}
@@ -2272,7 +2286,10 @@ export default class RVLocatorPlugin extends Plugin {
 					.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === current.path);
 			}
 		}
-		if (!leaf) return;
+		if (!leaf) {
+			this.releaseNewRvCover();
+			return;
+		}
 		await this.openInReadingView(current, true);
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
@@ -2285,6 +2302,13 @@ export default class RVLocatorPlugin extends Plugin {
 			this.stopVisitFocus = armVisitNoteFocus(view.containerEl, '', () => this.markdownRoot(current.path));
 		}
 		placeVisitNoteFocus(view.containerEl, '', 0);
+		await waitForDashboard(view.containerEl);
+		this.releaseNewRvCover();
+	}
+
+	private releaseNewRvCover(): void {
+		this.newRvCoverRelease?.();
+		this.newRvCoverRelease = null;
 	}
 
 	/** Templater's post-create hook. Reading view and the visit note, even if geocode fails. */
@@ -2391,6 +2415,31 @@ export default class RVLocatorPlugin extends Plugin {
 		this.mapSelectedPath = path;
 		for (const scroll of this.hubScrollers) scroll(path);
 		for (const canvas of this.mapCanvases) canvas.focus(path, false);
+	}
+
+	/** The split's note pane. A new tab would leave the map beside the old note. */
+	openSplitNote(path: string): void {
+		const file = this.app.vault.getFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		const host = this.noteMapHost();
+		const leaf = this.app.workspace.getLeavesOfType('markdown').find((candidate) => {
+			const view = candidate.view;
+			return view instanceof MarkdownView && host != null && view.containerEl === host;
+		});
+		if (!leaf) return;
+		this.mapFocusPath = path;
+		this.noteMapOpen = true;
+		void leaf.openFile(file, { active: true, state: { mode: 'preview', source: false } });
+	}
+
+	takeHubArrival(): string | null {
+		const path = this.hubArrivalPath;
+		this.hubArrivalPath = null;
+		return path;
+	}
+
+	keepHubArrival(path: string): void {
+		this.hubArrivalPath = path;
 	}
 
 	notifyMapCleared(): void {
@@ -4251,16 +4300,47 @@ export default class RVLocatorPlugin extends Plugin {
 	 * Link every note at this address to the others, and copy the source note's
 	 * already confirmed location onto the new note. Does not geocode.
 	 */
-	private async linkHousehold(sourcePath: string, created: TFile): Promise<void> {
-		const source = this.app.vault.getFileByPath(sourcePath);
-		if (!source) return;
-		const sourceFrontmatter = await this.freshFrontmatter(source);
+	private async linkHousehold(sourcePath: string | null, created: TFile): Promise<void> {
+		const source = sourcePath ? this.app.vault.getFileByPath(sourcePath) : null;
+		const sourceFrontmatter = source ? await this.freshFrontmatter(source) : null;
 		const createdFrontmatter = await this.freshFrontmatter(created);
 		const sourceAddress = readAddress(sourceFrontmatter, this.settings.addressProperty) ?? '';
 		const createdAddress = readAddress(createdFrontmatter, this.settings.addressProperty) ?? '';
 		const samePlace = sourceAddress.length > 0 && addressesMatchOneForOne(createdAddress, sourceAddress);
-		if (samePlace) await this.copyConfirmedLocation(created, sourceFrontmatter);
-		const key = normalizeAddress(createdAddress);
+		if (samePlace && sourceFrontmatter) await this.copyConfirmedLocation(created, sourceFrontmatter);
+		await this.linkAddressGroup(createdAddress, samePlace && source ? source : null, created);
+	}
+
+	/** One-time pass for notes that already share an address. */
+	private async linkAllHouseholds(): Promise<void> {
+		const property = this.settings.addressProperty;
+		const notes = this.app.vault.getMarkdownFiles().map((file) => {
+			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const address = readAddress(frontmatter, property) ?? '';
+			return { path: file.path, name: file.basename, addressKey: normalizeAddress(address), hub: readProperty(frontmatter, 'Hub') };
+		});
+		const plan = householdLinkNames(notes);
+		let linked = 0;
+		for (const [path, names] of plan) {
+			const file = this.app.vault.getFileByPath(path);
+			const note = notes.find((item) => item.path === path);
+			if (!file || !note) continue;
+			const next = mergeHouseholdHubs(note.hub, names);
+			if (hubLabelList(note.hub) === hubLabelList(next)) continue;
+			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
+				const data = frontmatter as Record<string, unknown>;
+				assignProperty(data, 'Hub', next);
+				this.hubOverride.set(file.path, next.slice());
+			});
+			linked += 1;
+		}
+		this.refreshOpenNoteChrome();
+		for (const callback of this.viewRefreshers) callback();
+		new Notice(linked > 0 ? `Linked ${linked} household notes.` : 'Household links are already in place.');
+	}
+
+	private async linkAddressGroup(address: string, source: TFile | null, created: TFile): Promise<void> {
+		const key = normalizeAddress(address);
 		const files = key
 			? this.app.vault.getMarkdownFiles().filter((file) => {
 				const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
@@ -4269,7 +4349,8 @@ export default class RVLocatorPlugin extends Plugin {
 			})
 			: [];
 		if (!files.some((file) => file.path === created.path)) files.push(created);
-		if (samePlace && !files.some((file) => file.path === source.path)) files.push(source);
+		if (source && !files.some((file) => file.path === source.path)) files.push(source);
+		if (files.length < 2) return;
 		const names = files.map((file) => file.basename);
 		for (const file of files) {
 			const others = names.filter((name) => name !== file.basename);

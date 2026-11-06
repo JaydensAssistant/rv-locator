@@ -3894,7 +3894,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-gender-choice.setting-item,
 .setting-item.rv-gender-choice {
 	padding-top: 2px;
-	padding-bottom: 2px;
+	padding-bottom: 16px;
 }
 
 .rv-gender-choice .setting-item-control button {
@@ -5821,13 +5821,13 @@ body.rv-center-visit-notes .rv-older-heading {
 }
 
 .rv-locator-modal .rv-share-list {
-	border-top: 1px solid var(--background-modifier-border);
-	margin-top: 12px;
-	padding-top: 12px;
+	border-top: 0;
+	margin-top: 0;
+	padding-top: 0;
 }
 
 .rv-share-list + .rv-share-list {
-	margin-top: 12px;
+	margin-top: 0;
 }
 
 .rv-study-change-modal {
@@ -7048,7 +7048,7 @@ button.rv-study-skip,
 
 .modal .setting-item.rv-gender-choice {
 	padding-top: 2px !important;
-	padding-bottom: 2px !important;
+	padding-bottom: 16px !important;
 }
 
 /* Smoke follow-up: one note squircle, slider stops, and the narrow layouts. */
@@ -9852,6 +9852,58 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 .theme-dark .rv-suggest-panel,
 .theme-dark .rv-study-change-list {
 	scrollbar-color: #373737 #1e1e1e;
+}
+
+body.is-phone .workspace-leaf-content:has(.rv-dashboard) > .view-content,
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content {
+	-webkit-mask-image: none !important;
+	mask-image: none !important;
+}
+
+.rv-new-rv-cover {
+	position: fixed;
+	inset: 0;
+	z-index: 50;
+	background: var(--background-primary);
+	pointer-events: auto;
+}
+
+.theme-dark .rv-locator-card.rv-card-land {
+	--rv-land: rgba(255, 255, 255, 0.09);
+}
+
+.theme-light .rv-locator-card.rv-card-land {
+	--rv-land: rgba(0, 0, 0, 0.07);
+}
+
+.rv-locator-card.rv-card-land {
+	position: relative;
+}
+
+.rv-locator-card.rv-card-land::after {
+	content: '';
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background: var(--rv-land, rgba(255, 255, 255, 0.09));
+	animation: rv-land-fade 2s linear forwards;
+}
+
+@keyframes rv-land-fade {
+	0%, 70% { opacity: 1; }
+	100% { opacity: 0; }
+}
+
+.modal.rv-locator-modal .rv-share-list {
+	border-top: 0;
+}
+
+.modal.rv-locator-modal .modal-content > .setting-item:first-child {
+	border-top-width: 0;
+}
+
+.modal.rv-locator-modal .modal-header {
+	border-bottom: 1px solid var(--background-modifier-border);
 }
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header::after {

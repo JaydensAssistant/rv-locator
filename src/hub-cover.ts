@@ -318,3 +318,40 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 	if (view?.requestAnimationFrame) view.requestAnimationFrame(tick);
 	else tick();
 }
+
+const NEW_RV_COVER = 'rv-new-rv-cover';
+
+/** Cover the workspace until the new note's dashboard is on screen. */
+export function mountNewRvCover(doc: Document): () => void {
+	const body = doc.body;
+	if (!body) return () => {};
+	const existing = doc.querySelector(`.${NEW_RV_COVER}`);
+	if (existing) existing.remove();
+	const cover = doc.createElement('div');
+	cover.className = NEW_RV_COVER;
+	cover.setAttribute('aria-hidden', 'true');
+	body.appendChild(cover);
+	let gone = false;
+	return () => {
+		if (gone) return;
+		gone = true;
+		cover.remove();
+	};
+}
+
+/** Resolve once `root` contains the RV dashboard, or when the clock runs out. */
+export function waitForDashboard(root: HTMLElement, ms = 4000): Promise<void> {
+	const view = root.ownerDocument.defaultView;
+	const start = Date.now();
+	return new Promise((resolve) => {
+		const tick = (): void => {
+			if (root.querySelector('.rv-dashboard') || Date.now() - start >= ms) {
+				resolve();
+				return;
+			}
+			if (view?.requestAnimationFrame) view.requestAnimationFrame(tick);
+			else setTimeout(tick, 16);
+		};
+		tick();
+	});
+}

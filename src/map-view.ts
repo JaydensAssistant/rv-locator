@@ -25,6 +25,8 @@ export interface MapHost {
 	hubMapIsFullscreen?(): boolean;
 	setHubMapFullscreen?(on: boolean): void;
 	notifyPin?(path: string): void;
+	/** Note/map split: open this RV in the note pane, not a new tab. */
+	openSplitNote?(path: string): void;
 	notifyMapCleared?(): void;
 	hideSplitMap?(): void;
 	promptUrgencyMenu?(path: string, name: string, event: MouseEvent): void;
@@ -939,6 +941,14 @@ export class RvMapView extends ItemView {
 			this.popupPath = null;
 			this.popupPanned = false;
 			this.setZoom(zoomToRevealPin(zed), true);
+			return;
+		}
+		if (this.fullscreenScope === 'split' && !this.isFullscreen()) {
+			this.pinTapKind = 'open';
+			this.selectedPath = chosen.path;
+			this.popupPath = null;
+			this.host.openSplitNote?.(chosen.path);
+			button.addClass('is-selected');
 			return;
 		}
 		this.pinTapKind = 'open';

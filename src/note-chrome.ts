@@ -17,7 +17,7 @@ import type { RVLocatorSettings } from './types';
 import { formatStudyFraction, lessonPillLabel } from './catalog';
 import { paintUrgencyInk } from './color-math';
 import { SNOOZE_SLATE } from './snooze';
-import { armHoverTooltip, displayTitle, fitEndEllipsis, plainTitleTruncated, showTitlePopover } from './title-fit';
+import { armHoverTooltip, displayTitle, fitEndEllipsis, overlayOnChip, plainTitleTruncated, showTitlePopover } from './title-fit';
 import { cardPersonTitle } from './note-name';
 import { ageCaption, appendPersonMeta } from './person-meta';
 import { urgencyColorsFor } from './urgency-palette';
@@ -885,8 +885,10 @@ function showChipOverlay(el: HTMLElement, full: string): void {
 	}
 	doc.body.appendChild(card);
 	const box = el.getBoundingClientRect();
-	card.style.left = `${box.left}px`;
-	card.style.width = `${Math.max(0, box.width)}px`;
+	const viewWidth = doc.defaultView?.innerWidth ?? box.left + box.width;
+	const fitted = overlayOnChip(box, viewWidth);
+	card.style.left = `${fitted.left}px`;
+	card.style.width = `${fitted.width}px`;
 	card.style.top = `${box.top}px`;
 	factCard = card;
 }

@@ -258,6 +258,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const cards = this.glanceCards();
 		if (labeled || rows.length === 0 || cards.length === 0) {
 			super.fillScroll();
+			this.landArrival();
 			return;
 		}
 		if (this.cardsMatch(cards, rows)) {
@@ -267,6 +268,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.applyDensity();
 			this.applyColumnSnap();
 			this.publishPinOrder(rows.map((row) => row.path));
+			this.landArrival();
 			return;
 		}
 		const top = this.scrollEl.scrollTop;
@@ -281,6 +283,23 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.publishPinOrder(rows.map((row) => row.path));
 		if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
 		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
+		this.landArrival();
+	}
+
+	/** Hub link from an RV: scroll to that card and tint it, then let the tint fade. */
+	private landArrival(): void {
+		const path = this.plugin.takeHubArrival();
+		if (!path || !this.scrollEl) return;
+		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
+		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
+		if (!(card instanceof HTMLElement)) {
+			this.plugin.keepHubArrival(path);
+			return;
+		}
+		revealHubCard(this.scrollEl, card);
+		card.classList.remove('rv-card-flash');
+		card.classList.add('rv-card-land');
+		window.setTimeout(() => card.classList.remove('rv-card-land'), 2000);
 	}
 
 	protected paint(): void {

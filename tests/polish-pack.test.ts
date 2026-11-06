@@ -157,7 +157,7 @@ describe('polish pack data', () => {
 		assert.equal(stackCountLabel(4), '4');
 		assert.equal(stackCountLabel(120), '99+');
 		assert.equal(tapZoomsStack(12, 2), true);
-		assert.equal(tapZoomsStack(12, 1), false);
+		assert.equal(tapZoomsStack(12, 1), true);
 		assert.equal(tapZoomsStack(13, 4), false);
 		assert.equal(tapOpensTop(13, 4), true);
 	});

@@ -3,7 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter, stripStampAge, visibleStampText } from './dates';
-import { fitTitleRow, mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
+import { fitTitleRow, mountFittedTitle, overlayOnChip, showTitlePopover, watchTitleRow } from './title-fit';
 import { layoutVisitNotes, mountHeadingChevron, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
 
@@ -599,8 +599,10 @@ function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
 	}
 	doc.body.appendChild(card);
 	const box = chip.getBoundingClientRect();
-	card.style.left = `${box.left}px`;
-	card.style.width = `${Math.max(0, box.width)}px`;
+	const viewWidth = doc.defaultView?.innerWidth ?? box.left + box.width;
+	const placed = overlayOnChip(box, viewWidth);
+	card.style.left = `${placed.left}px`;
+	card.style.width = `${placed.width}px`;
 	card.style.top = `${box.top}px`;
 	const view = doc.defaultView ?? window;
 	const onDoc = (event: Event): void => {

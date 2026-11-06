@@ -342,9 +342,9 @@ export function pinsToDraw<T extends StackMember>(group: readonly T[]): { drawn:
 	return { drawn: ordered.slice(0, STACK_DRAW_CAP), label: stackCountLabel(group.length) };
 }
 
-/** A tap at zoom 12 or below on a pin that overlaps another zooms in instead of opening. */
+/** A tap at zoom 12 or below zooms in, including a pin that sits alone. */
 export function tapZoomsStack(zoom: number, overlaps: number): boolean {
-	return zoom <= CLUSTER_ZOOM_MAX && overlaps > 1;
+	return zoom <= CLUSTER_ZOOM_MAX && overlaps >= 1;
 }
 
 /** At a closer zoom the tap opens the hottest pin in the overlap, which is the top one. */

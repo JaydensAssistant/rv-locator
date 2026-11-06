@@ -47,14 +47,36 @@ export function hubRefs(value: unknown): HubRef[] {
 	return refs;
 }
 
+export interface HouseholdNote {
+	path: string;
+	name: string;
+	addressKey: string;
+}
+
 /**
- * Move the hub with this label one place toward the start.
- * Returns null when it is already first or missing, so the note is not rewritten.
+ * Other names each note should gain on Hub.
+ * A single note at an address, and a blank address, stay out of the plan.
  */
-/**
- * Keep every hub already on the note, then add a wikilink for each other person
- * at the same address. A name already listed is not added again.
- */
+export function householdLinkNames(notes: readonly HouseholdNote[]): Map<string, string[]> {
+	const groups = new Map<string, HouseholdNote[]>();
+	for (const note of notes) {
+		const key = note.addressKey.trim();
+		if (!key) continue;
+		const list = groups.get(key) ?? [];
+		list.push(note);
+		groups.set(key, list);
+	}
+	const plan = new Map<string, string[]>();
+	for (const group of groups.values()) {
+		if (group.length < 2) continue;
+		for (const note of group) {
+			plan.set(note.path, group.filter((other) => other.path !== note.path).map((other) => other.name));
+		}
+	}
+	return plan;
+}
+
+/** Keep every hub already on the note, then add a wikilink for each other person at the same address. */
 export function mergeHouseholdHubs(current: unknown, otherNames: readonly string[]): unknown[] {
 	const list: unknown[] = [];
 	if (Array.isArray(current)) {
@@ -72,6 +94,10 @@ export function mergeHouseholdHubs(current: unknown, otherNames: readonly string
 	return list;
 }
 
+/**
+ * Move the hub with this label one place toward the start.
+ * Returns null when it is already first or missing, so the note is not rewritten.
+ */
 export function moveHubLeft(items: readonly unknown[], label: string): unknown[] | null {
 	const index = items.findIndex((item) => hubLabel(item) === label);
 	if (index <= 0) return null;
