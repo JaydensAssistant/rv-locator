@@ -844,7 +844,15 @@ function chipHostIsPhone(el: HTMLElement): boolean {
 	return body.classList.contains('is-phone') || body.classList.contains('is-mobile');
 }
 
+let factCard: HTMLElement | null = null;
+
+function clearFactCard(): void {
+	factCard?.remove();
+	factCard = null;
+}
+
 function collapseChipReveal(): void {
+	clearFactCard();
 	const current = openChip;
 	openChip = null;
 	if (!(current instanceof HTMLElement) || !current.isConnected) return;
@@ -858,13 +866,29 @@ function showChipOverlay(el: HTMLElement, full: string): void {
 	if (openChip && openChip !== el) collapseChipReveal();
 	openChip = el;
 	el.classList.add('is-revealed');
-	const view = el.ownerDocument.defaultView;
-	const width = view?.innerWidth ?? 0;
-	if (width <= 0) return;
+	el.style.removeProperty('max-width');
+	clearFactCard();
+	const doc = el.ownerDocument;
+	const card = doc.createElement('div');
+	card.className = 'rv-fact-overlay';
+	const title = el.querySelector('.rv-qf-chip-title')?.textContent ?? full;
+	const type = el.querySelector('.rv-qf-chip-type')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+	const text = doc.createElement('span');
+	text.className = 'rv-fact-overlay-title';
+	text.textContent = title;
+	card.appendChild(text);
+	if (type) {
+		const suffix = doc.createElement('span');
+		suffix.className = 'rv-fact-overlay-type';
+		suffix.textContent = ` ${type}`;
+		card.appendChild(suffix);
+	}
+	doc.body.appendChild(card);
 	const box = el.getBoundingClientRect();
-	const limit = width - 8;
-	if (box.right > limit) el.style.maxWidth = `${Math.max(40, limit - box.left)}px`;
-	else el.style.removeProperty('max-width');
+	card.style.left = `${box.left}px`;
+	card.style.width = `${Math.max(0, box.width)}px`;
+	card.style.top = `${box.top}px`;
+	factCard = card;
 }
 
 function armChipDismiss(doc: Document): void {
@@ -1478,11 +1502,6 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		const label = link.querySelector('.rv-hub-chip-label');
-		if (label instanceof HTMLElement && chipHostIsPhone(link) && plainTitleTruncated(label)) {
-			showTitlePopover(label, label.dataset.full || label.dataset.rvTip || hub.label);
-			return;
-		}
 		host.openHub(path, hub.target);
 	});
 	const openMenu = (event: MouseEvent) => {
@@ -1494,6 +1513,10 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 		event.stopPropagation();
 		link.dataset.rvMenu = '1';
 		const menu = new Menu();
+		menu.addItem((item) => {
+			const named = item.setTitle(hub.label) as { setDisabled?: (disabled: boolean) => void };
+			named.setDisabled?.(true);
+		});
 		if (index > 0) {
 			menu.addItem((item) => {
 				item.setTitle('Move Left');

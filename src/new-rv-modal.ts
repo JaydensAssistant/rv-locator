@@ -163,7 +163,7 @@ export class NewRvIdentityModal extends Modal {
 						if (picked === SUGGEST_PENDING) return;
 						const hit = this.addressResults.find((item) => item.formattedAddress === picked);
 						if (hit) this.selectAddress(hit);
-					});
+					}, undefined, (rows) => this.addressBands(rows));
 					const home = this.options.suggestHome;
 					const broad = this.options.suggestBroad;
 					if (home && broad) {
@@ -177,6 +177,8 @@ export class NewRvIdentityModal extends Modal {
 								...hit,
 								formattedAddress: hit.formattedAddress.replace(/\s+/g, ' ').trim(),
 							}));
+							const near = new Set((view.nearHome ?? []).map((hit) => hit.formattedAddress.replace(/\s+/g, ' ').trim().toLowerCase()));
+							this.nearAddresses = near;
 							text.inputEl?.dispatchEvent(new Event('rv-suggest-sync'));
 						}, this.options.addressCache?.());
 					}
@@ -326,11 +328,26 @@ export class NewRvIdentityModal extends Modal {
 		if (!addressesMatchOneForOne(value, this.verifiedHit.formattedAddress)) this.verifiedHit = null;
 	}
 
+	private nearAddresses = new Set<string>();
+
 	private addressChevronItems(): string[] {
 		const typed = this.addressInput?.inputEl instanceof HTMLInputElement ? this.addressInput.inputEl.value : this.address;
 		if (!typed.trim()) return [SUGGEST_PENDING];
 		const labels = this.addressResults.map((hit) => hit.formattedAddress).filter((label) => label.length > 0);
 		return this.addressLoading ? [SUGGEST_PENDING, ...labels] : labels;
+	}
+
+	private addressBands(rows: readonly string[]): { label: string; items: readonly string[] }[] {
+		const home: string[] = [];
+		const more: string[] = [];
+		for (const row of rows) {
+			if (this.nearAddresses.has(row.trim().toLowerCase())) home.push(row);
+			else more.push(row);
+		}
+		const bands: { label: string; items: readonly string[] }[] = [];
+		if (home.length > 0) bands.push({ label: 'NEAR HOME', items: home });
+		if (more.length > 0) bands.push({ label: 'MORE RESULTS', items: more });
+		return bands;
 	}
 
 	private selectAddress(hit: GeocodeHit): void {
@@ -557,12 +574,15 @@ function mountAgeSymbol(input: HTMLElement, exact: () => boolean, setExact: (val
 	const doc = input.ownerDocument;
 	const close = (event: Event): void => {
 		if (!button.isConnected) {
-			doc.removeEventListener('pointerdown', close);
+			doc.removeEventListener('click', close, true);
 			return;
 		}
+		if (panel.hidden) return;
 		const target = event.target;
 		if (target instanceof Node && parent.contains(target)) return;
+		event.preventDefault();
+		event.stopPropagation();
 		panel.hidden = true;
 	};
-	doc.addEventListener('pointerdown', close);
+	doc.addEventListener('click', close, true);
 }

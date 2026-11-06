@@ -7,12 +7,6 @@ import { isClosingPart, sliderStopsFor } from './lesson-stops';
 
 export type { CatalogTitle };
 
-/** Official publication titles, in list order. */
-export const PUBLICATION_TITLES: readonly string[] = PUBLICATION_ENTRIES.map((entry) => entry.title);
-
-/** Official media titles, in list order. */
-export const MEDIA_TITLES: readonly string[] = MEDIA_ENTRIES.map((entry) => entry.title);
-
 export type ReviewSection = 1 | 2 | 3 | 4;
 
 /**
@@ -57,11 +51,46 @@ const TITLE_SUFFIXES = [
 	'Watchtower',
 	'Brochure',
 	'Awake!',
+	'Invite',
 	'Tract',
 	'Book',
+	'Card',
 	'Video',
 	'Study',
 ] as const;
+
+/** Wrapping straight quotes around a catalog title. Inner curly quotes stay. */
+export function unwrapStrayQuotes(title: string): string {
+	if (!title.startsWith('"')) return title;
+	const close = title.indexOf('"', 1);
+	if (close < 1) return title;
+	const inner = title.slice(1, close).trim();
+	const rest = title.slice(close + 1).trim();
+	return rest ? `${inner} ${rest}`.replace(/\s+/g, ' ').trim() : inner;
+}
+
+const legacySuffix = new Map<string, string>();
+
+function cleanCatalog(entries: readonly CatalogTitle[]): CatalogTitle[] {
+	return entries.map((entry) => {
+		const title = unwrapStrayQuotes(entry.title);
+		if (entry.suffix) legacySuffix.set(entry.title, entry.suffix);
+		if (title === entry.title) return entry;
+		const aliases = [...(entry.aliases ?? [])];
+		if (!aliases.includes(entry.title)) aliases.push(entry.title);
+		if (entry.suffix) legacySuffix.set(title, entry.suffix);
+		return { ...entry, title, aliases };
+	});
+}
+
+const PUBLICATION_CLEAN = cleanCatalog(PUBLICATION_ENTRIES);
+const MEDIA_CLEAN = cleanCatalog(MEDIA_ENTRIES);
+
+/** Official publication titles, in list order. Wrapping quotes are already gone. */
+export const PUBLICATION_TITLES: readonly string[] = PUBLICATION_CLEAN.map((entry) => entry.title);
+
+/** Official media titles, in list order. Wrapping quotes are already gone. */
+export const MEDIA_TITLES: readonly string[] = MEDIA_CLEAN.map((entry) => entry.title);
 
 const quoteCache = new Map<string, string>();
 
@@ -80,14 +109,15 @@ let suffixByTitle: Map<string, string> | null = null;
 function knownSuffix(title: string, clean: string): string {
 	if (!suffixByTitle) {
 		suffixByTitle = new Map();
-		for (const entry of [...PUBLICATION_ENTRIES, ...MEDIA_ENTRIES]) {
+		for (const entry of [...PUBLICATION_CLEAN, ...MEDIA_CLEAN]) {
 			if (!entry.suffix) continue;
 			suffixByTitle.set(entry.title, entry.suffix);
 			const bare = entry.title.replace(/^[\s"'“”«»]+|[\s"'“”«»]+$/g, '').trim();
 			suffixByTitle.set(bare, entry.suffix);
 		}
+		for (const [quoted, suffix] of legacySuffix) suffixByTitle.set(quoted, suffix);
 	}
-	return suffixByTitle.get(title) ?? suffixByTitle.get(clean) ?? '';
+	return suffixByTitle.get(title) ?? suffixByTitle.get(clean) ?? legacySuffix.get(title) ?? '';
 }
 
 /** Title text and the type suffix that stays visible when the row truncates. */
@@ -95,7 +125,13 @@ export function splitTitleSuffix(title: string): { text: string; suffix: string 
 	const cached = suffixCache.get(title);
 	if (cached) return cached;
 	const clean = stripTitleQuotes(title);
-	const suffix = knownSuffix(title, clean) || TITLE_SUFFIXES.find((item) => clean.endsWith(` ${item}`)) || '';
+	const known = knownSuffix(title, clean);
+	if (known && !clean.endsWith(known)) {
+		const attached = { text: clean, suffix: known };
+		suffixCache.set(title, attached);
+		return attached;
+	}
+	const suffix = known || TITLE_SUFFIXES.find((item) => clean.endsWith(` ${item}`)) || '';
 	const result = !suffix || !clean.endsWith(suffix)
 		? { text: clean, suffix: '' }
 		: { text: clean.slice(0, -suffix.length).trimEnd(), suffix };
@@ -446,8 +482,81 @@ function escapeRegExp(value: string): string {
 	return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const PUBLICATION_ALIASES = aliasIndex(PUBLICATION_ENTRIES);
-const MEDIA_ALIASES = aliasIndex(MEDIA_ENTRIES);
+const PUBLICATION_ALIASES = aliasIndex(PUBLICATION_CLEAN);
+const MEDIA_ALIASES = aliasIndex(MEDIA_CLEAN);
+
+const BAND_LABEL: Record<string, string> = {
+	'Tiny Tract': 'TINY TRACTS',
+	Tract: 'TRACTS',
+	Brochure: 'BROCHURES',
+	'Awake!': 'AWAKE!',
+	Watchtower: 'WATCHTOWER',
+	Book: 'BOOKS',
+	Invite: 'INVITES',
+	Card: 'CARDS',
+	Video: 'VIDEOS',
+	Study: 'STUDIES',
+	'Become Jehovah’s Friend': 'BECOME JEHOVAH’S FRIEND',
+};
+
+const BAND_ORDER = ['RECENT', 'TINY TRACTS', 'TRACTS', 'BROCHURES', 'AWAKE!', 'WATCHTOWER', 'BOOKS', 'INVITES', 'CARDS', 'VIDEOS', 'STUDIES', 'BECOME JEHOVAH’S FRIEND'];
+
+export interface CatalogBand {
+	label: string;
+	items: readonly string[];
+}
+
+const recentCatalog: string[] = [];
+
+/** A picked catalog title leads the Recent band on the next suggester paint. */
+export function rememberRecentCatalog(title: string): void {
+	const text = title.trim();
+	if (!text) return;
+	const key = text.toLowerCase();
+	const next = [text, ...recentCatalog.filter((item) => item.toLowerCase() !== key)].slice(0, 8);
+	recentCatalog.length = 0;
+	recentCatalog.push(...next);
+}
+
+export function recentCatalogTitles(): readonly string[] {
+	return recentCatalog;
+}
+
+function bandLabel(suffix: string): string {
+	return BAND_LABEL[suffix] ?? (suffix ? suffix.toUpperCase() : 'OTHER');
+}
+
+/**
+ * Recent titles first, then one band per type. A recent title stays in its type band too.
+ * `fallback` covers media rows whose stored title has no suffix of its own.
+ */
+export function catalogBands(items: readonly string[], recent: readonly string[] = recentCatalog, fallback = ''): CatalogBand[] {
+	const recentKeys = new Set(recent.map((item) => item.trim().toLowerCase()).filter(Boolean));
+	const grouped = new Map<string, string[]>();
+	const recentItems: string[] = [];
+	for (const item of items) {
+		const text = item.trim();
+		if (!text || text.startsWith('\u0000')) continue;
+		if (recentKeys.has(text.toLowerCase())) recentItems.push(text);
+		const suffix = splitTitleSuffix(text).suffix || fallback;
+		const label = bandLabel(suffix);
+		const list = grouped.get(label) ?? [];
+		list.push(text);
+		grouped.set(label, list);
+	}
+	const bands: CatalogBand[] = [];
+	if (recentItems.length > 0) bands.push({ label: 'RECENT', items: recentItems });
+	const labels = [...grouped.keys()].sort((a, b) => {
+		const ai = BAND_ORDER.indexOf(a);
+		const bi = BAND_ORDER.indexOf(b);
+		return (ai < 0 ? BAND_ORDER.length : ai) - (bi < 0 ? BAND_ORDER.length : bi);
+	});
+	for (const label of labels) {
+		const list = grouped.get(label);
+		if (list && list.length > 0) bands.push({ label, items: list });
+	}
+	return bands;
+}
 
 function aliasIndex(entries: readonly CatalogTitle[]): Record<string, readonly string[]> {
 	const map: Record<string, readonly string[]> = {};

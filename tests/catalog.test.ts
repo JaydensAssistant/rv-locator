@@ -66,17 +66,17 @@ function beatsSpecificity(stronger: [number, number, number], weaker: [number, n
 
 describe('official catalogs', () => {
 	it('loads the supplied titles and keeps aliases out of the row', () => {
-		assert.equal(PUBLICATION_TITLES.length, 57);
+		assert.equal(PUBLICATION_TITLES.length, 60);
 		assert.equal(MEDIA_TITLES.length, 123);
 		assert.equal(LESSONS.length, 64);
-		assert.equal(PUBLICATION_TITLES[0], '"Can We Enjoy Life Forever?" Tiny Tract');
+		assert.equal(PUBLICATION_TITLES[0], 'Can We Enjoy Life Forever? Tiny Tract');
 		assert.equal(LESSONS[12]?.title, 'Section 1 Review');
 		assert.equal(LESSONS[12]?.reviewSection, 1);
 		assert.equal(LESSONS.at(-1)?.title, 'Section 4 Review');
 		assert.equal(PUBLICATION_TITLES.includes('Meeting Invite'), false);
 		assert.equal(MEDIA_TITLES.some((title) => title.includes('Caleb and Sofia Video')), false);
 		const ranked = catalogSuggestions(PUBLICATION_TITLES, [], 'meeting invite', publicationAliasIndex());
-		assert.equal(ranked[0], '"Invitation to Congregation Meetings"');
+		assert.equal(ranked[0], 'Invitation to Congregation Meetings');
 		const media = catalogSuggestions(MEDIA_TITLES, [], 'precious caleb', mediaAliasIndex());
 		assert.equal(media[0]?.includes('You Are Precious to Jehovah'), true);
 		assert.equal(media[0]?.includes('Caleb and Sofia'), false);

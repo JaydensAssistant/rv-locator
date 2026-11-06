@@ -857,7 +857,7 @@ describe('phone-first visit surfaces', () => {
 			rowHeight: row,
 		});
 		assert.equal(keyboard.above, true);
-		assert.equal(keyboard.maxHeight, 218);
+		assert.equal(keyboard.maxHeight, 220);
 		const tight = suggestPanelPlacement({
 			anchorTop: 4,
 			anchorBottom: 48,
@@ -866,7 +866,7 @@ describe('phone-first visit surfaces', () => {
 			rowHeight: row,
 		});
 		assert.equal(tight.above, false);
-		assert.equal(tight.maxHeight, 20);
+		assert.equal(tight.maxHeight, 22);
 		const suggest = readFileSync('src/suggest-field.ts', 'utf8');
 		const css = readFileSync('styles.css', 'utf8');
 		assert.match(suggest, /visualViewport/);

@@ -1,5 +1,6 @@
 import { Setting, setIcon } from 'obsidian';
 import {
+	catalogBands,
 	catalogSuggestions,
 	lessonBounds,
 	lessonByTitle,
@@ -7,6 +8,8 @@ import {
 	mediaAliasIndex,
 	publicationAliasIndex,
 	rankSuggestions,
+	recentCatalogTitles,
+	rememberRecentCatalog,
 	shareTitles,
 	splitTitleSuffix,
 	type LessonSpec,
@@ -248,10 +251,11 @@ function mountTitleList(
 			commit(draft);
 		});
 		mountAlwaysChevron(text.inputEl, () => suggestions(draft), (picked) => {
+			rememberRecentCatalog(picked);
 			draft = '';
 			text.setValue('');
 			commit(picked);
-		}, (value) => splitTitleSuffix(value));
+		}, (value) => splitTitleSuffix(value), (rows) => catalogBands(rows, [...items, ...recentCatalogTitles()], kind === 'media' ? 'Video' : ''));
 	});
 	paintChips();
 }

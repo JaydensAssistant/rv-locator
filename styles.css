@@ -3029,7 +3029,7 @@ button.rv-suggest-chevron {
 .rv-suggest-panel {
 	position: absolute;
 	z-index: 40;
-	top: calc(100% + 2px);
+	top: 100%;
 	right: 0;
 	left: 0;
 	box-sizing: border-box;
@@ -3045,7 +3045,7 @@ button.rv-suggest-chevron {
 
 .rv-suggest-panel.is-above {
 	top: auto;
-	bottom: calc(100% + 2px);
+	bottom: 100%;
 }
 
 .rv-suggest-option {
@@ -5834,17 +5834,21 @@ body.rv-center-visit-notes .rv-older-heading {
 	position: fixed;
 	z-index: 60;
 	left: 50%;
-	top: 12vh;
+	top: 8px;
+	bottom: 8px;
 	transform: translateX(-50%);
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
-	width: min(420px, calc(100vw - 24px));
+	width: min(640px, calc(100vw - 16px));
+	height: auto;
+	max-height: calc(100dvh - 16px);
 	padding: 16px;
 	background: var(--modal-background, var(--background-primary));
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 8px;
 	box-shadow: var(--shadow-l);
+	box-sizing: border-box;
 }
 
 .rv-suggest-hint {
@@ -9475,24 +9479,9 @@ h5.rv-visit-stamp + .rv-item-strip {
 	font-weight: 700;
 }
 
+/* The open chip stays one line. The full title is the overlay card, so the rows under it do not move. */
 .rv-qf-chip.is-revealed {
-	height: auto;
-	max-height: none;
-	overflow: visible;
 	z-index: 2;
-	align-items: flex-start;
-	white-space: normal;
-}
-
-.rv-qf-chip.is-revealed .rv-qf-chip-group {
-	flex-wrap: wrap;
-	white-space: normal;
-}
-
-.rv-qf-chip.is-revealed .rv-qf-chip-title {
-	white-space: normal;
-	overflow: visible;
-	text-overflow: clip;
 }
 
 .rv-qf-chip.is-blank {
@@ -9598,6 +9587,271 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-ti
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header {
 	position: relative;
+}
+
+/* Clear pack. Joined suggester, dark sheet chrome, overlays that do not reflow. */
+
+:is(h3, h5).rv-visit-stamp :is(.heading-collapse-indicator, .collapse-indicator),
+.el-h3:has(> :is(h3, h5).rv-visit-stamp) > :is(.heading-collapse-indicator, .collapse-indicator),
+.el-h5:has(> :is(h3, h5).rv-visit-stamp) > :is(.heading-collapse-indicator, .collapse-indicator),
+.markdown-preview-section:has(> :is(h3, h5).rv-visit-stamp) > :is(.heading-collapse-indicator, .collapse-indicator),
+.cm-line.rv-lp-visit-heading .cm-fold-indicator {
+	display: none !important;
+}
+
+.rv-locator-modal .rv-suggest-host,
+.rv-suggest-host {
+	column-gap: 0;
+	gap: 0;
+	align-items: stretch;
+}
+
+.rv-suggest-host > input,
+.rv-locator-modal .rv-suggest-host > input {
+	box-sizing: border-box;
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+	border: 1px solid var(--background-modifier-border);
+	border-right-width: 0;
+	border-radius: 6px 0 0 6px;
+	box-shadow: none;
+}
+
+.rv-suggest-host > button.rv-suggest-chevron {
+	border: 1px solid var(--interactive-accent, #1f8a4c);
+	border-radius: 0 6px 6px 0;
+	box-shadow: none;
+	background: var(--background-primary);
+	color: var(--interactive-accent, #1f8a4c);
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+	align-self: stretch;
+}
+
+.rv-suggest-panel {
+	border-top-left-radius: 0;
+	border-top-right-radius: 0;
+	box-shadow: none;
+}
+
+.rv-suggest-panel.is-above {
+	border-top-left-radius: var(--radius-s, 6px);
+	border-top-right-radius: var(--radius-s, 6px);
+	border-bottom-left-radius: 0;
+	border-bottom-right-radius: 0;
+}
+
+.rv-suggest-band {
+	padding: 6px 10px 2px;
+	background: var(--background-secondary);
+	color: var(--text-muted);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	line-height: 1.4;
+}
+
+.rv-suggest-panel .rv-suggest-option,
+.rv-suggest-panel .rv-suggest-option:not(.rv-title-option) {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+	padding: 0 10px;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	background: transparent;
+	line-height: 40px;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	-webkit-line-clamp: unset;
+	-webkit-box-orient: unset;
+}
+
+.rv-suggest-panel .rv-title-option .rv-title-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-suggest-panel .rv-title-option .rv-title-suffix {
+	flex: 0 0 auto;
+}
+
+.rv-locator-modal .modal-content,
+.rv-suggest-panel,
+.rv-study-change-list {
+	scrollbar-width: thin;
+}
+
+.modal.rv-locator-modal {
+	width: min(640px, calc(100vw - 16px));
+	height: calc(100dvh - 16px);
+	max-height: calc(100dvh - 16px);
+}
+
+.rv-locator-modal .rv-modal-actions button,
+.rv-study-change-modal .rv-modal-actions button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+}
+
+.rv-locator-modal .rv-modal-icon,
+.rv-study-change-modal .rv-modal-icon {
+	color: var(--text-accent, #1f8a4c);
+}
+
+.rv-study-change-list {
+	flex: 1 1 auto;
+	min-height: 0;
+	max-height: none;
+	gap: 0;
+}
+
+.rv-study-change-list > button {
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+	white-space: nowrap;
+}
+
+.rv-study-change-modal input[type="search"] {
+	box-sizing: border-box;
+	width: 100%;
+	height: 40px;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	box-shadow: none;
+}
+
+.rv-item-strip.is-revealing > .rv-item.is-squeezed {
+	flex: 0 0 auto;
+}
+
+.rv-item-strip.is-revealing > .rv-item.is-open {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.rv-strip-overlay,
+.rv-fact-overlay {
+	position: fixed;
+	z-index: 40;
+	box-sizing: border-box;
+	margin: 0;
+	text-align: center;
+	white-space: normal;
+	line-height: 1.35;
+	pointer-events: auto;
+}
+
+.rv-strip-overlay {
+	padding: 2px 8px 6px;
+	background: color-mix(in srgb, var(--background-primary) 96%, var(--text-normal));
+	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rv-fact-overlay {
+	padding: 4px 8px;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 5px;
+}
+
+.rv-strip-overlay-type,
+.rv-fact-overlay-type {
+	color: var(--text-muted);
+}
+
+.rv-hub-chip,
+.rv-hub-chip > .rv-hub-chip-label {
+	white-space: nowrap;
+	flex-wrap: nowrap;
+}
+
+.theme-dark .modal.rv-locator-modal,
+.theme-dark .rv-study-change-modal {
+	background: #1e1e1e;
+	border-color: #2f2f2f;
+}
+
+.theme-dark .modal.rv-locator-modal .modal-content,
+.theme-dark .modal.rv-locator-modal .modal-header {
+	background: #1e1e1e;
+}
+
+.theme-dark .modal.rv-locator-modal .modal-title {
+	text-align: left;
+}
+
+.theme-dark .modal.rv-locator-modal .modal-close-button {
+	background: transparent;
+	box-shadow: none;
+	border-radius: 0;
+	color: var(--text-muted);
+}
+
+.theme-dark .rv-suggest-panel,
+.theme-dark .rv-study-change-list {
+	background: #262626;
+	border-color: #373737;
+}
+
+.theme-dark .rv-suggest-band {
+	background: #222222;
+}
+
+.theme-dark .rv-suggest-panel .rv-suggest-option {
+	border-bottom: 1px solid #373737;
+}
+
+.theme-dark .rv-locator-modal .rv-suggest-host > input,
+.theme-dark .rv-study-change-modal input[type="search"] {
+	background: #2a2a2a;
+	border-color: #262626;
+}
+
+.theme-dark .rv-suggest-host > button.rv-suggest-chevron {
+	border-color: #2e9e5b;
+	color: #2e9e5b;
+	background: #2a2a2a;
+}
+
+.rv-suggest-host > button.rv-suggest-chevron,
+.modal.rv-locator-modal button.rv-age-symbol {
+	border: 1px solid var(--interactive-accent, #1f8a4c) !important;
+	border-radius: 0 6px 6px 0 !important;
+	box-shadow: none !important;
+	background: var(--background-primary) !important;
+	color: var(--interactive-accent, #1f8a4c) !important;
+}
+
+.theme-dark .rv-suggest-host > button.rv-suggest-chevron,
+.theme-dark .modal.rv-locator-modal button.rv-age-symbol {
+	border-color: #2e9e5b !important;
+	color: #2e9e5b !important;
+	background: #2a2a2a !important;
+}
+
+.theme-dark .rv-locator-modal .rv-modal-icon,
+.theme-dark .rv-study-change-modal .rv-modal-icon {
+	color: #2e9e5b;
+}
+
+.theme-dark .rv-locator-modal .modal-content,
+.theme-dark .rv-suggest-panel,
+.theme-dark .rv-study-change-list {
+	scrollbar-color: #373737 #1e1e1e;
 }
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header::after {

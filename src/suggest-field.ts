@@ -46,15 +46,15 @@ interface SuggestionMount {
 
 const suggestionMounts = new Set<SuggestionMount>();
 
-function trackListener(target: EventTarget | null | undefined, type: string, handler: EventListener): () => void {
+function trackListener(target: EventTarget | null | undefined, type: string, handler: EventListener, capture = false): () => void {
 	if (!target || typeof target.addEventListener !== 'function') return () => {};
-	target.addEventListener(type, handler);
+	target.addEventListener(type, handler, capture);
 	suggestionListeners += 1;
 	let dropped = false;
 	return () => {
 		if (dropped) return;
 		dropped = true;
-		target.removeEventListener(type, handler);
+		target.removeEventListener(type, handler, capture);
 		suggestionListeners -= 1;
 	};
 }
@@ -86,14 +86,22 @@ export interface SuggestPlacement {
  */
 export function suggestPanelPlacement(input: SuggestPlacementInput): SuggestPlacement {
 	const rows = input.rows ?? SUGGEST_VISIBLE_ROWS;
-	const gap = 2;
+	const gap = 0;
 	const row = input.rowHeight > 0 ? input.rowHeight : 44;
 	const preferred = row * rows;
 	const below = Math.max(0, input.limitBottom - input.anchorBottom - gap);
 	const above = Math.max(0, input.anchorTop - input.limitTop - gap);
 	const openAbove = below < preferred && above > below;
 	const room = openAbove ? above : below;
-	return { above: openAbove, maxHeight: Math.max(0, Math.min(preferred, room)) };
+	const capped = Math.min(preferred, room);
+	const whole = Math.floor(capped / row) * row;
+	const maxHeight = whole >= row ? whole : capped;
+	return { above: openAbove, maxHeight: Math.max(0, maxHeight) };
+}
+
+export interface SuggestBand {
+	label: string;
+	items: readonly string[];
 }
 
 /**
@@ -107,6 +115,7 @@ export function mountAlwaysChevron(
 	suggestions: () => readonly string[],
 	onPick: (value: string) => void,
 	present?: (value: string) => { text: string; suffix: string },
+	bands?: (items: readonly string[]) => readonly SuggestBand[],
 ): void {
 	const parent = input.parentElement;
 	if (!parent || typeof input.insertAdjacentElement !== 'function') return;
@@ -149,31 +158,24 @@ export function mountAlwaysChevron(
 		panel.style.maxHeight = `${placed.maxHeight}px`;
 	};
 
+	let armedDismiss = false;
 	const paint = (): void => {
 		panel.replaceChildren();
 		const items = suggestions().map((item) => item.trim()).filter(Boolean).slice(0, SUGGEST_MATCH_LIMIT);
 		const typed = 'value' in input ? String((input as HTMLInputElement).value ?? '') : '';
-		const emptyQuery = !typed.trim();
-		if (items.length === 0 && !emptyQuery) {
+		if (items.length === 0 && typed.trim()) {
 			panel.hidden = true;
 			return;
 		}
 		panel.hidden = false;
-		if (emptyQuery) {
-			const hint = panel.ownerDocument.createElement('div');
-			hint.className = 'rv-suggest-hint';
-			hint.textContent = 'Start typing';
-			panel.appendChild(hint);
-		}
-		if (items.length === 0) return;
-		for (const item of items) {
+		const paintRow = (item: string): void => {
 			if (item === SUGGEST_PENDING) {
 				const pending = panel.ownerDocument.createElement('div');
 				pending.className = 'rv-suggest-pending';
 				pending.setAttribute('aria-hidden', 'true');
 				pending.textContent = '…';
 				panel.appendChild(pending);
-				continue;
+				return;
 			}
 			const row = panel.ownerDocument.createElement('button');
 			row.type = 'button';
@@ -193,19 +195,46 @@ export function mountAlwaysChevron(
 				row.textContent = item;
 			}
 			row.dataset.value = item;
-			row.addEventListener('pointerdown', (event) => {
-				event.preventDefault();
+			let chosen = false;
+			const choose = (): void => {
+				if (chosen) return;
+				chosen = true;
+				armedDismiss = true;
 				if (input instanceof HTMLElement) input.dataset.rvPicking = '1';
 				onPick(item);
 				panel.hidden = true;
+			};
+			row.addEventListener('pointerdown', (event) => {
+				event.preventDefault();
+				if (input instanceof HTMLElement) input.dataset.rvPicking = '1';
+			});
+			row.addEventListener('pointerup', (event) => {
+				event.preventDefault();
+				event.stopPropagation();
+				choose();
 			});
 			row.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				onPick(item);
-				panel.hidden = true;
+				choose();
 			});
 			panel.appendChild(row);
+		};
+		const pending = items.filter((item) => item === SUGGEST_PENDING);
+		const choices = items.filter((item) => item !== SUGGEST_PENDING);
+		for (const item of pending) paintRow(item);
+		const grouped = bands?.(choices) ?? null;
+		if (grouped && grouped.some((band) => band.items.length > 0)) {
+			for (const band of grouped) {
+				if (band.items.length === 0) continue;
+				const head = panel.ownerDocument.createElement('div');
+				head.className = 'rv-suggest-band';
+				head.textContent = band.label;
+				panel.appendChild(head);
+				for (const item of band.items) paintRow(item);
+			}
+		} else {
+			for (const item of choices) paintRow(item);
 		}
 		place();
 	};
@@ -277,9 +306,22 @@ export function mountAlwaysChevron(
 	});
 	const doc = input.ownerDocument;
 	const view = doc.defaultView;
-	const onPointerDown = (event: Event): void => {
+	const onDismissClick = (event: Event): void => {
+		if (!input.isConnected) {
+			dispose();
+			return;
+		}
+		if (armedDismiss) {
+			armedDismiss = false;
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
+		if (panel.hidden) return;
 		const target = event.target;
 		if (target instanceof Node && parent.contains(target)) return;
+		event.preventDefault();
+		event.stopPropagation();
 		panel.hidden = true;
 	};
 	const onViewport = (): void => {
@@ -290,7 +332,7 @@ export function mountAlwaysChevron(
 		if (!panel.hidden) place();
 	};
 	const stops = [
-		trackListener(doc, 'pointerdown', onPointerDown),
+		trackListener(doc, 'click', onDismissClick, true),
 		trackListener(view?.visualViewport, 'resize', onViewport),
 		trackListener(view?.visualViewport, 'scroll', onViewport),
 		trackListener(view, 'resize', onViewport),

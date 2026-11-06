@@ -30,6 +30,8 @@ export interface SuggestFetch {
 export interface SuggestView {
 	hits: GeocodeHit[];
 	loading: boolean;
+	/** Hits from the home-radius pass. The rest of `hits` are the wider results. */
+	nearHome?: readonly GeocodeHit[];
 }
 
 export function normalizeSuggestQuery(value: string): string {
@@ -127,6 +129,7 @@ export class AddressSuggestController {
 	private rateTimer: number | null = null;
 	private lastFireAt = 0;
 	private lastHits: GeocodeHit[] = [];
+	private nearKeys = new Set<string>();
 	private requests = 0;
 
 	constructor(
@@ -171,7 +174,8 @@ export class AddressSuggestController {
 	private publish(loading: boolean): void {
 		const matched = filterAddressHits(this.lastHits, this.latest);
 		const hits = matched.length > 0 ? matched : (loading ? [...this.lastHits] : []);
-		this.onView({ hits, loading });
+		const nearHome = hits.filter((hit) => this.nearKeys.has(hit.formattedAddress.trim().toLowerCase()));
+		this.onView({ hits, loading, nearHome });
 	}
 
 	private armTimers(): void {
@@ -270,6 +274,7 @@ export class AddressSuggestController {
 
 	private noteHome(gen: number, query: string, result: SuggestFetchResult): void {
 		const hits = [...result.hits];
+		this.nearKeys = new Set(hits.map((hit) => hit.formattedAddress.trim().toLowerCase()));
 		this.cache.set(normalizeSuggestQuery(query), hits);
 		if (gen < this.renderedGen) {
 			this.pump();

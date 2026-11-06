@@ -781,8 +781,8 @@ describe('RV-B5 hover tooltips', () => {
 		assert.match(chrome, /armHoverTooltip\(pill,/);
 		assert.match(chrome, /armHoverTooltip\(link, hub\.label/);
 		assert.match(chrome, /plainTitleTruncated\(pill\)/);
-		assert.match(chrome, /plainTitleTruncated\(label\)/);
 		assert.match(chrome, /plainTitleTruncated\(link\)/);
+		assert.match(chrome, /host\.openHub\(path, hub\.target\)/);
 		assert.match(titleFit, /displayTooltip\(anchor, tooltipContent/);
 		assert.doesNotMatch(titleFit, /className = 'rv-title-popover'/);
 		const nearby = source('src/nearby-view.ts');

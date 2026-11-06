@@ -2196,9 +2196,17 @@ describe('setup wizard', () => {
 		assert.equal(firstCopy.includes('asks you to confirm'), true);
 		assert.equal(firstCopy.includes('May go out'), true);
 		assert.equal(firstCopy.includes('before 12pm'), true);
-		const area = findTagged(opened.contentEl as unknown as Clickable, 'textarea');
-		assert.equal(area.text, 'Orange');
-		area.emit('change', 'Orange County\norange\nLake');
+		assert.equal(firstCopy.includes('Orange'), true);
+		assert.equal(firstCopy.includes('textarea'), false);
+		clickLabeled(opened.contentEl as unknown as Clickable, '×');
+		const countyInput = findTagged(opened.contentEl as unknown as Clickable, 'input');
+		const addCounty = (name: string): void => {
+			countyInput.emit('input', name);
+			countyInput.emit('keydown', { key: 'Enter' });
+		};
+		addCounty('Orange County');
+		addCounty('orange');
+		addCounty('Lake');
 		clickLabeled(opened.contentEl as unknown as Clickable, 'Save and continue');
 		await waitTurn();
 		assert.deepEqual(saved, [['Orange County', 'orange', 'Lake']]);

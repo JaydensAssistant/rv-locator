@@ -2,6 +2,8 @@ import { Modal, Setting, TFile, normalizePath, type App } from 'obsidian';
 import { iconizeModal, markModalTone } from './modal-chrome';
 import { extrasDestinations, type ExtrasPlacement } from './extras-sync';
 import { parseHomeCountyLines } from './home-base';
+import { mountAlwaysChevron } from './suggest-field';
+import { listedUsCounties } from './us-county-index';
 import { TEMPLATER_PLUGIN_ID } from './new-rv-launch';
 import { explainMayGoOut, paintMayGoOutGrid } from './settings-scoring';
 import { META_BIND_PLUGIN_ID, setupChecklist, type SetupSnapshot } from './setup-check';
@@ -130,7 +132,7 @@ export class SetupWizardModal extends Modal {
 			text: 'These counties are where you normally work return visits. A hit is saved without asking only when Geoapify confidence is 1.00 and it is the only hit in one of them, so a wrong-city pick is not saved.',
 		});
 		contentEl.createEl('p', {
-			text: 'One county per line, the same list as Home counties in settings. Skip leaves the list unchanged. Empty means every match asks you to confirm.',
+			text: 'Pick each county from the list, the same suggester as Home counties in settings. Skip leaves the list unchanged. Empty means every match asks you to confirm.',
 		});
 		contentEl.createEl('p', {
 			text: 'May go out is when you might visit. Grey is off and green is may go out. Click a daypart to switch. Skip leaves that schedule unchanged.',
@@ -143,14 +145,51 @@ export class SetupWizardModal extends Modal {
 			this.scheduleDraft = { ...this.initialSchedule };
 			this.homeDraftReady = true;
 		}
+		const chips = contentEl.createDiv('rv-county-chips');
+		const paintCounties = (): void => {
+			if (typeof chips.empty === 'function') chips.empty();
+			else chips.replaceChildren();
+			for (const name of parseHomeCountyLines(this.homeDraft)) {
+				const chip = chips.createSpan({ cls: 'rv-county-chip', text: name });
+				const remove = chip.createEl('button', {
+					cls: 'rv-county-x',
+					text: '×',
+					attr: { type: 'button', 'aria-label': `Remove ${name}` },
+				});
+				remove.addEventListener('click', () => {
+					this.homeDraft = parseHomeCountyLines(this.homeDraft).filter((line) => line !== name).join('\n');
+					paintCounties();
+				});
+			}
+		};
+		paintCounties();
 		new Setting(contentEl)
 			.setName('Home counties')
-			.setDesc('One county per line. Empty means every match asks you to confirm.')
-			.addTextArea((text) => {
-				text.inputEl.rows = 4;
-				text.setPlaceholder('Optional (e.g. Orange)');
-				text.setValue(this.homeDraft);
-				text.onChange((value) => { this.homeDraft = value; });
+			.setDesc('Pick each county from the list. Empty means every match asks you to confirm.')
+			.addText((text) => {
+				text.setPlaceholder('Add a county');
+				text.setValue('');
+				let draft = '';
+				const commit = (raw: string): void => {
+					const name = raw.replace(/\s+/g, ' ').trim();
+					if (!name) return;
+					const lines = parseHomeCountyLines(this.homeDraft);
+					if (!lines.some((line) => line.toLowerCase() === name.toLowerCase())) lines.push(name);
+					this.homeDraft = lines.join('\n');
+					draft = '';
+					text.setValue('');
+					paintCounties();
+				};
+				text.onChange((value) => { draft = value; });
+				const input = text.inputEl;
+				input.addEventListener('keydown', (event: Event) => {
+					const key = event && typeof event === 'object' && 'key' in event ? String((event as { key: unknown }).key) : '';
+					if (key !== 'Enter') return;
+					if (typeof event.preventDefault === 'function') event.preventDefault();
+					const typed = draft || (input instanceof HTMLInputElement ? input.value : '');
+					commit(typed);
+				});
+				mountAlwaysChevron(input, () => listedUsCounties(draft).slice(0, 40), (picked) => { commit(picked); });
 			});
 		if (this.scheduleDraft) {
 			const draft = this.scheduleDraft;

@@ -144,6 +144,7 @@ export function mountFittedTitle(parent: HTMLElement, title: string, kind: Title
 	stem.textContent = parts.text;
 	if (parts.suffix) host.createSpan({ cls: 'rv-type', text: paintedSuffix(parts.suffix) });
 	host.addEventListener('click', (event) => {
+		if (host.closest('.rv-item-strip')) return;
 		if (stem.textContent === parts.text) return;
 		event.preventDefault();
 		event.stopPropagation();
