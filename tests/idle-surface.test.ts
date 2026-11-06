@@ -449,6 +449,55 @@ describe('idle visit surface', () => {
 		}
 	});
 
+	it('RV-B23 a phone hold still opens the hub menu after the touch leaves', () => {
+		const timers = holdTimers();
+		const shown: Event[] = [];
+		const original = Menu.prototype.showAtMouseEvent;
+		Menu.prototype.showAtMouseEvent = function show(event: MouseEvent): void {
+			shown.push(event);
+			original.call(this, event);
+		};
+		const realNow = Date.now;
+		try {
+			const data: Record<string, unknown> = {
+				cssclasses: ['rv-dashboard'],
+				Hub: '[[Return Visits Hub]]',
+				Address: '12 Oak Street',
+			};
+			const host = noteHost(data, { hub: 0 });
+			const surface = window.document.createElement('div');
+			surface.className = 'markdown-preview-view';
+			surface.innerHTML = '<p><strong>Hub:</strong> <strong>Address:</strong> 12 Oak Street</p>';
+			window.document.body.appendChild(surface);
+			decorateNoteChrome(surface, 'People/Eve.md', host);
+			const link = surface.querySelector('a.rv-hub-chip');
+			assert.ok(link instanceof window.HTMLAnchorElement);
+			press(link, 'touch');
+			link.dispatchEvent(pointer('pointerleave', 'touch'));
+			timers.fire();
+			assert.equal(shown.length, 1);
+			assert.equal(link.dataset.rvMenu, '1');
+
+			shown.length = 0;
+			press(link, 'touch');
+			link.dispatchEvent(pointer('pointercancel', 'touch'));
+			timers.fire();
+			assert.equal(shown.length, 0);
+
+			press(link, 'touch');
+			Date.now = () => realNow() + 1000;
+			link.dispatchEvent(pointer('pointercancel', 'touch'));
+			Date.now = realNow;
+			timers.fire();
+			assert.equal(shown.length, 1);
+			surface.remove();
+		} finally {
+			Date.now = realNow;
+			Menu.prototype.showAtMouseEvent = original;
+			timers.restore();
+		}
+	});
+
 	it('does not treat a replaced visit button as a completed long press', () => {
 		const timers = holdTimers();
 		try {

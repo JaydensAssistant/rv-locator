@@ -55,28 +55,52 @@ const LONG_PRESS_MS = 500;
  */
 function armLongPress(el: HTMLElement, run: (event: PointerEvent) => void, allowMouse = true): void {
 	let timer = 0;
+	let startX = 0;
+	let startY = 0;
+	let startedAt = 0;
 	const doc = el.ownerDocument;
 	const clear = (): void => {
 		window.clearTimeout(timer);
 		timer = 0;
-		doc.removeEventListener('pointerup', clear, true);
-		doc.removeEventListener('pointercancel', clear, true);
+		doc.removeEventListener('pointerup', onPointerEnd, true);
+		doc.removeEventListener('pointercancel', onPointerEnd, true);
+	};
+	const holdTaken = (event: PointerEvent): boolean => (
+		event.pointerType === 'touch' && Date.now() - startedAt >= LONG_PRESS_MS - 80
+	);
+	const onPointerEnd = (event: PointerEvent): void => {
+		if (event.type === 'pointercancel' && holdTaken(event)) return;
+		clear();
 	};
 	el.addEventListener('pointerdown', (event) => {
 		if (event.pointerType === 'mouse' && (!allowMouse || event.button !== 0)) return;
 		clear();
-		doc.addEventListener('pointerup', clear, true);
-		doc.addEventListener('pointercancel', clear, true);
+		startX = event.clientX;
+		startY = event.clientY;
+		startedAt = Date.now();
+		doc.addEventListener('pointerup', onPointerEnd, true);
+		doc.addEventListener('pointercancel', onPointerEnd, true);
 		timer = window.setTimeout(() => {
 			timer = 0;
-			doc.removeEventListener('pointerup', clear, true);
-			doc.removeEventListener('pointercancel', clear, true);
+			doc.removeEventListener('pointerup', onPointerEnd, true);
+			doc.removeEventListener('pointercancel', onPointerEnd, true);
 			if (!el.isConnected) return;
 			run(event);
 		}, LONG_PRESS_MS);
 	});
-	el.addEventListener('pointerleave', clear);
-	el.addEventListener('pointercancel', clear);
+	el.addEventListener('pointermove', (event) => {
+		if (!timer) return;
+		if (Math.hypot(event.clientX - startX, event.clientY - startY) > 12) clear();
+	});
+	el.addEventListener('pointerleave', (event) => {
+		if (event.pointerType === 'touch') return;
+		clear();
+	});
+	el.addEventListener('pointercancel', (event) => {
+		if (holdTaken(event)) return;
+		clear();
+	});
+	el.addEventListener('touchend', () => { clear(); });
 }
 
 /** Leaves and previews that own the urgency custom properties. */

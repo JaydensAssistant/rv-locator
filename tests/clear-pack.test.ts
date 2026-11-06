@@ -167,6 +167,69 @@ describe('clear pack', () => {
 		cancel.remove();
 	});
 
+	it('RV-B24 RV-195 the list stops above the footer, keeps whole rows, and a footer tap still lands', () => {
+		const sheet = window.document.createElement('div');
+		sheet.className = 'modal';
+		const content = window.document.createElement('div');
+		content.className = 'modal-content';
+		const host = window.document.createElement('div');
+		const input = window.document.createElement('input');
+		host.appendChild(input);
+		const footer = window.document.createElement('div');
+		footer.className = 'setting-item rv-modal-actions';
+		const cancel = window.document.createElement('button');
+		cancel.textContent = 'Cancel';
+		let cancelled = 0;
+		cancel.addEventListener('click', () => { cancelled += 1; });
+		footer.appendChild(cancel);
+		content.append(host, footer);
+		sheet.appendChild(content);
+		window.document.body.appendChild(sheet);
+		const box = (top: number, height: number): DOMRect => ({
+			top, bottom: top + height, left: 0, right: 562, width: 562, height, x: 0, y: top, toJSON() { return {}; },
+		}) as DOMRect;
+		host.getBoundingClientRect = () => box(80, 40);
+		content.getBoundingClientRect = () => box(0, 1002);
+		footer.getBoundingClientRect = () => box(400, 48);
+		let picked = '';
+		mountAlwaysChevron(input, () => [
+			'Can We Enjoy Life Forever?',
+			'Who Really Controls the World?',
+			'What Is the Kingdom of God?',
+			'How Do You View the Future?',
+			'Will Suffering Ever End?',
+			'Listen to God',
+			'The Bible Gives Hope',
+			'A Real Friend',
+		], (value) => { picked = value; });
+		const panel = host.querySelector('.rv-suggest-panel');
+		assert.ok(panel instanceof window.HTMLElement);
+		panel.getBoundingClientRect = () => box(120, Number.parseFloat(panel.style.maxHeight) || 0);
+		const open = (): void => {
+			host.querySelector('button.rv-suggest-chevron')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		};
+		open();
+		const room = Number.parseFloat(panel.style.maxHeight);
+		assert.equal(room <= 400 - 120, true);
+		assert.equal(room % 40, 0);
+		const row = panel.querySelector('.rv-suggest-option');
+		assert.ok(row instanceof window.HTMLElement);
+		for (let tap = 0; tap < 6; tap += 1) {
+			row.dispatchEvent(new window.MouseEvent('pointerup', { bubbles: true }));
+		}
+		assert.match(picked, /Enjoy Life/);
+		assert.equal(cancelled, 0);
+		row.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+		open();
+		cancel.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+		assert.equal(cancelled, 1);
+		assert.equal(panel.hidden, true);
+		sheet.remove();
+		assert.match(css, /justify-content:\s*flex-start !important/);
+		assert.match(css, /text-align:\s*start !important/);
+		assert.match(css, /margin-top:\s*auto !important/);
+	});
+
 	it('RV-185 RV-186 the heading overlay matches the chip and the icon opens it', () => {
 		const strip = window.document.createElement('div');
 		strip.className = 'rv-item-strip';

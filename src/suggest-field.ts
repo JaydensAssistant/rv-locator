@@ -84,6 +84,40 @@ export interface SuggestPlacement {
  * Keep the list inside the modal and the visible viewport (above the keyboard).
  * Open above the field when there is more room there than below.
  */
+/**
+ * Lock the panel to whole painted children. A 40px floor cuts the last title
+ * when a type band is shorter than a row, and a scrollbar then clips that row.
+ */
+function clipPanelToWholeRows(panel: HTMLElement, room: number): void {
+	const cap = Math.max(0, Math.floor(room));
+	panel.style.maxHeight = `${cap}px`;
+	const heights = Array.from(panel.children).flatMap((node) => {
+		if (!(node instanceof HTMLElement)) return [];
+		const height = node.offsetHeight;
+		return height > 0 ? [height] : [];
+	});
+	if (heights.length === 0 || cap <= 0) return;
+	const snap = (inner: number): number => {
+		let used = 0;
+		for (const height of heights) {
+			if (used + height > inner + 0.5) break;
+			used += height;
+		}
+		return used;
+	};
+	const border = Math.max(0, panel.offsetHeight - panel.clientHeight);
+	const used = snap(Math.max(0, cap - border));
+	if (used <= 0) return;
+	panel.style.maxHeight = `${used + border}px`;
+	if (panel.scrollHeight > panel.clientHeight + 0.5) {
+		const again = snap(panel.clientHeight);
+		if (again > 0 && again < used) {
+			const borderNow = Math.max(0, panel.offsetHeight - panel.clientHeight);
+			panel.style.maxHeight = `${again + borderNow}px`;
+		}
+	}
+}
+
 /** Use the open side, in whole rows, down to the footer. No fixed row cap. */
 export function suggestPanelPlacement(input: SuggestPlacementInput): SuggestPlacement {
 	const row = input.rowHeight > 0 ? input.rowHeight : 44;
@@ -159,7 +193,14 @@ export function mountAlwaysChevron(
 			rowHeight: measured > 0 ? measured : 40,
 		});
 		panel.classList.toggle('is-above', placed.above);
-		panel.style.maxHeight = `${placed.maxHeight}px`;
+		let room = placed.maxHeight;
+		panel.style.maxHeight = `${room}px`;
+		if (!placed.above && actions instanceof HTMLElement) {
+			const panelTop = panel.getBoundingClientRect().top;
+			const footerTop = actions.getBoundingClientRect().top;
+			if (footerTop > panelTop) room = Math.min(room, Math.max(0, footerTop - panelTop));
+		}
+		clipPanelToWholeRows(panel, room);
 	};
 
 	let armedDismiss = false;
@@ -324,6 +365,11 @@ export function mountAlwaysChevron(
 		if (panel.hidden) return;
 		const target = event.target;
 		if (target instanceof Node && parent.contains(target)) return;
+		const onFooter = target instanceof Element && target.closest('.rv-modal-actions, .modal-button-container') != null;
+		if (onFooter) {
+			panel.hidden = true;
+			return;
+		}
 		event.preventDefault();
 		event.stopPropagation();
 		panel.hidden = true;

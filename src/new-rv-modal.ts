@@ -245,6 +245,11 @@ export class NewRvIdentityModal extends Modal {
 				button.setButtonText('Create');
 				button.setCta();
 				button.onClick(() => this.finish());
+				button.buttonEl.addEventListener('pointerup', (event) => {
+					if (event.pointerType !== 'touch') return;
+					event.preventDefault();
+					this.finish();
+				});
 			});
 		iconizeModal(contentEl);
 	}
@@ -257,15 +262,16 @@ export class NewRvIdentityModal extends Modal {
 	}
 
 	private finish(): void {
+		if (this.settled) return;
 		this.commitAddressMatch();
 		this.commitCompanionMatch();
 		const address = this.address.replace(/\r?\n/g, ' ').trim();
 		if (!address) {
-			new Notice('Address is required.');
+			this.blockCreate('Address is required.');
 			return;
 		}
 		if (this.gender !== 'Woman' && this.gender !== 'Man') {
-			new Notice('Gender is required.');
+			this.blockCreate('Gender is required.');
 			return;
 		}
 		const gender = this.gender;
@@ -294,6 +300,15 @@ export class NewRvIdentityModal extends Modal {
 			extraTo: this.share.extraTo,
 		});
 		this.close();
+	}
+
+	private blockCreate(message: string): void {
+		new Notice(message);
+		const existing = this.contentEl.querySelector('.rv-new-rv-block');
+		const note = existing instanceof HTMLElement ? existing : this.contentEl.createDiv({ cls: 'rv-new-rv-block' });
+		note.textContent = message;
+		const footer = this.contentEl.querySelector('.rv-modal-actions');
+		if (footer) footer.before(note);
 	}
 
 	private paintPriority(host: HTMLElement): void {

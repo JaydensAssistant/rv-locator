@@ -617,6 +617,78 @@ describe('smoke layout', () => {
 		leaf.close();
 	});
 
+	it('RV-196 a lone pin at zoom 12 zooms to 13 and the next tap opens', () => {
+		const card = {
+			address: '1800 N Orange Ave',
+			city: 'Orlando',
+			study: false,
+			spoke: '',
+			attempted: '',
+			studied: '',
+			met: '',
+			metWith: '',
+			visits: '1',
+			studyRatio: '',
+			literature: '',
+			media: '',
+			lessons: [],
+		};
+		const pin: MapPin = {
+			path: 'People/Eve Carter.md',
+			name: 'Eve Carter',
+			lat: 28.54,
+			lon: -81.38,
+			priority: 4,
+			urgency: 1,
+			days: 10,
+			color: '#d63c3c',
+			glyph: '1',
+			fresh: false,
+			stateIcon: null,
+			shadeIcon: null,
+			markText: null,
+			rank: 0,
+			card,
+		};
+		let opened = 0;
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		const map = Object.create(RvMapView.prototype) as RvMapView & {
+			zoom: number;
+			paint: () => void;
+			pinTapStamp: number;
+		};
+		map.contentEl = root;
+		map.bindHost({
+			settings: { ...DEFAULT_SETTINGS, distanceTest: true },
+			mapFocusPath: null,
+			listMapPins: () => [pin],
+			openMapNote: () => { opened += 1; },
+			openRoute: async () => {},
+			currentMapFix: () => null,
+			notifyPin: () => { opened += 1; },
+		}, 'hub');
+		void map.onOpen();
+		map.zoom = 11;
+		map.paint();
+		const button = root.querySelector('button.rv-map-pin');
+		assert.ok(button instanceof window.HTMLElement);
+		assert.equal(button.querySelector('.rv-pin-stack-count'), null);
+		const point = { button: 0, clientX: 20, clientY: 20, bubbles: true };
+		button.dispatchEvent(new window.MouseEvent('pointerdown', point));
+		button.dispatchEvent(new window.MouseEvent('pointerup', point));
+		assert.equal(map.zoom, 13);
+		assert.equal(root.querySelector('.rv-map-card'), null);
+		assert.equal(opened, 0);
+		map.pinTapStamp = 0;
+		button.dispatchEvent(new window.MouseEvent('pointerdown', point));
+		button.dispatchEvent(new window.MouseEvent('pointerup', point));
+		assert.equal(map.zoom, 13);
+		assert.equal(opened, 1);
+		void map.onClose();
+		root.remove();
+	});
+
 	it('hides the filename stamp in titles and keeps an end ellipsis for hub and address', () => {
 		assert.equal(rvDisplayTitle('Maria on Lake Dr 2026-10-11 0905'), 'Maria on Lake Dr');
 		assert.equal(rvDisplayTitle('Smoke Pair on Smoke Street 2026-10-11 1149 2'), 'Smoke Pair on Smoke Street 2');
@@ -2046,13 +2118,18 @@ describe('smoke layout', () => {
 		assert.ok(create);
 		create.click();
 		assert.equal(notices.at(-1), 'Address is required.');
+		assert.equal(content.querySelector('.rv-new-rv-block')?.textContent, 'Address is required.');
 		assert.equal(finished, false);
 		const address = content.querySelector<HTMLInputElement>('input[placeholder="Required (e.g. 123 Oak St)"]');
 		assert.ok(address);
 		address.value = '123 Oak St';
 		address.dispatchEvent(new window.Event('input', { bubbles: true }));
-		create.click();
+		const PointerEventCtor = window.PointerEvent ?? window.MouseEvent;
+		const touchCreate = new PointerEventCtor('pointerup', { bubbles: true, cancelable: true });
+		Object.defineProperty(touchCreate, 'pointerType', { value: 'touch' });
+		create.dispatchEvent(touchCreate);
 		assert.equal(notices.at(-1), 'Gender is required.');
+		assert.equal(content.querySelector('.rv-new-rv-block')?.textContent, 'Gender is required.');
 		assert.equal(created, null);
 		woman.click();
 		assert.equal(woman.classList.contains('is-selected'), true);
