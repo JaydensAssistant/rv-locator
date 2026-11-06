@@ -73,6 +73,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}, this.root));
 		this.stackedLayout = this.readStacked();
 		this.root.toggleClass('is-stacked', this.stackedLayout);
+		const dropLanding = this.plugin.registerHubLander?.(() => this.landArrival());
+		if (dropLanding) this.register(dropLanding);
 		// A markdown file builds both reading and live-preview modes. The hidden
 		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
 		// delays the real hub. Paint when that mode is actually shown.
@@ -288,14 +290,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	/** Hub link from an RV: scroll to that card and tint it, then let the tint fade. */
 	private landArrival(): void {
-		const path = this.plugin.takeHubArrival();
+		if (hostIsHidden(this.root)) return;
+		const path = this.plugin.peekHubArrival();
 		if (!path || !this.scrollEl) return;
 		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
 		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
-		if (!(card instanceof HTMLElement)) {
-			this.plugin.keepHubArrival(path);
-			return;
-		}
+		if (!(card instanceof HTMLElement)) return;
+		const cover = this.root.closest('.rv-hub-swap-cover');
+		if (!cover) this.plugin.takeHubArrival();
 		revealHubCard(this.scrollEl, card);
 		card.classList.remove('rv-card-flash');
 		card.classList.add('rv-card-land');

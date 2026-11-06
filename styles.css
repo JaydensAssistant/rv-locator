@@ -3033,7 +3033,10 @@ button.rv-suggest-chevron {
 	right: 0;
 	left: 0;
 	box-sizing: border-box;
-	max-height: calc(5 * 44px);
+	display: flex;
+	flex-direction: column;
+	align-items: stretch;
+	max-height: none;
 	overflow-x: hidden;
 	overflow-y: auto;
 	overscroll-behavior: contain;
@@ -5419,6 +5422,8 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 }
 
 .modal.rv-locator-modal .modal-content {
+	display: flex;
+	flex-direction: column;
 	flex: 1 1 auto;
 	min-height: 0;
 	max-height: none;
@@ -5426,7 +5431,11 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	overflow-y: auto;
 }
 
-.modal.rv-locator-modal .setting-item.rv-modal-actions {
+.modal.rv-locator-modal .setting-item.rv-modal-actions,
+.modal.rv-locator-modal .modal-content > .rv-modal-actions,
+.rv-study-change-modal > .rv-modal-actions {
+	margin-top: auto;
+	flex: 0 0 auto;
 	position: sticky;
 	bottom: 0;
 	z-index: 3;
@@ -9188,7 +9197,7 @@ h5.rv-visit-stamp + .rv-item-strip {
 	order: 2;
 }
 
-.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-priority-nudge) .setting-item-control > button:not(.mod-cta),
+.modal.rv-locator-modal .setting-item:not(.rv-gender-choice):not(.rv-status-choice):not(.rv-priority-nudge) .setting-item-control > button:not(.mod-cta):not(.rv-suggest-chevron),
 .modal.rv-locator-modal .rv-modal-actions:not(.rv-priority-nudge) button:not(.mod-cta),
 .modal.rv-locator-modal .modal-button-container button:not(.mod-cta),
 .rv-locator-setup-actions button:not(.mod-cta) {
@@ -9630,6 +9639,10 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	align-self: stretch;
 }
 
+.rv-suggest-host > .rv-suggest-panel {
+	grid-column: 1 / -1;
+}
+
 .rv-suggest-panel {
 	border-top-left-radius: 0;
 	border-top-right-radius: 0;
@@ -9644,6 +9657,13 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 }
 
 .rv-suggest-band {
+	display: block;
+	width: 100%;
+	flex: 0 0 auto;
+	align-self: stretch;
+	box-sizing: border-box;
+	float: none;
+	text-align: start;
 	padding: 6px 10px 2px;
 	background: var(--background-secondary);
 	color: var(--text-muted);
@@ -9658,6 +9678,8 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	display: flex;
 	align-items: center;
 	box-sizing: border-box;
+	width: 100%;
+	flex: 0 0 auto;
 	height: 40px;
 	min-height: 40px;
 	max-height: 40px;
@@ -9736,6 +9758,11 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 
 .rv-item-strip.is-revealing > .rv-item.is-squeezed {
 	flex: 0 0 auto;
+}
+
+.rv-item.is-squeezed .rv-type,
+.rv-type[hidden] {
+	display: none !important;
 }
 
 .rv-item-strip.is-revealing > .rv-item.is-open {
@@ -9834,6 +9861,12 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	box-shadow: none !important;
 	background: var(--background-primary) !important;
 	color: var(--interactive-accent, #1f8a4c) !important;
+}
+
+.modal.rv-locator-modal .setting-item-control > button.rv-suggest-chevron {
+	border: 1px solid #2e9e5b !important;
+	box-shadow: none !important;
+	color: #2e9e5b !important;
 }
 
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron,

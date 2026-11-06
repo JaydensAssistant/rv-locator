@@ -1744,6 +1744,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const leaf = paintedHubLeaf(this.workspaceLeaves(), dest?.path ?? null, target);
 		if (leaf) {
 			void this.app.workspace.revealLeaf(leaf);
+			this.notifyHubArrival();
 			return;
 		}
 		const active = this.app.workspace.getMostRecentLeaf();
@@ -2119,6 +2120,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
 	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
 	private hubScrollers = new Set<(path: string | null) => void>();
+	private hubLanders = new Set<() => void>();
 
 	/**
 	 * Earth on a note opens the map beside that note, inside the same leaf.
@@ -2432,10 +2434,23 @@ export default class RVLocatorPlugin extends Plugin {
 		void leaf.openFile(file, { active: true, state: { mode: 'preview', source: false } });
 	}
 
+	peekHubArrival(): string | null {
+		return this.hubArrivalPath;
+	}
+
 	takeHubArrival(): string | null {
 		const path = this.hubArrivalPath;
 		this.hubArrivalPath = null;
 		return path;
+	}
+
+	private notifyHubArrival(): void {
+		for (const land of this.hubLanders) land();
+	}
+
+	registerHubLander(land: () => void): () => void {
+		this.hubLanders.add(land);
+		return () => { this.hubLanders.delete(land); };
 	}
 
 	keepHubArrival(path: string): void {

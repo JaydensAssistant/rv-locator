@@ -33,6 +33,15 @@ describe('locked gaps past 678111b', () => {
 		assert.equal(pulled.left >= 8, true);
 	});
 
+	it('RV-188 a hub link lands on the visible card, not the swap cover', () => {
+		const main = readFileSync('src/main.ts', 'utf8');
+		const view = readFileSync('src/glancable-view.ts', 'utf8');
+		assert.match(main, /peekHubArrival\(\)/);
+		assert.match(main, /notifyHubArrival\(\)/);
+		assert.match(view, /closest\('\.rv-hub-swap-cover'\)/);
+		assert.match(view, /if \(!cover\) this\.plugin\.takeHubArrival\(\)/);
+	});
+
 	it('RV-187 RV-188 RV-197 RV-B17 RV-B25 are wired', () => {
 		const main = readFileSync('src/main.ts', 'utf8');
 		const css = readFileSync('styles.css', 'utf8');
@@ -47,5 +56,9 @@ describe('locked gaps past 678111b', () => {
 		assert.match(css, /\.rv-card-land::after/);
 		assert.match(css, /\.modal\.rv-locator-modal \.modal-header \{\s*border-bottom: 1px solid/);
 		assert.match(css, /padding-bottom: 16px !important/);
+		assert.match(css, /button:not\(\.mod-cta\):not\(\.rv-suggest-chevron\)/);
+		assert.match(css, /\.setting-item-control > button\.rv-suggest-chevron \{\s*border:\s*1px solid #2e9e5b !important;\s*box-shadow:\s*none !important;/);
+		assert.match(css, /\.modal\.rv-locator-modal \.modal-content \{\s*display:\s*flex;\s*flex-direction:\s*column;/);
+		assert.match(css, /\.modal\.rv-locator-modal \.setting-item\.rv-modal-actions,\s*\.modal\.rv-locator-modal \.modal-content > \.rv-modal-actions,\s*\.rv-study-change-modal > \.rv-modal-actions \{\s*margin-top:\s*auto;/);
 	});
 });

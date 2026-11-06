@@ -838,7 +838,7 @@ describe('phone-first visit surfaces', () => {
 		throw new Error(`No control labeled ${text}`);
 	}
 
-	it('caps a suggester at five rows and flips above a short viewport', () => {
+	it('fills a suggester in whole rows and flips above a short viewport', () => {
 		const row = 44;
 		const open = suggestPanelPlacement({
 			anchorTop: 100,
@@ -848,7 +848,7 @@ describe('phone-first visit surfaces', () => {
 			rowHeight: row,
 		});
 		assert.equal(open.above, false);
-		assert.equal(open.maxHeight, row * 5);
+		assert.equal(open.maxHeight, Math.floor((800 - 144) / row) * row);
 		const keyboard = suggestPanelPlacement({
 			anchorTop: 220,
 			anchorBottom: 264,
@@ -872,7 +872,7 @@ describe('phone-first visit surfaces', () => {
 		assert.match(suggest, /visualViewport/);
 		assert.match(suggest, /is-above/);
 		assert.match(css, /-webkit-line-clamp:\s*2/);
-		assert.match(css, /max-height:\s*calc\(5 \* 44px\)/);
+		assert.match(css, /\.rv-suggest-panel \{[^}]*max-height:\s*none/);
 		assert.equal(suggest.includes("setAttribute('autocomplete', 'off')"), true);
 	});
 

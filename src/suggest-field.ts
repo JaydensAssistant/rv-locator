@@ -26,7 +26,7 @@ function paintChevron(button: HTMLElement): void {
 /** Placeholder row while an address lookup is in flight. Not a choice. */
 export const SUGGEST_PENDING = '\u0000pending';
 
-/** About five suggestion rows, then the list scrolls inside the box. */
+/** Kept for callers that still want a short list. The panel itself uses the room above the footer. */
 export const SUGGEST_VISIBLE_ROWS = 5;
 
 /** Paint this many matches. The rest stay searchable by typing. */
@@ -84,18 +84,17 @@ export interface SuggestPlacement {
  * Keep the list inside the modal and the visible viewport (above the keyboard).
  * Open above the field when there is more room there than below.
  */
+/** Use the open side, in whole rows, down to the footer. No fixed row cap. */
 export function suggestPanelPlacement(input: SuggestPlacementInput): SuggestPlacement {
-	const rows = input.rows ?? SUGGEST_VISIBLE_ROWS;
-	const gap = 0;
 	const row = input.rowHeight > 0 ? input.rowHeight : 44;
-	const preferred = row * rows;
-	const below = Math.max(0, input.limitBottom - input.anchorBottom - gap);
-	const above = Math.max(0, input.anchorTop - input.limitTop - gap);
-	const openAbove = below < preferred && above > below;
+	const below = Math.max(0, input.limitBottom - input.anchorBottom);
+	const above = Math.max(0, input.anchorTop - input.limitTop);
+	const openAbove = above > below;
 	const room = openAbove ? above : below;
-	const capped = Math.min(preferred, room);
-	const whole = Math.floor(capped / row) * row;
-	const maxHeight = whole >= row ? whole : capped;
+	const cap = input.rows && input.rows > 0 ? input.rows * row : room;
+	const usable = Math.min(room, cap);
+	const whole = Math.floor(usable / row) * row;
+	const maxHeight = whole >= row ? whole : usable;
 	return { above: openAbove, maxHeight: Math.max(0, maxHeight) };
 }
 
@@ -147,12 +146,17 @@ export function mountAlwaysChevron(
 		const viewBottom = viewport ? viewport.offsetTop + viewport.height : (view?.innerHeight ?? rect.bottom);
 		const sample = panel.querySelector('.rv-suggest-option, .rv-suggest-pending');
 		const measured = sample instanceof HTMLElement ? sample.getBoundingClientRect().height : 0;
+		const sheet = parent.closest('.modal, .rv-study-change-modal');
+		const actions = sheet?.querySelector('.rv-modal-actions, .modal-button-container');
+		const actionsTop = actions instanceof HTMLElement ? actions.getBoundingClientRect().top : 0;
+		let limitBottom = Math.min(frame?.bottom ?? viewBottom, viewBottom);
+		if (actionsTop > rect.bottom) limitBottom = Math.min(limitBottom, actionsTop);
 		const placed = suggestPanelPlacement({
 			anchorTop: rect.top,
 			anchorBottom: rect.bottom,
 			limitTop: Math.max(frame?.top ?? viewTop, viewTop),
-			limitBottom: Math.min(frame?.bottom ?? viewBottom, viewBottom),
-			rowHeight: measured > 0 ? measured : 44,
+			limitBottom,
+			rowHeight: measured > 0 ? measured : 40,
 		});
 		panel.classList.toggle('is-above', placed.above);
 		panel.style.maxHeight = `${placed.maxHeight}px`;
@@ -168,7 +172,7 @@ export function mountAlwaysChevron(
 			return;
 		}
 		panel.hidden = false;
-		const paintRow = (item: string): void => {
+		const paintRow = (item: string, titleOnly = false): void => {
 			if (item === SUGGEST_PENDING) {
 				const pending = panel.ownerDocument.createElement('div');
 				pending.className = 'rv-suggest-pending';
@@ -181,7 +185,7 @@ export function mountAlwaysChevron(
 			row.type = 'button';
 			row.className = 'rv-suggest-option';
 			const shown = present?.(item);
-			if (shown?.suffix) {
+			if (shown?.suffix && !titleOnly) {
 				row.classList.add('rv-title-option');
 				const main = row.ownerDocument.createElement('span');
 				main.className = 'rv-title-text';
@@ -192,7 +196,7 @@ export function mountAlwaysChevron(
 				row.append(main, suffix);
 				armHoverTooltip(row, item, { touch: false });
 			} else {
-				row.textContent = item;
+				row.textContent = shown?.text || item;
 			}
 			row.dataset.value = item;
 			let chosen = false;
@@ -231,7 +235,7 @@ export function mountAlwaysChevron(
 				head.className = 'rv-suggest-band';
 				head.textContent = band.label;
 				panel.appendChild(head);
-				for (const item of band.items) paintRow(item);
+				for (const item of band.items) paintRow(item, true);
 			}
 		} else {
 			for (const item of choices) paintRow(item);

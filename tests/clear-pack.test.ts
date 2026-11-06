@@ -134,6 +134,8 @@ describe('clear pack', () => {
 		assert.equal(host.querySelector('.rv-suggest-hint'), null);
 		assert.equal(host.querySelector('.rv-suggest-band')?.textContent, 'TINY TRACTS');
 		assert.equal(host.querySelectorAll('.rv-suggest-option').length, 2);
+		assert.equal(host.querySelector('.rv-suggest-option .rv-title-suffix'), null);
+		assert.match(css, /\.rv-suggest-band \{\s*display:\s*block;\s*width:\s*100%;/);
 		const option = host.querySelector('.rv-suggest-option');
 		assert.equal(option?.textContent?.includes('\n'), false);
 		host.remove();
@@ -192,7 +194,9 @@ describe('clear pack', () => {
 		const other = chips[1];
 		assert.ok(other instanceof window.HTMLElement);
 		assert.equal(other.classList.contains('is-squeezed'), true);
+		assert.equal(other.querySelector('.rv-type')?.hasAttribute('hidden'), true);
 		assert.match(other.querySelector('.rv-fit-stem')?.textContent ?? '', /^L…$/);
+		assert.match(css, /\.rv-item\.is-squeezed \.rv-type,\s*\.rv-type\[hidden\] \{\s*display:\s*none !important;/);
 		strip.remove();
 		again.remove();
 	});
