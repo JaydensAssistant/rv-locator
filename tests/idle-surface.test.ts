@@ -498,6 +498,68 @@ describe('idle visit surface', () => {
 		}
 	});
 
+	it('RV-B23 the phone hub menu stays open after the finger lifts', () => {
+		const timers = holdTimers();
+		const shown: Event[] = [];
+		const original = Menu.prototype.showAtMouseEvent;
+		Menu.prototype.showAtMouseEvent = function show(event: MouseEvent): void {
+			shown.push(event);
+			original.call(this, event);
+		};
+		const reached: string[] = [];
+		const hear = (event: Event): void => { reached.push(event.type); };
+		try {
+			const data: Record<string, unknown> = {
+				cssclasses: ['rv-dashboard'],
+				Hub: '[[Return Visits Hub]]',
+				Address: '12 Oak Street',
+			};
+			const host = noteHost(data, { hub: 0 });
+			const surface = window.document.createElement('div');
+			surface.className = 'markdown-preview-view';
+			surface.innerHTML = '<p><strong>Hub:</strong> <strong>Address:</strong> 12 Oak Street</p>';
+			window.document.body.appendChild(surface);
+			decorateNoteChrome(surface, 'People/Eve.md', host);
+			const link = surface.querySelector('a.rv-hub-chip');
+			assert.ok(link instanceof window.HTMLAnchorElement);
+			link.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 12, clientY: 24 }));
+			assert.equal(shown.length, 1);
+			window.addEventListener('mouseup', hear, true);
+			link.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+			assert.deepEqual(reached, ['mouseup']);
+			window.removeEventListener('mouseup', hear, true);
+			reached.length = 0;
+
+			press(link, 'touch');
+			timers.fire();
+			assert.equal(shown.length, 2);
+			window.addEventListener('pointerup', hear, true);
+			window.addEventListener('mousedown', hear, true);
+			window.addEventListener('click', hear, true);
+			link.dispatchEvent(pointer('pointerup', 'touch'));
+			link.dispatchEvent(new window.Event('touchend', { bubbles: true, cancelable: true }));
+			link.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+			link.dispatchEvent(new window.MouseEvent('mouseup', { bubbles: true, cancelable: true }));
+			link.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+			assert.deepEqual(reached, []);
+			link.dispatchEvent(pointer('pointerdown', 'touch'));
+			link.dispatchEvent(new window.MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+			link.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+			assert.deepEqual(reached, ['mousedown', 'click']);
+			window.removeEventListener('pointerup', hear, true);
+			window.removeEventListener('mousedown', hear, true);
+			window.removeEventListener('click', hear, true);
+			surface.remove();
+		} finally {
+			window.removeEventListener('mouseup', hear, true);
+			window.removeEventListener('pointerup', hear, true);
+			window.removeEventListener('mousedown', hear, true);
+			window.removeEventListener('click', hear, true);
+			Menu.prototype.showAtMouseEvent = original;
+			timers.restore();
+		}
+	});
+
 	it('does not treat a replaced visit button as a completed long press', () => {
 		const timers = holdTimers();
 		try {

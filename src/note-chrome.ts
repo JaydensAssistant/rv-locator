@@ -48,6 +48,11 @@ export interface NoteChromeHost {
 
 const LONG_PRESS_MS = 500;
 
+function eventPointerType(event: Event): string {
+	if ('pointerType' in event && typeof (event as PointerEvent).pointerType === 'string') return (event as PointerEvent).pointerType;
+	return '';
+}
+
 /**
  * Hold still opens the action. A refresh that replaces the node never
  * delivers pointerup to it, so the release is watched on the document.
@@ -101,6 +106,62 @@ function armLongPress(el: HTMLElement, run: (event: PointerEvent) => void, allow
 		clear();
 	});
 	el.addEventListener('touchend', () => { clear(); });
+}
+
+/**
+ * The hub menu opens while the finger is still down. The lift's pointerup
+ * and the compatibility click would dismiss it. Swallow that one gesture
+ * so the menu stays up until the next tap.
+ */
+function keepHubMenuAfterTouch(link: HTMLElement): void {
+	const doc = link.ownerDocument;
+	const view = doc.defaultView;
+	if (!view) return;
+	let phase: 'down' | 'lift' | 'done' = 'down';
+	let liftTimer = 0;
+	const types = ['pointerdown', 'pointerup', 'touchstart', 'touchend', 'mousedown', 'mouseup', 'click'];
+	const finish = (): void => {
+		if (phase === 'done') return;
+		phase = 'done';
+		view.clearTimeout(liftTimer);
+		for (const type of types) {
+			view.removeEventListener(type, onLift, true);
+			doc.removeEventListener(type, onLift, true);
+		}
+	};
+	const onLift = (lift: Event): void => {
+		if (phase === 'done') return;
+		if (!link.isConnected) {
+			finish();
+			return;
+		}
+		const kind = eventPointerType(lift);
+		const nextTouch = lift.type === 'touchstart' || (lift.type === 'pointerdown' && kind === 'touch');
+		if (lift.type === 'pointerdown' || lift.type === 'touchstart') {
+			if (nextTouch || phase === 'down') {
+				finish();
+				return;
+			}
+			lift.preventDefault();
+			lift.stopImmediatePropagation();
+			return;
+		}
+		if (phase === 'down') {
+			if (lift.type !== 'pointerup' && lift.type !== 'touchend') return;
+			phase = 'lift';
+			lift.preventDefault();
+			lift.stopImmediatePropagation();
+			liftTimer = view.setTimeout(finish, 700);
+			return;
+		}
+		lift.preventDefault();
+		lift.stopImmediatePropagation();
+		if (lift.type === 'click') finish();
+	};
+	for (const type of types) {
+		view.addEventListener(type, onLift, true);
+		doc.addEventListener(type, onLift, true);
+	}
 }
 
 /** Leaves and previews that own the urgency custom properties. */
@@ -1560,9 +1621,21 @@ function hubChip(doc: Document, path: string, hub: HubRef, index: number, host: 
 			item.setIcon('plus');
 			item.onClick(() => host.addHub(path));
 		});
+		const fromTouch = eventPointerType(event) === 'touch' || link.dataset.rvTouch === '1';
+		if (fromTouch) {
+			link.dataset.rvTouch = '';
+			keepHubMenuAfterTouch(link);
+		}
 		menu.showAtMouseEvent(event);
 		window.setTimeout(() => { link.dataset.rvMenu = ''; }, 400);
 	};
+	link.addEventListener('pointerdown', (event) => {
+		if (event.pointerType === 'touch') link.dataset.rvTouch = '1';
+	});
+	link.addEventListener('pointerup', (event) => {
+		if (event.pointerType === 'touch') link.dataset.rvTouch = '';
+	});
+	link.addEventListener('pointercancel', () => { link.dataset.rvTouch = ''; });
 	link.addEventListener('contextmenu', openMenu);
 	armLongPress(link, (event) => openMenu(event));
 	return link;
