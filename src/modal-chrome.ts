@@ -217,6 +217,11 @@ function bindDatePickers(root: HTMLElement): void {
 	const open = (event: Event): void => {
 		const target = event.target;
 		if (!(target instanceof HTMLInputElement)) return;
+		// A tap fires pointerup and click. The second showPicker throws.
+		const now = Date.now();
+		const last = Number(target.dataset.rvPickerAt ?? '0');
+		if (now - last < 400) return;
+		target.dataset.rvPickerAt = String(now);
 		openDesktopDatePicker(target);
 	};
 	root.addEventListener('pointerup', open);

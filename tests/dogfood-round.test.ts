@@ -10,7 +10,8 @@ import { mountAlwaysChevron } from '../src/suggest-field';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { applyHeadPin } from '../src/visit-paint-guard';
 import { concealCollapsedVisitNotes, layoutVisitNotes } from '../src/visit-display';
-import { recentFoldLineStarts, setRecentNotesOpenState, visitPreviewExtension } from '../src/visit-live-preview';
+import { concealHeadingFoldMarks, lockHiddenMetaBindFields, planLivePreviewVisits, recentFoldLineStarts, setRecentNotesOpenState, visitPreviewExtension } from '../src/visit-live-preview';
+import { clearOlderVisitsState, olderVisitsOpen, setOlderVisitsOpenState } from '../src/visit-older';
 import { fillItemStrip } from '../src/visit-controls';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
@@ -434,7 +435,122 @@ describe('dogfood round', () => {
 		iconizeModal(root);
 		input.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 		input.dispatchEvent(new window.Event('pointerup', { bubbles: true }));
-		assert.equal(opened, 2);
+		assert.equal(opened, 1);
 		root.remove();
+	});
+
+	it('RV-B30 live preview keeps Older Visits, the callout, and the paragraph on their own fold', async () => {
+		const markdown = [
+			'### Recent Notes:',
+			'##### Mon, 9am — Sep 1, 2026',
+			'recent one',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'##### Tue, 2pm — Sep 2, 2026',
+			'recent two',
+			'`INPUT[textArea:sVisit2Notes]`',
+			'##### Wed, 3pm — Sep 3, 2026',
+			'recent three',
+			'`INPUT[textArea:sVisit3Notes]`',
+			'### Older Visits',
+			'##### Thu, 4pm — Sep 4, 2026',
+			'older one',
+			'`INPUT[textArea:sVisit4Notes]`',
+			'##### Fri, 5pm — Sep 5, 2026',
+			'older two',
+			'`INPUT[textArea:sVisit5Notes]`',
+			'',
+			'> [!example] Return Suggestions',
+			'> Try Friday evening',
+			'',
+			'The trailing paragraph stays.',
+		].join('\n');
+		const plan = planLivePreviewVisits(markdown, { collapseOlder: true, limit: 3 });
+		const hiddenText = plan.hiddenLines.map((from) => {
+			const end = markdown.indexOf('\n', from);
+			return markdown.slice(from, end === -1 ? undefined : end);
+		});
+		assert.equal(hiddenText.some((line) => line.includes('Return Suggestions')), false);
+		assert.equal(hiddenText.some((line) => line.includes('Try Friday')), false);
+		assert.equal(hiddenText.some((line) => line.includes('trailing paragraph')), false);
+		assert.equal(hiddenText.some((line) => line.includes('### Older Visits')), false);
+		assert.equal(hiddenText.some((line) => line.includes('older one')), true);
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		setOlderVisitsOpenState('rv-b30-sections.md', true);
+		setRecentNotesOpenState('rv-b30-sections.md', true);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc: markdown,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 3 }), () => 'rv-b30-sections.md'),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const heading = view.dom.querySelector('h3.rv-visit-notes-heading');
+			assert.ok(heading instanceof window.HTMLElement);
+			heading.click();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const shown = visibleEditorText(view.dom);
+			assert.equal(shown.includes('recent one'), false);
+			assert.equal(shown.includes('recent two'), false);
+			assert.equal(shown.includes('recent three'), false);
+			assert.match(shown, /older one/);
+			assert.match(shown, /older two/);
+			assert.match(shown, /Return Suggestions/);
+			assert.match(shown, /trailing paragraph/);
+			assert.equal((shown.match(/Older Visits/g) ?? []).length, 1);
+			assert.equal(view.dom.querySelectorAll('.rv-older-visits-widget').length, 1);
+			assert.equal(view.dom.querySelector('.cm-line.rv-older-hidden'), null);
+			const olderHeading = view.dom.querySelector('h3.rv-older-visits');
+			assert.ok(olderHeading instanceof window.HTMLElement);
+			assert.equal(olderHeading.classList.contains('is-open'), true);
+			assert.equal(olderVisitsOpen('rv-b30-sections.md'), true);
+			const reopen = view.dom.querySelector('h3.rv-visit-notes-heading');
+			assert.ok(reopen instanceof window.HTMLElement);
+			reopen.click();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			assert.equal(olderVisitsOpen('rv-b30-sections.md'), true);
+			assert.match(visibleEditorText(view.dom), /older one/);
+			assert.equal(view.dom.querySelector('.cm-line.rv-older-hidden'), null);
+			const host = window.document.createElement('div');
+			const hiddenLine = window.document.createElement('div');
+			hiddenLine.className = 'cm-line rv-older-hidden';
+			const field = window.document.createElement('div');
+			field.className = 'mb-input';
+			const embed = window.document.createElement('div');
+			embed.className = 'cm-embed-block';
+			embed.classList.add('rv-older-hidden');
+			const callout = window.document.createElement('div');
+			callout.className = 'callout';
+			const title = window.document.createElement('div');
+			title.className = 'callout-title';
+			title.textContent = 'Return Suggestions';
+			callout.appendChild(title);
+			embed.appendChild(callout);
+			const mark = window.document.createElement('span');
+			mark.className = 'cm-fold-indicator';
+			mark.textContent = '>';
+			const notesLine = window.document.createElement('div');
+			notesLine.className = 'cm-line rv-lp-notes-heading';
+			notesLine.appendChild(mark);
+			const dots = window.document.createElement('div');
+			dots.className = 'cm-foldPlaceholder';
+			dots.textContent = '...';
+			host.append(hiddenLine, field, embed, notesLine, dots);
+			lockHiddenMetaBindFields(host);
+			assert.equal(embed.classList.contains('rv-older-hidden'), false);
+			assert.equal(field.classList.contains('rv-mb-locked'), true);
+			concealHeadingFoldMarks(host);
+			assert.equal(mark.style.display, 'none');
+			assert.equal(dots.style.display, 'none');
+			host.remove();
+		} finally {
+			view.destroy();
+			parent.remove();
+			clearOlderVisitsState();
+			setRecentNotesOpenState('rv-b30-sections.md', true);
+		}
 	});
 });

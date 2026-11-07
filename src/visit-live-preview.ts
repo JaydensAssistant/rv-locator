@@ -23,10 +23,15 @@ interface DocLine {
 	from: number;
 }
 
+const OLDER_HEADING = /^#{1,3}\s+Older Visits\s*:?\s*$/i;
+
 /**
  * Older visits in file order, same slice as the reading-view layout.
- * The widget sits in front of the first hidden stamp. Hidden lines are
- * existing document lines; nothing here is inserted into the text.
+ * The widget sits in front of the first hidden stamp, unless the note
+ * already has an Older Visits heading. That heading is the widget's line.
+ * The fold stops at a callout or the next heading, so Return Suggestions
+ * and the paragraph after it stay outside. Nothing here is written into
+ * the note.
  */
 export function planLivePreviewVisits(markdown: string, options: VisitPreviewSettings): LivePreviewPlan {
 	const empty: LivePreviewPlan = { widgetAt: null, hiddenLines: [] };
@@ -82,7 +87,13 @@ function stopsVisitSection(line: string): boolean {
 	const trimmed = line.trim();
 	if (/^(?:-{3,}|\*{3,}|_{3,})\s*$/.test(trimmed)) return true;
 	if (isReturnSuggestionsLine(trimmed)) return true;
+	// Any callout ends the older fold, the same way a later heading does.
+	if (/^(?:>[\t ]*)+\[![A-Za-z0-9-]+\]/.test(trimmed)) return true;
 	return /^#{1,6}\s+/.test(trimmed) && visitStampLine(trimmed) == null;
+}
+
+export function isOlderVisitsHeading(line: string): boolean {
+	return OLDER_HEADING.test(line.trim());
 }
 
 function stopsVisitCard(line: string): boolean {
@@ -277,9 +288,25 @@ export function isVisitGapLine(lines: readonly DocLine[], index: number): boolea
 
 /**
  * Disable a Meta Bind field that mounted beside a hidden Older Visits line.
- * Line classes come from decorations. This does not touch `.cm-line`.
+ * A callout, Older Visits, or the next section ends the fold. Line classes
+ * come from decorations. This does not touch `.cm-line`.
  */
+function isOlderFoldBoundary(node: Element): boolean {
+	if (node.classList.contains('cm-line')) return true;
+	const embedCallout = node.classList.contains('cm-embed-block') && node.querySelector('.callout, .callout-title') != null;
+	if (node.classList.contains('callout') || node.classList.contains('cm-callout') || embedCallout) return true;
+	if (node.classList.contains('rv-locator-return-suggestions') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-widget') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-visit-notes-heading') || node.classList.contains('rv-notes-fold-stop')) return true;
+	if (node.querySelector('.callout, .callout-title, .rv-locator-return-suggestions, .rv-older-visits, .rv-visit-notes-heading, .rv-notes-fold-stop')) return true;
+	const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+	if (/^return suggestions\b/i.test(text)) return true;
+	return false;
+}
+
 export function lockHiddenMetaBindFields(root: ParentNode): void {
+	root.querySelectorAll('.rv-older-hidden, .rv-mb-locked').forEach((node) => {
+		if (node.classList.contains('cm-line') || !isOlderFoldBoundary(node)) return;
+		node.classList.remove('rv-older-hidden', 'rv-mb-locked');
+	});
 	const lines = root.querySelectorAll('.cm-line.rv-older-hidden');
 	for (const line of Array.from(lines)) {
 		if (!(line instanceof HTMLElement)) continue;
@@ -287,7 +314,7 @@ export function lockHiddenMetaBindFields(root: ParentNode): void {
 			lockForeignField(node);
 		});
 		let sib: Element | null = line.nextElementSibling;
-		while (sib && !sib.classList.contains('cm-line')) {
+		while (sib && !isOlderFoldBoundary(sib)) {
 			const owned = sib.classList.contains('rv-lp-notes') || sib.querySelector('.rv-native-notes-area') != null;
 			if (!owned) {
 				if (!sib.classList.contains('rv-mb-locked')) sib.classList.add('rv-older-hidden', 'rv-mb-locked');
@@ -346,6 +373,31 @@ function installElHelpers(doc: Document): void {
 }
 
 const NOTES_HEADING = /^###\s+((?:Recent|Visit) Notes:)\s*$/i;
+
+/**
+ * Obsidian's own heading fold draws a chevron and a "..." row on Recent Notes.
+ * The styled heading already has its chevron. Those extras are not part of it.
+ */
+export function concealHeadingFoldMarks(root: ParentNode): void {
+	const heads = root.querySelectorAll('.cm-line.rv-lp-notes-heading, .cm-line.rv-lp-older-heading');
+	for (const line of Array.from(heads)) {
+		line.querySelectorAll('.cm-fold-indicator, .cm-foldPlaceholder, .heading-collapse-indicator').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			if (node.closest('h3.rv-visit-notes-heading, h3.rv-older-visits')) return;
+			node.classList.add('rv-fold-chrome-hidden');
+			node.style.setProperty('display', 'none', 'important');
+		});
+		for (const sib of [line.previousElementSibling, line.nextElementSibling]) {
+			if (!(sib instanceof HTMLElement) || sib.classList.contains('rv-visit-notes-heading') || sib.classList.contains('rv-older-visits-widget')) continue;
+			const text = (sib.textContent ?? '').replace(/\s+/g, ' ').trim();
+			const placeholder = sib.classList.contains('cm-foldPlaceholder') || sib.querySelector('.cm-foldPlaceholder') != null;
+			const stray = text === '...' || text === '…' || text === '>';
+			if (!placeholder && !stray) continue;
+			sib.classList.add('rv-fold-chrome-hidden');
+			sib.style.setProperty('display', 'none', 'important');
+		}
+	}
+}
 
 const recentNotesOpenByPath = new Map<string, boolean>();
 
@@ -561,6 +613,7 @@ const olderOpenField = StateField.define<boolean>({
 				const path = transaction.state.field(notePathField, false);
 				if (path) setOlderVisitsOpenState(path, effect.value);
 			}
+			if (effect.is(setNotePath)) value = olderVisitsOpen(effect.value);
 		}
 		return value;
 	},
@@ -658,7 +711,11 @@ export function buildVisitDecorations(
 	const pieces: { from: number; to: number; deco: Decoration; kind: number }[] = [];
 	const hidden = new Set(!open && plan.widgetAt != null ? plan.hiddenLines : []);
 	const recentHidden = new Set(recentFoldLineStarts(doc, recentOpen ?? recentNotesOpen(path), options.limit));
-	if (plan.widgetAt != null) {
+	const lines = docLines(doc);
+	const headingInFile = lines.some((line) => isOlderVisitsHeading(line.text));
+	// The file heading is the one Older Visits control. A second widget at the
+	// first older stamp would paint the heading again under the raw line.
+	if (plan.widgetAt != null && !headingInFile) {
 		pieces.push({
 			from: plan.widgetAt,
 			to: plan.widgetAt,
@@ -674,7 +731,6 @@ export function buildVisitDecorations(
 			deco: Decoration.line({ class: 'rv-mb-hidden' }),
 		});
 	}
-	const lines = docLines(doc);
 	const seenStamps = new Map<number, number>();
 	let lastStrip = false;
 	for (let index = 0; index < lines.length; index += 1) {
@@ -704,6 +760,24 @@ export function buildVisitDecorations(
 					to: end,
 					kind: 3,
 					deco: Decoration.replace({ widget: new RecentFoldWidget(), block: true }),
+				});
+			}
+			continue;
+		}
+		if (isOlderVisitsHeading(line.text)) {
+			const end = line.from + line.text.length;
+			pieces.push({
+				from: line.from,
+				to: line.from,
+				kind: 1,
+				deco: Decoration.line({ class: 'rv-lp-older-heading' }),
+			});
+			if (end > line.from) {
+				pieces.push({
+					from: line.from,
+					to: end,
+					kind: 2,
+					deco: Decoration.replace({ widget: new OlderVisitsWidget(open), block: true }),
 				});
 			}
 			continue;
@@ -801,7 +875,11 @@ export function visitPreviewExtension(
 		// An empty path is the gap between notes. Building widgets then fills
 		// them from whatever was last cached under ''.
 		if (!path) return Decoration.none;
-		return buildVisitDecorations(state.doc.toString(), read(), open ?? olderVisitsOpen(path), path, recentOpen);
+		// Recent Notes toggles pass no older flag. The editor field and the
+		// reading-view map both count, so opening Older Visits in either view
+		// stays open here, and collapsing Recent does not close it.
+		const older = open ?? (state.field(olderOpenField) || olderVisitsOpen(path));
+		return buildVisitDecorations(state.doc.toString(), read(), older, path, recentOpen);
 	};
 	const decorations = StateField.define<DecorationSet>({
 		create: (state) => decorate(state),
@@ -862,6 +940,7 @@ export function visitPreviewExtension(
 				syncLivePreview(view);
 				syncNotePath(view);
 				concealRecentFoldWidgets(view.dom);
+				concealHeadingFoldMarks(view.dom);
 				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);
 			});
@@ -890,6 +969,7 @@ export function visitPreviewExtension(
 				if (!view.dom.isConnected) return;
 				syncNotePath(view);
 				concealRecentFoldWidgets(view.dom);
+				concealHeadingFoldMarks(view.dom);
 				if (!changed) return;
 				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);
