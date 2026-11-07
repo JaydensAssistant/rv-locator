@@ -2,7 +2,7 @@ import { FuzzySuggestModal, Modal, Notice, Setting, SuggestModal, TFile, TFolder
 import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { mountCampaignChoice } from './campaign-choice';
-import { iconizeModal, markModalTone } from './modal-chrome';
+import { generalModalAccent, iconizeModal, markModalTone } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
 import { companionChoices, exactCompanion, matchingCompanion, publisherBands, type CompanionSuggestion } from './companions';
@@ -80,7 +80,7 @@ export class GeocodeSuggestModal extends SuggestModal<GeocodeHit> {
 }
 
 export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
-	constructor(app: App, private onPick: (folder: TFolder) => void) {
+	constructor(app: App, private onPick: (folder: TFolder) => void, private accent = '') {
 		super(app);
 		this.setPlaceholder('Filter folders');
 	}
@@ -101,7 +101,7 @@ export class FolderSuggestModal extends FuzzySuggestModal<TFolder> {
 		void super.onOpen();
 		this.setTitle('Choose a folder');
 		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', this.accent);
 		iconizeModal(this.modalEl);
 	}
 }
@@ -134,7 +134,7 @@ export class BulkGeocodeModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Bulk geocode');
 		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', generalModalAccent(this.plugin.settings));
 		this.render();
 	}
 
@@ -182,7 +182,7 @@ export class BulkGeocodeModal extends Modal {
 						const picker = new FolderSuggestModal(this.app, (folder) => {
 							this.folderPath = folder.path;
 							this.render();
-						});
+						}, generalModalAccent(this.plugin.settings));
 						picker.open();
 					});
 				});
@@ -296,7 +296,7 @@ export class SuccessfulVisitsModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Fill Successful Visits');
 		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', generalModalAccent(this.plugin.settings));
 		this.render();
 	}
 
@@ -340,7 +340,7 @@ export class SuccessfulVisitsModal extends Modal {
 						const picker = new FolderSuggestModal(this.app, (folder) => {
 							this.folderPath = folder.path;
 							this.render();
-						});
+						}, generalModalAccent(this.plugin.settings));
 						picker.open();
 					});
 				});

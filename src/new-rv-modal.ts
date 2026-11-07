@@ -99,7 +99,7 @@ export class NewRvIdentityModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-new-rv');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', this.options.priorityAccent ?? '');
 		this.setTitle(this.options.title ?? 'New RV');
 		const { contentEl } = this;
 		if (this.options.intro) {

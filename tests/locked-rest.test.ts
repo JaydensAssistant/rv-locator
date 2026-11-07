@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { companionChoices, publisherBands } from '../src/companions';
+import { generalModalAccent, markModalTone } from '../src/modal-chrome';
 import { mountAlwaysChevron } from '../src/suggest-field';
 import { mountClosedTitle } from '../src/title-fit';
+import { defaultUrgencyColors, urgencyInk } from '../src/urgency-palette';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
 const { window } = dom;
@@ -121,5 +123,44 @@ describe('RV-239 RV-240 RV-242 RV-243', () => {
 		assert.equal(overlay.style.paddingLeft, `${left}px`);
 		assert.equal(overlay.querySelector('.rv-type')?.textContent, ' Tract');
 		host.remove();
+	});
+});
+
+describe('RV-B44 general modal band', () => {
+	it('uses band 0 of the selected palette, including a custom palette', () => {
+		const fallback = defaultUrgencyColors();
+		assert.equal(generalModalAccent({ urgencyPalette: 'default', urgencyCustomColors: fallback }), '#1f8a4c');
+		assert.equal(generalModalAccent({ urgencyPalette: 'cotton-candy', urgencyCustomColors: fallback }), '#14ac87');
+		assert.equal(generalModalAccent({
+			urgencyPalette: 'custom',
+			urgencyCustomColors: ['#14ac87', '#528fd3', '#9e62d1', '#cc2c77'],
+		}), '#14ac87');
+		const chrome = source('src/modal-chrome.ts');
+		assert.match(chrome, /urgencyColorsFor\(settings\.urgencyPalette, settings\.urgencyCustomColors\)/);
+		const tone = chrome.slice(chrome.indexOf('export function markModalTone'));
+		assert.match(tone, /--rv-modal-ink', urgencyInk\(color\)/);
+		assert.doesNotMatch(tone, /--rv-modal-accent', '#1f8a4c'/);
+		const css = source('styles.css');
+		const general = css.slice(css.indexOf('.modal.rv-modal-general,'), css.indexOf('.modal.rv-modal-rv,'));
+		assert.match(general, /--interactive-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
+		assert.match(general, /--text-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
+		assert.equal(general.includes('--rv-modal-accent: #1f8a4c'), false);
+		for (const file of ['src/modals.ts', 'src/main.ts', 'src/settings-tab.ts']) {
+			assert.match(source(file), /generalModalAccent\(/);
+		}
+		assert.match(source('src/new-rv-modal.ts'), /markModalTone\(this\.modalEl, 'general', this\.options\.priorityAccent/);
+		assert.match(source('src/setup-wizard.ts'), /urgencyColorsFor\(this\.colorsDraft\.palette, this\.colorsDraft\.custom\)/);
+	});
+
+	it('paints a general modal with that color and readable ink', () => {
+		const modal = window.document.createElement('div');
+		const node = modal as HTMLElement & { addClass?: (name: string) => void };
+		node.addClass = (name) => modal.classList.add(name);
+		markModalTone(node, 'general', '#14ac87');
+		assert.equal(modal.style.getPropertyValue('--rv-modal-accent'), '#14ac87');
+		assert.equal(modal.style.getPropertyValue('--rv-menu-ink'), '#14ac87');
+		assert.equal(modal.style.getPropertyValue('--rv-modal-ink'), urgencyInk('#14ac87'));
+		markModalTone(node, 'general', '#ffffff');
+		assert.equal(modal.style.getPropertyValue('--rv-modal-ink'), '#111111');
 	});
 });

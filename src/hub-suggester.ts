@@ -4,7 +4,7 @@ import { rvDisplayTitle } from './stamp-mask';
 
 /** Every markdown note in the vault. No Dataview query, so no Dataview toast. */
 export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
-	constructor(app: App, private onPick: (file: TFile) => void) {
+	constructor(app: App, private onPick: (file: TFile) => void, private accent = '') {
 		super(app);
 		this.setPlaceholder('Optional');
 	}
@@ -27,7 +27,7 @@ export class HubFileSuggestModal extends FuzzySuggestModal<TFile> {
 		void super.onOpen();
 		this.setTitle('Add a hub note');
 		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', this.accent);
 		iconizeModal(this.modalEl);
 	}
 }

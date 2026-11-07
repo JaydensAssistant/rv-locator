@@ -77,6 +77,7 @@ import { latLonFromUnknown, validLatLon } from './distance';
 import { idealityScore, insidePriorityFloor, urgencyAccentColor } from './scoring';
 import { displayedUrgency } from './row-score';
 import { ageYears, registerRestroomIcons, replacePersonName } from './person-meta';
+import { generalModalAccent } from './modal-chrome';
 import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -1979,7 +1980,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!file) return;
 		new HubFileSuggestModal(this.app, (picked) => {
 			void this.addHub(file, picked).catch((error: unknown) => new Notice(this.friendlyError(error)));
-		}).open();
+		}, generalModalAccent(this.settings)).open();
 	}
 
 	private async addHub(file: TFile, picked: TFile): Promise<void> {
@@ -2959,7 +2960,7 @@ export default class RVLocatorPlugin extends Plugin {
 			void this.persist().then(() => {
 				for (const callback of this.viewRefreshers) callback();
 			});
-		}).open();
+		}, generalModalAccent(this.settings)).open();
 	}
 
 	/** `covered` or `open` while a campaign is active. Null when there is no active campaign. */

@@ -111,7 +111,7 @@ describe('next build locks', () => {
 		assert.match(source('src/modal-chrome.ts'), /function markModalTone/);
 		assert.match(css, /background-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important/);
 		assert.match(css, /background-color:\s*var\(--rv-modal-accent\) !important/);
-		assert.match(source('src/campaign-modal.ts'), /markModalTone\(this\.modalEl, 'general'\)/);
+		assert.match(source('src/campaign-modal.ts'), /markModalTone\(this\.modalEl, 'general', this\.accent\)/);
 		assert.match(source('src/score-modals.ts'), /markModalTone\(this\.modalEl, 'rv', this\.buttonAccent\)/);
 	});
 

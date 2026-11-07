@@ -16,6 +16,7 @@ export class CampaignModal extends Modal {
 		app: App,
 		private current: CampaignRecord | null,
 		private onSave: (next: CampaignRecord | null) => void,
+		private accent = '',
 	) {
 		super(app);
 	}
@@ -24,7 +25,7 @@ export class CampaignModal extends Modal {
 		this.setTitle('Campaign');
 		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-campaign');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', this.accent);
 		const { contentEl } = this;
 		const active = campaignIsActive(this.current);
 		if (active && this.current) {

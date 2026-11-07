@@ -9,7 +9,7 @@ import { explainMayGoOut, paintMayGoOutGrid } from './settings-scoring';
 import { META_BIND_PLUGIN_ID, setupChecklist, type SetupSnapshot } from './setup-check';
 import type { AvailabilityGrid } from './schedule';
 import type { RVLocatorSettings } from './types';
-import { defaultUrgencyColors } from './urgency-palette';
+import { defaultUrgencyColors, urgencyColorsFor } from './urgency-palette';
 import { renderUrgencyPalette, type UrgencyPaletteChoice } from './urgency-palette-ui';
 
 /** First launch opens the wizard. A finished wizard stays closed until Settings opens it. */
@@ -99,7 +99,7 @@ export class SetupWizardModal extends Modal {
 	onOpen(): void {
 		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-locator-setup-wizard');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', urgencyColorsFor(this.colorsDraft.palette, this.colorsDraft.custom)[0] ?? '');
 		this.setTitle('RV Locator setup');
 		void this.render();
 	}

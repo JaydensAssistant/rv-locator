@@ -1,7 +1,7 @@
 import { Modal, Notice, PluginSettingTab, Setting, TFile, normalizePath, setIcon, type App, type TextComponent } from 'obsidian';
 import { GEOAPIFY_ATTRIBUTION, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION, PRIVACY_NOTICE } from './constants';
 import { deleteCustom, rememberCustom } from './catalog';
-import { iconizeModal, markModalTone } from './modal-chrome';
+import { generalModalAccent, iconizeModal, markModalTone } from './modal-chrome';
 import { parseDatePropertyNames } from './dates';
 import { normalizeCounty, normalizeCountyList } from './home-base';
 import { isListedUsCounty } from './us-county-index';
@@ -524,7 +524,7 @@ export class RVLocatorSettingTab extends PluginSettingTab {
 					button.onClick(() => {
 						new CatalogRenameModal(this.app, name, (next) => {
 							void this.plugin.renameCatalogEntry(key, name, next).then(() => this.display());
-						}).open();
+						}, generalModalAccent(this.plugin.settings)).open();
 					});
 				})
 				.addButton((button) => {
@@ -1008,7 +1008,7 @@ async function previewExtras(app: App, plugin: RVLocatorPlugin): Promise<void> {
 		}
 		const modal = new ExtrasSyncConfirmModal(app, rows, plan.failed, (overwriteExisting) => {
 			void applyExtras(app, rows, overwriteExisting, placement);
-		});
+		}, generalModalAccent(plugin.settings));
 		modal.open();
 	} catch (error) {
 		pending.hide();
@@ -1059,7 +1059,7 @@ interface ExtrasPreviewRow extends ExtrasSyncFile {
 class CatalogRenameModal extends Modal {
 	private nextName: string;
 
-	constructor(app: App, private current: string, private onRename: (next: string) => void) {
+	constructor(app: App, private current: string, private onRename: (next: string) => void, private accent = '') {
 		super(app);
 		this.nextName = current;
 	}
@@ -1068,7 +1068,7 @@ class CatalogRenameModal extends Modal {
 		this.setTitle('Rename');
 		this.modalEl.addClass('rv-locator-modal');
 		this.modalEl.addClass('rv-rename-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', this.accent);
 		new Setting(this.contentEl)
 			.setName('Name')
 			.addText((text) => {
@@ -1102,6 +1102,7 @@ class ExtrasSyncConfirmModal extends Modal {
 		private rows: readonly ExtrasPreviewRow[],
 		private failed: readonly ExtrasSyncFailure[],
 		private onApply: (overwriteExisting: boolean) => void,
+		private accent = '',
 	) {
 		super(app);
 	}
@@ -1109,7 +1110,7 @@ class ExtrasSyncConfirmModal extends Modal {
 	onOpen(): void {
 		this.setTitle('Update templates and scripts');
 		this.modalEl.addClass('rv-locator-modal');
-		markModalTone(this.modalEl, 'general');
+		markModalTone(this.modalEl, 'general', this.accent);
 		this.contentEl.createEl('p', {
 			text: `Tag ${EXTRAS_SYNC_REF} of ${EXTRAS_SYNC_REPO}. Nothing is written until you confirm. Existing files are skipped unless overwrite is checked.`,
 		});
