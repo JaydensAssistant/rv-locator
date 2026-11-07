@@ -1,4 +1,4 @@
-import { Setting, setIcon } from 'obsidian';
+import { Setting } from 'obsidian';
 import {
 	catalogBands,
 	catalogSuggestions,
@@ -17,7 +17,7 @@ import {
 } from './catalog';
 import { companionChoices } from './companions';
 import { mountAlwaysChevron } from './suggest-field';
-import { displayTitle, mountFittedTitle } from './title-fit';
+import { displayTitle, paintedSuffix } from './title-fit';
 import { mountStudyPanel } from './study-panel';
 
 export interface ShareFieldOptions {
@@ -183,6 +183,15 @@ function mountLessonBlock(
 	if (heading !== 'Study') block.createEl('h3', { cls: 'rv-study-heading', text: heading });
 	mountStudyPanel(block, options, share, publish);
 }
+/** One pick is the title and its type. Several picks are the first title plus the rest of the count. */
+export function pickFieldSummary(values: readonly string[], kind: 'literature' | 'media'): string {
+	const items = values.map((item) => item.trim()).filter(Boolean);
+	if (items.length === 0) return '';
+	const first = displayTitle(items[0] ?? '', kind);
+	if (items.length === 1) return `${first.text}${paintedSuffix(first.suffix)}`.trim();
+	return `${first.text} +${items.length - 1}`;
+}
+
 function mountTitleList(
 	parent: HTMLElement,
 	name: string,
@@ -195,52 +204,33 @@ function mountTitleList(
 	const items = values.map((item) => item.trim()).filter(Boolean);
 	const host = parent.createDiv('rv-share-list');
 	const kind = /media/i.test(name) ? 'media' as const : 'literature' as const;
-	const icon = kind === 'media' ? 'clapperboard' : 'book-open';
 	let draft = '';
 	const setting = new Setting(host).setName(name);
 	if (desc) setting.setDesc(desc);
-	const chips = host.createDiv('rv-chip-rows');
+	const summary = (): string => pickFieldSummary(items, kind);
 	const sync = (): void => {
 		onChange(items.map((item) => item.trim()).filter(Boolean));
 	};
-	const paintChips = (): void => {
-		chips.empty();
-		chips.hidden = items.length === 0;
-		items.forEach((title, index) => {
-			const row = chips.createDiv('rv-chip-row');
-			const mark = row.createSpan('rv-chip-icon');
-			mark.setAttribute('aria-hidden', 'true');
-			setIcon(mark, icon);
-			mountFittedTitle(row, title, kind);
-			const remove = row.createEl('button', {
-				cls: 'rx',
-				text: '×',
-				attr: { type: 'button', 'aria-label': `Remove ${title}` },
-			});
-			remove.addEventListener('click', (event) => {
-				event.preventDefault();
-				items.splice(index, 1);
-				paintChips();
-				sync();
-			});
-		});
-	};
 	setting.addText((text) => {
 		text.setPlaceholder(placeholder);
-		const commit = (value: string): void => {
-			const title = value.trim();
-			if (!title) return;
-			if (!items.some((item) => item.toLowerCase() === title.toLowerCase())) items.push(title);
+		const paintField = (): void => {
 			draft = '';
-			text.setValue('');
-			paintChips();
+			text.setValue(summary());
+		};
+		const toggle = (picked: string): void => {
+			const title = picked.trim();
+			if (!title) return;
+			const index = items.findIndex((item) => item.toLowerCase() === title.toLowerCase());
+			if (index >= 0) items.splice(index, 1);
+			else {
+				items.push(title);
+				rememberRecentCatalog(title);
+			}
+			paintField();
 			sync();
 		};
-		text.onChange((value) => { draft = value; });
-		text.inputEl.addEventListener('keydown', (event) => {
-			if (!(event instanceof KeyboardEvent) || event.key !== 'Enter') return;
-			event.preventDefault();
-			commit(draft);
+		text.onChange((value) => {
+			draft = value === summary() ? '' : value;
 		});
 		text.inputEl.addEventListener('blur', () => {
 			const dataset = text.inputEl?.dataset;
@@ -248,16 +238,24 @@ function mountTitleList(
 				delete dataset.rvPicking;
 				return;
 			}
-			commit(draft);
+			const title = draft.trim();
+			if (title && title !== summary() && !items.some((item) => item.toLowerCase() === title.toLowerCase())) {
+				items.push(title);
+				rememberRecentCatalog(title);
+				sync();
+			}
+			paintField();
 		});
-		mountAlwaysChevron(text.inputEl, () => suggestions(draft), (picked) => {
-			rememberRecentCatalog(picked);
-			draft = '';
-			text.setValue('');
-			commit(picked);
-		}, (value) => splitTitleSuffix(value), (rows) => catalogBands(rows, [...items, ...recentCatalogTitles()], kind === 'media' ? 'Video' : ''));
+		mountAlwaysChevron(
+			text.inputEl,
+			() => suggestions(draft),
+			toggle,
+			(value) => splitTitleSuffix(value),
+			(rows) => catalogBands(rows, [...items, ...recentCatalogTitles()], kind === 'media' ? 'Video' : ''),
+			{ picked: () => items, keepOpen: true },
+		);
+		paintField();
 	});
-	paintChips();
 }
 
 function mountField(

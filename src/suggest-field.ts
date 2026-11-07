@@ -143,12 +143,20 @@ export interface SuggestBand {
  * Mount does not focus the field, so opening a modal does not open the list.
  * An empty query shows the caller's order (most recently used).
  */
+export interface SuggestListOptions {
+	/** Titles already chosen. They paint as checked rows at the top and a tap removes one. */
+	picked?: () => readonly string[];
+	/** Leave the list open after a tap so several picks can change without a second open. */
+	keepOpen?: boolean;
+}
+
 export function mountAlwaysChevron(
 	input: HTMLElement,
 	suggestions: () => readonly string[],
 	onPick: (value: string) => void,
 	present?: (value: string) => { text: string; suffix: string },
 	bands?: (items: readonly string[]) => readonly SuggestBand[],
+	list?: SuggestListOptions,
 ): void {
 	const parent = input.parentElement;
 	if (!parent || typeof input.insertAdjacentElement !== 'function') return;
@@ -218,7 +226,7 @@ export function mountAlwaysChevron(
 			return;
 		}
 		showPanel(true);
-		const paintRow = (item: string, titleOnly = false): void => {
+		const paintRow = (item: string, titleOnly = false, checked = false): void => {
 			if (item === SUGGEST_PENDING) {
 				const pending = panel.ownerDocument.createElement('div');
 				pending.className = 'rv-suggest-pending';
@@ -245,13 +253,26 @@ export function mountAlwaysChevron(
 				row.textContent = shown?.text || item;
 			}
 			row.dataset.value = item;
+			if (checked) {
+				row.classList.add('is-checked');
+				const mark = row.ownerDocument.createElement('span');
+				mark.className = 'rv-suggest-check';
+				mark.setAttribute('aria-hidden', 'true');
+				mark.textContent = '✓';
+				row.append(mark);
+			}
 			let chosen = false;
 			const choose = (): void => {
-				if (chosen) return;
+				if (chosen && !list?.keepOpen) return;
 				chosen = true;
 				armedDismiss = true;
 				if (input instanceof HTMLElement) input.dataset.rvPicking = '1';
 				onPick(item);
+				if (list?.keepOpen) {
+					chosen = false;
+					paint();
+					return;
+				}
 				showPanel(false);
 			};
 			row.addEventListener('pointerdown', (event) => {
@@ -271,8 +292,11 @@ export function mountAlwaysChevron(
 			panel.appendChild(row);
 		};
 		const pending = items.filter((item) => item === SUGGEST_PENDING);
-		const choices = items.filter((item) => item !== SUGGEST_PENDING);
+		const picked = (list?.picked?.() ?? []).map((item) => item.trim()).filter(Boolean);
+		const pickedKeys = new Set(picked.map((item) => item.toLowerCase()));
+		const choices = items.filter((item) => item !== SUGGEST_PENDING && !pickedKeys.has(item.trim().toLowerCase()));
 		for (const item of pending) paintRow(item);
+		for (const item of picked) paintRow(item, false, true);
 		const grouped = bands?.(choices) ?? null;
 		if (grouped && grouped.some((band) => band.items.length > 0)) {
 			for (const band of grouped) {
@@ -348,7 +372,8 @@ export function mountAlwaysChevron(
 			event.preventDefault();
 			event.stopImmediatePropagation();
 			onPick(picked.dataset.value || picked.textContent || '');
-			showPanel(false);
+			if (list?.keepOpen) paint();
+			else showPanel(false);
 			highlighted = -1;
 			return;
 		}

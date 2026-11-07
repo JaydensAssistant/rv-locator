@@ -342,6 +342,94 @@ export function pinsToDraw<T extends StackMember>(group: readonly T[]): { drawn:
 	return { drawn: ordered.slice(0, STACK_DRAW_CAP), label: stackCountLabel(group.length) };
 }
 
+/** Same stored point. A nearby building with its own coordinates is not this. */
+const IDENTICAL_COORD_EPS = 1e-7;
+
+/** Each pin behind the top one peeks by this many pixels. */
+export const PEEK_PX = 3.5;
+
+export function coordinatesMatch(a: { lat: number; lon: number }, b: { lat: number; lon: number }): boolean {
+	return Math.abs(a.lat - b.lat) <= IDENTICAL_COORD_EPS && Math.abs(a.lon - b.lon) <= IDENTICAL_COORD_EPS;
+}
+
+export interface LayoutPin {
+	path: string;
+	x: number;
+	y: number;
+	lat: number;
+	lon: number;
+	urgency: number | null;
+	priority: number;
+	snoozed?: boolean;
+}
+
+export interface IdenticalLayout {
+	points: Map<string, { x: number; y: number }>;
+	/** True point of a fanned identical stack. Empty while the stack is still one cluster. */
+	dots: { x: number; y: number }[];
+}
+
+function heatOrder(a: LayoutPin, b: LayoutPin): number {
+	const leftSnooze = a.snoozed === true ? 1 : 0;
+	const rightSnooze = b.snoozed === true ? 1 : 0;
+	if (leftSnooze !== rightSnooze) return leftSnooze - rightSnooze;
+	const left = a.urgency ?? -1;
+	const right = b.urgency ?? -1;
+	if (left !== right) return right - left;
+	if (a.priority !== b.priority) return b.priority - a.priority;
+	return a.path.localeCompare(b.path);
+}
+
+/** Radius that keeps neighbouring pins far enough apart to tap, and at least 28px. */
+export function fanRadius(count: number): number {
+	if (count <= 1) return 0;
+	const gap = 24;
+	const needed = gap / (2 * Math.sin(Math.PI / count));
+	return Math.max(28, needed);
+}
+
+/**
+ * Identical coordinates stay one cluster at the cluster zoom and below: the
+ * hottest pin keeps the exact point, and the rest peek 3.5px up, ordered by
+ * path. Past that zoom they sit on an even circle around the same point.
+ * A pin with its own coordinates keeps the point it was given.
+ */
+export function layoutIdenticalPins(pins: readonly LayoutPin[], zoom: number): IdenticalLayout {
+	const points = new Map<string, { x: number; y: number }>();
+	for (const pin of pins) points.set(pin.path, { x: pin.x, y: pin.y });
+	const dots: { x: number; y: number }[] = [];
+	const seen = new Set<string>();
+	const fanned = zoom > CLUSTER_ZOOM_MAX;
+	for (const pin of pins) {
+		if (seen.has(pin.path)) continue;
+		const group = pins.filter((other) => coordinatesMatch(pin, other));
+		for (const member of group) seen.add(member.path);
+		if (group.length < 2) continue;
+		const spot = { x: group[0]?.x ?? pin.x, y: group[0]?.y ?? pin.y };
+		if (fanned) {
+			const ordered = [...group].sort((a, b) => a.path.localeCompare(b.path));
+			const radius = fanRadius(ordered.length);
+			ordered.forEach((member, index) => {
+				const angle = -Math.PI / 2 + (index * 2 * Math.PI) / ordered.length;
+				points.set(member.path, {
+					x: spot.x + radius * Math.cos(angle),
+					y: spot.y + radius * Math.sin(angle),
+				});
+			});
+			dots.push(spot);
+			continue;
+		}
+		const ordered = [...group].sort(heatOrder);
+		const top = ordered[0];
+		if (top) points.set(top.path, spot);
+		const behind = ordered.slice(1).sort((a, b) => a.path.localeCompare(b.path));
+		behind.forEach((member, index) => {
+			points.set(member.path, { x: spot.x, y: spot.y - PEEK_PX * (index + 1) });
+		});
+	}
+	return { points, dots };
+}
+
 /** A tap at zoom 12 or below zooms in, including a pin that sits alone. */
 export function tapZoomsStack(zoom: number, overlaps: number): boolean {
 	return zoom <= CLUSTER_ZOOM_MAX && overlaps >= 1;

@@ -578,7 +578,7 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!target.closest('a.rv-address-link, .rv-address-field')) return;
 			event.preventDefault();
 			event.stopPropagation();
-			void this.openMapSoon(path);
+			void this.openRoute(path);
 		}, true);
 	}
 
@@ -3313,13 +3313,11 @@ export default class RVLocatorPlugin extends Plugin {
 		return /RV Log (?:Home|Miss)\.md$/i.test(base) || /99 RV Log/i.test(base);
 	}
 
-	private missToast: { path: string; before: string; campaign: CampaignRecord | null; timer: number } | null = null;
+	private missToastTimer = 0;
 
 	private async commitInstantMiss(file: TFile): Promise<void> {
-		const before = await this.app.vault.read(file);
-		const campaign = this.campaign ? { ...this.campaign, covered: [...this.campaign.covered] } : null;
 		await this.commitVisit(file, 'miss', '', emptyShare(), true);
-		this.showNotHomeToast(file, before, campaign);
+		this.showNotHomeToast(file);
 	}
 
 	/** Home and the rvLog.js fallback. Same clearance as Not home. */
@@ -3328,7 +3326,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** Confirmation. Sits above the phone nav and the desktop status bar. */
-	private showLoggedToast(message: string, undo?: () => void): void {
+	private showLoggedToast(message: string): void {
 		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
 		const toast = document.createElement('div');
 		toast.className = 'rv-nh-toast';
@@ -3336,23 +3334,8 @@ export default class RVLocatorPlugin extends Plugin {
 		text.className = 'rv-toast-text';
 		fillToastText(text, message);
 		toast.append(text);
-		if (undo) toast.append(this.undoButton(undo));
 		this.mountToast(toast);
-		window.setTimeout(() => toast.remove(), undo ? 6000 : 4500);
-	}
-
-	private undoButton(undo: () => void): HTMLButtonElement {
-		const button = document.createElement('button');
-		button.type = 'button';
-		button.className = 'mod-undo';
-		const icon = document.createElement('span');
-		icon.className = 'rv-toast-icon';
-		setIcon(icon, 'undo-2');
-		const label = document.createElement('span');
-		label.textContent = 'Undo';
-		button.append(icon, label);
-		button.addEventListener('click', () => undo());
-		return button;
+		window.setTimeout(() => toast.remove(), 4500);
 	}
 
 	/** Measure the nav, toolbar, and status bar, and keep the toast above them. */
@@ -3361,8 +3344,8 @@ export default class RVLocatorPlugin extends Plugin {
 		watchBottomToast(toast);
 	}
 
-	private showNotHomeToast(file: TFile, before: string, campaign: CampaignRecord | null): void {
-		this.missToast?.timer && window.clearTimeout(this.missToast.timer);
+	private showNotHomeToast(file: TFile): void {
+		if (this.missToastTimer) window.clearTimeout(this.missToastTimer);
 		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
 		const toast = document.createElement('div');
 		toast.className = 'rv-nh-toast';
@@ -3388,7 +3371,6 @@ export default class RVLocatorPlugin extends Plugin {
 			});
 			actions.appendChild(covered);
 		}
-		actions.append(this.undoButton(() => { void this.undoInstantMiss(); }));
 		const timer = document.createElement('span');
 		timer.className = 'rv-toast-timer';
 		timer.appendChild(document.createElement('i'));
@@ -3397,11 +3379,7 @@ export default class RVLocatorPlugin extends Plugin {
 		window.setTimeout(() => {
 			if (nameEl && text.scrollWidth > text.clientWidth + 1) nameEl.remove();
 		}, 0);
-		const handle = window.setTimeout(() => {
-			toast.remove();
-			if (this.missToast?.path === file.path) this.missToast = null;
-		}, 6000);
-		this.missToast = { path: file.path, before, campaign, timer: handle };
+		this.missToastTimer = window.setTimeout(() => toast.remove(), 6000);
 	}
 
 	private async coverInstantMiss(file: TFile, name: string): Promise<void> {
@@ -3419,27 +3397,6 @@ export default class RVLocatorPlugin extends Plugin {
 			return data;
 		});
 		await this.markCovered(file.path);
-	}
-
-	private async undoInstantMiss(): Promise<void> {
-		const snap = this.missToast;
-		if (!snap) return;
-		window.clearTimeout(snap.timer);
-		this.missToast = null;
-		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
-		const file = this.app.vault.getFileByPath(snap.path);
-		if (file) await this.app.vault.modify(file, snap.before);
-		this.campaign = snap.campaign;
-		await this.persist();
-		for (const callback of this.viewRefreshers) callback();
-		const undone = document.createElement('div');
-		undone.className = 'rv-nh-toast';
-		const undoneText = document.createElement('span');
-		undoneText.className = 'rv-toast-text';
-		fillToastText(undoneText, 'Undone');
-		undone.append(undoneText);
-		this.mountToast(undone);
-		window.setTimeout(() => undone.remove(), 1600);
 	}
 
 	ghostIconForCard(path: string): 'hourglass' | 'moon' | 'ban' | null {
@@ -3554,7 +3511,6 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private async commitVisit(file: TFile, outcome: VisitOutcome, companion: string, share: VisitShare, silent = false): Promise<void> {
 		const before = await this.app.vault.read(file);
-		const campaignSnap = this.campaign ? { ...this.campaign, covered: [...this.campaign.covered] } : null;
 		const now = new Date();
 		const coveredName = this.coverageDecisions.get(file.path) === 'yes' ? (this.campaign?.name ?? '') : '';
 		const info = getFrontMatterInfo(before);
@@ -3572,9 +3528,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!silent) {
 			const label = outcome === 'home' ? 'Home' : 'Not home';
 			const name = cardPersonTitle(file.basename, true);
-			this.showLoggedToast(`${label} logged on “${name}”.`, () => {
-				void this.undoVisitWrite(file, before, campaignSnap);
-			});
+			this.showLoggedToast(`${label} logged on “${name}”.`);
 		}
 		await this.afterVisitWrite(file, outcome, notesProperty);
 	}
@@ -3689,20 +3643,10 @@ export default class RVLocatorPlugin extends Plugin {
 		};
 	}
 
-	private openVisitMenu(sourcePath: string, target: VisitTarget, evt: MouseEvent): void {
+	private openVisitMenu(sourcePath: string, target: VisitTarget, _evt: MouseEvent): void {
 		const file = this.app.vault.getFileByPath(sourcePath);
 		if (!file) return;
-		const menu = new Menu();
-		menu.addItem((item) => item
-			.setTitle('Edit visit')
-			.setIcon('pencil')
-			.onClick(() => { void this.openVisitTarget(file, target, 'edit'); }));
-		menu.addItem((item) => item
-			.setTitle('Delete visit')
-			.setIcon('trash-2')
-			.setWarning(true)
-			.onClick(() => { void this.openVisitTarget(file, target, 'delete'); }));
-		menu.showAtMouseEvent(evt);
+		void this.openVisitTarget(file, target, 'edit');
 	}
 
 	private async openVisitTarget(file: TFile, target: VisitTarget, action: 'edit' | 'delete'): Promise<void> {
@@ -3757,19 +3701,26 @@ export default class RVLocatorPlugin extends Plugin {
 			onSave: (facts) => {
 				void this.changeVisit(file, hint, facts).catch((error: unknown) => new Notice(this.friendlyError(error)));
 			},
-			onDelete: () => this.confirmDeleteVisit(file, entry, hint),
+			deleteMessage: this.deleteVisitMessage(entry),
+			onDelete: () => {
+				void this.changeVisit(file, hint, null).catch((error: unknown) => new Notice(this.friendlyError(error)));
+			},
 		});
 		editor.buttonAccent = this.buttonAccent(file.path);
 		editor.open();
 	}
 
-	private confirmDeleteVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
+	private deleteVisitMessage(entry: VisitEntry): string {
 		const parts = entry.home
 			? 'its stamp and notes, its Attempt Log line, and what it added to Visits, Successful Visits, Last Attempted, Last Spoke, and Taken'
 			: 'its Attempt Log line, and what it added to Visits and Last Attempted';
+		return `Delete ${describeVisit(entry)}? This removes ${parts}. Met becomes the earliest visit that is not in the future. Met With is not changed.`;
+	}
+
+	private confirmDeleteVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {
 		const modal = new ConfirmActionModal(this.app, {
 			title: 'Delete visit',
-			message: `Delete ${describeVisit(entry)}? This removes ${parts}. Met becomes the earliest visit that is not in the future. Met With is not changed.`,
+			message: this.deleteVisitMessage(entry),
 			confirmText: 'Delete visit',
 			warning: true,
 			onConfirm: () => {
@@ -4613,16 +4564,6 @@ export default class RVLocatorPlugin extends Plugin {
 		} catch {
 			return;
 		}
-	}
-
-	private async undoVisitWrite(file: TFile, before: string, campaign: CampaignRecord | null): Promise<void> {
-		document.querySelectorAll('.rv-nh-toast').forEach((node) => node.remove());
-		const current = this.app.vault.getFileByPath(file.path);
-		if (current && before) await this.app.vault.modify(current, before);
-		this.campaign = campaign;
-		await this.persist();
-		this.refreshOpenNoteChrome();
-		for (const callback of this.viewRefreshers) callback();
 	}
 
 	private async applySnooze(path: string, choice: SnoozeChoice | SnoozeWrite | 'clear'): Promise<void> {

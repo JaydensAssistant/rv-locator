@@ -339,6 +339,12 @@ function openChange(
 	applyMenuInk(panel, host);
 	host.ownerDocument.body.appendChild(panel);
 	panel.createEl('p', { cls: 'rv-study-change-title', text: 'Change study' });
+	const closer = panel.createEl('button', { cls: 'modal-close-button', attr: { type: 'button', 'aria-label': 'Close' } });
+	closer.textContent = '×';
+	closer.addEventListener('click', (event) => {
+		event?.preventDefault?.();
+		panel.remove();
+	});
 	const input = panel.createEl('input', { attr: { type: 'search', placeholder: 'Optional (e.g. lesson 3)' } });
 	const list = panel.createDiv('rv-study-change-list');
 	let picked = share.lesson;

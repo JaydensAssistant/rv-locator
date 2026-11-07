@@ -5,7 +5,7 @@ import { applyNoteMapFrame } from './hub-layout';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
-import { dropPath, groupPinStacks, latToTileY, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
+import { dropPath, groupPinStacks, latToTileY, layoutIdenticalPins, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
 import { homeBoxFromPoints, loadTileIndex, noteViewedTile, saveTileIndex, tileIsHome, tileKey, type TileRecord } from './tile-index';
 import { autoInk, paintUrgencyInk, parseCssColor, resolvePaintedColor } from './color-math';
@@ -551,9 +551,24 @@ export class RvMapView extends ItemView {
 		const cxF = cx * frac;
 		const cyF = cy * frac;
 		if (this.user) this.paintUser(pins, width, height, cxF, cyF);
-		const placed = this.pins.map((pin) => ({ pin, point: this.project(pin.lat, pin.lon, width, height, cxF, cyF) }));
+		const projected = this.pins.map((pin) => ({ pin, point: this.project(pin.lat, pin.lon, width, height, cxF, cyF) }));
+		const laid = layoutIdenticalPins(projected.map((item) => ({
+			path: item.pin.path,
+			x: item.point.x,
+			y: item.point.y,
+			lat: item.pin.lat,
+			lon: item.pin.lon,
+			urgency: item.pin.urgency,
+			priority: item.pin.priority,
+			snoozed: item.pin.snoozed === true,
+		})), Math.floor(this.zoom));
+		const placed = projected.map((item) => {
+			const point = laid.points.get(item.pin.path) ?? item.point;
+			return { pin: item.pin, point };
+		});
 		this.lastPlaced = placed;
 		this.paintStacks(pins, placed);
+		for (const dot of laid.dots) this.paintFanDot(pins, dot);
 		const popup = this.popupPath && Math.floor(this.zoom) > 12 && this.isFullscreen()
 			? placed.find((item) => item.pin.path === this.popupPath)
 			: null;
@@ -828,6 +843,12 @@ export class RvMapView extends ItemView {
 		}));
 		const group = groupPinStacks(members).find((entry) => entry.some((member) => member.path === pin.path));
 		return tapZoomsStack(Math.floor(this.zoom), group?.length ?? 0);
+	}
+
+	private paintFanDot(layer: HTMLElement, point: { x: number; y: number }): void {
+		const dot = layer.createEl('span', { cls: 'rv-pin-fan-dot' });
+		dot.style.left = `${point.x}px`;
+		dot.style.top = `${point.y}px`;
 	}
 
 	private paintStacks(layer: HTMLElement, placed: { pin: MapPin; point: { x: number; y: number } }[]): void {

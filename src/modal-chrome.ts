@@ -244,13 +244,13 @@ export function markModalTone(modalEl: HTMLElement, tone: 'general' | 'rv', acce
 	if (typeof modalEl.removeClass === 'function') modalEl.removeClass(drop);
 	else modalEl.classList.remove(drop);
 	if (typeof modalEl.style?.setProperty !== 'function') return;
+	const color = accent.trim() || '#1f8a4c';
 	if (tone !== 'rv') {
 		modalEl.style.setProperty('--rv-menu-ink', '#1f8a4c');
+		modalEl.style.setProperty('--rv-modal-accent', '#1f8a4c');
 		modalEl.style.setProperty('--rv-modal-ink', '#ffffff');
 		return;
 	}
-	const color = accent.trim();
-	if (!color) return;
 	modalEl.style.setProperty('--rv-modal-accent', color);
 	modalEl.style.setProperty('--rv-modal-ink', urgencyInk(color));
 	modalEl.style.setProperty('--rv-menu-ink', color);

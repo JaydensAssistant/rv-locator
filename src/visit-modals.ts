@@ -18,8 +18,12 @@ export interface VisitEditOptions {
 	covered?: boolean;
 	onCovered?: (covered: boolean) => void;
 	onSave: (facts: VisitFacts) => void;
-	/** Shown as Delete visit when set. */
+	/** Deletes the visit. The sheet's Delete tab confirms first. */
 	onDelete?: () => void;
+	/** Copy shown on the Delete tab. */
+	deleteMessage?: string;
+	/** Open on the Delete tab. */
+	startOnDelete?: boolean;
 	share?: ShareFieldOptions;
 }
 
@@ -38,6 +42,12 @@ export class VisitEditModal extends Modal {
 	private companionSetting: Setting | null = null;
 	private shareHost: HTMLElement | null = null;
 	private campaignHost: HTMLElement | null = null;
+	private editPane: HTMLElement | null = null;
+	private deletePane: HTMLElement | null = null;
+	private editActions: HTMLElement | null = null;
+	private deleteActions: HTMLElement | null = null;
+	private editTab: HTMLElement | null = null;
+	private deleteTab: HTMLElement | null = null;
 	private share: VisitShare = emptyShare();
 
 	constructor(app: App, private options: VisitEditOptions) {
@@ -71,8 +81,11 @@ export class VisitEditModal extends Modal {
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-visit-editor');
 		markModalTone(this.modalEl, 'rv', this.buttonAccent);
 		const { contentEl } = this;
+		if (this.options.onDelete) this.mountVisitTabs();
+		const body = this.options.onDelete ? contentEl.createDiv('rv-visit-pane is-edit') : contentEl;
+		this.editPane = body === contentEl ? null : body;
 
-		new Setting(contentEl)
+		new Setting(body)
 			.setName('Were they home?')
 			.addDropdown((dropdown) => {
 				dropdown.addOption('home', 'Home');
@@ -90,7 +103,7 @@ export class VisitEditModal extends Modal {
 		const syncHour = (): void => {
 			this.hour = hour24FromFace(hour12, meridiem);
 		};
-		const time = new Setting(contentEl).setName('Day').setClass('rv-when-row');
+		const time = new Setting(body).setName('Day').setClass('rv-when-row');
 		time.addText((text) => {
 			text.inputEl.type = 'date';
 			text.inputEl.max = dateInputValue(new Date());
@@ -126,7 +139,7 @@ export class VisitEditModal extends Modal {
 			});
 		});
 
-		this.companionSetting = new Setting(contentEl)
+		this.companionSetting = new Setting(body)
 			.setName('What publisher came with you?')
 			.addText((text) => {
 				text.setPlaceholder('Optional (e.g. Sister Johnson)');
@@ -142,7 +155,7 @@ export class VisitEditModal extends Modal {
 			});
 		this.campaignHost = null;
 		if (this.options.campaign) {
-			this.campaignHost = contentEl.createDiv('rv-visit-campaign rv-modal-section');
+			this.campaignHost = body.createDiv('rv-visit-campaign rv-modal-section');
 			mountCampaignChoice(
 				this.campaignHost,
 				coverageQuestion(this.options.campaign.pronoun ?? 'them', this.options.campaign.name),
@@ -151,26 +164,15 @@ export class VisitEditModal extends Modal {
 			);
 		}
 		if (this.options.share) {
-			this.shareHost = contentEl.createDiv('rv-visit-share rv-modal-section');
+			this.shareHost = body.createDiv('rv-visit-share rv-modal-section');
 			mountShareFields(this.shareHost, { ...this.options.share, initial: this.share }, (next) => {
 				this.share = next;
 			});
 		}
 		this.syncCompanion();
 
-		const actions = new Setting(contentEl).setClass('rv-modal-actions');
-		if (this.options.onDelete) {
-			actions.addButton((button) => {
-				button.setButtonText('Delete visit');
-				button.setDestructive();
-				button.removeCta();
-				button.buttonEl?.addClass('rv-btn-outline');
-				button.onClick(() => {
-					this.close();
-					this.options.onDelete?.();
-				});
-			});
-		}
+		const actions = new Setting(contentEl).setClass('rv-modal-actions rv-visit-edit-actions');
+		this.editActions = actions.settingEl;
 		actions
 			.addButton((button) => {
 				button.setButtonText('Cancel');
@@ -181,7 +183,67 @@ export class VisitEditModal extends Modal {
 				button.setCta();
 				button.onClick(() => this.save());
 			});
+		if (this.options.onDelete) {
+			this.deletePane = contentEl.createDiv('rv-visit-pane is-delete');
+			this.deletePane.createEl('p', {
+				cls: 'rv-visit-delete-copy',
+				text: this.options.deleteMessage ?? 'Delete this visit?',
+			});
+			const confirm = new Setting(contentEl).setClass('rv-modal-actions rv-visit-delete-actions');
+			this.deleteActions = confirm.settingEl;
+			confirm
+				.addButton((button) => {
+					button.setButtonText('Cancel');
+					button.onClick(() => this.showVisitPane('edit'));
+				})
+				.addButton((button) => {
+					button.setButtonText('Delete visit');
+					button.setCta();
+					button.onClick(() => {
+						this.close();
+						this.options.onDelete?.();
+					});
+				});
+			this.showVisitPane(this.options.startOnDelete ? 'delete' : 'edit');
+		}
 		iconizeModal(contentEl);
+	}
+
+	private mountVisitTabs(): void {
+		const title = this.titleEl;
+		if (typeof title?.empty !== 'function' || typeof title.createEl !== 'function') return;
+		title.empty();
+		title.addClass('rv-visit-tabs');
+		const edit = title.createEl('button', {
+			cls: 'rv-visit-tab is-active',
+			text: 'Edit visit',
+			attr: { type: 'button' },
+		});
+		const remove = title.createEl('button', {
+			cls: 'rv-visit-tab',
+			text: 'Delete visit',
+			attr: { type: 'button' },
+		});
+		edit.addEventListener('click', (event) => {
+			event?.preventDefault?.();
+			this.showVisitPane('edit');
+		});
+		remove.addEventListener('click', (event) => {
+			event?.preventDefault?.();
+			this.showVisitPane('delete');
+		});
+		this.editTab = edit;
+		this.deleteTab = remove;
+	}
+
+	private showVisitPane(which: 'edit' | 'delete'): void {
+		const deleting = which === 'delete';
+		if (this.editPane) this.editPane.hidden = deleting;
+		if (this.deletePane) this.deletePane.hidden = !deleting;
+		if (this.editActions) this.editActions.hidden = deleting;
+		if (this.deleteActions) this.deleteActions.hidden = !deleting;
+		this.editTab?.classList.toggle('is-active', !deleting);
+		this.deleteTab?.classList.toggle('is-active', deleting);
 	}
 
 	onClose(): void {

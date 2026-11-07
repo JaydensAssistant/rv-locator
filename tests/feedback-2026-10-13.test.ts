@@ -265,7 +265,10 @@ describe('2026-10-13 feedback', () => {
 		assert.equal(identity.includes('♂'), false);
 		assert.equal(identity.includes('♀'), false);
 		const edit = source('src/visit-modals.ts');
-		assert.match(edit, /setButtonText\('Delete visit'\);\s*button\.setDestructive\(\);\s*button\.removeCta\(\);\s*button\.buttonEl\?\.addClass\('rv-btn-outline'\)/);
+		assert.match(edit, /text: 'Edit visit'/);
+		assert.match(edit, /text: 'Delete visit'/);
+		assert.match(edit, /setButtonText\('Delete visit'\)/);
+		assert.match(edit, /showVisitPane\('edit'\)/);
 		assert.match(edit, /setClass\('rv-modal-actions'\)/);
 		const logVisit = source('src/modals.ts');
 		const confirm = logVisit.slice(logVisit.indexOf('class VisitConfirmModal'), logVisit.indexOf('export type CoverageDecision'));
@@ -348,10 +351,10 @@ describe('location picker and return times', () => {
 		const rule = css.slice(css.indexOf('.setting-item.rv-priority-nudge'));
 		assert.match(rule, /\.setting-item\.rv-priority-nudge \.setting-item-control \{[^}]*gap:\s*8px !important;/);
 		assert.match(rule, /button \{[^}]*flex:\s*1 1 0 !important;[^}]*min-width:\s*0 !important;[^}]*height:\s*40px !important;[^}]*border-radius:\s*4px !important;[^}]*background:\s*transparent !important;/);
-		assert.match(rule, /button\.rv-nudge-lower[^}]*color:\s*#d63c3c !important;[^}]*border-color:\s*#d63c3c !important;/);
+		assert.match(rule, /button\.rv-nudge-lower[^}]*color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;[^}]*border-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
 		assert.match(rule, /\.theme-dark[^}]*button\.rv-nudge-stay[^}]*color:\s*#8a8a8a !important;/);
 		assert.match(rule, /\.theme-light[^}]*button\.rv-nudge-stay[^}]*color:\s*#8f8f8f !important;/);
-		assert.match(rule, /button\.rv-nudge-raise[^}]*color:\s*#1f8a4c !important;[^}]*border-color:\s*#1f8a4c !important;/);
+		assert.match(rule, /button\.rv-nudge-raise[^}]*color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;[^}]*border-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
 		assert.equal(rule.includes('var(--rv-menu-ink'), false);
 		assert.match(css, /\.rv-modal-actions:not\(\.rv-priority-nudge\) button:not\(\.mod-cta\)/);
 	});
