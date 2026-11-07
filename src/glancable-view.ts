@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { hubEmbedCapPx, hubUsesStackedMap, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
+import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -296,12 +296,31 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
 		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
 		if (!(card instanceof HTMLElement)) return;
-		const cover = this.root.closest('.rv-hub-swap-cover');
-		if (!cover) this.plugin.takeHubArrival();
-		revealHubCard(this.scrollEl, card);
+		const scrolled = card.closest('.rv-locator-scroll');
+		const scroller = scrolled instanceof HTMLElement ? scrolled : this.scrollEl;
+		if (scroller.clientHeight <= 1) return;
+		const swap = this.root.ownerDocument.querySelector('.rv-hub-swap-cover');
+		const inCover = Boolean(this.root.closest('.rv-hub-swap-cover'));
+		if (!inCover && swap instanceof HTMLElement) {
+			const coverCard = swap.querySelector(`[data-rv-path="${escaped}"]`);
+			if (coverCard instanceof HTMLElement) {
+				scroller.scrollTop = landingScrollFor(scroller, card, coverCard.getBoundingClientRect().top);
+			} else {
+				revealHubCard(this.scrollEl, card);
+			}
+		} else {
+			revealHubCard(this.scrollEl, card);
+		}
 		card.classList.remove('rv-card-flash');
+		if (!card.dataset.rvLandAt) card.dataset.rvLandAt = String(Date.now());
 		card.classList.add('rv-card-land');
-		window.setTimeout(() => card.classList.remove('rv-card-land'), 2000);
+		if (card.dataset.rvLandTimer !== '1') {
+			card.dataset.rvLandTimer = '1';
+			window.setTimeout(() => card.classList.remove('rv-card-land'), 2000);
+		}
+		const cover = this.root.closest('.rv-hub-swap-cover');
+		if (!cover && !hubLandingReady(scroller, card)) return;
+		if (!cover) this.plugin.takeHubArrival();
 	}
 
 	protected paint(): void {

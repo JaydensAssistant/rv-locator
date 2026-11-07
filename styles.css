@@ -9946,7 +9946,15 @@ body.rv-hub-swapping .mobile-navbar {
 }
 
 .workspace-leaf > .rv-hub-swap-cover > .view-header {
+	position: relative !important;
+	top: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	left: auto !important;
 	flex: 0 0 auto;
+	height: var(--header-height);
+	min-height: var(--header-height);
+	width: 100% !important;
 	pointer-events: none;
 }
 
@@ -10018,7 +10026,7 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-ti
 }
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header {
-	position: relative;
+	position: relative !important;
 }
 
 /* Clear pack. Joined suggester, dark sheet chrome, overlays that do not reflow. */
@@ -10359,6 +10367,7 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content
 	pointer-events: none;
 	background: var(--rv-land, rgba(255, 255, 255, 0.09));
 	animation: rv-land-fade 2s linear forwards;
+	animation-delay: var(--rv-land-delay, 0ms);
 }
 
 @keyframes rv-land-fade {
@@ -10493,7 +10502,8 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content
 	color: var(--rv-modal-ink, #fff);
 }
 
-body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header::after {
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header::after,
+body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header::after {
 	content: 'Return Visits';
 	position: absolute;
 	left: 0;
@@ -10509,6 +10519,15 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header:
 	color: var(--text-normal);
 	pointer-events: none;
 	z-index: 1;
+}
+
+body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header .view-header-title {
+	font-size: 0 !important;
+	text-align: center;
+}
+
+body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header .view-header-title > * {
+	display: none !important;
 }
 
 /* RV-249. Chips keep their natural width and the group stays centered.

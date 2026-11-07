@@ -145,6 +145,40 @@ function nodeOverflows(node: HTMLElement, view: Window | null): boolean {
 	return /auto|scroll|overlay/.test(y);
 }
 
+/**
+ * Scroll offset that puts `card` at `desiredTop` in the viewport, then clamps
+ * so the card stays fully inside the scroller. A last card that cannot be
+ * centered stays on screen instead of sliding past the bottom.
+ */
+export function landingScrollFor(scrollEl: HTMLElement, card: HTMLElement, desiredTop: number): number {
+	const scrollRect = scrollEl.getBoundingClientRect();
+	const cardRect = card.getBoundingClientRect();
+	const current = scrollEl.scrollTop || 0;
+	const viewHeight = scrollEl.clientHeight || scrollRect.height || 0;
+	const cardHeight = cardRect.height || card.offsetHeight || 0;
+	const cardOffset = current + (cardRect.top - scrollRect.top);
+	const max = Math.max(0, (scrollEl.scrollHeight || 0) - viewHeight);
+	let next = cardOffset - (desiredTop - scrollRect.top);
+	if (viewHeight > 0 && cardHeight > 0 && cardHeight <= viewHeight) {
+		const minScroll = Math.max(0, cardOffset + cardHeight - viewHeight);
+		const maxScroll = Math.max(0, cardOffset);
+		const low = Math.min(minScroll, max);
+		const high = Math.min(Math.max(minScroll, maxScroll), max);
+		next = Math.max(low, Math.min(high, next));
+	}
+	if (!Number.isFinite(next)) return current;
+	return Math.max(0, Math.min(max, next));
+}
+
+/** The card is fully inside the scroller, so the landing scroll has taken. */
+export function hubLandingReady(scrollEl: HTMLElement, card: HTMLElement): boolean {
+	if ((scrollEl.clientHeight || 0) <= 1) return false;
+	const cardRect = card.getBoundingClientRect();
+	const box = scrollEl.getBoundingClientRect();
+	if (cardRect.height <= 0 || box.height <= 0) return false;
+	return cardRect.top >= box.top - 2 && cardRect.bottom <= box.bottom + 2;
+}
+
 function offsetInContainer(container: HTMLElement, card: HTMLElement): number {
 	if (typeof card.getBoundingClientRect === 'function' && typeof container.getBoundingClientRect === 'function') {
 		const cardRect = card.getBoundingClientRect();

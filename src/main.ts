@@ -28,7 +28,7 @@ import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, w
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard } from './hub-cover';
+import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -970,10 +970,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const plugin = this;
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
-				holdLeafForHubPaint(this.view?.containerEl, {
-					title: file.basename,
-					mount: (host) => plugin.mountHubSnapshot(host),
-				});
+				holdLeafForHubPaint(this.view?.containerEl, plugin.hubCoverOptions(file.basename));
 			}
 			return openFile.call(this, file, plugin.previewStateFor(file, openState));
 		};
@@ -1797,10 +1794,7 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		const active = this.app.workspace.getMostRecentLeaf();
-		holdLeafForHubPaint(active?.view?.containerEl, {
-			title: dest?.basename ?? target,
-			mount: (host) => this.mountHubSnapshot(host),
-		});
+		holdLeafForHubPaint(active?.view?.containerEl, this.hubCoverOptions(dest?.basename ?? target));
 		void this.app.workspace.openLinkText(target, sourcePath);
 	}
 
@@ -1878,6 +1872,17 @@ export default class RVLocatorPlugin extends Plugin {
 	private pinFrontmatter(path: string, data: Record<string, unknown>): void {
 		this.cachedFrontmatter.set(path, { ...data });
 		clearGlanceHold();
+	}
+
+	/** Cover options for a hub open. A landed card clears the one-shot arrival. */
+	private hubCoverOptions(title: string): HubCoverPaint {
+		return {
+			title,
+			mount: (host) => this.mountHubSnapshot(host),
+			onLand: (path) => {
+				if (this.hubArrivalPath === path) this.hubArrivalPath = null;
+			},
+		};
 	}
 
 	/** Cached hub drawn into the swap cover. The same painter the real view uses. */

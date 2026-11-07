@@ -1,3 +1,4 @@
+import { landingScrollFor } from './hub-layout';
 import { isRvHubNote } from './rv-note-view';
 
 /** How long the previous leaf may cover a hub swap before we give up. */
@@ -183,6 +184,51 @@ export function hubSwapDecision(leaf: HTMLElement, phone: boolean, elapsedMs: nu
 	return 'hold';
 }
 
+/**
+ * Put the live card where the cover card already is, then remember that the
+ * landing was applied. A cover with no tinted card is a direct hub open.
+ */
+export function handoffCoverLanding(doc: Document, onLand?: (path: string) => void): boolean {
+	const cover = doc.querySelector(`.${COVER_CLASS}`);
+	if (!isElement(cover)) return false;
+	const coverCard = cover.querySelector('.rv-locator-card.rv-card-land');
+	if (!isElement(coverCard)) return false;
+	const path = coverCard.getAttribute('data-rv-path');
+	if (!path) return false;
+	const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '\\"');
+	const cards = doc.querySelectorAll(`[data-rv-path="${escaped}"]`);
+	let live: HTMLElement | null = null;
+	for (let index = 0; index < cards.length; index += 1) {
+		const node = cards[index];
+		if (isElement(node) && !cover.contains(node)) {
+			live = node;
+			break;
+		}
+	}
+	if (!live) return false;
+	const scrolled = live.closest('.rv-locator-scroll');
+	if (!isElement(scrolled) || scrolled.clientHeight <= 1) return false;
+	const desired = coverCard.getBoundingClientRect().top;
+	scrolled.scrollTop = landingScrollFor(scrolled, live, desired);
+	if (!live.classList.contains('rv-card-land')) {
+		const started = Number(coverCard.dataset.rvLandAt);
+		const elapsed = Number.isFinite(started) ? Math.max(0, Date.now() - started) : 0;
+		if (elapsed > 0) live.style.setProperty('--rv-land-delay', `-${elapsed}ms`);
+		live.dataset.rvLandAt = coverCard.dataset.rvLandAt || String(Date.now());
+		live.classList.add('rv-card-land');
+		if (live.dataset.rvLandTimer !== '1') {
+			live.dataset.rvLandTimer = '1';
+			const left = Math.max(0, 2000 - elapsed);
+			doc.defaultView?.setTimeout(() => {
+				live?.classList.remove('rv-card-land');
+				live?.style.removeProperty('--rv-land-delay');
+			}, left);
+		}
+	}
+	onLand?.(path);
+	return true;
+}
+
 function copyScroll(from: Element, to: Element): void {
 	if (from.scrollTop || from.scrollLeft) {
 		to.scrollTop = from.scrollTop;
@@ -227,6 +273,8 @@ export interface HubCoverPaint {
 	 * Return a disposer. No cards, or a throw, keeps the note clone instead of a blank frame.
 	 */
 	mount?: (host: HTMLElement) => (() => void) | void;
+	/** The live card now sits where the cover had it. Clear the one-shot arrival. */
+	onLand?: (path: string) => void;
 }
 
 function snapshotReady(host: HTMLElement): boolean {
@@ -298,6 +346,11 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 		if (stopped) return;
 		stopped = true;
 		observer.disconnect();
+		try {
+			handoffCoverLanding(doc, options?.onLand);
+		} catch {
+			// A missing live card still has to drop the cover.
+		}
 		try {
 			dispose?.();
 		} catch {
