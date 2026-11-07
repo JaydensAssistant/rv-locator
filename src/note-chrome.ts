@@ -1544,13 +1544,24 @@ function labeledStrong(paragraph: HTMLElement, kind: 'hub' | 'address'): HTMLEle
 }
 
 function fitHubOverflow(row: HTMLElement): void {
+	const jobs: { node: HTMLElement; label: HTMLElement; full: string }[] = [];
 	row.querySelectorAll('.rv-hub-chip').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
 		const label = node.querySelector('.rv-hub-chip-label');
 		if (!(label instanceof HTMLElement)) return;
 		const full = label.dataset.full || label.textContent || '';
+		jobs.push({ node, label, full });
+	});
+	const view = row.ownerDocument.defaultView;
+	const widths = jobs.map((job) => job.label.clientWidth);
+	const fonts = jobs.map((job) => view && typeof view.getComputedStyle === 'function' ? view.getComputedStyle(job.label).font : '');
+	jobs.forEach((job, index) => {
+		const label = job.label;
+		const full = job.full;
+		if (Number.isFinite(widths[index])) label.dataset.rvMeasureWidth = String(widths[index]);
+		if (fonts[index]) label.dataset.rvMeasureFont = fonts[index] ?? '';
 		fitEndEllipsis(label, full);
-		node.classList.remove('is-overflow');
+		job.node.classList.remove('is-overflow');
 	});
 }
 

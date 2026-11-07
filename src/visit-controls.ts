@@ -791,7 +791,7 @@ function releaseStripWidth(strip: HTMLElement): void {
 }
 
 /**
- * Heading share line. fitTitleRow keeps five characters and two lines.
+ * Heading share line. Titles stay whole and ellipsize in CSS when the row is full.
  * Campaign stays. A +n button is only the last resort, and it never
  * drops a title down to an icon.
  */

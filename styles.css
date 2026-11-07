@@ -5707,7 +5707,7 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	display: flex;
 	flex-wrap: nowrap;
 	align-items: center;
-	gap: 6px;
+	gap: 12px;
 	overflow: hidden;
 	min-width: 0;
 }
@@ -6311,7 +6311,7 @@ body.rv-center-visit-notes .rv-older-heading {
 .rv-item-strip:not(.is-ghost) > .rv-item,
 .rv-item-strip:not(.is-ghost) .rv-fit,
 .rv-item-strip:not(.is-ghost) .rv-fit-stem {
-	flex: 1 1 0;
+	flex: 0 1 auto;
 	flex-shrink: 1;
 	min-width: 0;
 	max-width: 100%;
@@ -7637,7 +7637,7 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	padding-top: 0;
 	padding-bottom: 0;
 	flex-wrap: nowrap;
-	gap: 6px;
+	gap: 12px;
 	font-size: 11px;
 	font-weight: 400;
 	border: 1px solid var(--background-modifier-border);
@@ -7812,12 +7812,29 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .rv-item-strip:not(.is-ghost) > .rv-item,
 .rv-item-strip:not(.is-ghost) .rv-fit {
-	flex: 1 1 0;
-	flex-grow: 1;
+	flex: 0 1 auto;
+	flex-grow: 0;
 	flex-shrink: 1;
 	width: auto;
 	min-width: 0;
 	max-width: 100%;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item {
+	gap: 4px;
+	justify-content: flex-start;
+	text-align: left;
+}
+
+.rv-item-strip:not(.is-ghost) .rv-fit {
+	gap: 4px;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item > .rv-item-icon,
+.rv-item-strip:not(.is-ghost) .rv-type {
+	flex: 0 0 auto;
+	flex-grow: 0;
+	flex-shrink: 0;
 }
 
 .rv-item-strip:not(.is-ghost) > .rv-item.is-campaign {
@@ -7827,10 +7844,11 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 }
 
 .rv-item-strip:not(.is-ghost) .rv-fit-stem {
-	flex: 1 1 auto;
+	flex: 0 1 auto;
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
+	text-align: left;
 }
 
 .rv-item-strip:not(.is-ghost) .rv-type {
@@ -10491,4 +10509,133 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header:
 	color: var(--text-normal);
 	pointer-events: none;
 	z-index: 1;
+}
+
+/* RV-249. Chips keep their natural width and the group stays centered.
+   Phone app.css uses these same body classes, so the lock repeats them. */
+body.is-mobile .rv-item-strip:not(.is-ghost),
+body.is-phone .rv-item-strip:not(.is-ghost),
+.markdown-preview-view .rv-item-strip:not(.is-ghost),
+.markdown-rendered .rv-item-strip:not(.is-ghost),
+.rv-item-strip:not(.is-ghost) {
+	justify-content: center !important;
+	gap: 12px !important;
+	column-gap: 12px !important;
+	font-size: 11px;
+}
+
+body.is-mobile .rv-item-strip:not(.is-ghost) > .rv-item,
+body.is-phone .rv-item-strip:not(.is-ghost) > .rv-item,
+.markdown-preview-view .rv-item-strip:not(.is-ghost) > .rv-item,
+.markdown-rendered .rv-item-strip:not(.is-ghost) > .rv-item,
+.rv-item-strip:not(.is-ghost) > .rv-item {
+	flex: 0 1 auto !important;
+	width: auto !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	gap: 4px !important;
+	justify-content: flex-start !important;
+	text-align: left !important;
+}
+
+body.is-mobile .rv-item-strip:not(.is-ghost) .rv-fit,
+body.is-phone .rv-item-strip:not(.is-ghost) .rv-fit,
+.markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-fit,
+.rv-item-strip:not(.is-ghost) .rv-fit,
+body.is-mobile .rv-item-strip:not(.is-ghost) .rv-fit-stem,
+body.is-phone .rv-item-strip:not(.is-ghost) .rv-fit-stem,
+.markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-fit-stem,
+.rv-item-strip:not(.is-ghost) .rv-fit-stem {
+	flex: 0 1 auto !important;
+	width: auto !important;
+	min-width: 0 !important;
+	max-width: 100% !important;
+	text-align: left !important;
+}
+
+body.is-mobile .rv-item-strip:not(.is-ghost) .rv-fit,
+body.is-phone .rv-item-strip:not(.is-ghost) .rv-fit,
+.rv-item-strip:not(.is-ghost) .rv-fit {
+	gap: 4px !important;
+}
+
+body.is-mobile .rv-item-strip:not(.is-ghost) > .rv-item > .rv-item-icon,
+body.is-phone .rv-item-strip:not(.is-ghost) > .rv-item > .rv-item-icon,
+.rv-item-strip:not(.is-ghost) > .rv-item > .rv-item-icon,
+body.is-mobile .rv-item-strip:not(.is-ghost) .rv-type,
+body.is-phone .rv-item-strip:not(.is-ghost) .rv-type,
+.rv-item-strip:not(.is-ghost) .rv-type {
+	flex: 0 0 auto !important;
+}
+
+.rv-item-strip:not(.is-ghost) .rv-fit-stem {
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+	text-align: left !important;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item.is-campaign {
+	flex: 0 0 auto !important;
+	min-width: max-content !important;
+}
+
+.rv-item-strip.is-revealing > .rv-item.is-squeezed {
+	flex: 0 0 auto !important;
+	min-width: max-content !important;
+	max-width: none !important;
+}
+
+.rv-item-strip.is-revealing:not(.is-multi) > .rv-item.is-open:not(:only-child) {
+	flex: 0 1 auto !important;
+	max-width: calc(100% - 42px) !important;
+}
+
+/* Outranks a later mobile app.css rule that restates the same body classes. */
+body.is-mobile .markdown-preview-view .el-h5 .rv-item-strip:not(.is-ghost),
+body.is-phone .markdown-preview-view .el-h5 .rv-item-strip:not(.is-ghost),
+body.is-mobile .markdown-rendered .el-h5 .rv-item-strip:not(.is-ghost),
+body.is-phone .markdown-rendered .el-h5 .rv-item-strip:not(.is-ghost) {
+	justify-content: center !important;
+	gap: 12px !important;
+	column-gap: 12px !important;
+}
+
+body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) > .rv-item,
+body.is-phone .markdown-preview-view .rv-item-strip:not(.is-ghost) > .rv-item,
+body.is-mobile .markdown-rendered .rv-item-strip:not(.is-ghost) > .rv-item,
+body.is-phone .markdown-rendered .rv-item-strip:not(.is-ghost) > .rv-item {
+	flex: 0 1 auto !important;
+	width: auto !important;
+	min-width: 0 !important;
+	gap: 4px !important;
+	justify-content: flex-start !important;
+	text-align: left !important;
+}
+
+body.is-phone .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-fit,
+body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-fit,
+body.is-phone .markdown-rendered .rv-item-strip:not(.is-ghost) .rv-fit,
+body.is-mobile .markdown-rendered .rv-item-strip:not(.is-ghost) .rv-fit {
+	flex: 0 1 auto !important;
+	gap: 4px !important;
+	min-width: 0 !important;
+	text-align: left !important;
+}
+
+body.is-phone .el-h5 .rv-item-strip:not(.is-ghost) .rv-fit-stem,
+body.is-mobile .el-h5 .rv-item-strip:not(.is-ghost) .rv-fit-stem,
+body.is-phone .markdown-preview-view .rv-fit-stem,
+body.is-mobile .markdown-preview-view .rv-fit-stem {
+	flex: 0 1 auto !important;
+	min-width: 0 !important;
+	overflow: hidden !important;
+	text-overflow: ellipsis !important;
+	text-align: left !important;
+}
+
+body.is-phone .markdown-preview-view .rv-item-strip:not(.is-ghost) > .rv-item > .rv-item-icon,
+body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) > .rv-item > .rv-item-icon,
+body.is-phone .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type,
+body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type {
+	flex: 0 0 auto !important;
 }

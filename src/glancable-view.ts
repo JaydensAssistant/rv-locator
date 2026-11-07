@@ -11,7 +11,7 @@ import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
-import { hostIsHidden } from './hub-cover';
+import { hostIsHidden, markHubFill } from './hub-cover';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -1624,17 +1624,7 @@ function cssPx(style: CSSStyleDeclaration, name: string): number {
 }
 
 function fillHubFrame(root: HTMLElement, marked: HTMLElement[]): void {
-	if (typeof root.closest !== 'function') return;
-	const embed = root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
-	const leaf = root.closest('.workspace-leaf-content');
-	const stop = embed ?? leaf;
-	let node: HTMLElement | null = root.parentElement;
-	while (node) {
-		node.classList.add('rv-hub-fill');
-		marked.push(node);
-		if (node === stop) break;
-		node = node.parentElement;
-	}
+	markHubFill(root, marked);
 }
 
 function basesChromeHost(root: HTMLElement): HTMLElement | null {

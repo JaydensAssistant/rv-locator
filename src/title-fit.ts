@@ -123,12 +123,6 @@ export function fairCuts(lengths: readonly number[], budget: number, minKeep = M
 	return cuts;
 }
 
-function ellipsize(text: string, keep: number): string {
-	if (text.length <= keep) return text;
-	const head = Math.max(1, keep);
-	return `${text.slice(0, head)}…`;
-}
-
 /**
  * Suffix-preserving fit. The suffix span has no gap before it. Hover keeps
  * the full title; a tap on a truncated title opens a phone popover.
@@ -171,25 +165,21 @@ export function overlayOnChip(
 export function fitTitleRow(row: HTMLElement): void {
 	const items = Array.from(row.querySelectorAll<HTMLElement>(':scope > .rv-item .rv-fit, :scope > .rv-fit'));
 	if (items.length === 0) return;
-	const width = row.clientWidth;
-	if (width <= 0) return;
-	const view = row.ownerDocument.defaultView;
-	const rowStyle = view?.getComputedStyle(row);
-	const pad = rowStyle ? (parseFloat(rowStyle.paddingLeft) || 0) + (parseFloat(rowStyle.paddingRight) || 0) : 0;
-	const rowGap = rowStyle ? (parseFloat(rowStyle.columnGap) || parseFloat(rowStyle.gap) || 0) : 8;
-	const gap = Number.isFinite(rowGap) ? rowGap : 8;
-	const usable = Math.max(0, width - pad);
 	const stems = items.map((item) => item.getAttribute('data-stem') ?? '');
-	const floors = stems.map((stem, index) => stemFloorWidth(items[index] ?? row, stem));
-	const lines = stripRowPlan(floors, usable, gap);
-	applyStripSplit(row, lines === 2 ? evenSplitIndex(items.length) : 0);
-	if (lines === 2) {
-		const split = evenSplitIndex(items.length);
-		paintTitleGroup(items.slice(0, split), stems.slice(0, split), usable, gap);
-		paintTitleGroup(items.slice(split), stems.slice(split), usable, gap);
-		return;
+	const width = row.clientWidth;
+	let lines: 1 | 2 = 1;
+	if (width > 0 && items.length >= 4) {
+		const view = row.ownerDocument.defaultView;
+		const rowStyle = view?.getComputedStyle(row);
+		const pad = rowStyle ? (parseFloat(rowStyle.paddingLeft) || 0) + (parseFloat(rowStyle.paddingRight) || 0) : 0;
+		const rowGap = rowStyle ? (parseFloat(rowStyle.columnGap) || parseFloat(rowStyle.gap) || 0) : 12;
+		const gap = Number.isFinite(rowGap) ? rowGap : 12;
+		const usable = Math.max(0, width - pad);
+		const floors = stems.map((stem, index) => stemFloorWidth(items[index] ?? row, stem));
+		lines = stripRowPlan(floors, usable, gap);
 	}
-	paintTitleGroup(items, stems, usable, gap);
+	applyStripSplit(row, lines === 2 ? evenSplitIndex(items.length) : 0);
+	items.forEach((item, index) => paintFullStem(item, stems[index] ?? ''));
 }
 
 function stemFloorWidth(item: HTMLElement, stem: string): number {
@@ -210,43 +200,19 @@ function stemFloorWidth(item: HTMLElement, stem: string): number {
 	return measured;
 }
 
-function paintTitleGroup(items: readonly HTMLElement[], stems: readonly string[], width: number, gap: number): void {
-	if (items.length === 0) return;
-	let fixed = Math.max(0, items.length - 1) * gap;
-	items.forEach((item) => {
-		const host = item.closest('.rv-item');
-		const icon = host?.querySelector('.rv-item-icon');
-		const suffix = item.querySelector('.rv-type');
-		const iconWidth = icon instanceof HTMLElement ? icon.offsetWidth : 0;
-		const suffixWidth = suffix instanceof HTMLElement ? suffix.offsetWidth : 0;
-		fixed += iconWidth + suffixWidth + (iconWidth > 0 ? 4 : 0);
-	});
-	const sample = stems[0] ?? 'M';
-	const probe = items[0]?.ownerDocument.createElement('span');
-	if (!probe || !items[0]) return;
-	probe.className = 'rv-fit-probe';
-	probe.textContent = sample.slice(0, 1) || 'M';
-	items[0].appendChild(probe);
-	const charPx = Math.max(1, probe.offsetWidth);
-	probe.remove();
-	const budget = Math.floor(Math.max(0, width - fixed) / charPx);
-	const cuts = fairCuts(stems.map((stem) => stem.length), budget, MIN_TITLE_CHARS);
-	items.forEach((item, index) => {
-		const stem = item.querySelector('.rv-fit-stem');
-		const text = stems[index] ?? '';
-		const host = item.closest('.rv-item');
-		if (host?.classList.contains('is-open')) {
-			if (stem) stem.textContent = text;
-			return;
-		}
-		if (host?.classList.contains('is-squeezed')) {
-			if (stem) stem.textContent = text.length > 1 ? `${text.slice(0, 1)}…` : text;
-			return;
-		}
-		const floor = Math.min(MIN_TITLE_CHARS, text.length);
-		const keep = Math.max(floor, cuts[index] ?? text.length);
-		if (stem) stem.textContent = ellipsize(text, keep);
-	});
+/** CSS ellipsizes a stem that does not fit. The text stays whole until then. */
+function paintFullStem(item: HTMLElement, text: string): void {
+	const stem = item.querySelector('.rv-fit-stem');
+	const host = item.closest('.rv-item');
+	if (host?.classList.contains('is-open')) {
+		if (stem) stem.textContent = text;
+		return;
+	}
+	if (host?.classList.contains('is-squeezed')) {
+		if (stem) stem.textContent = text.length > 1 ? `${text.slice(0, 1)}…` : text;
+		return;
+	}
+	if (stem && stem.textContent !== text) stem.textContent = text;
 }
 
 function applyStripSplit(row: HTMLElement, splitAt: number): void {
@@ -370,10 +336,50 @@ function closedSpan(input: HTMLElement, cls: string, text: string): HTMLElement 
 
 /**
  * Hub names and addresses keep the start and cut the end: `Return Visits…`.
- * A box that already fits is left whole. Catalog titles use {@link fitMiddleEllipsis}.
+ * A box that already fits is left whole. Width and font are read before the
+ * text is written, and repeated strings reuse the cached measure.
  */
-function slotWidth(el: HTMLElement): number {
-	return el.clientWidth;
+const textWidthCache = new Map<string, number>();
+let textMeasure: CanvasRenderingContext2D | null | undefined;
+
+function cachedTextWidth(font: string, sample: string): number | null {
+	const key = `${font}\n${sample}`;
+	const hit = textWidthCache.get(key);
+	if (hit != null) return hit;
+	if (textMeasure === undefined) {
+		try {
+			textMeasure = document.createElement('canvas').getContext('2d');
+		} catch {
+			textMeasure = null;
+		}
+	}
+	if (!textMeasure) return null;
+	textMeasure.font = font || '13px sans-serif';
+	const width = textMeasure.measureText(sample).width;
+	if (textWidthCache.size > 2000) textWidthCache.clear();
+	textWidthCache.set(key, width);
+	return width;
+}
+
+function ellipsisWithin(font: string, source: string, width: number): string | null {
+	const whole = cachedTextWidth(font, source);
+	if (whole == null) return null;
+	if (whole <= width + 1) return source;
+	let lo = 1;
+	let hi = source.length - 1;
+	let best = '…';
+	while (lo <= hi) {
+		const mid = (lo + hi) >> 1;
+		const candidate = `${source.slice(0, mid)}…`;
+		const size = cachedTextWidth(font, candidate) ?? width + 2;
+		if (size <= width + 1) {
+			best = candidate;
+			lo = mid + 1;
+		} else {
+			hi = mid - 1;
+		}
+	}
+	return best;
 }
 
 export function fitEndEllipsis(el: HTMLElement, full: string): void {
@@ -382,11 +388,24 @@ export function fitEndEllipsis(el: HTMLElement, full: string): void {
 	armHoverTooltip(el, text, { touch: false });
 	const apply = (): void => {
 		const source = (el.dataset.full || text).replace(/\s+/g, ' ').trim();
-		el.textContent = source;
-		const width = slotWidth(el);
-		if (!source || width <= 8) return;
-		const wrapped = el.scrollHeight > el.clientHeight + 4;
-		if (el.scrollWidth <= width + 1 && !wrapped) return;
+		const presetWidth = el.dataset.rvMeasureWidth;
+		const presetFont = el.dataset.rvMeasureFont;
+		delete el.dataset.rvMeasureWidth;
+		delete el.dataset.rvMeasureFont;
+		const view = el.ownerDocument.defaultView;
+		const width = presetWidth != null && presetWidth !== '' ? Number.parseFloat(presetWidth) : el.clientWidth;
+		const font = presetFont || (view && typeof view.getComputedStyle === 'function' ? view.getComputedStyle(el).font : '');
+		if (!source || !Number.isFinite(width) || width <= 8) {
+			if (el.textContent !== source) el.textContent = source;
+			return;
+		}
+		const fitted = ellipsisWithin(font, source, width);
+		if (fitted != null) {
+			if (el.textContent !== fitted) el.textContent = fitted;
+			return;
+		}
+		if (el.textContent !== source) el.textContent = source;
+		if (el.scrollWidth <= width + 1 && el.scrollHeight <= el.clientHeight + 4) return;
 		let lo = 1;
 		let hi = source.length - 1;
 		let best = '…';

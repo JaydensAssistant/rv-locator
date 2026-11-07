@@ -68,6 +68,59 @@ export function hostIsHidden(node: HTMLElement): boolean {
 	return false;
 }
 
+/**
+ * The note on screen. A tab that is not the active leaf in its group is hidden,
+ * and a `display: none` ancestor is hidden. Work for those waits until they show.
+ */
+export function noteSurfaceShown(node: HTMLElement): boolean {
+	if (!node.isConnected) return false;
+	if (hostIsHidden(node)) return false;
+	const leaf = node.closest?.('.workspace-leaf');
+	if (!isElement(leaf)) return true;
+	const tabs = leaf.parentElement;
+	if (tabs && (tabs.classList.contains('workspace-tab-container') || tabs.classList.contains('workspace-tabs'))) {
+		return leaf.classList.contains('mod-active');
+	}
+	const view = node.ownerDocument?.defaultView;
+	if (view && typeof view.getComputedStyle === 'function') {
+		try {
+			if (view.getComputedStyle(leaf).display === 'none') return false;
+		} catch {
+			return false;
+		}
+	}
+	return true;
+}
+
+/**
+ * Where hub layout classes may stop. A cached snapshot stops at its cover.
+ * A real hub stops at its embed, or at the leaf when it is not embedded.
+ * No recognized boundary means the classes must not walk upward.
+ */
+export function hubFillBoundary(root: HTMLElement): HTMLElement | null {
+	if (typeof root.closest !== 'function') return null;
+	const cover = root.closest('.rv-hub-swap-cover');
+	if (isElement(cover)) return cover;
+	const embed = root.closest('.bases-embed, .block-language-base, .internal-embed, .markdown-embed');
+	if (isElement(embed)) return embed;
+	const leaf = root.closest('.workspace-leaf-content');
+	return isElement(leaf) ? leaf : null;
+}
+
+/** Mark ancestors up to the boundary. A missing boundary marks nothing. */
+export function markHubFill(root: HTMLElement, marked: HTMLElement[]): void {
+	const stop = hubFillBoundary(root);
+	if (!stop) return;
+	let node: HTMLElement | null = root.parentElement;
+	while (node) {
+		if (node !== stop && !stop.contains(node)) break;
+		node.classList.add('rv-hub-fill');
+		marked.push(node);
+		if (node === stop) break;
+		node = node.parentElement;
+	}
+}
+
 /** A card inside a hidden or not-yet-laid-out embed is not the hub frame. */
 function embedPaints(node: HTMLElement): boolean {
 	const embed = node.closest?.('.bases-embed, .block-language-base');

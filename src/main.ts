@@ -28,7 +28,7 @@ import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, w
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, releaseHubSwapCover, waitForDashboard } from './hub-cover';
+import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard } from './hub-cover';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -141,6 +141,9 @@ export default class RVLocatorPlugin extends Plugin {
 	private creatingNewRv = false;
 	private wizardOpen = false;
 	private unloaded = false;
+	/** One navigation repaint per frame, for the note that is actually showing. */
+	private chromeFrame: number | null = null;
+	private chromePaths = new Set<string>();
 	private stopMetaBindSweep: (() => void) | null = null;
 	/** True while a rename restores the mode the note already had. */
 	private keepRenameMode = false;
@@ -426,6 +429,7 @@ export default class RVLocatorPlugin extends Plugin {
 			this.scheduleAgeRefresh();
 			this.applyLayoutClasses();
 			this.maskFilenameStamps();
+			this.paintShownNote();
 		}));
 		this.registerEvent(this.app.metadataCache.on('changed', (file, data, cache) => {
 			// The file string is the write that just landed. getFileCache() can
@@ -642,13 +646,56 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 	}
 
-	/** Badge toggles and visit-order settings repaint notes that are already open. */
+	/** Badge toggles and visit-order settings repaint the note that is showing. Hidden notes wait. */
 	private refreshOpenNoteChrome(): void {
+		this.requestOpenNoteChrome();
+	}
+
+	/** Coalesce the navigations that land in one frame into a single paint. */
+	private requestOpenNoteChrome(path?: string): void {
 		if (this.unloaded) return;
+		this.chromePaths.add(path ?? '*');
+		if (this.chromeFrame != null) return;
+		const enqueue = typeof window.requestAnimationFrame === 'function'
+			? (fn: () => void) => window.requestAnimationFrame(fn)
+			: (fn: () => void) => window.setTimeout(fn, 0);
+		this.chromeFrame = enqueue(() => {
+			this.chromeFrame = null;
+			this.flushOpenNoteChrome();
+		}) as number;
+	}
+
+	private flushOpenNoteChrome(): void {
+		if (this.unloaded) return;
+		const paths = this.chromePaths;
+		this.chromePaths = new Set();
+		const all = paths.has('*');
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || !view.file) continue;
-			this.decorateOpenNote(view.containerEl, view.file.path);
+			if (!all && !paths.has(view.file.path)) continue;
+			const el = view.containerEl;
+			if (!noteSurfaceShown(el)) {
+				el.dataset.rvChromeDeferred = view.file.path;
+				continue;
+			}
+			delete el.dataset.rvChromeDeferred;
+			this.decorateOpenNote(el, view.file.path);
+		}
+	}
+
+	/** A note that was skipped while hidden paints once it is the one on screen. */
+	private paintShownNote(): void {
+		if (this.unloaded) return;
+		const active = this.app.workspace.getActiveFile();
+		if (!active) return;
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== active.path) continue;
+			const el = view.containerEl;
+			if (el.dataset.rvChromeDeferred !== active.path || !noteSurfaceShown(el)) continue;
+			delete el.dataset.rvChromeDeferred;
+			this.decorateOpenNote(el, active.path);
 		}
 	}
 
@@ -686,7 +733,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const path = file.path;
 		const run = (): void => {
 			if (this.unloaded) return;
-			this.refreshOpenNoteChrome();
+			this.requestOpenNoteChrome(path);
 			this.refreshVisitCards(path, undefined, false, true);
 		};
 		run();
@@ -1012,7 +1059,9 @@ export default class RVLocatorPlugin extends Plugin {
 			window.setTimeout(() => {
 				if (this.unloaded) return;
 				for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
-					if (leaf.view instanceof MarkdownView) fitNotesBoxes(leaf.view.containerEl);
+					if (!(leaf.view instanceof MarkdownView)) continue;
+					if (!noteSurfaceShown(leaf.view.containerEl)) continue;
+					fitNotesBoxes(leaf.view.containerEl);
 				}
 			}, delay);
 		}
@@ -1276,6 +1325,11 @@ export default class RVLocatorPlugin extends Plugin {
 
 	onunload(): void {
 		this.unloaded = true;
+		if (this.chromeFrame != null && typeof window.cancelAnimationFrame === 'function') {
+			window.cancelAnimationFrame(this.chromeFrame);
+		}
+		this.chromeFrame = null;
+		this.chromePaths.clear();
 		releaseHubSwapCover(document, true);
 		this.stopMetaBindSweep?.();
 		this.stopMetaBindSweep = null;
