@@ -173,7 +173,8 @@ describe('locked pack', () => {
 		assert.match(css, /\.modal-header-button:focus,[\s\S]*?outline:\s*none !important;/);
 		assert.match(css, /\.modal-header-button:focus-visible,[\s\S]*?outline:\s*2px solid var\(--rv-modal-accent, #1f8a4c\) !important;/);
 		assert.match(css, /\.setting-item\.rv-modal-actions\[hidden\],[\s\S]*?display:\s*none !important;/);
-		assert.match(css, /input\[type="range"\]:not\(\.rv-study-slider\)::-webkit-slider-runnable-track/);
+		assert.match(css, /--slider-fill-background:\s*var\(--rv-modal-accent, #1f8a4c\)/);
+		assert.match(css, /caret-color:\s*var\(--rv-modal-accent, #1f8a4c\)/);
 		assert.match(css, /select\[aria-label="AM or PM"\]:not\(\.is-measuring\) \{[^}]*min-width:\s*4\.5rem !important/);
 		assert.match(css, /\.rv-visit-tab \{[^}]*flex:\s*1 1 0;/);
 	});

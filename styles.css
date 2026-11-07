@@ -8950,13 +8950,13 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	--text-on-accent: var(--rv-modal-ink, #ffffff);
 }
 
-.modal.rv-modal-rv input[type="range"]::-webkit-slider-thumb,
-.modal.rv-modal-general input[type="range"]::-webkit-slider-thumb {
+.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-thumb,
+.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-thumb {
 	background: var(--rv-modal-accent, #1f8a4c);
 }
 
-.modal.rv-modal-rv input[type="range"]::-moz-range-thumb,
-.modal.rv-modal-general input[type="range"]::-moz-range-thumb {
+.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-moz-range-thumb,
+.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-moz-range-thumb {
 	background: var(--rv-modal-accent, #1f8a4c);
 }
 
@@ -8969,6 +8969,10 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	--color-accent: var(--rv-modal-accent, #1f8a4c);
 	--color-accent-1: var(--rv-modal-accent, #1f8a4c);
 	--color-accent-2: var(--rv-modal-accent, #1f8a4c);
+	/* Body already computed these from the theme accent, so remapping --interactive-accent does not repaint them. */
+	--slider-fill-background: var(--rv-modal-accent, #1f8a4c);
+	--caret-color: var(--rv-modal-accent, #1f8a4c);
+	caret-color: var(--rv-modal-accent, #1f8a4c);
 }
 
 .modal.rv-modal-rv input[type="range"]:not(.rv-study-slider),
@@ -8976,19 +8980,7 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 .prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider),
 .prompt.rv-modal-general input[type="range"]:not(.rv-study-slider) {
 	accent-color: var(--rv-modal-accent, #1f8a4c);
-}
-
-.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
-.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
-.prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
-.prompt.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
-.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-moz-range-track,
-.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-moz-range-track,
-.prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-moz-range-track,
-.prompt.rv-modal-general input[type="range"]:not(.rv-study-slider)::-moz-range-track {
-	background: var(--rv-modal-accent, #1f8a4c) !important;
-	background-color: var(--rv-modal-accent, #1f8a4c) !important;
-	background-image: none !important;
+	--slider-fill-background: var(--rv-modal-accent, #1f8a4c);
 }
 
 .modal.rv-locator-modal .modal-header-button,
