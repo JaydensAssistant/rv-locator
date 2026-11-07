@@ -1,57 +1,50 @@
 import type { GeocodeHit } from './types';
-
-const STREET_SUFFIXES = new Set([
-	'street', 'st', 'avenue', 'ave', 'road', 'rd', 'drive', 'dr', 'lane', 'ln',
-	'boulevard', 'blvd', 'court', 'ct', 'place', 'pl', 'circle', 'cir', 'way',
-	'trail', 'trl', 'parkway', 'pkwy', 'highway', 'hwy', 'terrace', 'ter',
-	'loop', 'alley', 'aly', 'plaza', 'plz', 'square', 'sq', 'run', 'path',
-	'pike', 'route', 'rte', 'expressway', 'expy', 'crossing', 'xing', 'point', 'pt',
-]);
-
-const DIRECTIONALS: Record<string, string> = {
-	n: 'n',
-	north: 'n',
-	s: 's',
-	south: 's',
-	e: 'e',
-	east: 'e',
-	w: 'w',
-	west: 'w',
-	ne: 'ne',
-	northeast: 'ne',
-	nw: 'nw',
-	northwest: 'nw',
-	se: 'se',
-	southeast: 'se',
-	sw: 'sw',
-	southwest: 'sw',
-};
+import { canonicalUsCounty, countyStorageKey } from './us-county-index';
 
 export interface GeocodePick {
-	/** The one in-county candidate whose street words match. Absent means show the picker. */
+	/** The one in-home hit that may be saved without asking. Absent means show the picker. */
 	hit: GeocodeHit | null;
 }
 
 /**
- * Auto-pick only when the home-base list is non-empty, exactly one result is in
- * that list, and that result's street words match the typed address.
- * Anything else, including an empty home list, stays on the confirm modal.
+ * Geoapify `rank.confidence` is a number from 0 to 1.
+ * JSON `1` and `1.00` are the same value. Anything else, including a missing
+ * confidence, is not an automatic match.
+ */
+export function isFullConfidence(confidence: number | undefined): boolean {
+	if (typeof confidence !== 'number' || !Number.isFinite(confidence)) return false;
+	return Math.abs(confidence - 1) <= 1e-9;
+}
+
+/**
+ * Auto-pick when the home list is non-empty and one result has Geoapify
+ * `rank.confidence` 1.00. A single fully confident hit is that address even
+ * when its county string does not match the home list. Two or more hits, a
+ * missing confidence, or an empty home list stays on the confirm modal.
  */
 export function decideGeocodePick(
-	typedAddress: string,
 	hits: readonly GeocodeHit[],
 	homeCounties: readonly string[],
 ): GeocodePick {
-	const homes = homeCounties.map(normalizeCounty).filter((name) => name.length > 0);
+	const homes = homeCounties.map(countyNameKey).filter((name) => name.length > 0);
 	if (homes.length === 0) return { hit: null };
-	const inHome = hits.filter((hit) => {
-		const county = hit.county ? normalizeCounty(hit.county) : '';
-		return county.length > 0 && homes.includes(county);
-	});
-	if (inHome.length !== 1) return { hit: null };
-	const only = inHome[0];
-	if (!only || !streetTokensMatch(typedAddress, only)) return { hit: null };
-	return { hit: only };
+	const inHome = hits.filter((hit) => inHomeCounty(hit, homes));
+	if (inHome.length === 1 && isFullConfidence(inHome[0]?.confidence)) return { hit: inHome[0] ?? null };
+	// One fully confident result is the address. A county string that does not
+	// share the home list's spelling must not open the picker for that lone hit.
+	const only = hits.length === 1 ? hits[0] : null;
+	if (only && isFullConfidence(only.confidence)) return { hit: only };
+	return { hit: null };
+}
+
+function inHomeCounty(hit: GeocodeHit, homes: readonly string[]): boolean {
+	const county = hit.county ? countyNameKey(hit.county) : '';
+	return county.length > 0 && homes.some((home) => countyNameKey(home) === county);
+}
+
+/** "Citrus", "Citrus County", and "Citrus County, FL" share one county name. */
+export function countyNameKey(value: string): string {
+	return normalizeCounty((value.split(',')[0] ?? value).trim());
 }
 
 /** "Orange" and "Orange County" are the same home-base entry. */
@@ -65,79 +58,113 @@ export function normalizeCounty(value: string): string {
 		.trim();
 }
 
+/** One county per line, the same split the Home counties textarea uses. */
+export function parseHomeCountyLines(value: string): string[] {
+	return value.split(/\n/).map((line) => line.trim()).filter((line) => line.length > 0);
+}
+
+/**
+ * Put home-region hits first. This is a sort, not a filter: a miss stays in the list.
+ * County, city, and state matches outrank a formatted-line mention.
+ */
+/** Bounded hits first, then the home-sorted list, dropping duplicates. */
+export function mergeHomeFirst<T extends { formattedAddress?: string; lat?: number; lon?: number }>(
+	bounded: readonly T[],
+	sorted: readonly T[],
+): T[] {
+	const seen = new Set<string>();
+	const out: T[] = [];
+	const keyOf = (hit: T): string => `${(hit.formattedAddress ?? '').trim().toLowerCase()}|${hit.lat ?? ''}|${hit.lon ?? ''}`;
+	for (const hit of [...bounded, ...sorted]) {
+		const key = keyOf(hit);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		out.push(hit);
+	}
+	return out;
+}
+
+/** True when the hit's county is one of the home counties. */
+export function hitInHomeCounties(hit: { county?: string }, homeCounties: readonly string[]): boolean {
+	const homes = homeCounties.map(countyNameKey).filter((name) => name.length > 0);
+	if (homes.length === 0) return false;
+	const county = hit.county ? countyNameKey(hit.county) : '';
+	return county.length > 0 && homes.includes(county);
+}
+
+/** Pipe-joined Geoapify county filter, or null when no counties are set. */
+export function countyFilterParam(homeCounties: readonly string[]): string | null {
+	const names = homeCounties
+		.map((line) => (line.split(',')[0] ?? line).trim())
+		.filter((line) => line.length > 0);
+	if (names.length === 0) return null;
+	return names.join('|');
+}
+
+export function preferHomeRegion<T extends {
+	city?: string;
+	county?: string;
+	state?: string;
+	formattedAddress?: string;
+}>(hits: readonly T[], homeLines: readonly string[]): T[] {
+	const tokens = homeRegionTokens(homeLines);
+	if (tokens.length === 0) return [...hits];
+	return hits
+		.map((hit, index) => ({ hit, index, score: homeRegionScore(hit, tokens) }))
+		.sort((a, b) => b.score - a.score || a.index - b.index)
+		.map((item) => item.hit);
+}
+
+function homeRegionTokens(lines: readonly string[]): string[] {
+	const seen = new Set<string>();
+	const tokens: string[] = [];
+	for (const line of lines) {
+		for (const part of line.split(',')) {
+			const raw = part.trim().toLowerCase();
+			const county = normalizeCounty(part);
+			for (const token of [county, raw]) {
+				if (!token || seen.has(token)) continue;
+				seen.add(token);
+				tokens.push(token);
+			}
+		}
+	}
+	return tokens;
+}
+
+function homeRegionScore(hit: { city?: string; county?: string; state?: string; formattedAddress?: string }, tokens: readonly string[]): number {
+	let score = 0;
+	const county = hit.county ? normalizeCounty(hit.county) : '';
+	const city = hit.city?.trim().toLowerCase() ?? '';
+	const state = hit.state?.trim().toLowerCase() ?? '';
+	if (county && tokens.includes(county)) score += 3;
+	if (city && tokens.includes(city)) score += 3;
+	if (state && tokens.includes(state)) score += 2;
+	const parts = (hit.formattedAddress ?? '').split(',').map((part) => part.trim().toLowerCase());
+	for (const part of parts) {
+		if (!part) continue;
+		if (tokens.includes(part) || tokens.includes(normalizeCounty(part))) score += 2;
+	}
+	return score;
+}
+
 export function normalizeCountyList(value: unknown): string[] {
 	const chunks: string[] = [];
 	const source = Array.isArray(value) ? value : [value];
 	for (const item of source) {
 		if (typeof item !== 'string') continue;
-		for (const part of item.split(/[\n,]/)) chunks.push(part);
+		for (const part of item.split(/\n/)) chunks.push(part);
 	}
 	const seen = new Set<string>();
 	const names: string[] = [];
 	for (const item of chunks) {
 		const trimmed = item.trim();
 		if (!trimmed) continue;
-		const key = normalizeCounty(trimmed);
+		const stored = canonicalUsCounty(trimmed) ?? trimmed;
+		const key = countyStorageKey(stored);
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
-		names.push(trimmed);
+		names.push(stored);
 	}
 	return names;
-}
-
-/**
- * Significant street words must be the same list, in order.
- * Suffixes (`Lane` / `Ln`) are ignored only as the last word.
- * Directionals stay, so `N Oak` does not match `Oak`.
- * Extra words fail the match: `Oak Lane` is not `Oak Hammock Lane` or `Red Oak Lane`.
- * A typed house number must be the same number on the candidate.
- */
-export function streetTokensMatch(typedAddress: string, hit: GeocodeHit): boolean {
-	const typedLine = firstSegment(typedAddress);
-	const candidateLine = candidateStreetLine(hit);
-	const typedNumber = leadingHouseNumber(typedLine);
-	const candidateNumber = (hit.housenumber?.trim().toLowerCase()
-		|| leadingHouseNumber(candidateLine)
-		|| leadingHouseNumber(hit.formattedAddress)
-		|| '');
-	if (typedNumber && candidateNumber !== typedNumber) return false;
-	const left = significantStreetTokens(typedLine);
-	const right = significantStreetTokens(candidateLine);
-	if (left.length === 0 || right.length === 0 || left.length !== right.length) return false;
-	return left.every((token, index) => token === right[index]);
-}
-
-export function candidateStreetLine(hit: GeocodeHit): string {
-	const street = hit.street?.trim() ?? '';
-	const number = hit.housenumber?.trim() ?? '';
-	if (street && number) return `${number} ${street}`;
-	if (street) return street;
-	const line = hit.addressLine1?.trim() ?? '';
-	if (line) return line;
-	return firstSegment(hit.formattedAddress);
-}
-
-function firstSegment(address: string): string {
-	const segment = address.split(',')[0] ?? address;
-	return segment.trim();
-}
-
-function leadingHouseNumber(raw: string): string {
-	const match = /^\s*(\d+[a-z]?)\b/i.exec(raw);
-	return match?.[1]?.toLowerCase() ?? '';
-}
-
-function significantStreetTokens(raw: string): string[] {
-	const cleaned = raw
-		.toLowerCase()
-		.replace(/[#.'’]/g, ' ')
-		.replace(/[^a-z0-9]+/g, ' ')
-		.trim();
-	const words = cleaned.split(/\s+/).filter((word) => word.length > 0);
-	let start = 0;
-	if (words[0] && /^\d+[a-z]?$/.test(words[0])) start = 1;
-	const body = words.slice(start).map((word) => DIRECTIONALS[word] ?? word);
-	const last = body[body.length - 1];
-	if (last && STREET_SUFFIXES.has(last)) body.pop();
-	return body;
 }

@@ -1,3 +1,5 @@
+import { stripShareMarkup } from './visit-share';
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'] as const;
 
@@ -59,6 +61,15 @@ export function isWeekdayProperty(propertyName: string, displayName: string, con
  * Accepts `2026-09-09`, `2026-09-09T13:38:03`, `2026-09-20T10:44`, `2026-09-18 16:45`, and `2026-03-28 11:20`.
  * `Met` uses the same shapes as `Last Spoke`. It is never a boolean.
  */
+/** Calendar day from {@link parseFlexibleDate}, plus the clock when the text has one. */
+export function parseDriveInstant(raw: string): Date | null {
+	const date = parseFlexibleDate(raw);
+	if (!date) return null;
+	const clock = parseClock(raw);
+	if (!clock) return date;
+	return new Date(date.getFullYear(), date.getMonth(), date.getDate(), clock.hour, clock.minute, 0, 0);
+}
+
 export function parseFlexibleDate(input: string): Date | null {
 	const text = input.trim();
 	if (!text) return null;
@@ -76,6 +87,88 @@ export function parseFlexibleDate(input: string): Date | null {
 	return localDate(Number(pretty[3]), month, Number(pretty[2]));
 }
 
+const STAMP_AGE_SUFFIX = /\s*<span class="rv-stamp-ago">[^<]*<\/span>\s*$/i;
+const VISIT_STAMP_DATE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})\s*$/;
+
+/** Drop a plugin-written age suffix so the visit stamp can be parsed again. */
+export function stripStampAge(text: string): string {
+	return stripShareMarkup(text)
+		.replace(STAMP_AGE_SUFFIX, '')
+		.replace(/\s+/g, ' ')
+		.trim();
+}
+
+const STAMP_AGE_WORDS = /\s+(?:Today|\d+ days? ago)\s*$/i;
+
+/** Stamp heading text with the rendered age (`Today`, `3 days ago`) removed. */
+export function visibleStampText(text: string): string {
+	let next = stripShareMarkup(text).replace(/\s+/g, ' ').trim();
+	for (let pass = 0; pass < 3 && STAMP_AGE_WORDS.test(next); pass += 1) {
+		next = next.replace(STAMP_AGE_WORDS, '').trim();
+	}
+	return next;
+}
+
+/**
+ * Calendar days from a Glancable visit stamp (`Wed, 2pm — Sep 9, 2026`) to `today`.
+ * The clock on the stamp is ignored. A stamp dated tomorrow (hour rounding) is 0.
+ * Text that is not a visit stamp returns null.
+ */
+export function calendarDaysSinceStamp(stamp: string, today: Date = new Date()): number | null {
+	const match = VISIT_STAMP_DATE.exec(stripStampAge(stamp));
+	if (!match) return null;
+	const date = parseFlexibleDate(match[1] ?? '');
+	if (!date) return null;
+	const days = calendarDaysSince(formatShortDate(date), today);
+	if (days == null) return 0;
+	return days;
+}
+
+/** `Today`, `1 day ago`, or `54 days ago`. */
+export function formatDaysAgo(days: number): string {
+	const whole = Math.max(0, Math.floor(days));
+	if (whole === 0) return 'Today';
+	if (whole === 1) return '1 day ago';
+	return `${whole} days ago`;
+}
+
+/** Day counters are always `Nd`. Zero is `0d`. Weeks and months are not used. */
+export function formatGlanceableCounter(days: number): string {
+	const whole = Math.max(0, Math.floor(days));
+	return `${whole}d`;
+}
+
+const STAMP_DATE_ANYWHERE = /[—–-]\s+([A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4})/;
+
+/**
+ * Age label for rendered stamp heading text, such as
+ * `Wed, 2pm — Sep 9, 2026 20 days ago`. The stale age text after the date is
+ * ignored. Text without a visit stamp returns null.
+ */
+export function stampAgeFromHeadingText(text: string, today: Date = new Date()): string | null {
+	const match = STAMP_DATE_ANYWHERE.exec(text);
+	if (!match) return null;
+	const days = calendarDaysSinceStamp(`— ${match[1] ?? ''}`, today);
+	if (days == null) return null;
+	return formatDaysAgo(days);
+}
+
+/** Rendered age labels are `Nd`. The stored stamp phrase stays "N days ago". */
+export function stampAgeCount(text: string, today: Date = new Date()): string | null {
+	const match = STAMP_DATE_ANYWHERE.exec(text);
+	if (!match) return null;
+	const days = calendarDaysSinceStamp(`— ${match[1] ?? ''}`, today);
+	if (days == null) return null;
+	return formatGlanceableCounter(days);
+}
+
+/** Inline age next to a `###` visit stamp. Empty when `stamp` is not a visit stamp. */
+export function stampAgeMarkup(stamp: string, today: Date = new Date()): string {
+	const days = calendarDaysSinceStamp(stamp, today);
+	if (days == null) return '';
+	return `<span class="rv-stamp-ago">${formatDaysAgo(days)}</span>`;
+}
+
 export function formatShortDate(date: Date): string {
 	const month = MONTHS[date.getMonth()] ?? '';
 	return `${month} ${date.getDate()}, ${date.getFullYear()}`;
@@ -83,6 +176,43 @@ export function formatShortDate(date: Date): string {
 
 const BOOLEAN_WORD = /^(true|false|yes|no)$/i;
 const MS_PER_DAY = 86_400_000;
+
+/**
+ * Obsidian's metadata cache returns Last Spoke / Last Attempted as a string,
+ * a Date, or a moment-like object. A missed parse used to fall through to
+ * band 0, so the note stayed #1f8a4c after a visit.
+ */
+export function dateTextFromUnknown(value: unknown): string {
+	if (value == null) return '';
+	if (value instanceof Date) return localDateTimeText(value);
+	if (typeof value === 'number' && Number.isFinite(value)) return localDateTimeText(new Date(value));
+	if (typeof value === 'string') return value.trim();
+	if (typeof value === 'object') {
+		const boxed = value as { toDate?: () => unknown; format?: (pattern: string) => string };
+		if (typeof boxed.toDate === 'function') {
+			try {
+				return dateTextFromUnknown(boxed.toDate());
+			} catch {
+				/* Not a real date. */
+			}
+		}
+		if (typeof boxed.format === 'function') {
+			try {
+				const formatted = boxed.format('YYYY-MM-DDTHH:mm:ss');
+				if (formatted.trim()) return formatted.trim();
+			} catch {
+				/* Moment format failed. */
+			}
+		}
+	}
+	return '';
+}
+
+function localDateTimeText(date: Date): string {
+	if (Number.isNaN(date.getTime())) return '';
+	const pad = (part: number) => String(part).padStart(2, '0');
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
 
 /**
  * Whole calendar days from the written date to `today`, in local dates.
@@ -215,6 +345,48 @@ export function formatDriveDate(raw: string): DriveDateDisplay {
 		rest,
 		time,
 	};
+}
+
+/**
+ * Note heading and Attempt Log stamp.
+ * Uses the same rounding as `formatDriveDate`: `Wed, 2pm — Sep 9, 2026`.
+ * A date-only value omits the hour: `Wed — Sep 9, 2026`.
+ */
+export function formatGlancableStampFromRaw(raw: string): string {
+	const display = formatDriveDate(raw);
+	if (display.empty || !display.rest) return display.text;
+	return `${display.text} — ${display.rest}`;
+}
+
+/** Local clock on `date`, rendered with `formatGlancableStampFromRaw`. */
+export function formatGlancableVisitStamp(date: Date): string {
+	const pad = (value: number) => String(value).padStart(2, '0');
+	const iso = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+	return formatGlancableStampFromRaw(iso);
+}
+
+/**
+ * Attempt Log and visit headings. The clock is exact (`4:32pm`).
+ * An hour with no minutes stays `4pm`, the same shape as the rounded stamp.
+ */
+export function formatExactVisitStamp(date: Date): string {
+	const dow = WEEKDAYS[date.getDay()] ?? '';
+	const rest = `${MONTHS[date.getMonth()] ?? ''} ${date.getDate()}, ${date.getFullYear()}`;
+	return `${dow}, ${formatExactClock(date.getHours(), date.getMinutes())} — ${rest}`;
+}
+
+/** `Tue, 4:32pm — Sep 15, 2026 — success` → the calendar date is the only small piece. */
+export function attemptLogDateParts(text: string): { lead: string; date: string; tail: string } | null {
+	const match = /^(.*?\s—\s)((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},\s+\d{4})(.*)$/i.exec(text);
+	if (!match) return null;
+	return { lead: match[1] ?? '', date: match[2] ?? '', tail: match[3] ?? '' };
+}
+
+function formatExactClock(hour: number, minute: number): string {
+	const suffix = hour >= 12 ? 'pm' : 'am';
+	const onClock = hour % 12 === 0 ? 12 : hour % 12;
+	if (minute <= 0) return `${onClock}${suffix}`;
+	return `${onClock}:${String(minute).padStart(2, '0')}${suffix}`;
 }
 
 function parseClock(text: string): { hour: number; minute: number } | null {

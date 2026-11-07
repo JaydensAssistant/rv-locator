@@ -1,5 +1,6 @@
-import { DISTANCE_COLUMN_ID } from './constants';
+import { DISTANCE_COLUMN_ID, IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './constants';
 import type { ActiveSort } from './sort';
+import type { SortChipFlags, SortChipId } from './types';
 
 /**
  * Active RVs in Return Visits.base. Nearby views mirror this layout in memory.
@@ -42,13 +43,114 @@ export const NEARBY_COLUMN_ORDER = [
 	'note.Map Link',
 ] as const;
 
-/** Sort buttons on both Nearby views. Directions are fixed for each preset. */
+/**
+ * Sort chips, in bar order. First tap uses `defaultDirection`.
+ * A second tap on the same chip flips it. Hidden chips stay out of this list
+ * via {@link visibleSortPresets}; the relative order does not change.
+ */
 export const SORT_PRESETS = [
-	{ label: 'Nearest', property: DISTANCE_COLUMN_ID, direction: 'ASC' },
-	{ label: 'Priority', property: 'note.Priority', direction: 'DESC' },
-	{ label: 'Last Spoke', property: 'note.Last Spoke', direction: 'DESC' },
-	{ label: 'Last Attempted', property: 'note.Last Attempted', direction: 'DESC' },
-] as const;
+	{
+		id: 'ideality',
+		property: IDEALITY_COLUMN_ID,
+		defaultDirection: 'DESC',
+		short: 'Score',
+		labels: { ASC: 'Ideality (beta) · low', DESC: 'Ideality (beta) · high' },
+	},
+	{
+		id: 'urgency',
+		property: URGENCY_COLUMN_ID,
+		defaultDirection: 'DESC',
+		short: 'Urgent',
+		labels: { ASC: 'Urgency · low', DESC: 'Urgency · high' },
+	},
+	{
+		id: 'distance',
+		property: DISTANCE_COLUMN_ID,
+		defaultDirection: 'ASC',
+		short: 'Near',
+		labels: { ASC: 'Nearest', DESC: 'Furthest' },
+	},
+	{
+		id: 'priority',
+		property: 'note.Priority',
+		defaultDirection: 'DESC',
+		short: 'Priority',
+		labels: { ASC: 'Priority · low', DESC: 'Priority · high' },
+	},
+	{
+		id: 'spoke',
+		property: 'note.Last Spoke',
+		defaultDirection: 'ASC',
+		short: 'Oldest',
+		labels: { ASC: 'Spoke · oldest', DESC: 'Spoke · newest' },
+	},
+	{
+		id: 'attempted',
+		property: 'note.Last Attempted',
+		defaultDirection: 'ASC',
+		short: 'Tries',
+		labels: { ASC: 'Attempted · oldest', DESC: 'Attempted · newest' },
+	},
+	{
+		id: 'met',
+		property: 'note.Met',
+		defaultDirection: 'DESC',
+		short: 'Met',
+		labels: { ASC: 'Met · oldest', DESC: 'Met · newest' },
+	},
+	{
+		id: 'city',
+		property: 'note.City',
+		defaultDirection: 'ASC',
+		short: 'City',
+		labels: { ASC: 'City · nearest', DESC: 'City · furthest' },
+	},
+] as const satisfies readonly {
+	id: SortChipId;
+	property: string;
+	defaultDirection: 'ASC' | 'DESC';
+	/** Visible pill word. Change these strings to rename a chip. */
+	short: string;
+	labels: { ASC: string; DESC: string };
+}[];
+
+export type SortPreset = (typeof SORT_PRESETS)[number];
+
+/** Chips the user left on. Ideality stays hidden until that chip is enabled. */
+export function visibleSortPresets(chips: SortChipFlags): SortPreset[] {
+	return SORT_PRESETS.filter((preset) => chips[preset.id] === true);
+}
+
+/**
+ * Chip text. An idle chip shows the direction the next tap will apply.
+ * The selected chip shows the direction that is on now.
+ */
+export function sortPresetChipLabel(preset: SortPreset, activeDirection: 'ASC' | 'DESC' | null): string {
+	return preset.labels[activeDirection ?? preset.defaultDirection];
+}
+
+/** One word on the pill. The long phrase stays the accessible name. */
+export function sortPresetShortLabel(preset: SortPreset): string {
+	return preset.short;
+}
+
+/** Small arrow on the active pill. ASC points up, DESC points down. */
+export function sortDirectionArrow(direction: 'ASC' | 'DESC'): 'arrow-up' | 'arrow-down' {
+	return direction === 'ASC' ? 'arrow-up' : 'arrow-down';
+}
+
+/** Same property flips ASC/DESC. A different chip starts at that preset’s default. */
+export function nextPresetSort(
+	current: { property: string; direction: 'ASC' | 'DESC' } | null,
+	preset: SortPreset,
+): { property: string; direction: 'ASC' | 'DESC' } {
+	const same = current != null && current.property.toLowerCase() === preset.property.toLowerCase();
+	if (!same) return { property: preset.property, direction: preset.defaultDirection };
+	return {
+		property: preset.property,
+		direction: current.direction === 'ASC' ? 'DESC' : 'ASC',
+	};
+}
 
 /** Active RVs sort. Distance is not part of this default. */
 export const ACTIVE_SORT: readonly ActiveSort[] = [
@@ -184,9 +286,10 @@ export function shouldUseActiveSort(sorts: readonly { property: string }[]): boo
 	});
 }
 
-/** Nearest first for Distance. Active RVs directions for the default keys. */
+/** Toolbar defaults first (Spoke and Attempted: oldest; Met: newest). Then the Active RVs keys. */
 export function preferredSortDirection(property: string): 'ASC' | 'DESC' {
-	if (property === DISTANCE_COLUMN_ID) return 'ASC';
+	const preset = SORT_PRESETS.find((item) => item.property === property);
+	if (preset) return preset.defaultDirection;
 	const found = ACTIVE_SORT.find((item) => item.property === property);
 	return found?.direction ?? 'ASC';
 }
