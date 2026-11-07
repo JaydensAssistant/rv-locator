@@ -7,13 +7,16 @@ import {
 	PUBLICATION_TITLES,
 	catalogBands,
 	catalogSuggestions,
+	emptyShare,
 	publicationAliasIndex,
 	rememberRecentCatalog,
 	splitTitleSuffix,
 	unwrapStrayQuotes,
 } from '../src/catalog';
+import { mountShareFields } from '../src/catalog-fields';
 import { decorateNoteChrome, type NoteChromeHost } from '../src/note-chrome';
 import { mountAlwaysChevron } from '../src/suggest-field';
+import { mountClosedTitle } from '../src/title-fit';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { fillItemStrip } from '../src/visit-controls';
 
@@ -348,5 +351,181 @@ describe('clear pack', () => {
 		assert.match(wizard, /listedUsCounties/);
 		assert.match(wizard, /mountAlwaysChevron/);
 		assert.doesNotMatch(wizard, /addTextArea/);
+	});
+});
+
+const GOOD_NEWS = 'Feature Bible Drama Preview: The Good News According to Jesus: Episodes 4, 5, and 6';
+
+describe('RV-B45 RV-B46 closed catalog field', () => {
+	it('hides the closed overlay, including its stale text, while the field is open', () => {
+		assert.match(css, /\.rv-closed-title\[hidden\] \{\s*display:\s*none !important;\s*\}/);
+		const host = window.document.createElement('div');
+		host.className = 'rv-suggest-host';
+		const input = window.document.createElement('input');
+		input.value = 'Why Study the Bible? Video';
+		host.appendChild(input);
+		window.document.body.appendChild(host);
+		mountClosedTitle(input, () => ({ text: 'Why Study the Bible?', suffix: 'Video' }));
+		const overlay = host.querySelector('.rv-closed-title');
+		assert.ok(overlay instanceof window.HTMLElement);
+		assert.equal(overlay.hidden, false);
+		assert.match(overlay.textContent ?? '', /Video/);
+		input.focus();
+		assert.equal(overlay.hidden, true);
+		assert.equal(overlay.childElementCount, 0);
+		const style = window.document.createElement('style');
+		style.textContent = css;
+		window.document.head.appendChild(style);
+		const shown = window.getComputedStyle(overlay).display;
+		assert.equal(shown, 'none');
+		input.blur();
+		input.value = 'Why Study the Bible? Video';
+		input.dispatchEvent(new window.Event('rv-closed-refresh'));
+		assert.equal(overlay.hidden, false);
+		assert.match(overlay.textContent ?? '', /Video/);
+		style.remove();
+		host.remove();
+	});
+
+	it('reopens a picked field as an empty search and will not save the summary', () => {
+		const root = window.document.createElement('div');
+		root.className = 'modal rv-locator-modal';
+		window.document.body.appendChild(root);
+		const seen: string[][] = [];
+		mountShareFields(root, {
+			publications: [...PUBLICATION_TITLES],
+			media: [...MEDIA_TITLES],
+			customLessons: [],
+			lessons: [],
+			showLiterature: true,
+			showLesson: false,
+			initial: {
+				...emptyShare(),
+				media: GOOD_NEWS,
+				mediaList: [GOOD_NEWS],
+				publications: 'Will Suffering Ever End?',
+				publicationList: ['Will Suffering Ever End?'],
+			},
+		}, (next) => {
+			seen.push([...(next.mediaList ?? [])]);
+		});
+		const inputs = [...root.querySelectorAll('input')];
+		const media = inputs.find((input) => input.value.includes('Good News'));
+		const literature = inputs.find((input) => input.value.includes('Suffering'));
+		assert.ok(media instanceof window.HTMLInputElement);
+		assert.ok(literature instanceof window.HTMLInputElement);
+		const summary = media.value;
+		media.focus();
+		assert.equal(media.value, '');
+		assert.equal(media.placeholder, 'Add another…');
+		const overlay = media.parentElement?.querySelector('.rv-closed-title');
+		assert.ok(overlay instanceof window.HTMLElement);
+		assert.equal(overlay.hidden, true);
+		assert.equal(overlay.childElementCount, 0);
+		media.parentElement?.querySelector('button.rv-suggest-chevron')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		const panel = media.parentElement?.querySelector('.rv-suggest-panel');
+		assert.ok(panel instanceof window.HTMLElement);
+		assert.equal(panel.hidden, false);
+		const checked = panel.querySelector('.rv-suggest-option.is-checked');
+		assert.ok(checked instanceof window.HTMLElement);
+		assert.equal(panel.querySelector('.rv-suggest-option'), checked);
+		assert.match(checked.textContent ?? '', /Good News/);
+		assert.match(checked.textContent ?? '', /Video/);
+		media.value = 'Bib';
+		media.dispatchEvent(new window.Event('input', { bubbles: true }));
+		assert.equal(media.value, 'Bib');
+		assert.equal(media.value.startsWith(summary), false);
+		const bible = [...panel.querySelectorAll('.rv-suggest-option')].find((row) => row instanceof window.HTMLElement && /Why Study the Bible\?/.test(row.dataset.value ?? ''));
+		assert.ok(bible instanceof window.HTMLElement);
+		assert.match(bible.textContent ?? '', /Why Study the Bible\?/);
+		assert.equal(bible.classList.contains('is-checked'), false);
+		assert.equal(panel.querySelector('.rv-suggest-option')?.classList.contains('is-checked'), true);
+		media.value = `${summary} extra`;
+		media.dispatchEvent(new window.Event('input', { bubbles: true }));
+		assert.equal(media.value, '');
+		media.dispatchEvent(new window.Event('blur'));
+		assert.equal(media.value, summary);
+		assert.equal(seen.some((list) => list.some((item) => item.includes('extra'))), false);
+		literature.focus();
+		assert.equal(literature.value, '');
+		assert.equal(literature.placeholder, 'Add another…');
+		literature.dispatchEvent(new window.Event('blur'));
+		assert.equal(literature.value.includes('Suffering'), true);
+		root.remove();
+	});
+});
+
+describe('RV-B47 RV-B48 RV-B49 visit strip expand', () => {
+	it('lets a lone long title take the strip and keeps a short neighbor to one character', () => {
+		assert.doesNotMatch(css, /\.rv-item-strip\.is-revealing:not\(\.is-multi\) > \.rv-item\.is-open \.rv-fit-stem \{\s*overflow:\s*visible;/);
+		assert.match(css, /\.rv-item-strip\.is-revealing:not\(\.is-multi\) > \.rv-item\.is-open:not\(:only-child\)/);
+		assert.match(css, /\.rv-strip-overlay-type \{\s*color:\s*var\(--text-faint\);/);
+		const lone = window.document.createElement('div');
+		lone.className = 'rv-item-strip';
+		lone.style.paddingLeft = '8px';
+		lone.style.paddingRight = '8px';
+		Object.defineProperty(lone, 'clientWidth', { configurable: true, get: () => 200 });
+		window.document.body.appendChild(lone);
+		fillItemStrip(lone, `· «film» «${GOOD_NEWS}»`, '');
+		const loneChip = lone.querySelector('.rv-item');
+		assert.ok(loneChip instanceof window.HTMLElement);
+		loneChip.querySelector('.rv-item-icon')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		const card = window.document.querySelector('.rv-strip-overlay.is-multi');
+		assert.ok(card instanceof window.HTMLElement);
+		assert.match(card.textContent ?? '', /Good News/);
+		assert.match(card.textContent ?? '', /Video/);
+		loneChip.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		assert.equal(window.document.querySelector('.rv-strip-overlay'), null);
+		lone.remove();
+
+		const pair = window.document.createElement('div');
+		pair.className = 'rv-item-strip';
+		pair.style.paddingLeft = '20px';
+		pair.style.paddingRight = '20px';
+		pair.style.borderTop = '1px solid rgba(218, 218, 218, 0.14)';
+		pair.style.borderRight = '1px solid rgba(218, 218, 218, 0.14)';
+		pair.style.borderBottom = '1px solid rgba(218, 218, 218, 0.16)';
+		pair.style.borderLeft = '1px solid rgba(218, 218, 218, 0.14)';
+		pair.style.borderRadius = '6px 6px 0 0';
+		pair.style.backgroundColor = '#161616';
+		pair.style.lineHeight = '16.5px';
+		pair.style.paddingTop = '0px';
+		pair.style.paddingBottom = '0px';
+		Object.defineProperty(pair, 'clientWidth', { configurable: true, get: () => 200 });
+		window.document.body.appendChild(pair);
+		fillItemStrip(pair, `· «film» «Good News According» · «book» «Hope»`, '');
+		const chips = [...pair.querySelectorAll('.rv-item')];
+		assert.equal(chips.length, 2);
+		chips[0]?.querySelector('.rv-item-icon')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		const grown = window.document.querySelector('.rv-strip-overlay.is-multi');
+		assert.ok(grown instanceof window.HTMLElement);
+		assert.equal(grown.style.backgroundColor, 'rgb(22, 22, 22)');
+		assert.equal(grown.style.lineHeight, '16.5px');
+		assert.equal(grown.style.borderTopWidth, '1px');
+		assert.equal(grown.style.borderRadius, '6px 6px 0 0');
+		assert.match(grown.style.paddingRight, /20px/);
+		const other = chips[1];
+		assert.ok(other instanceof window.HTMLElement);
+		assert.equal(other.classList.contains('is-dropped'), true);
+		assert.equal(other.classList.contains('is-squeezed'), false);
+		chips[0]?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		assert.equal(window.document.querySelector('.rv-strip-overlay'), null);
+		pair.remove();
+
+		const wide = window.document.createElement('div');
+		wide.className = 'rv-item-strip';
+		Object.defineProperty(wide, 'clientWidth', { configurable: true, get: () => 400 });
+		window.document.body.appendChild(wide);
+		fillItemStrip(wide, '· «film» «Hope» · «book» «Tiny Tract»', '');
+		const wideChips = [...wide.querySelectorAll('.rv-item')];
+		assert.equal(wideChips.length, 2);
+		wideChips[0]?.querySelector('.rv-item-icon')?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+		assert.equal(window.document.querySelector('.rv-strip-overlay'), null);
+		const squeezed = wideChips[1];
+		assert.ok(squeezed instanceof window.HTMLElement);
+		assert.equal(squeezed.classList.contains('is-squeezed'), true);
+		assert.equal(squeezed.classList.contains('is-dropped'), false);
+		assert.equal(squeezed.querySelector('.rv-fit-stem')?.textContent, 'T…');
+		wide.remove();
 	});
 });

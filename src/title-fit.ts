@@ -234,8 +234,13 @@ function paintTitleGroup(items: readonly HTMLElement[], stems: readonly string[]
 	items.forEach((item, index) => {
 		const stem = item.querySelector('.rv-fit-stem');
 		const text = stems[index] ?? '';
-		if (item.closest('.rv-item')?.classList.contains('is-open')) {
+		const host = item.closest('.rv-item');
+		if (host?.classList.contains('is-open')) {
 			if (stem) stem.textContent = text;
+			return;
+		}
+		if (host?.classList.contains('is-squeezed')) {
+			if (stem) stem.textContent = text.length > 1 ? `${text.slice(0, 1)}…` : text;
 			return;
 		}
 		const floor = Math.min(MIN_TITLE_CHARS, text.length);
@@ -326,6 +331,7 @@ export function mountClosedTitle(
 		const focused = input.ownerDocument.activeElement === input;
 		const value = read().trim();
 		if (focused || !value) {
+			overlay.replaceChildren();
 			overlay.hidden = true;
 			input.classList.remove('is-title-closed');
 			return;

@@ -562,6 +562,88 @@ function closeStripReveal(): void {
 	fitTitleRow(open.strip);
 }
 
+/** Icon plus one character and an ellipsis. The type stays hidden by `.is-squeezed`. */
+function squeezeStem(chip: HTMLElement): void {
+	const stem = chip.querySelector('.rv-fit-stem');
+	const full = chip.querySelector('.rv-fit')?.getAttribute('data-stem') ?? '';
+	if (stem) stem.textContent = full.length > 1 ? `${full.slice(0, 1)}…` : full;
+}
+
+/** Content width inside the strip's padding. A zero client width falls back to the border box. */
+function stripInnerWidth(strip: HTMLElement, outer: number): number {
+	const view = strip.ownerDocument.defaultView;
+	const style = view && typeof view.getComputedStyle === 'function' ? view.getComputedStyle(strip) : null;
+	const pad = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) : 0;
+	const base = strip.clientWidth > 0 ? strip.clientWidth : outer;
+	return Math.max(0, base - pad);
+}
+
+function paintStripSide(style: CSSStyleDeclaration, edge: 'top' | 'right' | 'bottom' | 'left'): string {
+	const width = style.getPropertyValue(`border-${edge}-width`).trim();
+	const line = style.getPropertyValue(`border-${edge}-style`).trim();
+	const color = style.getPropertyValue(`border-${edge}-color`).trim();
+	if (!width || width === '0px' || line === 'none' || !color) return '';
+	return `${width} ${line} ${color}`;
+}
+
+/** The expand card is the strip's own box, grown. Copy the strip's used chrome at open time. */
+function copyStripChrome(strip: HTMLElement, card: HTMLElement): void {
+	const view = strip.ownerDocument.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return;
+	const style = view.getComputedStyle(strip);
+	card.style.boxSizing = 'border-box';
+	const top = paintStripSide(style, 'top');
+	const right = paintStripSide(style, 'right');
+	const bottom = paintStripSide(style, 'bottom');
+	const left = paintStripSide(style, 'left');
+	if (top) card.style.borderTop = top;
+	if (right) card.style.borderRight = right;
+	if (bottom) card.style.borderBottom = bottom;
+	if (left) card.style.borderLeft = left;
+	if (style.borderRadius) card.style.borderRadius = style.borderRadius;
+	const background = style.backgroundColor;
+	if (background && background !== 'transparent' && background !== 'rgba(0, 0, 0, 0)') card.style.backgroundColor = background;
+	const padTop = parseFloat(style.paddingTop) || 0;
+	const padBottom = parseFloat(style.paddingBottom) || 0;
+	const line = parseFloat(style.lineHeight) || 0;
+	const content = Math.max(0, strip.clientHeight - padTop - padBottom);
+	const lead = line > 0 && content > line ? (content - line) / 2 : 0;
+	card.style.paddingTop = `${padTop + lead}px`;
+	card.style.paddingRight = style.paddingRight;
+	card.style.paddingBottom = style.paddingBottom;
+	card.style.paddingLeft = style.paddingLeft;
+	if (style.lineHeight) card.style.lineHeight = style.lineHeight;
+	if (style.fontWeight) card.style.fontWeight = style.fontWeight;
+	if (style.fontFamily) card.style.fontFamily = style.fontFamily;
+	if (style.color) card.style.color = style.color;
+	card.style.textAlign = 'start';
+	const minHeight = strip.offsetHeight;
+	if (minHeight > 0) card.style.minHeight = `${minHeight}px`;
+	const type = card.querySelector('.rv-strip-overlay-type');
+	if (!(type instanceof HTMLElement)) return;
+	const probe = strip.ownerDocument.createElement('span');
+	probe.style.color = 'var(--text-faint)';
+	strip.appendChild(probe);
+	const faint = view.getComputedStyle(probe).color;
+	probe.remove();
+	if (faint && faint !== 'var(--text-faint)') type.style.color = faint;
+}
+
+/** Nudge the card so its icon sits on the collapsed icon. A zero rect means the box is not laid out. */
+function alignStripLine(card: HTMLElement, iconBefore: DOMRect | null): void {
+	if (!iconBefore || iconBefore.width <= 0 || iconBefore.height <= 0) return;
+	const view = card.ownerDocument.defaultView;
+	const icon = card.querySelector('.rv-strip-overlay-icon');
+	if (!view || !(icon instanceof HTMLElement)) return;
+	const now = icon.getBoundingClientRect();
+	if (now.width <= 0 || now.height <= 0) return;
+	const style = view.getComputedStyle(card);
+	const dx = iconBefore.left - now.left;
+	const dy = iconBefore.top - now.top;
+	if (Math.abs(dx) >= 0.4) card.style.paddingLeft = `${(parseFloat(style.paddingLeft) || 0) + dx}px`;
+	if (Math.abs(dy) >= 0.4) card.style.paddingTop = `${(parseFloat(style.paddingTop) || 0) + dy}px`;
+}
+
 /** Width of icon + title + type at the chip's 11px size. A zero measure falls back to a character estimate. */
 function stripTitleWidth(strip: HTMLElement, icon: Element | null, stem: string, type: string): number {
 	const doc = strip.ownerDocument;
@@ -598,19 +680,24 @@ function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
 	const stem = fitted instanceof HTMLElement ? fitted.getAttribute('data-stem') ?? '' : '';
 	const type = chip.querySelector('.rv-type')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 	const icon = chip.querySelector('.rv-item-icon');
+	const stemEl = chip.querySelector('.rv-fit-stem');
+	const iconBefore = icon instanceof HTMLElement ? icon.getBoundingClientRect() : null;
 	const stripBox = strip.getBoundingClientRect();
 	const stripWidth = stripBox.width || strip.clientWidth;
-	const room = others.length > 0 && stripWidth > 0 ? Math.max(0, stripWidth - 42) : stripWidth;
+	const inner = stripInnerWidth(strip, stripWidth);
+	const reserve = others.length > 0 ? 42 : 0;
+	const room = Math.max(0, inner - reserve);
 	const needed = stripTitleWidth(strip, icon, stem, type);
-	const multi = others.length > 0 && (stripWidth <= 0 ? stem.length + type.length > 36 : needed > room + 1);
+	const multi = inner <= 0 ? stem.length + type.length > 36 : needed > room + 1;
 	strip.classList.add('is-revealing');
 	strip.classList.toggle('is-multi', multi);
 	chip.classList.add('is-open');
-	const stemEl = chip.querySelector('.rv-fit-stem');
 	if (stemEl) stemEl.textContent = stem;
 	if (!multi) {
+		for (const other of others) other.classList.add('is-squeezed');
 		fitTitleRow(strip);
 		if (stemEl) stemEl.textContent = stem;
+		for (const other of others) squeezeStem(other);
 		stripReveal = { strip, chip, card: null as unknown as HTMLElement, stop: () => {} };
 		const doc = strip.ownerDocument;
 		const view = doc.defaultView ?? window;
@@ -655,7 +742,9 @@ function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
 	card.style.left = `${stripBox.left}px`;
 	card.style.width = `${stripWidth}px`;
 	card.style.top = `${stripBox.top}px`;
+	copyStripChrome(strip, card);
 	card.style.fontSize = '11px';
+	alignStripLine(card, iconBefore);
 	const view = doc.defaultView ?? window;
 	const onDoc = (event: Event): void => {
 		const target = event.target;

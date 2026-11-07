@@ -227,12 +227,32 @@ function mountTitleList(
 	};
 	setting.addText((text) => {
 		text.setPlaceholder(placeholder);
-		const paintField = (): void => {
-			draft = '';
-			text.setValue(summary());
+		const refreshClosed = (): void => {
 			const view = text.inputEl?.ownerDocument?.defaultView;
 			if (view && typeof text.inputEl.dispatchEvent === 'function') {
 				text.inputEl.dispatchEvent(new view.Event('rv-closed-refresh'));
+			}
+		};
+		const paintField = (): void => {
+			draft = '';
+			text.setPlaceholder(placeholder);
+			text.setValue(summary());
+			refreshClosed();
+		};
+		const closedDraft = (value: string): boolean => {
+			const textValue = value.trim();
+			const closed = summary();
+			if (!textValue) return true;
+			return closed.length > 0 && (textValue === closed || textValue.startsWith(closed));
+		};
+		const openSearch = (): void => {
+			if (items.length === 0) return;
+			text.setPlaceholder('Add another…');
+			const value = text.inputEl?.value ?? '';
+			if (closedDraft(value)) {
+				draft = '';
+				if (value !== '') text.setValue('');
+				refreshClosed();
 			}
 		};
 		const toggle = (picked: string): void => {
@@ -248,7 +268,16 @@ function mountTitleList(
 			sync();
 		};
 		text.onChange((value) => {
-			draft = value === summary() ? '' : value;
+			if (closedDraft(value)) {
+				draft = '';
+				const closed = summary();
+				if (closed && value.startsWith(closed) && text.inputEl?.ownerDocument?.activeElement === text.inputEl) {
+					text.setValue('');
+					refreshClosed();
+				}
+				return;
+			}
+			draft = value;
 		});
 		text.inputEl.addEventListener('blur', () => {
 			const dataset = text.inputEl?.dataset;
@@ -257,7 +286,7 @@ function mountTitleList(
 				return;
 			}
 			const title = draft.trim();
-			if (title && title !== summary() && !items.some((item) => item.toLowerCase() === title.toLowerCase())) {
+			if (!closedDraft(title) && !items.some((item) => item.toLowerCase() === title.toLowerCase())) {
 				items.push(title);
 				rememberRecentCatalog(title);
 				sync();
@@ -268,10 +297,20 @@ function mountTitleList(
 			text.inputEl,
 			() => suggestions(draft),
 			toggle,
-			() => closedPickParts(items, kind),
+			(value) => {
+				const closed = summary();
+				if (closed && value.trim() === closed) return closedPickParts(items, kind);
+				const parts = displayTitle(value, kind);
+				return { text: parts.text, suffix: parts.suffix };
+			},
 			(rows) => catalogBands(rows, [...items, ...recentCatalogTitles()], kind === 'media' ? 'Video' : ''),
 			{ picked: () => items },
 		);
+		text.inputEl.addEventListener('focus', openSearch);
+		const host = text.inputEl.parentElement;
+		if (host && typeof host.querySelector === 'function') {
+			host.querySelector('button.rv-suggest-chevron')?.addEventListener('click', openSearch, true);
+		}
 		paintField();
 	});
 }
