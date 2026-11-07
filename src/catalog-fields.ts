@@ -270,7 +270,7 @@ function mountTitleList(
 			toggle,
 			() => closedPickParts(items, kind),
 			(rows) => catalogBands(rows, [...items, ...recentCatalogTitles()], kind === 'media' ? 'Video' : ''),
-			{ picked: () => items, keepOpen: true },
+			{ picked: () => items },
 		);
 		paintField();
 	});

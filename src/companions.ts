@@ -20,6 +20,20 @@ export interface CompanionSuggestion {
  * Recent names that match the query, plus a leading “Use …” row when the
  * typed text is not already one of those names.
  */
+/** True for the typed “Use …” row, which is not a saved publisher. */
+export function isUseCompanionLabel(label: string): boolean {
+	return label.startsWith('Use “') || label.startsWith('Use "');
+}
+
+/**
+ * Saved publishers sit under one RECENT band, the same header literature uses.
+ * A typed “Use …” row is left out so it paints as an ordinary option.
+ */
+export function publisherBands(rows: readonly string[]): { label: string; items: readonly string[] }[] {
+	const names = rows.map((row) => row.trim()).filter((row) => row.length > 0 && !isUseCompanionLabel(row));
+	return names.length > 0 ? [{ label: 'RECENT', items: names }] : [];
+}
+
 export function companionChoices(recent: readonly string[], query: string): CompanionSuggestion[] {
 	const typed = query.trim();
 	const needle = typed.toLowerCase();

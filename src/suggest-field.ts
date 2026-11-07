@@ -357,13 +357,20 @@ export function mountAlwaysChevron(
 		for (const item of picked) paintRow(item, false, true);
 		const grouped = bands?.(choices) ?? null;
 		if (grouped && grouped.some((band) => band.items.length > 0)) {
+			const banded = new Set<string>();
 			for (const band of grouped) {
 				if (band.items.length === 0) continue;
 				const head = panel.ownerDocument.createElement('div');
 				head.className = 'rv-suggest-band';
 				head.textContent = band.label;
 				panel.appendChild(head);
-				for (const item of band.items) paintRow(item, true);
+				for (const item of band.items) {
+					banded.add(item.trim().toLowerCase());
+					paintRow(item, true);
+				}
+			}
+			for (const item of choices) {
+				if (!banded.has(item.trim().toLowerCase())) paintRow(item);
 			}
 		} else {
 			for (const item of choices) paintRow(item);

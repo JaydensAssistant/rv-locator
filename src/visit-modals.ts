@@ -6,6 +6,7 @@ import { mountAlwaysChevron, releaseSuggestionFields, suggestEscapeShouldHold } 
 import { mountCampaignChoice } from './campaign-choice';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { coverageQuestion } from './modals';
+import { companionChoices, publisherBands } from './companions';
 import { clockFace, dateInputValue, defaultPastVisitTime, describeVisit, hour24FromFace, isFutureVisit, snapFiveMinutes, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
 export interface VisitEditOptions {
@@ -150,12 +151,13 @@ export class VisitEditModal extends Modal {
 				text.setPlaceholder('Optional (e.g. Sister Johnson)');
 				text.setValue(this.companion);
 				text.onChange((value) => { this.companion = value; });
-				mountAlwaysChevron(text.inputEl, () => this.options.recentCompanions.filter((name) => {
-					const needle = this.companion.trim().toLowerCase();
-					return !needle || name.toLowerCase().includes(needle);
-				}), (picked) => {
-					this.companion = picked;
-					text.setValue(picked);
+				const choices = (): ReturnType<typeof companionChoices> => companionChoices(this.options.recentCompanions, this.companion);
+				mountAlwaysChevron(text.inputEl, () => choices().map((item) => item.label), (picked) => {
+					const match = choices().find((item) => item.label === picked || item.value === picked);
+					this.companion = match?.value ?? picked;
+					text.setValue(this.companion);
+				}, undefined, (rows) => publisherBands(rows), {
+					picked: () => (this.companion.trim() ? [this.companion.trim()] : []),
 				});
 			});
 		this.campaignHost = null;

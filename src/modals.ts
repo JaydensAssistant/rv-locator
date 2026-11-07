@@ -5,7 +5,7 @@ import { mountCampaignChoice } from './campaign-choice';
 import { iconizeModal, markModalTone } from './modal-chrome';
 import { mountAlwaysChevron } from './suggest-field';
 import { createCompanionPromptGate, type CompanionPromptGate } from './companion-prompt';
-import { companionChoices, exactCompanion, matchingCompanion, type CompanionSuggestion } from './companions';
+import { companionChoices, exactCompanion, matchingCompanion, publisherBands, type CompanionSuggestion } from './companions';
 import { PRIVACY_NOTICE } from './constants';
 import { schedulePickerDismiss } from './picker-gate';
 import type { GeocodeHit } from './types';
@@ -541,6 +541,8 @@ export class CompanionSuggestModal extends Modal {
 				mountAlwaysChevron(text.inputEl, () => this.getSuggestions(this.companion).map((item) => item.label), (picked) => {
 					const match = this.getSuggestions(this.companion).find((item) => item.label === picked || item.value === picked);
 					this.selectCompanion(match?.value ?? picked);
+				}, undefined, (rows) => publisherBands(rows), {
+					picked: () => (this.companion.trim() ? [this.companion.trim()] : []),
 				});
 			});
 		if (this.campaign) {

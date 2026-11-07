@@ -3,7 +3,9 @@ import { armHoverTooltip, armIconTooltip } from './title-fit';
 import { glancableCardWidthPx } from './glancable-density';
 import { applyNoteMapFrame } from './hub-layout';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
+import { paintGlanceFoot } from './glance-foot';
 import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
+import { cardReturnLead } from './schedule';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, layoutIdenticalPins, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
 import { urgencyMark } from './scoring';
@@ -1113,10 +1115,13 @@ export class RvMapView extends ItemView {
 			openNote();
 		});
 		const place = card.createDiv('rv-locator-place');
-		this.cardSlot(place, 'earth', pin.card.address || '—', !pin.card.address);
+		const earth = place.createSpan('rv-locator-place-earth');
+		setIcon(earth, 'earth');
+		if (pin.card.address) {
+			place.createSpan({ cls: 'rv-locator-card-street', text: pin.card.address });
+		}
 		if (pin.card.city) {
-			const city = card.createDiv('rv-locator-place');
-			this.cardSlot(city, 'building-2', pin.card.city, false);
+			place.createSpan({ cls: 'rv-locator-city-lg', text: pin.card.city });
 		}
 		const lines = this.host.settings.glancableLines;
 		const lineOn = (id: keyof typeof lines): boolean => lines[id] !== false;
@@ -1133,11 +1138,21 @@ export class RvMapView extends ItemView {
 			if (showMet) this.cardSlot(when, 'home', pin.card.met || '—', !pin.card.met);
 		}
 		const foot = card.createDiv('rv-locator-card-foot');
-		this.cardSlot(foot, 'user', pin.card.metWith || '—', !pin.card.metWith);
 		const ratio = pin.card.study ? pin.card.studyRatio : pin.card.visits;
-		if (ratio) this.cardSlot(foot, pin.card.study ? 'percent' : 'list-checks', ratio, false);
-		const actions = card.createSpan('rv-locator-card-actions');
 		const snoozedPin = pin.snoozed === true || pin.stateIcon === 'moon';
+		paintGlanceFoot(foot, {
+			showPerson: true,
+			metWith: pin.card.metWith,
+			ratio,
+			ratioTitle: ratio,
+			daypart: cardReturnLead(new Date(), this.host.settings.cardReturnFormat),
+			bucket: '',
+			showReturn: this.host.settings.showCardReturnStatus !== false,
+			snoozed: snoozedPin,
+			snoozeLabel: '',
+			snoozeDays: '',
+		});
+		const actions = card.createSpan('rv-locator-card-actions');
 		const urgency = snoozedPin
 			? appendBadge(actions, { kind: 'icon', icon: 'moon', band: marks.band, label: 'Urgency' })
 			: appendBadge(actions, { kind: 'urgency', glyphs: marks.glyphs, band: marks.band, label: 'Urgency' });

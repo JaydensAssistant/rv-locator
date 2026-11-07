@@ -5,7 +5,7 @@ import { mountShareFields } from './catalog-fields';
 import { iconizeModal, markModalTone } from './modal-chrome';
 import { SUGGEST_PENDING, mountAlwaysChevron } from './suggest-field';
 import { abbreviateAddress, addressesMatchOneForOne } from './address';
-import { companionChoices, exactCompanion, matchingCompanion } from './companions';
+import { companionChoices, exactCompanion, matchingCompanion, publisherBands } from './companions';
 import { statusIcon, type RvGender, type RvStatus } from './status';
 import { RESTROOM_MAN, RESTROOM_WOMAN, ageYears } from './person-meta';
 import type { GeocodeHit } from './types';
@@ -191,11 +191,14 @@ export class NewRvIdentityModal extends Modal {
 				text.setValue(this.companion);
 				this.companionInput = text;
 				if (text.inputEl) {
-					mountAlwaysChevron(text.inputEl, () => companionChoices(this.options.companions, this.companion).map((item) => item.label), (picked) => {
-						const match = companionChoices(this.options.companions, this.companion).find((item) => item.label === picked || item.value === picked);
+					const choices = () => companionChoices(this.options.companions, this.companion);
+					mountAlwaysChevron(text.inputEl, () => choices().map((item) => item.label), (picked) => {
+						const match = choices().find((item) => item.label === picked || item.value === picked);
 						this.companion = match?.value ?? picked;
 						text.setValue(this.companion);
 						this.companionPicked = true;
+					}, undefined, (rows) => publisherBands(rows), {
+						picked: () => (this.companion.trim() ? [this.companion.trim()] : []),
 					});
 				}
 				this.bindField(text, () => this.commitCompanionMatch(), (value) => {

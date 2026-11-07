@@ -3393,15 +3393,7 @@ export default class RVLocatorPlugin extends Plugin {
 			await this.commitInstantMiss(file);
 			return;
 		}
-		const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
-		const study = resolveStatus(readProperty(frontmatter, 'Status'), finiteVisitCount(readProperty(frontmatter, 'Priority'))) === 'Study';
-		const share = await this.promptLiterature(file, { study, campaign: true });
-		if (share === false) {
-			this.coverageDecisions.delete(file.path);
-			return;
-		}
-		const companion = share.companion?.trim() ? formatStoredCompanion(share.companion) : '';
-		await this.commitVisit(file, outcome, companion, share);
+		await this.logNoteHome(file);
 	}
 
 	/** In-note Not home. Same instant write as the card and the hub. */

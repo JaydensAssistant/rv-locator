@@ -285,6 +285,22 @@ export function watchTitleRow(row: HTMLElement, refit?: () => void, observed?: H
 
 const LEADING_NUMBER = /^(\d+\s+)/;
 
+/** The closed overlay uses the input's own font and text inset, so a pick sits where the typed letters sat. */
+function matchClosedField(input: HTMLElement, overlay: HTMLElement): void {
+	const view = input.ownerDocument?.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return;
+	const style = view.getComputedStyle(input);
+	const left = (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.borderLeftWidth) || 0);
+	const right = (parseFloat(style.paddingRight) || 0) + (parseFloat(style.borderRightWidth) || 0);
+	overlay.style.fontSize = style.fontSize;
+	overlay.style.fontFamily = style.fontFamily;
+	overlay.style.fontWeight = style.fontWeight;
+	overlay.style.letterSpacing = style.letterSpacing;
+	overlay.style.lineHeight = style.lineHeight;
+	overlay.style.paddingLeft = `${left}px`;
+	overlay.style.paddingRight = `${right}px`;
+}
+
 /**
  * Closed catalog fields keep the leading number and the type suffix visible.
  * Focus shows the full value in the input.
@@ -321,6 +337,7 @@ export function mountClosedTitle(
 		const suffix = parts.suffix.trim();
 		const count = (parts.count ?? '').trim();
 		overlay.replaceChildren();
+		matchClosedField(input, overlay);
 		if (pre) overlay.append(closedSpan(input, 'rv-title-pre', pre));
 		overlay.append(closedSpan(input, 'rv-title-text', stem));
 		if (suffix) overlay.append(closedSpan(input, 'rv-type rv-title-suffix', paintedSuffix(suffix)));
