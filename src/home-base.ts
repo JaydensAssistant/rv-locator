@@ -92,6 +92,44 @@ export function hitInHomeCounties(hit: { county?: string }, homeCounties: readon
 	return county.length > 0 && homes.includes(county);
 }
 
+/**
+ * Geoapify autocomplete accepts `place:` filters, not `county:`.
+ * Each id is one county place id, joined as `place:a|place:b`.
+ */
+export function placeFilterParam(placeIds: readonly string[]): string | null {
+	const ids: string[] = [];
+	const seen = new Set<string>();
+	for (const raw of placeIds) {
+		const trimmed = raw.trim();
+		if (!trimmed) continue;
+		const id = trimmed.startsWith('place:') ? trimmed.slice('place:'.length).trim() : trimmed;
+		if (!id || seen.has(id)) continue;
+		seen.add(id);
+		ids.push(`place:${id}`);
+	}
+	if (ids.length === 0) return null;
+	return ids.join('|');
+}
+
+/**
+ * Vault addresses first, then remote hits whose county is a home county.
+ * NEAR HOME is that county match (and a vault row with no county of its own).
+ * A remote hit from another county is dropped.
+ */
+export function homeCountyHits<T extends { formattedAddress?: string; lat?: number; lon?: number; county?: string }>(
+	vault: readonly T[],
+	remote: readonly T[],
+	homeCounties: readonly string[],
+): { hits: T[]; near: string[] } {
+	const matched = remote.filter((hit) => hitInHomeCounties(hit, homeCounties));
+	const hits = mergeHomeFirst(vault, matched);
+	const near = hits
+		.filter((hit) => !hit.county || hitInHomeCounties(hit, homeCounties))
+		.map((hit) => (hit.formattedAddress ?? '').trim().toLowerCase())
+		.filter((label) => label.length > 0);
+	return { hits, near };
+}
+
 /** Pipe-joined Geoapify county filter, or null when no counties are set. */
 export function countyFilterParam(homeCounties: readonly string[]): string | null {
 	const names = homeCounties

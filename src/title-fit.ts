@@ -291,7 +291,7 @@ const LEADING_NUMBER = /^(\d+\s+)/;
  */
 export function mountClosedTitle(
 	input: HTMLElement,
-	present: (value: string) => { text: string; suffix: string },
+	present: (value: string) => { text: string; suffix: string; count?: string },
 ): void {
 	const parent = input.parentElement;
 	if (!parent) return;
@@ -319,18 +319,22 @@ export function mountClosedTitle(
 		const pre = lead?.[1] ?? '';
 		const stem = pre ? parts.text.slice(pre.length) : parts.text;
 		const suffix = parts.suffix.trim();
+		const count = (parts.count ?? '').trim();
 		overlay.replaceChildren();
 		if (pre) overlay.append(closedSpan(input, 'rv-title-pre', pre));
 		overlay.append(closedSpan(input, 'rv-title-text', stem));
-		if (suffix) overlay.append(closedSpan(input, 'rv-title-suffix', ` ${suffix}`));
+		if (suffix) overlay.append(closedSpan(input, 'rv-type rv-title-suffix', paintedSuffix(suffix)));
+		if (count) overlay.append(closedSpan(input, 'rv-count-pill', count));
 		overlay.hidden = false;
-		armHoverTooltip(overlay, suffix ? `${parts.text} ${suffix}` : parts.text, { touch: false });
+		const tip = [parts.text, suffix, count].filter((part) => part.length > 0).join(' ');
+		armHoverTooltip(overlay, tip, { touch: false });
 		input.classList.add('is-title-closed');
 	};
 	input.addEventListener('focus', paint);
 	input.addEventListener('blur', paint);
 	input.addEventListener('input', paint);
 	input.addEventListener('change', paint);
+	input.addEventListener('rv-closed-refresh', paint);
 	paint();
 }
 

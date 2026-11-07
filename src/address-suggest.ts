@@ -20,6 +20,8 @@ export interface SuggestFetchResult {
 	hits: readonly GeocodeHit[];
 	/** False when there is no home or location bias, so a second call would repeat the first. */
 	allowBroad: boolean;
+	/** Addresses that belong under NEAR HOME. Omitted means every hit is near. */
+	near?: readonly string[];
 }
 
 export interface SuggestFetch {
@@ -274,7 +276,8 @@ export class AddressSuggestController {
 
 	private noteHome(gen: number, query: string, result: SuggestFetchResult): void {
 		const hits = [...result.hits];
-		this.nearKeys = new Set(hits.map((hit) => hit.formattedAddress.trim().toLowerCase()));
+		const near = result.near ?? hits.map((hit) => hit.formattedAddress);
+		this.nearKeys = new Set(near.map((value) => value.trim().toLowerCase()));
 		this.cache.set(normalizeSuggestQuery(query), hits);
 		if (gen < this.renderedGen) {
 			this.pump();

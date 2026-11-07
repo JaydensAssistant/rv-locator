@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type QueryController, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, bindAddressDirections, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, bindAddressDirections, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, readCountyPlaceId, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
@@ -12,7 +12,7 @@ import {
 } from './constants';
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
-import { countyFilterParam, decideGeocodePick, hitInHomeCounties, mergeHomeFirst, preferHomeRegion } from './home-base';
+import { countyNameKey, decideGeocodePick, homeCountyHits, mergeHomeFirst, placeFilterParam, preferHomeRegion } from './home-base';
 import { HUB_STACK_BELOW_PX, applyNoteMapFrame } from './hub-layout';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
@@ -45,7 +45,7 @@ import { keepReadingPlace, noteReadingScroller } from './reading-anchor';
 import { RvMapView, MAP_VIEW_TYPE, mountEmbeddedMap } from './map-view';
 import { listedUsCounties } from './us-county-index';
 import type { MapPin } from './map-pins';
-import { buildMapPins, heatModeForSort, orderByHubSort, pinLookForHub } from './map-pins';
+import { buildMapPins, earthIsOn, heatModeForSort, orderByHubSort, pinLookForHub, type EarthFlags } from './map-pins';
 import { shadeHeats } from './map-shade';
 import { EditAttributesModal, NewRvIdentityModal, type NewRvIdentity } from './new-rv-modal';
 import { PrioritySliderModal } from './priority-modal';
@@ -503,7 +503,7 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-wide-visit-buttons', on && this.settings.wideVisitButtons);
 		body.toggleClass('rv-suggestions-outside-left', on && this.settings.leftAlignSuggestionBullets);
 		body.toggleClass('rv-full-width-callout', on && this.settings.fullWidthCallout);
-		body.toggleClass('rv-map-open', on && this.hubMapOpen);
+		body.toggleClass('rv-map-open', on && (this.hubMapOpen || this.noteMapOpen));
 		body.toggleClass('rv-hide-statusbar', on && shouldHideStatusBar(this.noteHidesStatusBar(), this.settings.hideStatusBar, this.standaloneBaseOpen()));
 		body.toggleClass('rv-hide-mobile-nav', on && shouldHideMobileNav(this.activeLocatorSurface(), this.standaloneBaseOpen()));
 	}
@@ -1795,6 +1795,7 @@ export default class RVLocatorPlugin extends Plugin {
 			},
 			renameNote: (path) => { this.promptAttributes(path); },
 			mapOpen: () => this.hubMapOpen,
+			noteMapLit: (path) => earthIsOn('note', this.earthFlags(), path),
 			ghostIcon: (path) => this.ghostIconForCard(path),
 		};
 	}
@@ -2130,6 +2131,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last GPS fix reported by a hub view, for address bias. */
 	liveFix: { lat: number; lon: number } | null = null;
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
+	private countyPlaceCache = new Map<string, string>();
 	private mapCanvases = new Set<{ refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
 	private hubScrollers = new Set<(path: string | null) => void>();
 	private hubLanders = new Set<() => void>();
@@ -2145,9 +2147,72 @@ export default class RVLocatorPlugin extends Plugin {
 		this.noteMapOpen = false;
 		this.setHubMapFullscreen(false);
 		this.applyLayoutClasses();
+		this.paintEarthStates();
 		this.syncNoteMap();
 		for (const callback of this.viewRefreshers) callback();
 		this.settleReadingPlace(restore);
+	}
+
+	private earthFlags(): EarthFlags {
+		return { hubMapOpen: this.hubMapOpen, noteMapOpen: this.noteMapOpen, focusPath: this.mapFocusPath };
+	}
+
+	/** Body class and every earth update in the same turn as the flag change. */
+	private paintEarthStates(): void {
+		this.applyLayoutClasses();
+		const flags = this.earthFlags();
+		const root = document;
+		root.querySelectorAll('a.rv-map-button[data-rv-path]').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			node.classList.toggle('is-on', earthIsOn('note', flags, node.dataset.rvPath ?? ''));
+		});
+		root.querySelectorAll('.rv-hub-earth').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			node.classList.toggle('is-on', earthIsOn('hub', flags));
+		});
+		root.querySelectorAll('.rv-card-earth[data-rv-path]').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			node.classList.toggle('is-on', earthIsOn('card', flags, node.dataset.rvPath ?? ''));
+		});
+	}
+
+	/**
+	 * A hub card or pin opened while the hub map is on becomes that note's split map.
+	 * The hub earth turns off. The note earth turns on. The pin stays centered on that RV.
+	 */
+	keepMapWithNote(path: string): void {
+		this.hubMapOpen = false;
+		this.noteMapOpen = true;
+		this.mapFocusPath = path;
+		this.paintEarthStates();
+		for (const callback of this.viewRefreshers) callback();
+		const file = this.app.vault.getFileByPath(path);
+		if (!(file instanceof TFile)) return;
+		const active = this.app.workspace.getActiveFile();
+		const opened = active?.path === path
+			? Promise.resolve()
+			: this.app.workspace.getLeaf(false).openFile(file, { active: true, state: { mode: 'preview', source: false } });
+		void Promise.resolve(opened).then(() => {
+			if (!this.noteMapOpen || this.mapFocusPath !== path) return;
+			this.syncNoteMap();
+			this.focusMapPin(path, true);
+			this.paintEarthStates();
+		});
+	}
+
+	/** Card earth on the hub. A lit earth closes the hub map. An unlit earth opens it on that RV. */
+	toggleCardEarth(path: string): void {
+		const lit = earthIsOn('card', this.earthFlags(), path);
+		if (lit) {
+			this.hubMapOpen = false;
+			this.setHubMapFullscreen(false);
+		} else {
+			this.hubMapOpen = true;
+			this.mapFocusPath = path;
+		}
+		this.paintEarthStates();
+		for (const callback of this.viewRefreshers) callback();
+		if (this.hubMapOpen) this.focusMapPin(path, true);
 	}
 
 	async openMapSoon(path?: string): Promise<void> {
@@ -2156,9 +2221,8 @@ export default class RVLocatorPlugin extends Plugin {
 		if (path && this.noteMapOpen && this.mapFocusPath === path) {
 			const restore = this.holdReadingPlace();
 			this.noteMapOpen = false;
-			this.hubMapOpen = false;
-			this.setHubMapFullscreen(false);
 			this.applyLayoutClasses();
+			this.paintEarthStates();
 			this.syncNoteMap();
 			for (const callback of this.viewRefreshers) callback();
 			this.refreshVisitCards(path, undefined, true);
@@ -2167,16 +2231,16 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		if (path) {
 			this.mapFocusPath = path;
-			this.hubMapOpen = true;
 			this.noteMapOpen = true;
 		} else {
 			this.hubMapOpen = !this.hubMapOpen;
 		}
 		if (!this.hubMapOpen) this.setHubMapFullscreen(false);
 		this.applyLayoutClasses();
+		this.paintEarthStates();
 		if (path || !this.noteMapOpen) this.syncNoteMap();
 		for (const callback of this.viewRefreshers) callback();
-		if (path && this.hubMapOpen) this.focusMapPin(path, true);
+		if (path && this.noteMapOpen) this.focusMapPin(path, true);
 	}
 
 	private noteMapHandle: { destroy(): void; invalidateSize(): void } | null = null;
@@ -2545,18 +2609,74 @@ export default class RVLocatorPlugin extends Plugin {
 
 	async suggestAddressHome(query: string): Promise<SuggestFetchResult> {
 		const bias = await this.suggestBias();
+		const vault = this.vaultAddressHits(query);
 		const counties = this.settings.homeCounties.map((line) => line.trim()).filter((line) => line.length > 0);
 		if (counties.length === 0) {
 			const hits = await this.autocompleteAddress(query, bias, Boolean(bias));
-			return { hits, allowBroad: Boolean(bias) };
+			return { hits: mergeHomeFirst(vault, hits), allowBroad: Boolean(bias) };
 		}
-		const county = countyFilterParam(counties);
-		const [sorted, bounded] = await Promise.all([
-			this.autocompleteAddress(query, bias, false, null, true),
-			this.autocompleteAddress(query, bias, false, county, false),
-		]);
-		const homeBounded = bounded.filter((hit) => hitInHomeCounties(hit, counties));
-		return { hits: mergeHomeFirst(homeBounded, sorted), allowBroad: false };
+		const ids = await this.countyPlaceIds(counties);
+		const place = placeFilterParam(ids);
+		const remote = await this.autocompleteAddress(query, bias, false, false, place, 10);
+		const planned = homeCountyHits(vault, remote, counties);
+		return { hits: planned.hits, allowBroad: false, near: planned.near };
+	}
+
+	/** Saved Address values that contain the query, ahead of Geoapify. */
+	private vaultAddressHits(query: string): GeocodeHit[] {
+		const needle = query.trim().toLowerCase();
+		if (needle.length < 3) return [];
+		const files = this.app.vault.getMarkdownFiles?.() ?? [];
+		const property = this.settings.addressProperty.trim() || 'Address';
+		const cityName = this.settings.cityProperty.trim() || 'City';
+		const locationName = this.settings.locationProperty.trim() || 'Location';
+		const out: GeocodeHit[] = [];
+		const seen = new Set<string>();
+		for (const file of files) {
+			const data = this.noteFrontmatter(file.path);
+			const address = readAddress(data, property);
+			if (!address || !address.toLowerCase().includes(needle)) continue;
+			const key = address.trim().toLowerCase();
+			if (seen.has(key)) continue;
+			seen.add(key);
+			const point = latLonFromUnknown(readProperty(data, locationName));
+			const county = readProperty(data, 'County');
+			const city = readProperty(data, cityName);
+			out.push({
+				formattedAddress: address,
+				lat: point?.lat ?? 0,
+				lon: point?.lon ?? 0,
+				county: typeof county === 'string' && county.trim() ? county.trim() : undefined,
+				city: typeof city === 'string' && city.trim() ? city.trim() : undefined,
+			});
+		}
+		return out;
+	}
+
+	private async countyPlaceIds(counties: readonly string[]): Promise<string[]> {
+		const keys = [...new Set(counties.map((county) => countyNameKey(county)).filter((name) => name.length > 0))];
+		const ids = await Promise.all(keys.map(async (key) => {
+			const cached = this.countyPlaceCache.get(key);
+			if (cached) return cached;
+			const id = await this.lookupCountyPlaceId(key);
+			if (id) this.countyPlaceCache.set(key, id);
+			return id;
+		}));
+		return ids.filter((id): id is string => Boolean(id));
+	}
+
+	private async lookupCountyPlaceId(county: string): Promise<string | null> {
+		const apiKey = this.settings.geoapifyApiKey.trim();
+		const name = countyNameKey(county);
+		if (!apiKey || !name) return null;
+		try {
+			const url = buildCountySuggestUrl(`${name} County`, apiKey, this.settings.geoapifyRegion);
+			const response = await fetch(url);
+			if (!response.ok) return null;
+			return readCountyPlaceId(await response.json(), name);
+		} catch {
+			return null;
+		}
 	}
 
 	async suggestAddressBroad(query: string): Promise<GeocodeHit[]> {
@@ -2577,8 +2697,9 @@ export default class RVLocatorPlugin extends Plugin {
 		query: string,
 		bias: GeocodeBias | null,
 		filterCircle: boolean,
-		countyFilter: string | null = null,
 		sortHome = true,
+		placeFilter: string | null = null,
+		limit?: number,
 	): Promise<GeocodeHit[]> {
 		const apiKey = this.settings.geoapifyApiKey.trim();
 		const text = query.trim();
@@ -2586,8 +2707,9 @@ export default class RVLocatorPlugin extends Plugin {
 		try {
 			const url = buildAutocompleteUrl(text, apiKey, this.settings.geoapifyRegion, {
 				bias,
-				filterRadiusM: filterCircle && bias ? ADDRESS_SUGGEST_HOME_RADIUS_M : null,
-				countyFilter,
+				filterRadiusM: filterCircle && bias && !placeFilter ? ADDRESS_SUGGEST_HOME_RADIUS_M : null,
+				placeFilter,
+				limit,
 			});
 			const response = await fetch(url);
 			if (!response.ok) return [];
@@ -2798,6 +2920,10 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	openMapNote(path: string): void {
+		if (this.hubMapOpen) {
+			this.keepMapWithNote(path);
+			return;
+		}
 		void this.app.workspace.openLinkText(path, path, true);
 	}
 

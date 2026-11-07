@@ -279,8 +279,7 @@ export function mountAlwaysChevron(
 	const paint = (): void => {
 		panel.replaceChildren();
 		const items = suggestions().map((item) => item.trim()).filter(Boolean).slice(0, SUGGEST_MATCH_LIMIT);
-		const typed = 'value' in input ? String((input as HTMLInputElement).value ?? '') : '';
-		if (items.length === 0 && typed.trim()) {
+		if (items.length === 0) {
 			showPanel(false);
 			return;
 		}

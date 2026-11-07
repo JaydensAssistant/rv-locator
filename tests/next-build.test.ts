@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
-import { buildAutocompleteUrl } from '../src/address';
-import { countyFilterParam, hitInHomeCounties, mergeHomeFirst } from '../src/home-base';
+import { buildAutocompleteUrl, readCountyPlaceId } from '../src/address';
+import { countyFilterParam, hitInHomeCounties, homeCountyHits, mergeHomeFirst, placeFilterParam } from '../src/home-base';
 import { sliderToSnoozeDays, snoozeDaysToSlider } from '../src/lesson-stops';
 import { formatSnoozeUntil, snoozeDaysLeft, snoozePreview, snoozeUntilFromDays } from '../src/snooze';
 import { filtersDifferFromDefault, nextSnoozeListFilter } from '../src/status';
@@ -43,8 +43,32 @@ describe('next build helpers', () => {
 		assert.equal(merged[0]?.formattedAddress, '1 Home St');
 		assert.equal(hitInHomeCounties(bounded[0]!, ['Orange County']), true);
 		assert.equal(countyFilterParam(['Orange', 'Lake']), 'Orange|Lake');
-		const url = buildAutocompleteUrl('oak', 'key', 'global', { countyFilter: 'Orange|Lake' });
-		assert.match(url, /filter=county%3AOrange%7CLake|filter=county:Orange\|Lake/);
+		const place = placeFilterParam(['citrus-id', 'marion-id']);
+		assert.equal(place, 'place:citrus-id|place:marion-id');
+		const url = buildAutocompleteUrl('oak', 'key', 'global', { placeFilter: place, bias: { lat: 28.8, lon: -82.3 } });
+		assert.match(url, /limit=10/);
+		assert.match(url, /filter=place%3Acitrus-id%7Cplace%3Amarion-id|filter=place:citrus-id\|place:marion-id/);
+		assert.equal(url.includes('filter=county'), false);
+		assert.equal(url.includes('circle:'), false);
+		const ignored = buildAutocompleteUrl('oak', 'key', 'global', { countyFilter: 'Orange|Lake' });
+		assert.equal(ignored.includes('county'), false);
+		const id = readCountyPlaceId({
+			results: [
+				{ place_id: 'other', county: 'Lake County' },
+				{ place_id: 'citrus-id', county: 'Citrus County', formatted: 'Citrus County, Florida' },
+			],
+		}, 'Citrus');
+		assert.equal(id, 'citrus-id');
+		const planned = homeCountyHits(
+			[{ formattedAddress: '10 Vault Rd', lat: 1, lon: 2, county: 'Citrus' }],
+			[
+				{ formattedAddress: '20 Home St', lat: 3, lon: 4, county: 'Marion County' },
+				{ formattedAddress: '30 Away St', lat: 5, lon: 6, county: 'Lake' },
+			],
+			['Citrus County, FL', 'Marion County, FL'],
+		);
+		assert.deepEqual(planned.hits.map((hit) => hit.formattedAddress), ['10 Vault Rd', '20 Home St']);
+		assert.deepEqual(planned.near, ['10 vault rd', '20 home st']);
 	});
 
 	it('treats snooze as a real list filter and highlights when it is on', () => {

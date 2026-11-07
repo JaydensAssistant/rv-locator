@@ -514,6 +514,19 @@ export function cardBlankOpensPin(mapOpen: boolean, onControl: boolean): boolean
 	return mapOpen && !onControl;
 }
 
+export interface EarthFlags {
+	hubMapOpen: boolean;
+	noteMapOpen: boolean;
+	focusPath: string | null;
+}
+
+/** Hub earth follows the hub map. A card earth follows that pin. A note earth follows that note's split map. */
+export function earthIsOn(kind: 'hub' | 'card' | 'note', state: EarthFlags, path = ''): boolean {
+	if (kind === 'hub') return state.hubMapOpen;
+	if (kind === 'card') return state.hubMapOpen && state.focusPath === path && path.length > 0;
+	return state.noteMapOpen && state.focusPath === path && path.length > 0;
+}
+
 /** Clicks on these keep their own action and do not highlight a pin. */
 export const CARD_BLANK_IGNORE = 'a, button, [role="link"], .rv-locator-place, .rv-locator-card-name, .rv-locator-when, .rv-locator-card-foot, .rv-locator-card-actions, .rv-locator-slot';
 

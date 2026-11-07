@@ -516,12 +516,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (showStreet || showCity || showDistance) {
 			const place = card.createDiv('rv-locator-place');
 			place.setAttr('data-line', glancableLineId(1));
-			const earth = place.createSpan('rv-locator-place-earth');
+			const earth = place.createSpan('rv-locator-place-earth rv-card-earth');
+			earth.dataset.rvPath = row.path;
 			setIcon(earth, 'earth');
+			earth.classList.toggle('is-on', this.plugin.hubMapOpen && this.plugin.mapFocusPath === row.path);
 			place.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();
-				void this.plugin.openMapSoon(row.path);
+				this.plugin.toggleCardEarth(row.path);
 			});
 			if (showStreet && row.addressStreet) {
 				place.createSpan({

@@ -314,8 +314,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const open = (evt: MouseEvent) => {
 			if (evt.button !== 0 && evt.button !== 1) return;
 			evt.preventDefault();
-			const newLeaf = Keymap.isModEvent(evt) || evt.button === 1 || this.plugin.hubMapOpen;
-			void this.app.workspace.openLinkText(path, '', newLeaf);
+			const modified = Keymap.isModEvent(evt) || evt.button === 1;
+			if (!modified && this.plugin.hubMapOpen) {
+				this.plugin.keepMapWithNote(path);
+				return;
+			}
+			void this.app.workspace.openLinkText(path, '', modified);
 		};
 		link.addEventListener('click', open);
 		link.addEventListener('auxclick', open);
@@ -608,7 +612,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			setIcon(searchButton, 'search');
 			searchButton.addEventListener('click', () => { this.openGlanceSearch(); });
 			const map = actionHost.createEl('button', {
-				cls: 'rv-locator-toolbar-quiet',
+				cls: 'rv-locator-toolbar-quiet rv-hub-earth',
 				attr: { type: 'button', 'aria-label': 'Map' },
 			});
 			armIconTooltip(map, 'Map');

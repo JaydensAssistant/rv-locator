@@ -166,12 +166,12 @@ describe('locked pack', () => {
 		assert.match(css, /width:\s*44px;\s*height:\s*44px;/);
 		assert.match(css, /\.rv-locator-glancable,\s*\.rv-locator-view,[\s\S]*?--interactive-accent:\s*#1f8a4c;/);
 		assert.match(css, /caret-color:\s*var\(--rv-urgency-accent\)/);
-		assert.match(css, /a\.rv-map-button:active svg,\s*\.rv-dashboard a\.rv-map-button\.is-on svg,[\s\S]*?color:\s*var\(--rv-urgency-accent\)/);
+		assert.match(css, /a\.rv-map-button:active svg,\s*\.rv-dashboard a\.rv-map-button\.is-on svg[\s\S]*?color:\s*var\(--rv-urgency-accent\)/);
 		assert.match(css, /\.modal-close-button \{[^}]*background:\s*transparent !important;[^}]*box-shadow:\s*none !important;/);
 		assert.match(css, /\.modal-close-button svg \{[^}]*width:\s*18px !important;/);
 		assert.match(css, /\.modal-header-button,[\s\S]*?background:\s*transparent !important;[\s\S]*?border-radius:\s*0 !important;/);
 		assert.match(css, /\.modal-header-button:focus,[\s\S]*?outline:\s*none !important;/);
-		assert.match(css, /\.modal-header-button:focus-visible,[\s\S]*?outline:\s*2px solid var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(css, /\.modal-header-button:focus-visible,[\s\S]*?outline:\s*none !important;/);
 		assert.match(css, /\.setting-item\.rv-modal-actions\[hidden\],[\s\S]*?display:\s*none !important;/);
 		assert.match(css, /--slider-fill-background:\s*var\(--rv-modal-accent, #1f8a4c\)/);
 		assert.match(css, /caret-color:\s*var\(--rv-modal-accent, #1f8a4c\)/);

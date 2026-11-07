@@ -43,6 +43,8 @@ export interface NoteChromeHost {
 	noteTitle(path: string): string;
 	renameNote(path: string): void;
 	mapOpen(): boolean;
+	/** Lit only while this note's own split map is open. */
+	noteMapLit?(path: string): boolean;
 	ghostIcon(path: string): 'hourglass' | 'moon' | 'ban' | null;
 }
 
@@ -1417,7 +1419,9 @@ function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChrom
 		paragraph.appendChild(link);
 		earth = link;
 	}
-	earth.classList.toggle('is-on', host.mapOpen());
+	if (!(earth instanceof HTMLElement)) return;
+	earth.dataset.rvPath = path;
+	earth.classList.toggle('is-on', host.noteMapLit ? host.noteMapLit(path) : host.mapOpen());
 }
 
 function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {

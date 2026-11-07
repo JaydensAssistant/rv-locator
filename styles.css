@@ -2498,6 +2498,11 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	height: 1em;
 }
 
+.rv-locator-place-earth.is-on,
+.rv-locator-place-earth.is-on svg {
+	color: var(--rv-urgency-accent, var(--interactive-accent));
+}
+
 .rv-locator-place {
 	cursor: pointer;
 }
@@ -4616,7 +4621,6 @@ body.rv-full-width-callout .rv-dashboard .callout[data-callout="quote"]:not(.rv-
 	justify-self: end;
 }
 
-body.rv-map-open .rv-dashboard a.rv-map-button,
 .rv-dashboard a.rv-map-button.is-on,
 .rv-locator-toolbar-quiet.is-on {
 	color: var(--text-on-accent);
@@ -5339,9 +5343,20 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 }
 
 .rv-closed-title .rv-title-pre,
-.rv-closed-title .rv-title-suffix {
+.rv-closed-title .rv-type,
+.rv-closed-title .rv-title-suffix,
+.rv-closed-title .rv-count-pill {
 	flex: 0 0 auto;
 	white-space: pre;
+	overflow: visible;
+	text-overflow: clip;
+	max-width: none;
+}
+
+.rv-closed-title .rv-count-pill {
+	margin-left: 6px;
+	color: var(--rv-modal-accent, #1f8a4c);
+	font-weight: 650;
 }
 
 .rv-closed-title .rv-title-text {
@@ -7003,7 +7018,6 @@ button.rv-locator-map-pin > svg,
 a.rv-map-button,
 a.rv-map-button.external-link,
 .rv-dashboard a.rv-map-button,
-body.rv-map-open .rv-dashboard a.rv-map-button,
 .rv-dashboard a.rv-map-button.is-on {
 	background-image: none !important;
 	background-color: var(--background-primary) !important;
@@ -7031,15 +7045,13 @@ a.rv-map-button svg,
 }
 
 .rv-dashboard a.rv-map-button:active,
-.rv-dashboard a.rv-map-button.is-on,
-body.rv-map-open .rv-dashboard a.rv-map-button {
+.rv-dashboard a.rv-map-button.is-on {
 	color: var(--rv-urgency-accent) !important;
 	border-color: var(--rv-urgency-accent) !important;
 }
 
 .rv-dashboard a.rv-map-button:active svg,
-.rv-dashboard a.rv-map-button.is-on svg,
-body.rv-map-open .rv-dashboard a.rv-map-button svg {
+.rv-dashboard a.rv-map-button.is-on svg {
 	color: var(--rv-urgency-accent) !important;
 }
 
@@ -8032,6 +8044,10 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	width: auto !important;
 	min-width: 8.25rem !important;
 	max-width: none !important;
+	height: 44px !important;
+	min-height: 44px !important;
+	max-height: 44px !important;
+	box-sizing: border-box !important;
 	overflow: visible !important;
 	text-overflow: clip !important;
 }
@@ -8045,6 +8061,14 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	flex: 1 1 2.75rem !important;
 	width: auto !important;
 	min-width: 2.75rem !important;
+	height: 44px !important;
+	min-height: 44px !important;
+	max-height: 44px !important;
+	box-sizing: border-box !important;
+	padding-left: 0.2rem !important;
+	padding-right: 0.85rem !important;
+	overflow: visible !important;
+	text-overflow: clip !important;
 }
 
 .modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control > select[aria-label="AM or PM"]:not(.is-measuring) {
@@ -8052,6 +8076,9 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	width: 4.5rem !important;
 	min-width: 4.5rem !important;
 	max-width: none !important;
+	height: 44px !important;
+	min-height: 44px !important;
+	max-height: 44px !important;
 	padding-left: 0.3rem !important;
 	padding-right: 1.15rem !important;
 	overflow: visible !important;
@@ -8973,6 +9000,11 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	--color-accent-2: var(--rv-modal-accent, #1f8a4c);
 	/* Body already computed these from the theme accent, so remapping --interactive-accent does not repaint them. */
 	--slider-fill-background: var(--rv-modal-accent, #1f8a4c);
+	--slider-track-background: var(--background-modifier-border, #3f3f3f);
+	--link-color: var(--rv-modal-accent, #1f8a4c);
+	--link-color-hover: var(--rv-modal-accent, #1f8a4c);
+	--link-external-color: var(--rv-modal-accent, #1f8a4c);
+	--checkbox-color: var(--rv-modal-accent, #1f8a4c);
 	--caret-color: var(--rv-modal-accent, #1f8a4c);
 	caret-color: var(--rv-modal-accent, #1f8a4c);
 }
@@ -8983,6 +9015,29 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 .prompt.rv-modal-general input[type="range"]:not(.rv-study-slider) {
 	accent-color: var(--rv-modal-accent, #1f8a4c);
 	--slider-fill-background: var(--rv-modal-accent, #1f8a4c);
+	--slider-track-background: var(--background-modifier-border, #3f3f3f);
+	background-image: linear-gradient(to right, var(--rv-modal-accent, #1f8a4c) 0%, var(--rv-modal-accent, #1f8a4c) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) 100%) !important;
+}
+
+.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.prompt.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track {
+	background: linear-gradient(to right, var(--rv-modal-accent, #1f8a4c) 0%, var(--rv-modal-accent, #1f8a4c) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) 100%) !important;
+}
+
+.modal.rv-modal-general .checkbox-container.is-enabled,
+.prompt.rv-modal-general .checkbox-container.is-enabled,
+.modal.rv-modal-rv .checkbox-container.is-enabled,
+.prompt.rv-modal-rv .checkbox-container.is-enabled {
+	background-color: var(--rv-modal-accent, #1f8a4c) !important;
+}
+
+.modal.rv-modal-general a,
+.prompt.rv-modal-general a,
+.modal.rv-modal-rv a,
+.prompt.rv-modal-rv a {
+	color: var(--rv-modal-accent, #1f8a4c);
 }
 
 .modal.rv-locator-modal .modal-header-button,
@@ -9042,11 +9097,27 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 .modal.rv-locator-modal .modal-close-button:focus-visible,
 .prompt.rv-locator-modal .modal-close-button:focus-visible,
 .rv-study-change-modal .modal-close-button:focus-visible {
-	outline: 2px solid var(--rv-modal-accent, #1f8a4c) !important;
-	outline-offset: 2px !important;
+	outline: none !important;
+	outline-offset: 0 !important;
 	background: transparent !important;
 	box-shadow: none !important;
 	color: var(--text-muted) !important;
+}
+
+body.is-phone .modal.rv-locator-modal .modal-title,
+body.is-phone .prompt.rv-locator-modal .modal-title,
+body.is-phone .rv-study-change-modal .rv-study-change-title {
+	max-width: none !important;
+}
+
+body.is-mobile.is-floating-nav .modal.rv-locator-modal .modal-header-button.mod-raised,
+body.is-mobile.is-floating-nav .prompt.rv-locator-modal .modal-header-button.mod-raised,
+body.is-mobile.is-floating-nav .rv-study-change-modal .modal-header-button.mod-raised,
+body.is-mobile.is-floating-nav .modal.rv-locator-modal .modal-close-button.mod-raised,
+body.is-mobile.is-floating-nav .prompt.rv-locator-modal .modal-close-button.mod-raised,
+body.is-mobile.is-floating-nav .rv-study-change-modal .modal-close-button.mod-raised {
+	backdrop-filter: none !important;
+	-webkit-backdrop-filter: none !important;
 }
 
 .modal.rv-locator-modal .modal-header-button svg,

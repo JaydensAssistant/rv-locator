@@ -1,5 +1,6 @@
 import { parseDisplayAddress } from './address-display';
 import { autocompleteEndpoint, geocodeEndpoint, type GeoapifyRegion } from './constants';
+import { countyNameKey } from './home-base';
 import type { GeocodeHit, RouteProvider } from './types';
 
 export interface AddressParts {
@@ -68,12 +69,17 @@ export function buildGeocodeUrl(
 	return url.toString();
 }
 
-/** Autocomplete type-ahead. `limit` stays 5. A circle filter is the home-first pass. */
+/**
+ * Autocomplete type-ahead. The default limit is 5.
+ * A home-county pass passes `placeFilter` (`place:id|place:id`) and uses limit 10.
+ * Autocomplete does not accept `county:` filters, so `countyFilter` is ignored.
+ * A circle filter is the no-county home pass.
+ */
 export function buildAutocompleteUrl(
 	address: string,
 	apiKey: string,
 	region: GeoapifyRegion = 'global',
-	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null; countyFilter?: string | null },
+	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null; countyFilter?: string | null; placeFilter?: string | null; limit?: number },
 ): string {
 	const text = addressForQuery(address);
 	if (!text) throw new Error('Address is empty.');
@@ -81,19 +87,42 @@ export function buildAutocompleteUrl(
 	const url = new URL(autocompleteEndpoint(region));
 	url.searchParams.set('text', text);
 	url.searchParams.set('format', 'json');
-	url.searchParams.set('limit', '5');
+	const place = options?.placeFilter?.trim() ?? '';
+	const requested = options?.limit;
+	const limit = place ? 10 : (requested && requested > 0 ? Math.round(requested) : 5);
+	url.searchParams.set('limit', String(limit));
 	url.searchParams.set('apiKey', apiKey.trim());
 	const bias = options?.bias;
 	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
 		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+	}
+	if (place) {
+		url.searchParams.set('filter', place);
+	} else if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
 		const radius = options?.filterRadiusM;
-		if (radius && radius > 0 && !options?.countyFilter) {
+		if (radius && radius > 0) {
 			url.searchParams.set('filter', `circle:${bias.lon},${bias.lat},${Math.round(radius)}`);
 		}
 	}
-	const county = options?.countyFilter?.trim();
-	if (county) url.searchParams.set('filter', `county:${county}`);
 	return url.toString();
+}
+
+/** Place id of the county result that matches `county`. Other results are ignored. */
+export function readCountyPlaceId(body: unknown, county: string): string | null {
+	const wanted = countyNameKey(county);
+	if (!wanted || !body || typeof body !== 'object') return null;
+	const results = (body as { results?: unknown }).results;
+	if (!Array.isArray(results)) return null;
+	for (const item of results) {
+		if (!item || typeof item !== 'object') continue;
+		const row = item as Record<string, unknown>;
+		const id = typeof row.place_id === 'string' ? row.place_id.trim() : '';
+		if (!id) continue;
+		const fields = [row.county, row.name, row.formatted, row.address_line1];
+		const matched = fields.some((value) => typeof value === 'string' && countyNameKey(value) === wanted);
+		if (matched) return id;
+	}
+	return null;
 }
 
 /** County type-ahead for the home-county setting. */

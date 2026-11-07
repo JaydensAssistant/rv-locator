@@ -11,7 +11,6 @@ import {
 	recentCatalogTitles,
 	rememberRecentCatalog,
 	shareTitles,
-	splitTitleSuffix,
 	type LessonSpec,
 	type VisitShare,
 } from './catalog';
@@ -192,6 +191,21 @@ export function pickFieldSummary(values: readonly string[], kind: 'literature' |
 	return `${first.text} +${items.length - 1}`;
 }
 
+/** Closed field: the title truncates, the type stays, and a later count is its own pill. */
+export function closedPickParts(
+	items: readonly string[],
+	kind: 'literature' | 'media',
+): { text: string; suffix: string; count: string } {
+	const chosen = items.map((item) => item.trim()).filter(Boolean);
+	if (chosen.length === 0) return { text: '', suffix: '', count: '' };
+	const first = displayTitle(chosen[0] ?? '', kind);
+	return {
+		text: first.text,
+		suffix: first.suffix,
+		count: chosen.length > 1 ? `+${chosen.length - 1}` : '',
+	};
+}
+
 function mountTitleList(
 	parent: HTMLElement,
 	name: string,
@@ -216,6 +230,10 @@ function mountTitleList(
 		const paintField = (): void => {
 			draft = '';
 			text.setValue(summary());
+			const view = text.inputEl?.ownerDocument?.defaultView;
+			if (view && typeof text.inputEl.dispatchEvent === 'function') {
+				text.inputEl.dispatchEvent(new view.Event('rv-closed-refresh'));
+			}
 		};
 		const toggle = (picked: string): void => {
 			const title = picked.trim();
@@ -250,7 +268,7 @@ function mountTitleList(
 			text.inputEl,
 			() => suggestions(draft),
 			toggle,
-			(value) => splitTitleSuffix(value),
+			() => closedPickParts(items, kind),
 			(rows) => catalogBands(rows, [...items, ...recentCatalogTitles()], kind === 'media' ? 'Video' : ''),
 			{ picked: () => items, keepOpen: true },
 		);
