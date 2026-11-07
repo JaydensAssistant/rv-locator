@@ -46,7 +46,7 @@ export interface MapHost {
 	/** Keep the note-map distance in step with this map's GPS fix. */
 	rememberLiveFix?(fix: { lat: number; lon: number } | null): void;
 	tileCacheEpoch?: number;
-	attachMap?(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
+	attachMap?(canvas: { refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void;
 }
 
 const TILE = 256;
@@ -220,6 +220,7 @@ export class RvMapView extends ItemView {
 		this.syncFullscreen();
 		this.detachMap = this.host.attachMap?.({
 			refresh: () => { this.recenter(); },
+			reloadPins: () => { this.reloadPins(); },
 			focus: (path, center, source) => { this.focusPath(path, center, source); },
 		}) ?? null;
 	}
@@ -353,6 +354,12 @@ export class RvMapView extends ItemView {
 		button.empty();
 		setIcon(button, on ? 'arrow-left' : 'expand');
 		this.hideMapButton?.toggleClass('is-hidden', on);
+	}
+
+	/** Snooze and priority change the pin color without moving the camera. */
+	private reloadPins(): void {
+		this.pins = this.pinsInRenderedOrder();
+		this.paint();
 	}
 
 	/** Called when an already-open map is asked to center again. */

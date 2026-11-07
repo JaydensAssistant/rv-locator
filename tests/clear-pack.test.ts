@@ -340,7 +340,7 @@ describe('clear pack', () => {
 		assert.match(css, /background:\s*#222222/);
 		assert.match(css, /border-bottom:\s*1px solid #373737/);
 		assert.match(css, /background:\s*#2a2a2a;\s*border-color:\s*#262626/);
-		assert.match(css, /border-color:\s*#2e9e5b/);
+		assert.match(css, /\.theme-dark \.rv-suggest-host > button\.rv-suggest-chevron,\s*\.theme-dark \.modal\.rv-locator-modal button\.rv-age-symbol \{\s*border-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
 		assert.match(css, /\.theme-dark \.modal\.rv-locator-modal \.modal-title \{\s*text-align:\s*left/);
 		assert.match(css, /\.rv-locator-modal \.rv-modal-actions button,\s*\.rv-study-change-modal \.rv-modal-actions button \{\s*display:\s*inline-flex;/);
 		assert.doesNotMatch(css, /\.modal\.rv-locator-modal \{\s*background:\s*#1e1e1e/);

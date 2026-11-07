@@ -1492,12 +1492,13 @@ function showAddressLink(paragraph: HTMLElement, input: HTMLInputElement, path: 
 	const link = found instanceof HTMLElement ? found : paragraph.ownerDocument.createElement('a');
 	if (!(found instanceof HTMLElement)) {
 		link.className = 'rv-address-link';
-		link.setAttribute('href', '#');
 		if (typeof input.insertAdjacentElement === 'function') input.insertAdjacentElement('afterend', link);
 		else paragraph.appendChild(link);
 		link.addEventListener('click', (event) => openAddress(link, path, host, event));
 		armAddressEdit(link, input);
 	}
+	link.setAttribute('href', '#');
+	link.removeAttribute('target');
 	link.classList.toggle('is-on', host.mapOpen());
 	link.classList.remove('rv-address-hidden');
 	link.dataset.rvMapOpen = '1';

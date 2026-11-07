@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type QueryController, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, bindAddressDirections, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
@@ -569,17 +569,8 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Address text is a link Obsidian may handle before the bubble listener. Capture it. */
 	private bindAddressMapClick(element: HTMLElement, path: string): void {
-		if (element.dataset.rvMapClicks === path) return;
-		element.dataset.rvMapClicks = path;
-		element.addEventListener('click', (event) => {
-			const target = event.target;
-			if (!(target instanceof Element)) return;
-			if (target.closest('a.rv-map-button, input, button, .rv-label-icon')) return;
-			if (!target.closest('a.rv-address-link, .rv-address-field')) return;
-			event.preventDefault();
-			event.stopPropagation();
-			void this.openRoute(path);
-		}, true);
+		element.dataset.rvRoutePath = path;
+		bindAddressDirections(element, (path) => { void this.openRoute(path); });
 	}
 
 	/**
@@ -2139,7 +2130,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Last GPS fix reported by a hub view, for address bias. */
 	liveFix: { lat: number; lon: number } | null = null;
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
-	private mapCanvases = new Set<{ refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
+	private mapCanvases = new Set<{ refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
 	private hubScrollers = new Set<(path: string | null) => void>();
 	private hubLanders = new Set<() => void>();
 
@@ -2509,7 +2500,7 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const callback of this.viewRefreshers) callback();
 	}
 
-	attachMap(canvas: { refresh(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void {
+	attachMap(canvas: { refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }): () => void {
 		this.mapCanvases.add(canvas);
 		return () => { this.mapCanvases.delete(canvas); };
 	}
@@ -3599,13 +3590,20 @@ export default class RVLocatorPlugin extends Plugin {
 	private scheduleOpenNoteRepaint(): void {
 		this.refreshOpenNoteChrome();
 		this.repaintOpenUrgency();
+		this.repaintOpenMapPins();
 		for (const delay of [0, 50, 200, 600, 1200]) {
 			window.setTimeout(() => {
 				if (this.unloaded) return;
 				this.repaintOpenUrgency();
 				this.refreshOpenNoteChrome();
+				this.repaintOpenMapPins();
 			}, delay);
 		}
+	}
+
+	/** An open in-note map keeps the pin list from when it opened. Repaint it in place. */
+	private repaintOpenMapPins(): void {
+		for (const canvas of this.mapCanvases) canvas.reloadPins?.();
 	}
 
 	/** Digest, open the new notes box, then the priority nudge. */

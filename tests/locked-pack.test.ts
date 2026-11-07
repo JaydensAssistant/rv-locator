@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { pickFieldSummary } from '../src/catalog-fields';
 import { VisitEditModal } from '../src/visit-modals';
+import { RvMapView } from '../src/map-view';
 import { buildMapPins, fanRadius, layoutIdenticalPins, PEEK_PX, type LayoutPin } from '../src/map-pins';
 import { SNOOZE_SLATE } from '../src/snooze';
 import { DEFAULT_SETTINGS } from '../src/types';
@@ -127,6 +128,36 @@ describe('locked pack', () => {
 		assert.doesNotMatch(main, /setTitle\('Delete visit'\)/);
 	});
 
+	it('RV-215 reloads an open note map pin without moving the camera', () => {
+		const map = Object.create(RvMapView.prototype) as {
+			contentEl: { classList: { contains(name: string): boolean } };
+			host: { listMapPins(): { path: string; color: string }[] };
+			pins: { path: string; color: string }[];
+			centerLat: number;
+			zoom: number;
+			paint(): void;
+		};
+		map.contentEl = { classList: { contains: (name) => name === 'rv-note-map' } };
+		map.host = { listMapPins: () => [{ path: 'People/Eve.md', color: SNOOZE_SLATE }] };
+		map.pins = [{ path: 'People/Eve.md', color: '#1f8a4c' }];
+		map.centerLat = 28.5;
+		map.zoom = 15;
+		let painted = '';
+		map.paint = () => { painted = map.pins[0]?.color ?? ''; };
+		(RvMapView.prototype as unknown as { reloadPins(): void }).reloadPins.call(map);
+		assert.equal(painted, '#6b7a99');
+		assert.equal(map.centerLat, 28.5);
+		assert.equal(map.zoom, 15);
+		const main = source('src/main.ts');
+		const schedule = main.slice(main.indexOf('private scheduleOpenNoteRepaint'), main.indexOf('private async afterVisitWrite'));
+		assert.match(schedule, /repaintOpenMapPins\(\)/);
+		const view = source('src/map-view.ts');
+		const reload = view.slice(view.indexOf('private reloadPins(): void'), view.indexOf('recenter(): void'));
+		assert.match(reload, /this\.pins = this\.pinsInRenderedOrder\(\)/);
+		assert.equal(reload.includes('centerOnOpen'), false);
+		assert.match(view, /reloadPins: \(\) => \{ this\.reloadPins\(\); \}/);
+	});
+
 	it('uses a 3px divider, the hub green, and a plain close control', () => {
 		const css = source('styles.css');
 		assert.match(css, /grid-template-rows: auto minmax\(0, 1fr\) 3px var\(--rv-note-map/);
@@ -138,6 +169,12 @@ describe('locked pack', () => {
 		assert.match(css, /a\.rv-map-button:active svg,\s*\.rv-dashboard a\.rv-map-button\.is-on svg,[\s\S]*?color:\s*var\(--rv-urgency-accent\)/);
 		assert.match(css, /\.modal-close-button \{[^}]*background:\s*transparent !important;[^}]*box-shadow:\s*none !important;/);
 		assert.match(css, /\.modal-close-button svg \{[^}]*width:\s*18px !important;/);
+		assert.match(css, /\.modal-header-button,[\s\S]*?background:\s*transparent !important;[\s\S]*?border-radius:\s*0 !important;/);
+		assert.match(css, /\.modal-header-button:focus,[\s\S]*?outline:\s*none !important;/);
+		assert.match(css, /\.modal-header-button:focus-visible,[\s\S]*?outline:\s*2px solid var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(css, /\.setting-item\.rv-modal-actions\[hidden\],[\s\S]*?display:\s*none !important;/);
+		assert.match(css, /input\[type="range"\]:not\(\.rv-study-slider\)::-webkit-slider-runnable-track/);
+		assert.match(css, /select\[aria-label="AM or PM"\]:not\(\.is-measuring\) \{[^}]*min-width:\s*4\.5rem !important/);
 		assert.match(css, /\.rv-visit-tab \{[^}]*flex:\s*1 1 0;/);
 	});
 });

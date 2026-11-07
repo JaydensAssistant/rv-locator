@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
+import { bindAddressDirections, claimExternalOpen, handleAddressDirectionsClick, openExternalUrl } from '../src/address';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
 import { iconizeModal } from '../src/modal-chrome';
 import { mountAlwaysChevron, suggestEscapeShouldHold } from '../src/suggest-field';
@@ -424,6 +425,7 @@ describe('dogfood round', () => {
 	it('RV-B33 RV-B34 the Day box keeps the full date and opens the native picker', () => {
 		assert.match(css, /\.rv-when-row \.setting-item-control > input\[type="date"\] \{[^}]*min-width:\s*8\.25rem !important/);
 		assert.match(css, /\.rv-when-row \.setting-item-control > select:not\(\.is-measuring\) \{[^}]*flex:\s*1 1 2\.75rem !important/);
+		assert.match(css, /select\[aria-label="AM or PM"\]:not\(\.is-measuring\) \{[^}]*flex:\s*0 0 4\.5rem !important;/);
 		const root = window.document.createElement('div');
 		root.className = 'rv-locator-modal';
 		const input = window.document.createElement('input');
@@ -437,6 +439,53 @@ describe('dogfood round', () => {
 		input.dispatchEvent(new window.Event('pointerup', { bubbles: true }));
 		assert.equal(opened, 1);
 		root.remove();
+	});
+
+	it('RV-210 one address tap opens directions once', () => {
+		const calls: string[] = [];
+		const previous = (globalThis as { require?: unknown }).require;
+		(globalThis as { require?: (id: string) => unknown }).require = () => ({
+			shell: { openExternal: (url: string) => { calls.push(url); } },
+		});
+		try {
+			const url = 'https://www.google.com/maps/dir/?api=1&destination=1%20Main';
+			openExternalUrl(url);
+			openExternalUrl(url);
+			assert.deepEqual(calls, [url]);
+			assert.equal(claimExternalOpen(url, Date.now() + 500), true);
+		} finally {
+			(globalThis as { require?: unknown }).require = previous;
+		}
+		const parent = window.document.createElement('div');
+		const child = window.document.createElement('div');
+		const link = window.document.createElement('a');
+		link.className = 'rv-address-link';
+		link.setAttribute('href', 'https://maps.example/search');
+		const earth = window.document.createElement('a');
+		earth.className = 'rv-map-button';
+		child.append(link, earth);
+		parent.append(child);
+		parent.dataset.rvRoutePath = 'People/Eve.md';
+		child.dataset.rvRoutePath = 'People/Eve.md';
+		const opens: string[] = [];
+		let listens = 0;
+		const original = child.addEventListener.bind(child);
+		child.addEventListener = ((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+			if (type === 'click') listens += 1;
+			original(type, listener, options);
+		}) as typeof child.addEventListener;
+		bindAddressDirections(parent, (path) => { opens.push(path); });
+		bindAddressDirections(child, (path) => { opens.push(`child:${path}`); });
+		bindAddressDirections(child, (path) => { opens.push(`again:${path}`); });
+		assert.equal(listens, 1);
+		const event = new window.MouseEvent('click', { bubbles: true, cancelable: true });
+		link.dispatchEvent(event);
+		assert.deepEqual(opens, ['People/Eve.md']);
+		assert.equal(link.getAttribute('href'), '#');
+		handleAddressDirectionsClick(event, (path) => { opens.push(`second:${path}`); });
+		assert.deepEqual(opens, ['People/Eve.md']);
+		earth.dispatchEvent(new window.MouseEvent('click', { bubbles: true, cancelable: true }));
+		assert.deepEqual(opens, ['People/Eve.md']);
 	});
 
 	it('RV-B30 live preview keeps Older Visits, the callout, and the paragraph on their own fold', async () => {

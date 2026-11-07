@@ -5446,6 +5446,18 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	overflow-y: auto;
 }
 
+.modal.rv-locator-modal .rv-visit-pane[hidden],
+.modal.rv-locator-modal .rv-modal-actions[hidden],
+.modal.rv-locator-modal .setting-item.rv-modal-actions[hidden],
+.modal.rv-locator-modal .modal-content > .rv-modal-actions[hidden] {
+	display: none !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
+	min-height: 0 !important;
+	height: 0 !important;
+}
+
 .modal.rv-locator-modal .setting-item.rv-modal-actions,
 .modal.rv-locator-modal .modal-content > .rv-modal-actions,
 .rv-study-change-modal > .rv-modal-actions {
@@ -8033,6 +8045,18 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	min-width: 2.75rem !important;
 }
 
+.modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control > select[aria-label="AM or PM"]:not(.is-measuring) {
+	flex: 0 0 4.5rem !important;
+	width: 4.5rem !important;
+	min-width: 4.5rem !important;
+	max-width: none !important;
+	padding-left: 0.3rem !important;
+	padding-right: 1.15rem !important;
+	overflow: visible !important;
+	text-overflow: clip !important;
+	text-indent: 0 !important;
+}
+
 .markdown-preview-view p.rv-hub-owned .rv-hub-chip,
 .markdown-rendered p.rv-hub-owned .rv-hub-chip,
 .rv-dashboard p.rv-hub-owned .rv-hub-chip,
@@ -8936,6 +8960,40 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	background: var(--rv-modal-accent, #1f8a4c);
 }
 
+.modal.rv-modal-rv,
+.modal.rv-modal-general,
+.prompt.rv-modal-rv,
+.prompt.rv-modal-general,
+.rv-study-change-modal {
+	accent-color: var(--rv-modal-accent, #1f8a4c);
+	--color-accent: var(--rv-modal-accent, #1f8a4c);
+	--color-accent-1: var(--rv-modal-accent, #1f8a4c);
+	--color-accent-2: var(--rv-modal-accent, #1f8a4c);
+}
+
+.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider),
+.modal.rv-modal-general input[type="range"]:not(.rv-study-slider),
+.prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider),
+.prompt.rv-modal-general input[type="range"]:not(.rv-study-slider) {
+	accent-color: var(--rv-modal-accent, #1f8a4c);
+}
+
+.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.prompt.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
+.modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-moz-range-track,
+.modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-moz-range-track,
+.prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-moz-range-track,
+.prompt.rv-modal-general input[type="range"]:not(.rv-study-slider)::-moz-range-track {
+	background: var(--rv-modal-accent, #1f8a4c) !important;
+	background-color: var(--rv-modal-accent, #1f8a4c) !important;
+	background-image: none !important;
+}
+
+.modal.rv-locator-modal .modal-header-button,
+.prompt.rv-locator-modal .modal-header-button,
+.rv-study-change-modal .modal-header-button,
 .modal.rv-locator-modal .modal-close-button,
 .prompt.rv-locator-modal .modal-close-button,
 .rv-study-change-modal .modal-close-button {
@@ -8953,8 +9011,18 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	color: var(--text-muted) !important;
 	font-size: 18px !important;
 	line-height: 18px !important;
+	-webkit-tap-highlight-color: transparent;
 }
 
+.modal.rv-locator-modal .modal-header-button:hover,
+.modal.rv-locator-modal .modal-header-button:focus,
+.modal.rv-locator-modal .modal-header-button:active,
+.prompt.rv-locator-modal .modal-header-button:hover,
+.prompt.rv-locator-modal .modal-header-button:focus,
+.prompt.rv-locator-modal .modal-header-button:active,
+.rv-study-change-modal .modal-header-button:hover,
+.rv-study-change-modal .modal-header-button:focus,
+.rv-study-change-modal .modal-header-button:active,
 .modal.rv-locator-modal .modal-close-button:hover,
 .modal.rv-locator-modal .modal-close-button:focus,
 .modal.rv-locator-modal .modal-close-button:active,
@@ -8968,10 +9036,28 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	background-color: transparent !important;
 	background-image: none !important;
 	border: 0 !important;
+	border-radius: 0 !important;
 	box-shadow: none !important;
 	outline: none !important;
+	color: var(--text-muted) !important;
 }
 
+.modal.rv-locator-modal .modal-header-button:focus-visible,
+.prompt.rv-locator-modal .modal-header-button:focus-visible,
+.rv-study-change-modal .modal-header-button:focus-visible,
+.modal.rv-locator-modal .modal-close-button:focus-visible,
+.prompt.rv-locator-modal .modal-close-button:focus-visible,
+.rv-study-change-modal .modal-close-button:focus-visible {
+	outline: 2px solid var(--rv-modal-accent, #1f8a4c) !important;
+	outline-offset: 2px !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	color: var(--text-muted) !important;
+}
+
+.modal.rv-locator-modal .modal-header-button svg,
+.prompt.rv-locator-modal .modal-header-button svg,
+.rv-study-change-modal .modal-header-button svg,
 .modal.rv-locator-modal .modal-close-button svg,
 .prompt.rv-locator-modal .modal-close-button svg,
 .rv-study-change-modal .modal-close-button svg {
@@ -8979,7 +9065,8 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	height: 18px !important;
 }
 
-.rv-study-change-modal .modal-close-button {
+.rv-study-change-modal .modal-close-button,
+.rv-study-change-modal .modal-header-button {
 	position: absolute;
 	top: 6px;
 	right: 6px;
@@ -10070,8 +10157,8 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 }
 
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron {
-	border-color: #2e9e5b;
-	color: #2e9e5b;
+	border-color: var(--rv-modal-accent, #1f8a4c);
+	color: var(--rv-modal-accent, #1f8a4c);
 	background: #2a2a2a;
 }
 
@@ -10085,21 +10172,21 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 }
 
 .modal.rv-locator-modal .setting-item-control > button.rv-suggest-chevron {
-	border: 1px solid #2e9e5b !important;
+	border: 1px solid var(--rv-modal-accent, #1f8a4c) !important;
 	box-shadow: none !important;
-	color: #2e9e5b !important;
+	color: var(--rv-modal-accent, #1f8a4c) !important;
 }
 
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron,
 .theme-dark .modal.rv-locator-modal button.rv-age-symbol {
-	border-color: #2e9e5b !important;
-	color: #2e9e5b !important;
+	border-color: var(--rv-modal-accent, #1f8a4c) !important;
+	color: var(--rv-modal-accent, #1f8a4c) !important;
 	background: #2a2a2a !important;
 }
 
 .theme-dark .rv-locator-modal .rv-modal-icon,
 .theme-dark .rv-study-change-modal .rv-modal-icon {
-	color: #2e9e5b;
+	color: var(--rv-modal-accent, #1f8a4c);
 }
 
 .theme-dark .rv-locator-modal .modal-content,

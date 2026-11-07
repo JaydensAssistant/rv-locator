@@ -121,16 +121,74 @@ export function directionsUrl(
 }
 
 /**
+ * One tap can reach `shell.openExternal` twice: a second listener on the same
+ * node, or the phone dispatching a second trusted click. The same URL inside
+ * this window is the duplicate. A later, different tap still opens.
+ */
+const EXTERNAL_OPEN_WINDOW_MS = 500;
+let lastExternalOpen = { url: '', at: 0 };
+
+export function claimExternalOpen(url: string, now = Date.now()): boolean {
+	const target = url.trim();
+	if (!target) return false;
+	if (target === lastExternalOpen.url && now - lastExternalOpen.at < EXTERNAL_OPEN_WINDOW_MS) return false;
+	lastExternalOpen = { url: target, at: now };
+	return true;
+}
+
+/**
  * Open a web URL in the system browser.
  * `window.open(url, '_blank', 'noopener')` stays on about:blank in Obsidian's
  * Electron shell, so Maps never loads. Desktop uses `shell.openExternal`.
  */
 export function openExternalUrl(url: string): void {
 	const target = url.trim();
-	if (!target) return;
+	if (!claimExternalOpen(target)) return;
 	if (openWithElectron(target)) return;
 	const opened = window.open(target, '_blank');
 	if (opened) opened.opener = null;
+}
+
+type AddressClickHost = HTMLElement & {
+	rvAddressBound?: boolean;
+	rvAddressOpen?: (path: string) => void;
+};
+
+/**
+ * One listener per element. Decorating the same note again, or with a new
+ * path, updates the path the existing listener reads. A second listener on
+ * the same click is ignored.
+ */
+export function bindAddressDirections(element: HTMLElement, open: (path: string) => void): void {
+	const host = element as AddressClickHost;
+	host.rvAddressOpen = open;
+	if (host.rvAddressBound) return;
+	host.rvAddressBound = true;
+	element.addEventListener('click', (event) => {
+		handleAddressDirectionsClick(event, (path) => { host.rvAddressOpen?.(path); });
+	}, true);
+}
+
+export function handleAddressDirectionsClick(event: Event, open: (path: string) => void): void {
+	const target = event.target;
+	if (!(target instanceof Element)) return;
+	if (target.closest('a.rv-map-button, input, button, .rv-label-icon')) return;
+	if (!target.closest('a.rv-address-link, .rv-address-field')) return;
+	const marked = event as Event & { rvAddressOpened?: boolean };
+	if (marked.rvAddressOpened) return;
+	marked.rvAddressOpened = true;
+	event.preventDefault();
+	event.stopPropagation();
+	if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+	const anchor = target.closest('a.rv-address-link');
+	if (anchor instanceof HTMLElement) {
+		anchor.setAttribute('href', '#');
+		anchor.removeAttribute('target');
+	}
+	const root = target.closest('[data-rv-route-path]');
+	const path = root instanceof HTMLElement ? root.dataset.rvRoutePath ?? '' : '';
+	if (!path) return;
+	open(path);
 }
 
 function openWithElectron(url: string): boolean {
