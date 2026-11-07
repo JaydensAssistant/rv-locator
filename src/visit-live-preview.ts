@@ -390,6 +390,71 @@ export function recentFoldLineStarts(markdown: string, open: boolean, limit = 3)
 	return hidden;
 }
 
+/**
+ * Replaces one folded Recent Notes line.
+ * A block widget built for the real note stays on screen after the source
+ * line is `display: none`, because CodeMirror draws that widget beside the
+ * line. This stand-in is empty and hidden, and it is thrown away when the
+ * section opens so the real note mounts on a visible line.
+ */
+class RecentFoldWidget extends WidgetType {
+	eq(other: WidgetType): boolean {
+		return other instanceof RecentFoldWidget;
+	}
+
+	toDOM(view: EditorView): HTMLElement {
+		const el = view.dom.ownerDocument.createElement('div');
+		el.className = 'rv-recent-folded';
+		el.setAttribute('aria-hidden', 'true');
+		el.style.setProperty('display', 'none', 'important');
+		return el;
+	}
+}
+
+/**
+ * Hide rendered blocks that sit beside a folded Recent Notes line.
+ * Older Visits, Return Suggestions, and the next heading stay up.
+ */
+export function concealRecentFoldWidgets(root: ParentNode): void {
+	root.querySelectorAll('[data-rv-recent-fold="1"]').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		node.classList.remove('rv-recent-folded', 'rv-recent-fold-extra');
+		delete node.dataset.rvRecentFold;
+		node.style.removeProperty('display');
+	});
+	const anchors = root.querySelectorAll('.cm-line.rv-recent-folded, .rv-recent-folded');
+	for (const anchor of Array.from(anchors)) {
+		markRecentFoldSiblings(anchor.previousElementSibling, -1);
+		markRecentFoldSiblings(anchor.nextElementSibling, 1);
+	}
+}
+
+function markRecentFoldSiblings(start: Element | null, direction: -1 | 1): void {
+	let sib = start;
+	while (sib) {
+		if (recentFoldBoundary(sib)) return;
+		if (sib instanceof HTMLElement && !sib.classList.contains('rv-recent-folded')) {
+			sib.classList.add('rv-recent-folded', 'rv-recent-fold-extra');
+			sib.dataset.rvRecentFold = '1';
+			sib.style.setProperty('display', 'none', 'important');
+		}
+		sib = direction < 0 ? sib.previousElementSibling : sib.nextElementSibling;
+	}
+}
+
+function recentFoldBoundary(node: Element): boolean {
+	if (node.classList.contains('rv-recent-folded')) return false;
+	if (node.classList.contains('cm-line')) return true;
+	if (node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-visits-widget') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-rule')) return true;
+	if (node.classList.contains('rv-visit-notes-heading') || node.classList.contains('rv-notes-fold-stop') || node.classList.contains('rv-locator-return-suggestions')) return true;
+	if (node.querySelector('.rv-older-visits, .rv-visit-notes-heading, .rv-notes-fold-stop, .rv-locator-return-suggestions')) return true;
+	const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+	if (/^older visits\b/i.test(text)) return true;
+	if (/^return suggestions\b/i.test(text)) return true;
+	if (node.classList.contains('callout') && /return suggestions/i.test(text)) return true;
+	return false;
+}
+
 /** Recent Notes, centered, with the same chevron Reading view draws. The line stays in the file. */
 class RecentNotesWidget extends WidgetType {
 	constructor(readonly label: string, readonly path: string, readonly open: boolean) {
@@ -627,6 +692,22 @@ export function buildVisitDecorations(
 				deco: Decoration.line({ class: foldClasses.join(' ') }),
 			});
 		}
+		// The source line's class does not cover a block widget drawn for that
+		// line. Replace the whole line so the stamp, the note card, and the
+		// rendered paragraph are gone together. The next heading, the older
+		// stamp, and Return Suggestions are not in this set.
+		if (recentHidden.has(line.from)) {
+			const end = line.from + line.text.length;
+			if (end > line.from) {
+				pieces.push({
+					from: line.from,
+					to: end,
+					kind: 3,
+					deco: Decoration.replace({ widget: new RecentFoldWidget(), block: true }),
+				});
+			}
+			continue;
+		}
 		const notesHeading = NOTES_HEADING.exec(line.text.trim());
 		if (notesHeading) {
 			const end = line.from + line.text.length;
@@ -780,6 +861,7 @@ export function visitPreviewExtension(
 			queueMicrotask(() => {
 				syncLivePreview(view);
 				syncNotePath(view);
+				concealRecentFoldWidgets(view.dom);
 				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);
 			});
@@ -807,6 +889,7 @@ export function visitPreviewExtension(
 			queueMicrotask(() => {
 				if (!view.dom.isConnected) return;
 				syncNotePath(view);
+				concealRecentFoldWidgets(view.dom);
 				if (!changed) return;
 				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);

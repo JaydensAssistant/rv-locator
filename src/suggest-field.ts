@@ -379,11 +379,22 @@ export function mountAlwaysChevron(
 		event.stopPropagation();
 		showPanel(false);
 	};
+	// keydown hides the list. The matching keyup still has to stop, or Obsidian
+	// sees a keyup with the list already closed and dismisses the modal too.
+	let swallowEscape = false;
 	const onEscape = (event: Event): void => {
-		if (!(event instanceof KeyboardEvent) || event.key !== 'Escape' || panel.hidden) return;
+		if (!(event instanceof KeyboardEvent) || event.key !== 'Escape') return;
+		const listOpen = !panel.hidden;
+		if (!listOpen && !swallowEscape) return;
 		event.preventDefault();
 		event.stopPropagation();
-		showPanel(false);
+		if (event.type === 'keyup') {
+			swallowEscape = false;
+			if (listOpen) showPanel(false);
+			return;
+		}
+		swallowEscape = true;
+		if (listOpen) showPanel(false);
 	};
 	const onViewport = (): void => {
 		if (!input.isConnected) {
@@ -392,9 +403,11 @@ export function mountAlwaysChevron(
 		}
 		if (!panel.hidden) place();
 	};
+	const escapeTarget: EventTarget = view ?? doc;
 	const stops = [
 		trackListener(doc, 'click', onDismissClick, true),
-		trackListener(doc, 'keydown', onEscape, true),
+		trackListener(escapeTarget, 'keydown', onEscape, true),
+		trackListener(escapeTarget, 'keyup', onEscape, true),
 		trackListener(view?.visualViewport, 'resize', onViewport),
 		trackListener(view?.visualViewport, 'scroll', onViewport),
 		trackListener(view, 'resize', onViewport),

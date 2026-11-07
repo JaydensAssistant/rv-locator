@@ -9999,6 +9999,11 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content
 	display: none !important;
 }
 
+.cm-line.rv-recent-folded :is(textarea, .mb-input, .cm-widget, .rv-lp-notes, .rv-lp-stamp, .rv-native-notes-area),
+.rv-recent-folded :is(textarea, .mb-input, .rv-lp-notes, .rv-lp-stamp, .rv-native-notes-area) {
+	display: none !important;
+}
+
 .rv-map .rv-map-pins > button.rv-map-pin.is-drop.is-selected,
 .rv-map .rv-map-pins > button.rv-map-pin.is-drop.rv-pin-flash,
 .rv-map .rv-map-pins > button.rv-map-pin.is-drop:focus,

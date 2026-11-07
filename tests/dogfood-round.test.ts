@@ -56,6 +56,20 @@ proto.createDiv = function createDiv(this: HTMLElement, spec?: string | { cls?: 
 const css = readFileSync('styles.css', 'utf8');
 const main = readFileSync('src/main.ts', 'utf8');
 
+function visibleEditorText(root: ParentNode): string {
+	const parts: string[] = [];
+	const walk = (node: Node): void => {
+		if (node instanceof window.HTMLElement) {
+			if (node.classList.contains('rv-recent-folded')) return;
+			if (node.style?.display === 'none') return;
+		}
+		if (node.nodeType === window.Node.TEXT_NODE) parts.push(node.textContent ?? '');
+		node.childNodes.forEach(walk);
+	};
+	walk(root);
+	return parts.join(' ');
+}
+
 function chromeHost(): NoteChromeHost {
 	return {
 		frontmatter: () => ({
@@ -109,8 +123,27 @@ describe('dogfood round', () => {
 		window.document.body.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
 		assert.equal(panel.hidden, true);
 		button.click();
-		window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+		let reached = 0;
+		const hear = (): void => { reached += 1; };
+		window.document.addEventListener('keydown', hear);
+		window.document.addEventListener('keyup', hear);
+		const down = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+		const up = new window.KeyboardEvent('keyup', { key: 'Escape', bubbles: true, cancelable: true });
+		window.document.dispatchEvent(down);
+		window.document.dispatchEvent(up);
 		assert.equal(panel.hidden, true);
+		assert.equal(down.defaultPrevented, true);
+		assert.equal(up.defaultPrevented, true);
+		assert.equal(reached, 0);
+		const downClosed = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+		const upClosed = new window.KeyboardEvent('keyup', { key: 'Escape', bubbles: true, cancelable: true });
+		window.document.dispatchEvent(downClosed);
+		window.document.dispatchEvent(upClosed);
+		assert.equal(downClosed.defaultPrevented, false);
+		assert.equal(upClosed.defaultPrevented, false);
+		assert.equal(reached, 2);
+		window.document.removeEventListener('keydown', hear);
+		window.document.removeEventListener('keyup', hear);
 		button.click();
 		const row = panel.querySelector('.rv-suggest-option');
 		assert.ok(row instanceof window.HTMLElement);
@@ -190,6 +223,10 @@ describe('dogfood round', () => {
 			preview.appendChild(section);
 			return section;
 		});
+		const noteBody = window.document.createElement('p');
+		noteBody.className = 'el-p';
+		noteBody.textContent = 'First visit. Left the long video link.';
+		sections[0]?.after(noteBody);
 		const callout = window.document.createElement('div');
 		callout.className = 'callout rv-locator-return-suggestions';
 		callout.textContent = 'Return Suggestions';
@@ -215,6 +252,10 @@ describe('dogfood round', () => {
 		assert.notEqual(older.style.display, 'none');
 		assert.notEqual(callout.style.display, 'none');
 		assert.equal(sections[0]?.style.display, 'none');
+		assert.equal(noteBody.style.display, 'none');
+		assert.ok(stop instanceof window.HTMLElement);
+		assert.equal(noteBody.compareDocumentPosition(stop) & window.Node.DOCUMENT_POSITION_FOLLOWING, window.Node.DOCUMENT_POSITION_FOLLOWING);
+		assert.equal(stop.compareDocumentPosition(callout) & window.Node.DOCUMENT_POSITION_FOLLOWING, window.Node.DOCUMENT_POSITION_FOLLOWING);
 		const markdown = [
 			'### Recent Notes:',
 			'##### Mon, 9am — Sep 1, 2026',
@@ -241,13 +282,23 @@ describe('dogfood round', () => {
 		const markdown = [
 			'### Recent Notes:',
 			'##### Mon, 9am — Sep 1, 2026',
-			'recent body',
+			'First visit. Left the long video link.',
+			'`INPUT[textArea:sVisit1Notes]`',
 			'##### Tue, 2pm — Sep 2, 2026',
+			'She said "come back Tuesday".',
+			'`INPUT[textArea:sVisit2Notes]`',
 			'##### Wed, 3pm — Sep 3, 2026',
+			'Short title, one chip.',
+			'`INPUT[textArea:sVisit3Notes]`',
 			'##### Thu, 4pm — Sep 4, 2026',
-			'older body',
+			'older kept',
+			'`INPUT[textArea:sVisit4Notes]`',
 			'',
 			'> [!example] Return Suggestions',
+			'> Try Friday',
+			'',
+			'### Later Heading',
+			'stays visible',
 		].join('\n');
 		const parent = window.document.createElement('div');
 		parent.className = 'markdown-source-view is-live-preview';
@@ -265,11 +316,72 @@ describe('dogfood round', () => {
 		assert.ok(heading instanceof window.HTMLElement);
 		heading.click();
 		await new Promise((resolve) => setTimeout(resolve, 0));
-		const folded = Array.from(view.dom.querySelectorAll('.rv-recent-folded')).map((node) => node.textContent ?? '');
-		assert.equal(folded.some((text) => text.includes('recent body') || text.includes('Mon, 9am')), true);
-		assert.equal(folded.some((text) => text.includes('Thu, 4pm') || text.includes('Return Suggestions')), false);
-		assert.match(view.dom.textContent ?? '', /Older Visits|Thu, 4pm/);
+		const shown = visibleEditorText(view.dom);
+		assert.equal(shown.includes('First visit'), false);
+		assert.equal(shown.includes('come back Tuesday'), false);
+		assert.equal(shown.includes('Short title, one chip'), false);
+		assert.equal(shown.includes('sVisit1Notes'), false);
+		assert.equal(view.dom.querySelector('[data-rv-notes-key="sVisit1Notes"]'), null);
+		assert.match(shown, /Older Visits|Thu, 4pm/);
+		assert.match(shown, /Return Suggestions/);
+		assert.match(shown, /Later Heading/);
+		assert.match(shown, /stays visible/);
+		const older = view.dom.querySelector('.rv-older-visits, .rv-older-visits-widget');
+		assert.ok(older instanceof window.HTMLElement);
+		assert.equal(older.classList.contains('rv-recent-folded'), false);
+		assert.equal(older.closest('.rv-recent-folded'), null);
 		assert.match(css, /\.cm-line\.rv-recent-folded,\s*\.rv-recent-folded \{\s*display:\s*none !important;/);
+		const collapsed = view.dom.querySelector('h3.rv-visit-notes-heading');
+		assert.ok(collapsed instanceof window.HTMLElement);
+		collapsed.click();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.ok(view.dom.querySelector('[data-rv-notes-key="sVisit1Notes"]'));
+		assert.match(visibleEditorText(view.dom), /First visit/);
+		view.destroy();
+		parent.remove();
+	});
+
+	it('RV-B30 hides recent note lines when the note has no Older Visits or Return Suggestions', async () => {
+		const markdown = [
+			'### Recent Notes:',
+			'##### Mon, 9am — Sep 1, 2026',
+			'only recent',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'### After Notes',
+			'after body',
+		].join('\n');
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		setRecentNotesOpenState('rv-b30-plain.md', true);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc: markdown,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 3 }), () => 'rv-b30-plain.md'),
+			}),
+		});
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const heading = view.dom.querySelector('h3.rv-visit-notes-heading');
+		assert.ok(heading instanceof window.HTMLElement);
+		heading.click();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const shown = visibleEditorText(view.dom);
+		assert.equal(shown.includes('only recent'), false);
+		assert.equal(shown.includes('sVisit1Notes'), false);
+		assert.match(shown, /After Notes/);
+		assert.match(shown, /after body/);
+		const bare = [
+			'### Recent Notes:',
+			'##### Mon, 9am — Sep 1, 2026',
+			'nothing after',
+		].join('\n');
+		const hidden = recentFoldLineStarts(bare, false, 3).map((from) => {
+			const end = bare.indexOf('\n', from);
+			return bare.slice(from, end === -1 ? undefined : end);
+		});
+		assert.equal(hidden.some((line) => line.includes('nothing after')), true);
+		assert.equal(hidden.some((line) => line.includes('Recent Notes')), false);
 		view.destroy();
 		parent.remove();
 	});
