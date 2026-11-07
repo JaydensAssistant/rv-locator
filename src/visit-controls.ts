@@ -629,19 +629,40 @@ function copyStripChrome(strip: HTMLElement, card: HTMLElement): void {
 	if (faint && faint !== 'var(--text-faint)') type.style.color = faint;
 }
 
-/** Nudge the card so its icon sits on the collapsed icon. A zero rect means the box is not laid out. */
-function alignStripLine(card: HTMLElement, iconBefore: DOMRect | null): void {
-	if (!iconBefore || iconBefore.width <= 0 || iconBefore.height <= 0) return;
+/**
+ * The multi-line card takes the whole strip, so its left padding stays the
+ * strip's own padding. The icon keeps the collapsed icon's y. The title then
+ * shifts, without moving the icon, until the first line's text y matches.
+ * A zero rect means the box is not laid out.
+ */
+function alignStripLine(card: HTMLElement, iconBefore: DOMRect | null, textBefore: DOMRect | null): void {
 	const view = card.ownerDocument.defaultView;
 	const icon = card.querySelector('.rv-strip-overlay-icon');
+	const title = card.querySelector('.rv-strip-overlay-title');
 	if (!view || !(icon instanceof HTMLElement)) return;
-	const now = icon.getBoundingClientRect();
-	if (now.width <= 0 || now.height <= 0) return;
-	const style = view.getComputedStyle(card);
-	const dx = iconBefore.left - now.left;
-	const dy = iconBefore.top - now.top;
-	if (Math.abs(dx) >= 0.4) card.style.paddingLeft = `${(parseFloat(style.paddingLeft) || 0) + dx}px`;
-	if (Math.abs(dy) >= 0.4) card.style.paddingTop = `${(parseFloat(style.paddingTop) || 0) + dy}px`;
+	if (iconBefore && iconBefore.width > 0 && iconBefore.height > 0) {
+		const now = icon.getBoundingClientRect();
+		if (now.width > 0 && now.height > 0) {
+			const dy = iconBefore.top - now.top;
+			if (Math.abs(dy) >= 0.4) {
+				const style = view.getComputedStyle(card);
+				card.style.paddingTop = `${(parseFloat(style.paddingTop) || 0) + dy}px`;
+			}
+		}
+	}
+	if (!(title instanceof HTMLElement) || !textBefore || textBefore.height <= 0) return;
+	const textNow = title.getBoundingClientRect();
+	if (textNow.height <= 0) return;
+	const textDy = textBefore.top - textNow.top;
+	if (Math.abs(textDy) < 0.4) return;
+	const shift = `${textDy}px`;
+	title.style.position = 'relative';
+	title.style.top = shift;
+	const type = card.querySelector('.rv-strip-overlay-type');
+	if (type instanceof HTMLElement) {
+		type.style.position = 'relative';
+		type.style.top = shift;
+	}
 }
 
 /** Width of icon + title + type at the chip's 11px size. A zero measure falls back to a character estimate. */
@@ -682,6 +703,7 @@ function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
 	const icon = chip.querySelector('.rv-item-icon');
 	const stemEl = chip.querySelector('.rv-fit-stem');
 	const iconBefore = icon instanceof HTMLElement ? icon.getBoundingClientRect() : null;
+	const textBefore = stemEl instanceof HTMLElement ? stemEl.getBoundingClientRect() : null;
 	const stripBox = strip.getBoundingClientRect();
 	const stripWidth = stripBox.width || strip.clientWidth;
 	const inner = stripInnerWidth(strip, stripWidth);
@@ -744,7 +766,7 @@ function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
 	card.style.top = `${stripBox.top}px`;
 	copyStripChrome(strip, card);
 	card.style.fontSize = '11px';
-	alignStripLine(card, iconBefore);
+	alignStripLine(card, iconBefore, textBefore);
 	const view = doc.defaultView ?? window;
 	const onDoc = (event: Event): void => {
 		const target = event.target;

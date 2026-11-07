@@ -528,4 +528,68 @@ describe('RV-B47 RV-B48 RV-B49 visit strip expand', () => {
 		assert.equal(squeezed.querySelector('.rv-fit-stem')?.textContent, 'T…');
 		wide.remove();
 	});
+
+	it('keeps the expand card on the strip padding when the opened title is not first', () => {
+		const strip = window.document.createElement('div');
+		strip.className = 'rv-item-strip';
+		strip.style.paddingLeft = '8px';
+		strip.style.paddingRight = '8px';
+		strip.style.paddingTop = '0px';
+		strip.style.paddingBottom = '0px';
+		Object.defineProperty(strip, 'clientWidth', { configurable: true, get: () => 330 });
+		Object.defineProperty(strip, 'clientHeight', { configurable: true, get: () => 22 });
+		window.document.body.appendChild(strip);
+		fillItemStrip(strip, '· «film» «Short» · «film» «The Good News According to Jesus—Video Series Trailer» · «book» «Hope»', '');
+		const chips = [...strip.querySelectorAll('.rv-item')];
+		assert.equal(chips.length, 3);
+		const opened = chips[1];
+		assert.ok(opened instanceof window.HTMLElement);
+		const icon = opened.querySelector('.rv-item-icon');
+		const stem = opened.querySelector('.rv-fit-stem');
+		assert.ok(icon instanceof window.HTMLElement);
+		assert.ok(stem instanceof window.HTMLElement);
+		const box = (left: number, top: number, width: number, height: number) => ({
+			left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() { return {}; },
+		});
+		const proto = window.HTMLElement.prototype;
+		const previous = proto.getBoundingClientRect;
+		proto.getBoundingClientRect = function rect(this: HTMLElement) {
+			if (this === strip) return box(24, 80, 330, 24);
+			if (this === icon) return box(148, 84, 16, 16);
+			if (this === stem) return box(168, 86, 90, 12);
+			if (this.classList.contains('rv-strip-overlay-icon')) {
+				const card = this.closest('.rv-strip-overlay');
+				const pad = card instanceof window.HTMLElement ? Number.parseFloat(card.style.paddingTop) || 0 : 0;
+				return box(33, 70 + pad, 16, 16);
+			}
+			if (this.classList.contains('rv-strip-overlay-title')) {
+				const card = this.closest('.rv-strip-overlay');
+				const pad = card instanceof window.HTMLElement ? Number.parseFloat(card.style.paddingTop) || 0 : 0;
+				const nudge = Number.parseFloat(this.style.top) || 0;
+				return box(53, 71 + pad + nudge, 200, 28);
+			}
+			return box(0, 0, 0, 0);
+		};
+		try {
+			icon.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+			const card = window.document.querySelector('.rv-strip-overlay.is-multi');
+			assert.ok(card instanceof window.HTMLElement);
+			assert.equal(card.style.paddingLeft, '8px');
+			assert.equal(card.style.paddingRight, '8px');
+			assert.equal(opened.classList.contains('is-dropped'), false);
+			assert.equal(chips[0]?.classList.contains('is-dropped'), true);
+			assert.equal(chips[2]?.classList.contains('is-dropped'), true);
+			const title = card.querySelector('.rv-strip-overlay-title');
+			assert.ok(title instanceof window.HTMLElement);
+			assert.equal(title.style.top, '1px');
+			const type = card.querySelector('.rv-strip-overlay-type');
+			assert.ok(type instanceof window.HTMLElement);
+			assert.equal(type.style.top, '1px');
+			assert.ok(Math.abs((Number.parseFloat(card.style.paddingTop) || 0) - 14) < 0.01);
+		} finally {
+			proto.getBoundingClientRect = previous;
+			window.document.querySelector('.rv-strip-overlay')?.remove();
+			strip.remove();
+		}
+	});
 });
