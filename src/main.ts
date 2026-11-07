@@ -2284,7 +2284,8 @@ export default class RVLocatorPlugin extends Plugin {
 		if (this.unloaded) return;
 		const found = this.app.vault.getFileByPath(file.path);
 		const current = found instanceof TFile ? found : file;
-		this.pendingNewRvPath = current.path;
+		// One forced Reading open. A later Live Preview switch must stick.
+		this.pendingNewRvPath = null;
 		let leaf = this.app.workspace.getLeavesOfType('markdown')
 			.find((candidate) => candidate.view instanceof MarkdownView && candidate.view.file?.path === current.path);
 		if (leaf) {
@@ -2307,7 +2308,6 @@ export default class RVLocatorPlugin extends Plugin {
 		await this.openInReadingView(current, true);
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
-		this.pendingNewRvPath = current.path;
 		const sameWatch = this.armedNewRvPath === current.path && this.armedNewRvEl === view.containerEl && this.stopVisitFocus;
 		if (!sameWatch) {
 			this.stopVisitFocus?.();
@@ -4519,8 +4519,10 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!text.trim() || text.includes('<%')) continue;
 			const hasLog = /\[!note\][^\n]*(?:Attempt Log|Log)/i.test(text);
 			const hasVisit = /(?:success|\bhome\b|not home|\bmiss\b)/i.test(text);
-			this.openInReadingView(current, true);
-			if (this.pendingNewRvPath === current.path) this.armNewRvFocus(current);
+			if (this.pendingNewRvPath === current.path) {
+				void this.openInReadingView(current, true);
+				this.armNewRvFocus(current);
+			}
 			if (hasLog && hasVisit) {
 				await this.refreshAttemptDigest(current);
 				return;

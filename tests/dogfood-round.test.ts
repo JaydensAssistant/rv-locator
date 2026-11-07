@@ -280,6 +280,127 @@ describe('dogfood round', () => {
 		preview.remove();
 	});
 
+	it('RV-B30 draws Older Visits in the first older section and leaves Return Suggestions up', async () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view markdown-reading-view';
+		const sizer = window.document.createElement('div');
+		sizer.className = 'markdown-preview-sizer';
+		preview.appendChild(sizer);
+		const notesSection = window.document.createElement('div');
+		notesSection.className = 'markdown-preview-section';
+		const notesWrap = window.document.createElement('div');
+		notesWrap.className = 'el-h3';
+		const notes = window.document.createElement('h3');
+		notes.textContent = 'Recent Notes:';
+		notesWrap.appendChild(notes);
+		notesSection.appendChild(notesWrap);
+		sizer.appendChild(notesSection);
+		const stamps = [
+			'Fri, 9am — Apr 2, 2026',
+			'Thu, 2pm — Mar 20, 2026',
+			'Wed, 3pm — Feb 2, 2026',
+			'Thu, 4pm — Jan 8, 2026',
+			'Thu, 5pm — Mar 12, 2026',
+		];
+		const sections = stamps.map((stamp) => {
+			const section = window.document.createElement('div');
+			section.className = 'markdown-preview-section';
+			const wrap = window.document.createElement('div');
+			wrap.className = 'el-h5';
+			const heading = window.document.createElement('h5');
+			heading.className = 'rv-visit-stamp';
+			heading.textContent = stamp;
+			wrap.appendChild(heading);
+			section.appendChild(wrap);
+			sizer.appendChild(section);
+			return section;
+		});
+		const calloutSection = window.document.createElement('div');
+		calloutSection.className = 'markdown-preview-section';
+		const callout = window.document.createElement('div');
+		callout.className = 'callout rv-locator-return-suggestions';
+		const title = window.document.createElement('div');
+		title.className = 'callout-title';
+		title.textContent = 'Return Suggestions';
+		callout.appendChild(title);
+		calloutSection.appendChild(callout);
+		const trailing = window.document.createElement('div');
+		trailing.className = 'markdown-preview-section';
+		const tail = window.document.createElement('p');
+		tail.textContent = 'A note after the suggestions.';
+		trailing.appendChild(tail);
+		sizer.append(calloutSection, trailing);
+		window.document.body.appendChild(preview);
+		const markdown = `### Recent Notes:\n${stamps.map((stamp) => `##### ${stamp}`).join('\n')}`;
+		const options = { newestFirst: true, collapseOlder: true, limit: 3 };
+		layoutVisitNotes(preview, markdown, options);
+		const firstOlder = sections[3];
+		const hiddenOlder = sections[4];
+		assert.ok(firstOlder instanceof window.HTMLElement);
+		assert.ok(hiddenOlder instanceof window.HTMLElement);
+		assert.equal(firstOlder.classList.contains('rv-older-first'), true);
+		const placed = preview.querySelector('h3.rv-older-visits');
+		assert.ok(placed instanceof window.HTMLElement);
+		assert.equal(preview.querySelectorAll('h3.rv-older-visits').length, 1);
+		assert.equal(firstOlder.contains(placed), true);
+		const strayWrap = placed.closest('.rv-older-visits-wrap');
+		assert.ok(strayWrap instanceof window.HTMLElement);
+		hiddenOlder.style.display = 'none';
+		hiddenOlder.classList.remove('rv-older-first');
+		const strayRule = strayWrap.previousElementSibling;
+		if (strayRule instanceof window.HTMLElement && strayRule.classList.contains('rv-older-rule')) hiddenOlder.appendChild(strayRule);
+		hiddenOlder.appendChild(strayWrap);
+		firstOlder.classList.add('rv-older-first');
+		layoutVisitNotes(preview, markdown, options);
+		const heading = preview.querySelector('h3.rv-older-visits');
+		assert.ok(heading instanceof window.HTMLElement);
+		assert.equal(preview.querySelectorAll('h3.rv-older-visits').length, 1);
+		assert.equal(firstOlder.contains(heading), true);
+		assert.equal(hiddenOlder.contains(heading), false);
+		assert.equal(heading.closest('.rv-older-visits-wrap')?.parentElement, firstOlder);
+		assert.equal(heading.classList.contains('is-open'), false);
+		heading.click();
+		assert.equal(heading.classList.contains('is-open'), true);
+		let bubbled = false;
+		preview.addEventListener('click', () => { bubbled = true; });
+		let sibling = notesSection.nextElementSibling;
+		while (sibling instanceof window.HTMLElement) {
+			sibling.style.display = 'none';
+			sibling = sibling.nextElementSibling;
+		}
+		notes.click();
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		assert.equal(bubbled, false);
+		assert.equal(notesWrap.classList.contains('is-collapsed'), true);
+		for (const recent of sections.slice(0, 3)) {
+			assert.equal(recent.classList.contains('rv-recent-folded'), true);
+			assert.equal(recent.style.display, 'none');
+		}
+		assert.equal(firstOlder.classList.contains('rv-recent-folded'), false);
+		assert.notEqual(firstOlder.style.display, 'none');
+		assert.equal(calloutSection.classList.contains('rv-recent-folded'), false);
+		assert.notEqual(calloutSection.style.display, 'none');
+		assert.equal(trailing.classList.contains('rv-recent-folded'), false);
+		assert.notEqual(trailing.style.display, 'none');
+		assert.equal(hiddenOlder.classList.contains('rv-recent-folded'), false);
+		preview.remove();
+	});
+
+	it('opens a new RV in Reading once and keeps the Recent Notes chevron gray', () => {
+		const main = readFileSync('src/main.ts', 'utf8');
+		const activate = main.slice(main.indexOf('private async activateNewRvNote'), main.indexOf('private releaseNewRvCover'));
+		assert.match(activate, /this\.pendingNewRvPath = null/);
+		assert.equal(activate.includes('this.pendingNewRvPath = current.path'), false);
+		assert.match(activate, /await this\.openInReadingView\(current, true\)/);
+		const watch = main.slice(main.indexOf('private async watchCreatedDigest'), main.indexOf('private async rewriteDigestFile'));
+		const gate = watch.indexOf('if (this.pendingNewRvPath === current.path)');
+		const force = watch.indexOf('openInReadingView(current, true)');
+		assert.ok(gate >= 0 && force > gate);
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /\.view-content \.is-collapsed h3\.rv-visit-notes-heading > \.collapse-indicator svg\.svg-icon[\s\S]{0,500}color:\s*var\(--collapse-icon-color, var\(--text-faint\)\) !important/);
+		assert.doesNotMatch(css, /h3\.rv-visit-notes-heading[\s\S]{0,240}--collapse-icon-color-collapsed/);
+	});
+
 	it('RV-B30 a live preview chevron hides recent lines and leaves Older Visits up', async () => {
 		const markdown = [
 			'### Recent Notes:',

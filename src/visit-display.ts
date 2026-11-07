@@ -163,6 +163,13 @@ function collapseHost(heading: HTMLElement): HTMLElement {
 	return heading;
 }
 
+function setRecentCollapsed(heading: HTMLElement, collapsed: boolean): void {
+	heading.classList.toggle('is-collapsed', collapsed);
+	heading.classList.toggle('is-open', !collapsed);
+	const host = collapseHost(heading);
+	if (host !== heading) host.classList.toggle('is-collapsed', collapsed);
+}
+
 function headingIsCollapsed(heading: HTMLElement): boolean {
 	if (heading.classList.contains('is-collapsed')) return true;
 	const host = collapseHost(heading);
@@ -182,7 +189,17 @@ function bindRecentNotesToggle(preview: HTMLElement, heading: HTMLElement): void
 		if (view) view.setTimeout(() => revealPastRecentFold(preview), 0);
 		else revealPastRecentFold(preview);
 	};
-	heading.addEventListener('click', () => {
+	// Obsidian's own heading fold hides every later section until the next
+	// h1–h3. Recent Notes has none, so that fold swallows Older Visits and
+	// Return Suggestions. This click never reaches that handler.
+	const hold = (event: Event | undefined): void => {
+		event?.preventDefault?.();
+		if (typeof event?.stopPropagation === 'function') event.stopPropagation();
+	};
+	heading.addEventListener('click', (event) => {
+		hold(event);
+		const collapsed = !headingIsCollapsed(heading);
+		setRecentCollapsed(heading, collapsed);
 		sync();
 		reveal();
 	});
@@ -346,20 +363,52 @@ function applyCollapsedVisitNotesNow(preview: HTMLElement): void {
 	revealPastRecentFold(preview);
 }
 
-/** Older Visits and Return Suggestions stay up when Recent Notes is collapsed. */
+/** A sibling Recent Notes must not fold. Older Visits, Return Suggestions, and the next real heading stay up. */
+function recentReadingStop(node: HTMLElement): boolean {
+	if (node.classList.contains('rv-notes-fold-stop') || node.classList.contains('rv-older-rule') || node.classList.contains('rv-older-visits-wrap') || node.classList.contains('rv-older-visits') || node.classList.contains('rv-older-first')) return true;
+	if (node.querySelector('.rv-older-visits, .rv-older-visits-wrap, .rv-notes-fold-stop')) return true;
+	if (isStop(node)) return true;
+	const level = headingLevelOf(node);
+	if (level != null && level <= 3 && !isVisitHeading(node) && !node.classList.contains('rv-visit-notes-heading')) return true;
+	const inner = node.querySelector('h1, h2, h3');
+	if (inner instanceof HTMLElement && !inner.classList.contains('rv-visit-notes-heading') && !inner.classList.contains('rv-older-visits') && !inner.classList.contains('rv-fold-stop-heading')) {
+		const text = (inner.textContent ?? '').replace(/\s+/g, ' ').trim();
+		if (!/^(?:visit|recent) notes:?$/i.test(text) && visitStampLine(text) == null && headingLevelOf(inner) != null && (headingLevelOf(inner) ?? 6) <= 3) return true;
+	}
+	return false;
+}
+
+/**
+ * Older Visits and Return Suggestions stay up when Recent Notes is collapsed.
+ * Only the recent visit sections take the fold. Anything from the stop on is shown.
+ */
+/** The preview section that owns Recent Notes. Its next siblings are the visits. */
+function recentFoldHost(heading: HTMLElement, preview: HTMLElement): HTMLElement {
+	let node = collapseHost(heading);
+	while (node.parentElement && node.parentElement !== preview && preview.contains(node.parentElement)) {
+		const parent = node.parentElement;
+		if (parent.classList.contains('markdown-preview-sizer')) break;
+		node = parent;
+		if (node.classList.contains('markdown-preview-section')) break;
+	}
+	return node;
+}
+
 function revealPastRecentFold(preview: HTMLElement): void {
 	const notes = preview.querySelector('h3.rv-visit-notes-heading');
-	if (!(notes instanceof HTMLElement) || !headingIsCollapsed(notes)) return;
-	const stop = preview.querySelector('.rv-notes-fold-stop');
-	const older = preview.querySelector('.rv-older-rule, .rv-older-visits-wrap');
-	const callout = suggestionCallout(preview);
-	const start = stop instanceof HTMLElement ? stop : older instanceof HTMLElement ? older : callout;
-	if (!(start instanceof HTMLElement)) return;
-	let cursor: Element | null = start;
+	if (!(notes instanceof HTMLElement)) return;
+	const host = recentFoldHost(notes, preview);
+	const collapsed = headingIsCollapsed(notes);
+	let cursor = host.nextElementSibling;
+	let folding = collapsed;
 	while (cursor instanceof HTMLElement) {
-		const style = cursor.style;
-		if (style?.display === 'none') style.removeProperty('display');
-		cursor.classList.remove(FOLD_CLASS);
+		if (folding && recentReadingStop(cursor)) folding = false;
+		if (folding) cursor.classList.add('rv-recent-folded');
+		else cursor.classList.remove('rv-recent-folded');
+		if (!folding && collapsed) {
+			if (cursor.style?.display === 'none') cursor.style.removeProperty('display');
+			cursor.classList.remove(FOLD_CLASS);
+		}
 		cursor = cursor.nextElementSibling;
 	}
 }

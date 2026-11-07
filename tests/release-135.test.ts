@@ -283,7 +283,6 @@ describe('1.3.5 visit display order', () => {
 		const thu = tree.sizer.children.find((node) => (node.textContent ?? '').includes('Thu, 4pm'));
 		assert.ok(thu);
 		tree.preview.querySelectorAll('.rv-older-visits, .rv-older-visits-wrap, .rv-older-rule').forEach((node) => node.remove());
-		wrap.classList.add('is-collapsed');
 		notes.click();
 		assert.equal(notes.classList.contains('is-open'), false);
 		await new Promise((resolve) => setTimeout(resolve, 150));

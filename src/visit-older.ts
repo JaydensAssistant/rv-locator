@@ -176,7 +176,14 @@ function dedupeOlderHeaders(root: HTMLElement, keep: HTMLElement | null): void {
 /** Our fold header, created in the first older heading's section. */
 export function ensureOlderHeader(section: HTMLElement, path: string, root: HTMLElement): HTMLElement {
 	const scope = root.contains(section) ? root : section;
-	let heading = directOlderHeading(section) ?? readingOlderHeadings(scope)[0] ?? null;
+	let heading = directOlderHeading(section);
+	if (!(heading instanceof HTMLElement)) {
+		const stray = readingOlderHeadings(scope).find((node) => !section.contains(node));
+		if (stray) {
+			relocateOlderHeader(stray, section);
+			heading = stray;
+		}
+	}
 	if (heading instanceof HTMLElement) {
 		dedupeOlderHeaders(scope, heading);
 		wireOlderHeader(heading, path, root, true);
@@ -222,6 +229,40 @@ export function ensureOlderHeader(section: HTMLElement, path: string, root: HTML
 	return created;
 }
 
+/** The chevron has to live in the first older section. A hidden sibling keeps it off screen. */
+function relocateOlderHeader(heading: HTMLElement, section: HTMLElement): void {
+	const wrap = heading.closest('.rv-older-visits-wrap');
+	const node = wrap instanceof HTMLElement ? wrap : heading;
+	if (node.parentElement === section) return;
+	const prev = node.previousElementSibling;
+	const rule = prev instanceof HTMLElement && prev.classList.contains('rv-older-rule') ? prev : null;
+	const anchor = section.firstElementChild;
+	if (rule) section.insertBefore(rule, anchor);
+	section.insertBefore(node, rule && rule.parentElement === section ? rule.nextSibling : section.firstElementChild);
+}
+
+/** One Older Visits heading, inside the visible first-older section. */
+export function placeOlderHeadingInFirst(root: HTMLElement, path: string): void {
+	const marked = Array.from(root.querySelectorAll('.rv-older-first')).filter((node): node is HTMLElement => (
+		node instanceof HTMLElement && !isEditorOlder(node)
+	));
+	let section: HTMLElement | null = null;
+	for (const node of marked) {
+		if (isStampHeading(node)) {
+			section = node;
+			break;
+		}
+		const stamp = node.querySelector('h3, h5');
+		if (stamp instanceof HTMLElement && isStampHeading(stamp)) {
+			section = node;
+			break;
+		}
+	}
+	if (!section) section = marked[0] ?? null;
+	if (!section) return;
+	ensureOlderHeader(section, path, root);
+}
+
 export interface OlderSectionOptions {
 	limit: number;
 	collapseOlder: boolean;
@@ -247,6 +288,7 @@ export function classifyVisitSection(
 	section.classList.toggle('rv-older-section', older);
 	section.classList.toggle('rv-older-first', role === 'first-older');
 	if (role === 'first-older') ensureOlderHeader(section, path, preview);
+	placeOlderHeadingInFirst(preview, path);
 	paintOlderChrome(path, preview, spans.some((span) => span.older));
 	concealPlainOlderHeadings(preview);
 	return role;
@@ -325,6 +367,7 @@ export function markPreviewOlderVisits(
 		}
 		if (older && index === cap) ensureOlderHeader(block, path, preview);
 	});
+	placeOlderHeadingInFirst(preview, path);
 	const kept = readingOlderHeadings(preview)[0] ?? null;
 	dedupeOlderHeaders(preview, kept);
 	paintOlderChrome(path, preview, headings.length > cap);

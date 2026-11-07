@@ -2833,12 +2833,14 @@ h3.rv-visit-notes-heading {
 }
 
 h3.rv-visit-notes-heading > .collapse-indicator,
-h3.rv-visit-notes-heading > .collapse-indicator > svg {
+h3.rv-visit-notes-heading > .collapse-indicator > svg,
+.view-content .is-collapsed h3.rv-visit-notes-heading > .collapse-indicator svg.svg-icon,
+.view-content h3.rv-visit-notes-heading > .collapse-indicator svg.svg-icon {
 	display: inline-flex;
 	flex: 0 0 auto;
 	opacity: 1 !important;
 	visibility: visible;
-	color: var(--collapse-indicator-color, var(--icon-color, var(--text-faint)));
+	color: var(--collapse-icon-color, var(--text-faint)) !important;
 }
 
 h3.rv-visit-notes-heading > .collapse-indicator > svg {
