@@ -14,7 +14,7 @@ import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden } from './hub-cover';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
-import { rowPriority, rowUrgency } from './row-score';
+import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
 import { badgeLineOpticalKey, urgencyOpticalKey } from './badge-glyph';
 import { urgencyAccentColor, urgencyBand, urgencyBangShapes, urgencyMark } from './scoring';
 import { paintUrgencyInk } from './color-math';
@@ -475,9 +475,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 			event.preventDefault();
 			this.plugin.highlightMapPin(row.path);
 		});
-		const rank = priorityRank(this.cellNamed(row, 'Priority'));
-		const priority = rowPriority(row);
-		const urgency = rowUrgency(row, this.plugin.settings, new Date(), this.plugin.snoozeUntilFor(row.path));
+		const live = this.liveRank(row);
+		const rank = live.priority != null && live.priority > 0 ? String(live.priority) : null;
+		const priority = live.priority;
+		const urgency = live.urgency;
 		const band = priority != null && priority > 0 ? urgencyBand(urgency) : 0;
 		card.setAttr('data-urgency-band', String(band));
 		if (priority === 0) card.addClass('is-priority-zero');
@@ -490,8 +491,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			name.setAttr('data-line', glancableLineId(0));
 			this.paintCampaignMark(name, row.path);
 			const statusIconEl = name.createSpan('rv-locator-status-icon');
-			setIcon(statusIconEl, statusIcon(row.status));
-			statusIconEl.setAttr('aria-label', row.status);
+			setIcon(statusIconEl, statusIcon(live.status));
+			statusIconEl.setAttr('aria-label', live.status);
 			statusIconEl.querySelector('svg')?.removeAttribute('aria-label');
 			const link = name.createEl('a', {
 				cls: 'rv-locator-file-link',
@@ -627,12 +628,28 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private paintSignature(row: RowModel): string {
 		const facts = this.noteFrontmatter(row.path);
-		return cardPaintKey(row, {
+		const live = this.liveRank(row);
+		return `${cardPaintKey(row, {
 			locationProperty: this.plugin.settings.locationProperty,
 			snoozed: this.plugin.snoozeActiveFor(row.path),
 			campaign: this.plugin.campaignMark(row.path),
 			age: ageCaption(readProperty(facts, 'Age'), readProperty(facts, 'Age Exact')),
-		});
+		})}\u001e${live.priority ?? ''}\u001f${live.status}\u001f${live.urgency ?? ''}`;
+	}
+
+	/** Priority, status, and urgency from the pinned note, so a hub card repaints before Bases does. */
+	private liveRank(row: RowModel): { priority: number | null; urgency: number | null; status: ReturnType<typeof resolveStatus> } {
+		const facts = this.noteFrontmatter(row.path);
+		const rawPriority = readProperty(facts, 'Priority');
+		const parsed = typeof rawPriority === 'number' ? rawPriority : Number(rawPriority);
+		const fromNote = Number.isFinite(parsed) ? Math.round(parsed) : null;
+		const priority = fromNote != null && fromNote >= 0 && fromNote <= 5 ? fromNote : rowPriority(row);
+		const spokeRaw = readProperty(facts, 'Last Spoke');
+		const spoke = spokeRaw instanceof Date ? spokeRaw.toISOString() : typeof spokeRaw === 'string' ? spokeRaw : '';
+		const days = spoke ? calendarDaysSince(spoke) : rowSpokeDays(row);
+		const status = resolveStatus(readProperty(facts, 'Status') ?? row.status, priority);
+		const urgency = displayedUrgency(days, priority, this.plugin.settings, this.plugin.snoozeUntilFor(row.path), new Date());
+		return { priority, urgency, status };
 	}
 
 	private glanceCards(): HTMLElement[] {
@@ -1664,15 +1681,6 @@ function urgencyTitle(urgency: number | null, priority: number | null): string {
 	if (urgency == null) return 'Urgency. Snooze for today, 7 days, or 14 days.';
 	if (urgency < 1) return `Urgency ${urgency.toFixed(2)}. Snooze for today, 7 days, or 14 days.`;
 	return `Urgency ${urgency.toFixed(2)}. Snooze for today, 7 days, or 14 days.`;
-}
-
-function priorityRank(cell: CellModel | undefined): string | null {
-	if (!cell || cell.kind === 'empty' || !cell.text) return null;
-	const parsed = Number(cell.text);
-	if (!Number.isFinite(parsed)) return null;
-	const rank = Math.round(parsed);
-	if (rank < 0 || rank > 5) return null;
-	return String(rank);
 }
 
 function studyRatio(note: Record<string, unknown> | null, order: 'lessons-studies' | 'studies-lessons'): { text: string; title: string } {

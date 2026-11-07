@@ -62,7 +62,7 @@ import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggesti
 import { navigatingToFile, withReadingPreview } from './reading-open';
 import { isRvDashboardNote, isRvLocatorSurface, refreshStampAgeLabels } from './rv-note-view';
 import { dismissNoteTitleModal, installRenameSwallow } from './rename-guard';
-import { storeFrontmatter } from './visit-paint-guard';
+import { applyHeadPin, storeFrontmatter } from './visit-paint-guard';
 import { clearBadgeStrokeCache, NearbyGlancableView } from './glancable-view';
 import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
@@ -177,6 +177,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private hubOverride = new Map<string, unknown>();
 	/** Visit Facts written by a visit, used until the metadata cache catches up. */
 	private visitPaint = new Map<string, VisitPaint>();
+	/** Status, priority, and snooze written before a stale `changed` event. */
+	private headPin = new Map<string, Record<string, unknown>>();
 	/** Frontmatter from metadataCache 'changed', not a read that raced the update. */
 	private cachedFrontmatter = new Map<string, Record<string, unknown>>();
 	/** New RV focus waits for the template prompt to close. No clock during the prompt. */
@@ -436,6 +438,7 @@ export default class RVLocatorPlugin extends Plugin {
 			if (file instanceof TFile && frontmatter) {
 				const pin = this.visitPaint.get(file.path);
 				const decision = storeFrontmatter(frontmatter, pin ? visitPaintRecord(pin) : null);
+				if (applyHeadPin(decision.stored, this.headPin.get(file.path) ?? null)) this.headPin.delete(file.path);
 				this.cachedFrontmatter.set(file.path, decision.stored);
 				clearGlanceHold();
 				if (decision.clearPin) this.visitPaint.delete(file.path);
@@ -1943,7 +1946,9 @@ export default class RVLocatorPlugin extends Plugin {
 			assignProperty(data, 'Status', next.status);
 			assignProperty(data, 'Priority', next.priority);
 			this.pinFrontmatter(file.path, data);
+			this.rememberHeadPin(file.path, data);
 		});
+		this.scheduleOpenNoteRepaint();
 		for (const callback of this.viewRefreshers) callback();
 	}
 
@@ -1957,8 +1962,24 @@ export default class RVLocatorPlugin extends Plugin {
 			assignProperty(data, 'Status', next.status);
 			assignProperty(data, 'Priority', next.priority);
 			this.pinFrontmatter(file.path, data);
+			this.rememberHeadPin(file.path, data);
 		});
+		this.scheduleOpenNoteRepaint();
 		for (const callback of this.viewRefreshers) callback();
+	}
+
+	/** Status, priority, and snooze stay put when a late cache event still has the old head. */
+	private rememberHeadPin(path: string, data: Record<string, unknown>): void {
+		const pinned: Record<string, unknown> = {};
+		for (const key of ['Status', 'Priority'] as const) {
+			const value = readProperty(data, key);
+			if (value !== undefined) pinned[key] = value;
+		}
+		for (const key of [URGENCY_SNOOZE_PROPERTY, SNOOZE_START_PROPERTY, SNOOZE_LABEL_PROPERTY]) {
+			const value = readProperty(data, key);
+			pinned[key] = value == null || value === '' ? '' : value;
+		}
+		this.headPin.set(path, pinned);
 	}
 
 	private promptAddHub(path: string): void {
@@ -2706,7 +2727,7 @@ export default class RVLocatorPlugin extends Plugin {
 	listMapPins(): MapPin[] {
 		const colors = urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors);
 		const rows = this.app.vault.getMarkdownFiles().map((file) => {
-			const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+			const frontmatter = this.noteFrontmatter(file.path) ?? undefined;
 			const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
 			const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? 0;
 			const status = resolveStatus(readProperty(frontmatter, 'Status'), priority);
@@ -4625,8 +4646,9 @@ export default class RVLocatorPlugin extends Plugin {
 				else removeProperty(data, SNOOZE_LABEL_PROPERTY);
 			}
 			this.pinFrontmatter(file.path, data);
+			this.rememberHeadPin(file.path, data);
 		});
-		this.refreshOpenNoteChrome();
+		this.scheduleOpenNoteRepaint();
 		for (const callback of this.viewRefreshers) callback();
 	}
 

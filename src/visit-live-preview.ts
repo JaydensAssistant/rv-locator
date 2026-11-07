@@ -347,25 +347,80 @@ function installElHelpers(doc: Document): void {
 
 const NOTES_HEADING = /^###\s+((?:Recent|Visit) Notes:)\s*$/i;
 
+const recentNotesOpenByPath = new Map<string, boolean>();
+
+/** Recent Notes starts open. A collapsed heading hides only the notes under it. */
+export function recentNotesOpen(path: string): boolean {
+	return recentNotesOpenByPath.get(path) !== false;
+}
+
+export function setRecentNotesOpenState(path: string, open: boolean): void {
+	if (!path) return;
+	if (open) recentNotesOpenByPath.delete(path);
+	else recentNotesOpenByPath.set(path, false);
+}
+
+/**
+ * Lines under Recent Notes. The fold stops at the first Older Visits stamp,
+ * Return Suggestions, or the next heading of level 1–3.
+ */
+export function recentFoldLineStarts(markdown: string, open: boolean, limit = 3): number[] {
+	if (open) return [];
+	const lines = docLines(markdown);
+	const stamps: number[] = [];
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index];
+		if (line && visitStampLine(line.text)) stamps.push(index);
+	}
+	const olderAt = stamps[Math.max(0, Math.floor(limit))];
+	const stopFrom = olderAt == null ? null : lines[olderAt]?.from ?? null;
+	const hidden: number[] = [];
+	let folding = false;
+	for (const line of lines) {
+		const trimmed = line.text.trim();
+		if (!folding) {
+			if (NOTES_HEADING.test(trimmed)) folding = true;
+			continue;
+		}
+		if (stopFrom != null && line.from >= stopFrom) break;
+		if (isReturnSuggestionsLine(trimmed)) break;
+		if (/^#{1,3}\s+/.test(trimmed)) break;
+		hidden.push(line.from);
+	}
+	return hidden;
+}
+
 /** Recent Notes, centered, with the same chevron Reading view draws. The line stays in the file. */
 class RecentNotesWidget extends WidgetType {
-	constructor(readonly label: string) {
+	constructor(readonly label: string, readonly path: string, readonly open: boolean) {
 		super();
 	}
 
 	eq(other: WidgetType): boolean {
-		return other instanceof RecentNotesWidget && other.label === this.label;
+		return other instanceof RecentNotesWidget && other.label === this.label && other.path === this.path && other.open === this.open;
 	}
 
 	toDOM(view: EditorView): HTMLElement {
 		installElHelpers(view.dom.ownerDocument);
 		const heading = view.dom.ownerDocument.createElement('h3');
-		heading.className = 'rv-visit-notes-heading is-open';
+		heading.className = this.open ? 'rv-visit-notes-heading is-open' : 'rv-visit-notes-heading is-collapsed';
 		const mark = view.dom.ownerDocument.createElement('span');
 		mark.className = 'collapse-indicator collapse-icon';
 		heading.appendChild(mark);
 		heading.appendChild(view.dom.ownerDocument.createTextNode(this.label));
 		mountHeadingChevron(mark);
+		const toggle = (event: Event): void => {
+			event.preventDefault();
+			event.stopPropagation();
+		};
+		heading.addEventListener('pointerdown', toggle, true);
+		heading.addEventListener('mousedown', toggle, true);
+		heading.addEventListener('click', (event) => {
+			toggle(event);
+			const next = !this.open;
+			setRecentNotesOpenState(this.path, next);
+			view.dispatch({ effects: setRecentNotesOpen.of(next) });
+		});
 		return heading;
 	}
 }
@@ -412,6 +467,9 @@ class VisitHeadingWidget extends WidgetType {
 
 /** Opens or closes the Older Visits group. No document changes. */
 export const setOlderVisitsOpen = StateEffect.define<boolean>();
+
+/** Opens or closes Recent Notes. Older Visits and Return Suggestions stay. */
+export const setRecentNotesOpen = StateEffect.define<boolean>();
 
 /** Settings or a relayout. The effect value is unused. No document changes. */
 export const refreshVisitPreviewEffect = StateEffect.define<null>();
@@ -529,10 +587,12 @@ export function buildVisitDecorations(
 	options: VisitPreviewSettings,
 	open: boolean,
 	path = '',
+	recentOpen?: boolean,
 ): DecorationSet {
 	const plan = planLivePreviewVisits(doc, options);
 	const pieces: { from: number; to: number; deco: Decoration; kind: number }[] = [];
 	const hidden = new Set(!open && plan.widgetAt != null ? plan.hiddenLines : []);
+	const recentHidden = new Set(recentFoldLineStarts(doc, recentOpen ?? recentNotesOpen(path), options.limit));
 	if (plan.widgetAt != null) {
 		pieces.push({
 			from: plan.widgetAt,
@@ -557,6 +617,7 @@ export function buildVisitDecorations(
 		if (!line) continue;
 		const foldClasses: string[] = [];
 		if (hidden.has(line.from) && visitStampLine(line.text) == null) foldClasses.push('rv-older-hidden', 'mb-none');
+		if (recentHidden.has(line.from)) foldClasses.push('rv-recent-folded');
 		if (isVisitGapLine(lines, index)) foldClasses.push('rv-lp-gap');
 		if (foldClasses.length > 0) {
 			pieces.push({
@@ -579,13 +640,13 @@ export function buildVisitDecorations(
 				from: line.from,
 				to: end,
 				kind: 2,
-				deco: Decoration.replace({ widget: new RecentNotesWidget(notesHeading[1] ?? 'Recent Notes:') }),
+				deco: Decoration.replace({ widget: new RecentNotesWidget(notesHeading[1] ?? 'Recent Notes:', path, recentOpen ?? recentNotesOpen(path)) }),
 			});
 			continue;
 		}
 		const stamp = visitStampLine(line.text);
 		if (stamp) {
-			const concealed = hidden.has(line.from);
+			const concealed = hidden.has(line.from) || recentHidden.has(line.from);
 			const classes = ['rv-lp-visit', 'rv-lp-visit-heading'];
 			if (concealed) classes.push('rv-older-hidden', 'mb-none');
 			pieces.push({
@@ -653,13 +714,13 @@ export function visitPreviewExtension(
 	pathOf?: (view: EditorView) => string,
 	paint?: (dom: HTMLElement) => void,
 ): Extension {
-	const decorate = (state: EditorState, open?: boolean): DecorationSet => {
+	const decorate = (state: EditorState, open?: boolean, recentOpen?: boolean): DecorationSet => {
 		if (!state.field(livePreviewField)) return Decoration.none;
 		const path = state.field(notePathField);
 		// An empty path is the gap between notes. Building widgets then fills
 		// them from whatever was last cached under ''.
 		if (!path) return Decoration.none;
-		return buildVisitDecorations(state.doc.toString(), read(), open ?? olderVisitsOpen(path), path);
+		return buildVisitDecorations(state.doc.toString(), read(), open ?? olderVisitsOpen(path), path, recentOpen);
 	};
 	const decorations = StateField.define<DecorationSet>({
 		create: (state) => decorate(state),
@@ -667,6 +728,7 @@ export function visitPreviewExtension(
 			const refresh = transaction.effects.some((effect) => (
 				effect.is(refreshVisitPreviewEffect)
 				|| effect.is(setOlderVisitsOpen)
+				|| effect.is(setRecentNotesOpen)
 				|| effect.is(setLivePreview)
 				|| effect.is(setNotePath)
 			));
@@ -678,10 +740,16 @@ export function visitPreviewExtension(
 			// Read the fold from this transaction. The module map is written
 			// by another field, and that write can land after this rebuild.
 			let open: boolean | undefined;
+			let recentOpen: boolean | undefined;
 			for (const effect of transaction.effects) {
 				if (effect.is(setOlderVisitsOpen)) open = effect.value;
+				if (effect.is(setRecentNotesOpen)) {
+					recentOpen = effect.value;
+					const path = transaction.state.field(notePathField, false);
+					if (path) setRecentNotesOpenState(path, effect.value);
+				}
 			}
-			return decorate(transaction.state, open);
+			return decorate(transaction.state, open, recentOpen);
 		},
 		// Obsidian's markup-hide replace covers the first six characters of the
 		// heading and would otherwise outrank this full-line widget. Highest

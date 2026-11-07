@@ -204,15 +204,20 @@ export function mountAlwaysChevron(
 	};
 
 	let armedDismiss = false;
+	const showPanel = (open: boolean): void => {
+		panel.hidden = !open;
+		if (open) panel.style.removeProperty('display');
+		else panel.style.setProperty('display', 'none', 'important');
+	};
 	const paint = (): void => {
 		panel.replaceChildren();
 		const items = suggestions().map((item) => item.trim()).filter(Boolean).slice(0, SUGGEST_MATCH_LIMIT);
 		const typed = 'value' in input ? String((input as HTMLInputElement).value ?? '') : '';
 		if (items.length === 0 && typed.trim()) {
-			panel.hidden = true;
+			showPanel(false);
 			return;
 		}
-		panel.hidden = false;
+		showPanel(true);
 		const paintRow = (item: string, titleOnly = false): void => {
 			if (item === SUGGEST_PENDING) {
 				const pending = panel.ownerDocument.createElement('div');
@@ -247,7 +252,7 @@ export function mountAlwaysChevron(
 				armedDismiss = true;
 				if (input instanceof HTMLElement) input.dataset.rvPicking = '1';
 				onPick(item);
-				panel.hidden = true;
+				showPanel(false);
 			};
 			row.addEventListener('pointerdown', (event) => {
 				event.preventDefault();
@@ -294,7 +299,7 @@ export function mountAlwaysChevron(
 		event.preventDefault();
 		event.stopPropagation();
 		if (!panel.hidden) {
-			panel.hidden = true;
+			showPanel(false);
 			return;
 		}
 		paint();
@@ -343,7 +348,7 @@ export function mountAlwaysChevron(
 			event.preventDefault();
 			event.stopImmediatePropagation();
 			onPick(picked.dataset.value || picked.textContent || '');
-			panel.hidden = true;
+			showPanel(false);
 			highlighted = -1;
 			return;
 		}
@@ -367,12 +372,18 @@ export function mountAlwaysChevron(
 		if (target instanceof Node && parent.contains(target)) return;
 		const onFooter = target instanceof Element && target.closest('.rv-modal-actions, .modal-button-container') != null;
 		if (onFooter) {
-			panel.hidden = true;
+			showPanel(false);
 			return;
 		}
 		event.preventDefault();
 		event.stopPropagation();
-		panel.hidden = true;
+		showPanel(false);
+	};
+	const onEscape = (event: Event): void => {
+		if (!(event instanceof KeyboardEvent) || event.key !== 'Escape' || panel.hidden) return;
+		event.preventDefault();
+		event.stopPropagation();
+		showPanel(false);
 	};
 	const onViewport = (): void => {
 		if (!input.isConnected) {
@@ -383,6 +394,7 @@ export function mountAlwaysChevron(
 	};
 	const stops = [
 		trackListener(doc, 'click', onDismissClick, true),
+		trackListener(doc, 'keydown', onEscape, true),
 		trackListener(view?.visualViewport, 'resize', onViewport),
 		trackListener(view?.visualViewport, 'scroll', onViewport),
 		trackListener(view, 'resize', onViewport),

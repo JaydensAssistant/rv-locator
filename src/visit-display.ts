@@ -90,7 +90,7 @@ export function layoutVisitNotes(root: HTMLElement, markdown: string, options: V
 		limit: options.limit,
 		collapseOlder: options.collapseOlder,
 	}, path);
-	if (!preview.querySelector('.rv-older-visits')) ensureSuggestionStop(preview);
+	ensureRecentFoldStop(preview);
 	concealCollapsedVisitNotes(preview);
 	void markdown;
 }
@@ -177,13 +177,22 @@ function bindRecentNotesToggle(preview: HTMLElement, heading: HTMLElement): void
 		const open = !headingIsCollapsed(heading);
 		if (heading.classList.contains('is-open') !== open) heading.classList.toggle('is-open', open);
 	};
-	heading.addEventListener('click', sync);
+	const reveal = (): void => {
+		const view = preview.ownerDocument.defaultView;
+		if (view) view.setTimeout(() => revealPastRecentFold(preview), 0);
+		else revealPastRecentFold(preview);
+	};
+	heading.addEventListener('click', () => {
+		sync();
+		reveal();
+	});
 	const host = collapseHost(heading);
 	if (host === heading || typeof MutationObserver === 'undefined') return;
 	try {
 			const observer = new MutationObserver((records) => {
 			if (records.length > 0 && records.every((record) => ownFoldClassChange(record))) return;
 			sync();
+			if (headingIsCollapsed(heading)) reveal();
 		});
 		observer.observe(host, { attributes: true, attributeOldValue: true, attributeFilter: ['class'] });
 	} catch {
@@ -334,6 +343,25 @@ function applyCollapsedVisitNotesNow(preview: HTMLElement): void {
 	preview.querySelectorAll(`.${FOLD_CLASS}`).forEach((node) => {
 		if (node instanceof HTMLElement && !tagged.has(node)) setClass(node, FOLD_CLASS, false);
 	});
+	revealPastRecentFold(preview);
+}
+
+/** Older Visits and Return Suggestions stay up when Recent Notes is collapsed. */
+function revealPastRecentFold(preview: HTMLElement): void {
+	const notes = preview.querySelector('h3.rv-visit-notes-heading');
+	if (!(notes instanceof HTMLElement) || !headingIsCollapsed(notes)) return;
+	const stop = preview.querySelector('.rv-notes-fold-stop');
+	const older = preview.querySelector('.rv-older-rule, .rv-older-visits-wrap');
+	const callout = suggestionCallout(preview);
+	const start = stop instanceof HTMLElement ? stop : older instanceof HTMLElement ? older : callout;
+	if (!(start instanceof HTMLElement)) return;
+	let cursor: Element | null = start;
+	while (cursor instanceof HTMLElement) {
+		const style = cursor.style;
+		if (style?.display === 'none') style.removeProperty('display');
+		cursor.classList.remove(FOLD_CLASS);
+		cursor = cursor.nextElementSibling;
+	}
 }
 
 function containsActiveNotes(node: HTMLElement): boolean {
@@ -683,11 +711,12 @@ function placeCaret(area: HTMLTextAreaElement): void {
 	}
 }
 
-function ensureSuggestionStop(preview: HTMLElement): void {
-	if (preview.querySelector('.rv-older-visits-wrap')) return;
+function ensureRecentFoldStop(preview: HTMLElement): void {
+	const older = preview.querySelector('.rv-older-rule, .rv-older-visits-wrap');
 	const callout = suggestionCallout(preview);
-	if (!callout) return;
-	const boundary = climbToSection(callout, preview);
+	const target = older instanceof HTMLElement ? older : callout;
+	if (!(target instanceof HTMLElement)) return;
+	const boundary = climbToSection(target, preview);
 	const parent = boundary.parentElement;
 	if (!parent) return;
 	let anchor = boundary;

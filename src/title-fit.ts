@@ -234,6 +234,10 @@ function paintTitleGroup(items: readonly HTMLElement[], stems: readonly string[]
 	items.forEach((item, index) => {
 		const stem = item.querySelector('.rv-fit-stem');
 		const text = stems[index] ?? '';
+		if (item.closest('.rv-item')?.classList.contains('is-open')) {
+			if (stem) stem.textContent = text;
+			return;
+		}
 		const floor = Math.min(MIN_TITLE_CHARS, text.length);
 		const keep = Math.max(floor, cuts[index] ?? text.length);
 		if (stem) stem.textContent = ellipsize(text, keep);

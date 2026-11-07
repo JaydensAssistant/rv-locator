@@ -3,7 +3,7 @@ import { attemptLogCallouts } from './attempt-digest';
 import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
 import { domInstanceOf } from './dom';
 import { attemptLogDateParts, calendarDaysSince, formatGlanceableCounter, stripStampAge, visibleStampText } from './dates';
-import { fitTitleRow, mountFittedTitle, overlayOnChip, showTitlePopover, watchTitleRow } from './title-fit';
+import { fitTitleRow, mountFittedTitle, showTitlePopover, watchTitleRow } from './title-fit';
 import { layoutVisitNotes, mountHeadingChevron, type VisitLayoutOptions } from './visit-display';
 import { parseLogBullet, stampDateTime } from './schedule';
 
@@ -540,18 +540,19 @@ function paintStripChip(strip: HTMLElement, item: { icon: string; title: string;
 	icon.addEventListener('click', open);
 }
 
-let stripReveal: { strip: HTMLElement; chip: HTMLElement; card: HTMLElement; stop: () => void } | null = null;
+let stripReveal: { strip: HTMLElement; chip: HTMLElement; card: HTMLElement | null; stop: () => void } | null = null;
 
 function closeStripReveal(): void {
 	const open = stripReveal;
 	stripReveal = null;
 	if (!open) return;
 	open.stop();
-	open.card.remove();
+	open.card?.remove();
 	open.strip.classList.remove('is-revealing');
+	open.strip.classList.remove('is-multi');
 	open.strip.querySelectorAll('.rv-item').forEach((node) => {
 		if (!(node instanceof HTMLElement)) return;
-		node.classList.remove('is-squeezed', 'is-open');
+		node.classList.remove('is-squeezed', 'is-open', 'is-dropped');
 		const type = node.querySelector('.rv-type');
 		if (type instanceof HTMLElement) type.hidden = false;
 		const stem = node.querySelector('.rv-fit-stem');
@@ -561,32 +562,85 @@ function closeStripReveal(): void {
 	fitTitleRow(open.strip);
 }
 
-/** The tapped chip shows its full title in an overlay the width of that chip. The other chip keeps an icon and one character. */
+/** Width of icon + title + type at the chip's 11px size. A zero measure falls back to a character estimate. */
+function stripTitleWidth(strip: HTMLElement, icon: Element | null, stem: string, type: string): number {
+	const doc = strip.ownerDocument;
+	const probe = doc.createElement('span');
+	probe.style.position = 'absolute';
+	probe.style.visibility = 'hidden';
+	probe.style.whiteSpace = 'nowrap';
+	probe.style.fontSize = '11px';
+	probe.style.fontWeight = '400';
+	if (icon) probe.appendChild(icon.cloneNode(true));
+	const text = doc.createElement('span');
+	text.textContent = type ? `${stem} ${type}` : stem;
+	probe.appendChild(text);
+	strip.appendChild(probe);
+	const measured = probe.getBoundingClientRect().width || probe.scrollWidth;
+	probe.remove();
+	if (measured > 0) return measured;
+	return 20 + (stem.length + (type ? type.length + 1 : 0)) * 6.2;
+}
+
+/**
+ * One line keeps the other entry and grows only as wide as the title.
+ * A title that still needs another line drops the other entry, takes the
+ * whole strip, and extends downward over the note. The font stays 11px.
+ */
 function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
-	if (stripReveal?.chip === chip && stripReveal.card.isConnected) {
+	if (stripReveal?.chip === chip && (stripReveal.card == null || stripReveal.card.isConnected)) {
 		closeStripReveal();
 		return;
 	}
 	closeStripReveal();
 	const others = Array.from(strip.querySelectorAll(':scope > .rv-item')).filter((node): node is HTMLElement => node instanceof HTMLElement && node !== chip);
-	if (others.length > 0) {
-		strip.classList.add('is-revealing');
-		chip.classList.add('is-open');
-		for (const other of others) {
-			other.classList.add('is-squeezed');
-			const stem = other.querySelector('.rv-fit-stem');
-			const full = other.querySelector('.rv-fit')?.getAttribute('data-stem') ?? '';
-			if (stem) stem.textContent = full ? `${full.slice(0, 1)}…` : '…';
-			const type = other.querySelector('.rv-type');
-			if (type instanceof HTMLElement) type.hidden = true;
-		}
-	}
 	const fitted = chip.querySelector('.rv-fit');
 	const stem = fitted instanceof HTMLElement ? fitted.getAttribute('data-stem') ?? '' : '';
 	const type = chip.querySelector('.rv-type')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+	const icon = chip.querySelector('.rv-item-icon');
+	const stripBox = strip.getBoundingClientRect();
+	const stripWidth = stripBox.width || strip.clientWidth;
+	const room = others.length > 0 && stripWidth > 0 ? Math.max(0, stripWidth - 42) : stripWidth;
+	const needed = stripTitleWidth(strip, icon, stem, type);
+	const multi = others.length > 0 && (stripWidth <= 0 ? stem.length + type.length > 36 : needed > room + 1);
+	strip.classList.add('is-revealing');
+	strip.classList.toggle('is-multi', multi);
+	chip.classList.add('is-open');
+	const stemEl = chip.querySelector('.rv-fit-stem');
+	if (stemEl) stemEl.textContent = stem;
+	if (!multi) {
+		fitTitleRow(strip);
+		if (stemEl) stemEl.textContent = stem;
+		stripReveal = { strip, chip, card: null as unknown as HTMLElement, stop: () => {} };
+		const doc = strip.ownerDocument;
+		const view = doc.defaultView ?? window;
+		const onDoc = (event: Event): void => {
+			const target = event.target;
+			if (target instanceof Node && chip.contains(target)) return;
+			closeStripReveal();
+		};
+		const stop = (): void => {
+			doc.removeEventListener('click', onDoc, true);
+			view.removeEventListener('scroll', onDoc, true);
+		};
+		view.setTimeout(() => {
+			if (stripReveal?.chip !== chip) return;
+			doc.addEventListener('click', onDoc, true);
+			view.addEventListener('scroll', onDoc, true);
+		}, 0);
+		stripReveal.stop = stop;
+		return;
+	}
+	for (const other of others) other.classList.add('is-dropped');
 	const doc = strip.ownerDocument;
 	const card = doc.createElement('div');
-	card.className = 'rv-strip-overlay';
+	card.className = 'rv-strip-overlay is-multi';
+	if (icon) {
+		const mark = doc.createElement('span');
+		mark.className = 'rv-strip-overlay-icon';
+		mark.appendChild(icon.cloneNode(true));
+		card.appendChild(mark);
+	}
 	const text = doc.createElement('span');
 	text.className = 'rv-strip-overlay-title';
 	text.textContent = stem;
@@ -598,12 +652,10 @@ function revealStripChip(strip: HTMLElement, chip: HTMLElement): void {
 		card.appendChild(suffix);
 	}
 	doc.body.appendChild(card);
-	const box = chip.getBoundingClientRect();
-	const viewWidth = doc.defaultView?.innerWidth ?? box.left + box.width;
-	const placed = overlayOnChip(box, viewWidth);
-	card.style.left = `${placed.left}px`;
-	card.style.width = `${placed.width}px`;
-	card.style.top = `${box.top}px`;
+	card.style.left = `${stripBox.left}px`;
+	card.style.width = `${stripWidth}px`;
+	card.style.top = `${stripBox.top}px`;
+	card.style.fontSize = '11px';
 	const view = doc.defaultView ?? window;
 	const onDoc = (event: Event): void => {
 		const target = event.target;

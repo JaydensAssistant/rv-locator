@@ -1,4 +1,4 @@
-import { assignProperty, readProperty } from './frontmatter';
+import { assignProperty, readProperty, removeProperty } from './frontmatter';
 
 /** Compare a cached property with the value pinned at the visit write. */
 export function pinnedText(value: unknown): string {
@@ -27,4 +27,18 @@ export function storeFrontmatter(
 	const stored = { ...incoming };
 	for (const [key, value] of Object.entries(pinned)) assignProperty(stored, key, value);
 	return { stored, clearPin: false };
+}
+
+/**
+ * Overlay a status, priority, or snooze pin onto a late cache parse.
+ * An empty pin value removes that key. Returns true when the parse already matches.
+ */
+export function applyHeadPin(stored: Record<string, unknown>, head: Record<string, unknown> | null): boolean {
+	if (!head) return false;
+	if (pinMatches(stored, head)) return true;
+	for (const [key, value] of Object.entries(head)) {
+		if (value == null || value === '') removeProperty(stored, key);
+		else assignProperty(stored, key, value);
+	}
+	return false;
 }

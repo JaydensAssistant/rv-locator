@@ -257,7 +257,7 @@ function decorateNoteTitle(root: HTMLElement, data: Record<string, unknown>): vo
  */
 function noteChromeOwnsUrgency(node: HTMLElement): boolean {
 	if (typeof node.closest !== 'function') return true;
-	return node.closest('.rv-locator-glancable, .rv-locator-card, .bases-embed, .block-language-base') == null;
+	return node.closest('.rv-locator-glancable, .rv-locator-card, .bases-embed, .block-language-base, .rv-map, .rv-map-pin, .rv-note-map') == null;
 }
 
 /**

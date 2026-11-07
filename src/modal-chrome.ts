@@ -86,10 +86,18 @@ const BUTTON_ICONS: Array<[RegExp, string]> = [
 	[/^working/i, 'loader'],
 ];
 
-/** Desktop click opens the native picker. A phone tap already does. */
-export function openDesktopDatePicker(input: HTMLInputElement, isMobile = Platform.isMobile): void {
-	if (isMobile) return;
+/** A tap anywhere on a date field opens the native picker, on phone and desktop. */
+export function openDesktopDatePicker(input: HTMLInputElement, _isMobile = Platform.isMobile): void {
 	if (input.type !== 'date' && input.type !== 'time' && input.type !== 'datetime-local') return;
+	try {
+		input.focus({ preventScroll: true });
+	} catch {
+		try {
+			input.focus();
+		} catch {
+			/* The field cannot take focus yet. */
+		}
+	}
 	const show = input.showPicker;
 	if (typeof show !== 'function') return;
 	try {
@@ -206,11 +214,13 @@ function openSelectMenu(select: HTMLSelectElement): void {
 function bindDatePickers(root: HTMLElement): void {
 	if (root.dataset.rvDateBound === '1' || typeof root.addEventListener !== 'function') return;
 	root.dataset.rvDateBound = '1';
-	root.addEventListener('click', (event) => {
+	const open = (event: Event): void => {
 		const target = event.target;
 		if (!(target instanceof HTMLInputElement)) return;
 		openDesktopDatePicker(target);
-	});
+	};
+	root.addEventListener('pointerup', open);
+	root.addEventListener('click', open);
 }
 
 function paintIcon(node: Element, icon: string): void {

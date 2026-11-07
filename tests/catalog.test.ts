@@ -578,7 +578,7 @@ describe('glancable smart search', () => {
 		openDesktopDatePicker({ type: 'date', showPicker() { opened += 1; } } as HTMLInputElement, false);
 		assert.equal(opened, 1);
 		openDesktopDatePicker({ type: 'date', showPicker() { opened += 1; } } as HTMLInputElement, true);
-		assert.equal(opened, 1);
+		assert.equal(opened, 2);
 		assert.match(css, /\.rv-hub-fill \{[^}]*padding-bottom:\s*0 !important/);
 		assert.doesNotMatch(css, /[^-\w]height:\s*70vh/);
 		assert.match(css, /min-height:\s*70vh/);

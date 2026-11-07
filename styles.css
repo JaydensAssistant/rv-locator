@@ -7934,16 +7934,23 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 }
 
 .modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control > input[type="date"] {
-	flex: 1 1 0 !important;
+	flex: 1.45 1 8.25rem !important;
 	width: auto !important;
-	min-width: 0 !important;
+	min-width: 8.25rem !important;
 	max-width: none !important;
+	overflow: visible !important;
+	text-overflow: clip !important;
+}
+
+.modal.rv-locator-modal .setting-item.rv-when-row input[type="date"]::-webkit-datetime-edit {
+	overflow: visible;
+	padding: 0;
 }
 
 .modal.rv-locator-modal .setting-item.rv-when-row .setting-item-control > select:not(.is-measuring) {
-	flex: 0 0 auto !important;
+	flex: 1 1 2.75rem !important;
 	width: auto !important;
-	min-width: 3.4rem !important;
+	min-width: 2.75rem !important;
 }
 
 .markdown-preview-view p.rv-hub-owned .rv-hub-chip,
@@ -9943,6 +9950,122 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content
 
 .modal.rv-locator-modal .modal-header {
 	border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.rv-suggest-panel[hidden] {
+	display: none !important;
+}
+
+.rv-item-strip:not(.is-ghost) > .rv-item {
+	border: 0;
+}
+
+.rv-item-strip.is-revealing.is-multi > .rv-item.is-dropped {
+	display: none !important;
+}
+
+.rv-item-strip.is-revealing:not(.is-multi) > .rv-item.is-open {
+	flex: 0 0 auto;
+	max-width: calc(100% - 42px);
+}
+
+.rv-item-strip.is-revealing:not(.is-multi) > .rv-item.is-open .rv-fit-stem {
+	overflow: visible;
+	text-overflow: clip;
+}
+
+.rv-strip-overlay.is-multi {
+	font-size: 11px;
+	font-weight: 400;
+	text-align: center;
+	border-bottom: 0;
+}
+
+.rv-strip-overlay.is-multi .rv-strip-overlay-icon {
+	display: inline-flex;
+	vertical-align: -3px;
+	width: 16px;
+	height: 16px;
+	margin-right: 4px;
+}
+
+.rv-strip-overlay.is-multi .rv-strip-overlay-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
+.cm-line.rv-recent-folded,
+.rv-recent-folded {
+	display: none !important;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop.is-selected,
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop.rv-pin-flash,
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop:focus,
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop:focus-visible {
+	outline: none !important;
+	box-shadow: none !important;
+}
+
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop.is-selected .rv-pin-shape path,
+.rv-map .rv-map-pins > button.rv-map-pin.is-drop.rv-pin-flash .rv-pin-shape path {
+	fill: color-mix(in srgb, color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 14%, var(--background-primary)) 91%, #fff);
+}
+
+.theme-light .rv-map .rv-map-pins > button.rv-map-pin.is-drop.is-selected .rv-pin-shape path,
+.theme-light .rv-map .rv-map-pins > button.rv-map-pin.is-drop.rv-pin-flash .rv-pin-shape path {
+	fill: color-mix(in srgb, color-mix(in srgb, var(--pin-color, var(--interactive-accent)) 14%, var(--background-primary)) 93%, #000);
+}
+
+.rv-locator-modal button .rv-modal-icon,
+.rv-locator-modal button .rv-campaign-icon,
+.rv-study-change-modal button .rv-modal-icon,
+.prompt.rv-modal-general button .rv-modal-icon,
+.prompt.rv-modal-rv button .rv-modal-icon,
+.theme-dark .rv-locator-modal button .rv-modal-icon,
+.theme-dark .rv-locator-modal button .rv-campaign-icon,
+.theme-dark .rv-study-change-modal button .rv-modal-icon,
+.theme-dark .prompt.rv-modal-general button .rv-modal-icon,
+.theme-dark .prompt.rv-modal-rv button .rv-modal-icon,
+.theme-light .rv-locator-modal button .rv-modal-icon,
+.theme-light .rv-locator-modal button .rv-campaign-icon,
+.theme-light .rv-study-change-modal button .rv-modal-icon,
+.theme-light .prompt.rv-modal-general button .rv-modal-icon,
+.theme-light .prompt.rv-modal-rv button .rv-modal-icon {
+	width: 18px;
+	height: 18px;
+	flex: 0 0 18px;
+	color: currentColor;
+}
+
+.rv-locator-modal button .rv-modal-icon svg,
+.rv-locator-modal button .rv-campaign-icon svg,
+.rv-locator-modal .rv-gender-choice button > svg,
+.rv-locator-modal .rv-status-choice button > svg,
+.rv-study-change-modal button .rv-modal-icon svg,
+.prompt.rv-modal-general button .rv-modal-icon svg,
+.prompt.rv-modal-rv button .rv-modal-icon svg {
+	width: 18px;
+	height: 18px;
+	stroke-width: 2.75 !important;
+}
+
+.rv-locator-modal button.mod-cta .rv-modal-icon,
+.rv-locator-modal button.mod-cta .rv-campaign-icon,
+.rv-study-change-modal button.mod-cta .rv-modal-icon,
+.prompt.rv-modal-general button.mod-cta .rv-modal-icon,
+.prompt.rv-modal-rv button.mod-cta .rv-modal-icon,
+.theme-dark .rv-locator-modal button.mod-cta .rv-modal-icon,
+.theme-dark .rv-locator-modal button.mod-cta .rv-campaign-icon,
+.theme-dark .rv-study-change-modal button.mod-cta .rv-modal-icon,
+.theme-dark .prompt.rv-modal-general button.mod-cta .rv-modal-icon,
+.theme-dark .prompt.rv-modal-rv button.mod-cta .rv-modal-icon,
+.theme-light .rv-locator-modal button.mod-cta .rv-modal-icon,
+.theme-light .rv-locator-modal button.mod-cta .rv-campaign-icon,
+.theme-light .rv-study-change-modal button.mod-cta .rv-modal-icon,
+.theme-light .prompt.rv-modal-general button.mod-cta .rv-modal-icon,
+.theme-light .prompt.rv-modal-rv button.mod-cta .rv-modal-icon {
+	color: var(--rv-modal-ink, #fff);
 }
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header::after {

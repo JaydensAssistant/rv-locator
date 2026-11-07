@@ -1,4 +1,5 @@
 import { setIcon } from 'obsidian';
+import { iconizeModal } from './modal-chrome';
 import {
 	lessonBounds,
 	lessonByTitle,
@@ -417,4 +418,5 @@ function openChange(
 		panel.remove();
 		onDone();
 	});
+	iconizeModal(panel);
 }
