@@ -282,6 +282,58 @@ function snapshotReady(host: HTMLElement): boolean {
 		&& host.querySelector('.rv-locator-toolbar-actions button') != null;
 }
 
+const COVER_CRUMB = '.view-header-title-parent, .view-header-breadcrumb, .view-header-breadcrumb-container';
+
+function isBookmarkAction(node: HTMLElement): boolean {
+	const label = `${node.getAttribute('aria-label') ?? ''} ${node.getAttribute('aria-label-resolved') ?? ''}`;
+	if (/bookmark/i.test(label)) return true;
+	const icons = node.querySelectorAll('svg');
+	for (let index = 0; index < icons.length; index += 1) {
+		const icon = icons[index];
+		if (!isElement(icon)) continue;
+		if (/lucide-bookmark|bookmark-check|bookmark-minus/i.test(icon.getAttribute('class') ?? '')) return true;
+	}
+	return false;
+}
+
+/**
+ * The cover is built from the note that was open. Its header still has that
+ * note's folder crumb and bookmark. The settled hub header is the centered
+ * title plus edit and more, with no folder name.
+ */
+export function fitHubCoverHeader(header: HTMLElement): void {
+	const containers = header.querySelectorAll('.view-header-title-container');
+	const hosts: HTMLElement[] = [];
+	if (containers.length === 0) hosts.push(header);
+	for (let index = 0; index < containers.length; index += 1) {
+		const container = containers[index];
+		if (isElement(container)) hosts.push(container);
+	}
+	for (const host of hosts) {
+		const kids = Array.from(host.childNodes);
+		for (const kid of kids) {
+			if (isElement(kid)) {
+				if (kid.classList.contains('view-header-title') || kid.classList.contains('view-header-icon')) continue;
+				if (kid.querySelector('.view-header-title')) continue;
+				if (kid.matches(COVER_CRUMB) || isBookmarkAction(kid)) kid.remove();
+				continue;
+			}
+			if (kid.nodeType === 3 && (kid.textContent ?? '').trim()) kid.remove();
+		}
+	}
+	const crumbs = header.querySelectorAll(COVER_CRUMB);
+	for (let index = 0; index < crumbs.length; index += 1) {
+		const crumb = crumbs[index];
+		if (!isElement(crumb) || crumb.querySelector('.view-header-title')) continue;
+		crumb.remove();
+	}
+	const actions = header.querySelectorAll('.view-action');
+	for (let index = 0; index < actions.length; index += 1) {
+		const action = actions[index];
+		if (isElement(action) && isBookmarkAction(action)) action.remove();
+	}
+}
+
 function clonedHeader(leaf: HTMLElement, doc: Document, title: string | undefined): HTMLElement {
 	const headers = leaf.querySelectorAll('.view-header');
 	let source: HTMLElement | null = null;
@@ -293,17 +345,18 @@ function clonedHeader(leaf: HTMLElement, doc: Document, title: string | undefine
 	}
 	const header = source ? source.cloneNode(true) as HTMLElement : doc.createElement('div');
 	if (!source) header.className = 'view-header';
-	if (!title) return header;
-	const titles = header.querySelectorAll('.view-header-title');
-	const first = titles[0];
-	if (isElement(first)) {
-		first.textContent = title;
-		return header;
+	if (title) {
+		const titles = header.querySelectorAll('.view-header-title');
+		const first = titles[0];
+		if (isElement(first)) first.textContent = title;
+		else {
+			const el = doc.createElement('div');
+			el.className = 'view-header-title';
+			el.textContent = title;
+			header.append(el);
+		}
 	}
-	const el = doc.createElement('div');
-	el.className = 'view-header-title';
-	el.textContent = title;
-	header.append(el);
+	fitHubCoverHeader(header);
 	return header;
 }
 

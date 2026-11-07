@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { handoffCoverLanding } from '../src/hub-cover';
+import { fitHubCoverHeader, handoffCoverLanding, holdLeafForHubPaint, releaseHubSwapCover } from '../src/hub-cover';
 import { hubLandingReady, landingScrollFor } from '../src/hub-layout';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
@@ -12,6 +12,42 @@ hostGlobals.window = window;
 hostGlobals.document = window.document;
 hostGlobals.HTMLElement = window.HTMLElement;
 hostGlobals.Element = window.Element;
+hostGlobals.MutationObserver = window.MutationObserver;
+
+function noteHeader(doc: Document, folder: string, title: string): HTMLElement {
+	const header = doc.createElement('div');
+	header.className = 'view-header';
+	const container = doc.createElement('div');
+	container.className = 'view-header-title-container';
+	const parent = doc.createElement('div');
+	parent.className = 'view-header-title-parent';
+	if (folder) {
+		const crumb = doc.createElement('span');
+		crumb.className = 'view-header-breadcrumb';
+		crumb.textContent = folder;
+		parent.append(crumb);
+	}
+	container.append(parent);
+	const name = doc.createElement('div');
+	name.className = 'view-header-title';
+	name.textContent = title;
+	container.append(name);
+	const actions = doc.createElement('div');
+	actions.className = 'view-actions';
+	for (const label of ['Bookmark', 'Edit', 'More options']) {
+		const button = doc.createElement('button');
+		button.className = 'clickable-icon view-action';
+		button.setAttribute('aria-label', label);
+		button.textContent = label;
+		actions.append(button);
+	}
+	header.append(container, actions);
+	return header;
+}
+
+function actionLabels(header: HTMLElement): string[] {
+	return Array.from(header.querySelectorAll('.view-action')).map((node) => node.getAttribute('aria-label') ?? '');
+}
 
 const css = readFileSync('styles.css', 'utf8');
 const glance = readFileSync('src/glancable-view.ts', 'utf8');
@@ -138,7 +174,61 @@ describe('RV-B52 hub landing', () => {
 		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover > \.view-header \{[^}]*position:\s*relative !important/);
 		assert.match(css, /body\.is-phone \.workspace-leaf > \.rv-hub-swap-cover > \.view-header::after/);
 		assert.match(css, /animation-delay:\s*var\(--rv-land-delay, 0ms\)/);
+		assert.match(css, /\.view-header-title-parent/);
+		assert.match(css, /aria-label\*="bookmark" i/);
+		assert.match(coverSource, /fitHubCoverHeader\(header\)/);
 		assert.match(css, /\.theme-dark \.rv-locator-card\.rv-card-land \{[^}]*rgba\(255, 255, 255, 0\.09\)/);
 		assert.match(css, /\.theme-light \.rv-locator-card\.rv-card-land \{[^}]*rgba\(0, 0, 0, 0\.07\)/);
+	});
+
+	it('paints the hub header on the cover for a subfolder note and a root note', () => {
+		const doc = window.document;
+		const folder = noteHeader(doc, 'People', 'Dale Red');
+		fitHubCoverHeader(folder);
+		assert.equal(folder.textContent?.includes('People'), false);
+		assert.deepEqual(actionLabels(folder), ['Edit', 'More options']);
+		assert.match(folder.querySelector('.view-header-title')?.textContent ?? '', /Dale Red/);
+
+		const root = noteHeader(doc, '', 'Root Note');
+		fitHubCoverHeader(root);
+		assert.equal(root.querySelector('.view-header-title-parent'), null);
+		assert.equal(root.textContent?.includes('Bookmark'), false);
+		assert.deepEqual(actionLabels(root), ['Edit', 'More options']);
+
+		doc.body.classList.add('is-phone');
+		window.requestAnimationFrame = () => 0;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf mod-active';
+		const note = doc.createElement('div');
+		note.className = 'markdown-preview-view';
+		note.textContent = 'A note in a folder';
+		leaf.append(noteHeader(doc, 'People', 'Dale Red'), note);
+		leaf.getBoundingClientRect = () => ({
+			width: 392, height: 806, top: 0, left: 0, right: 392, bottom: 806, x: 0, y: 0, toJSON() { return {}; },
+		}) as DOMRect;
+		doc.body.append(leaf);
+		try {
+			holdLeafForHubPaint(leaf, {
+				title: 'Return Visits Hub',
+				mount(host) {
+					const card = doc.createElement('div');
+					card.className = 'rv-locator-card';
+					const bar = doc.createElement('div');
+					bar.className = 'rv-locator-toolbar-actions';
+					bar.append(doc.createElement('button'));
+					host.append(card, bar);
+				},
+			});
+			const cover = leaf.querySelector(':scope > .rv-hub-swap-cover .view-header');
+			assert.ok(cover instanceof window.HTMLElement);
+			assert.equal(cover.textContent?.includes('People'), false);
+			assert.equal(cover.textContent?.includes('Bookmark'), false);
+			assert.deepEqual(actionLabels(cover), ['Edit', 'More options']);
+			assert.match(cover.textContent ?? '', /Return Visits Hub/);
+		} finally {
+			releaseHubSwapCover(doc);
+			leaf.remove();
+			doc.body.classList.remove('is-phone', 'rv-hub-swapping', 'rv-hide-mobile-nav');
+		}
 	});
 });

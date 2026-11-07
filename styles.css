@@ -10530,6 +10530,26 @@ body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header .view-header-t
 	display: none !important;
 }
 
+/* The cover is cloned from the open note. Hide that note's folder crumb and
+   bookmark so the bar matches the settled hub header: centered title, edit, more. */
+body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header :is(
+	.view-header-title-parent,
+	.view-header-breadcrumb,
+	.view-header-breadcrumb-container
+) {
+	display: none !important;
+}
+
+body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header .view-action:is(
+	[aria-label*="bookmark" i],
+	[aria-label*="Bookmark"],
+	:has(svg.lucide-bookmark),
+	:has(svg.lucide-bookmark-check),
+	:has(svg.lucide-bookmark-minus)
+) {
+	display: none !important;
+}
+
 /* RV-249. Chips keep their natural width and the group stays centered.
    Phone app.css uses these same body classes, so the lock repeats them. */
 body.is-mobile .rv-item-strip:not(.is-ghost),
