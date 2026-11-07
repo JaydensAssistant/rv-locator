@@ -6,12 +6,12 @@ import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
 import { iconizeModal } from '../src/modal-chrome';
-import { mountAlwaysChevron } from '../src/suggest-field';
+import { mountAlwaysChevron, suggestEscapeShouldHold } from '../src/suggest-field';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { applyHeadPin } from '../src/visit-paint-guard';
 import { concealCollapsedVisitNotes, layoutVisitNotes } from '../src/visit-display';
-import { concealHeadingFoldMarks, lockHiddenMetaBindFields, planLivePreviewVisits, recentFoldLineStarts, setRecentNotesOpenState, visitPreviewExtension } from '../src/visit-live-preview';
-import { clearOlderVisitsState, olderVisitsOpen, setOlderVisitsOpenState } from '../src/visit-older';
+import { concealHeadingFoldMarks, concealRecentFoldWidgets, lockHiddenMetaBindFields, planLivePreviewVisits, recentFoldLineStarts, setRecentNotesOpenState, visitPreviewExtension } from '../src/visit-live-preview';
+import { clearOlderVisitsState, concealPlainOlderHeadings, markPreviewOlderVisits, olderVisitsOpen, setOlderVisitsOpenState } from '../src/visit-older';
 import { fillItemStrip } from '../src/visit-controls';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
@@ -551,6 +551,185 @@ describe('dogfood round', () => {
 			parent.remove();
 			clearOlderVisitsState();
 			setRecentNotesOpenState('rv-b30-sections.md', true);
+		}
+	});
+
+	it('RV-B26 the first Escape closes the open list when the sheet is already listening', () => {
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		let closed = 0;
+		const close = (): void => {
+			if (suggestEscapeShouldHold(root)) return;
+			closed += 1;
+		};
+		const onKey = (event: Event): void => {
+			if (!(event instanceof window.KeyboardEvent) || event.key !== 'Escape') return;
+			close();
+		};
+		window.addEventListener('keydown', onKey, true);
+		window.addEventListener('keyup', onKey, true);
+		const fields = ['Publisher', 'Literature', 'Media'].map((label) => {
+			const host = window.document.createElement('div');
+			const input = window.document.createElement('input');
+			input.setAttribute('aria-label', label);
+			host.appendChild(input);
+			root.appendChild(host);
+			mountAlwaysChevron(input, () => ['Alpha', 'Beta'], () => {});
+			const button = host.querySelector('button');
+			const panel = host.querySelector('.rv-suggest-panel');
+			assert.ok(button instanceof window.HTMLButtonElement);
+			assert.ok(panel instanceof window.HTMLElement);
+			return { button, panel };
+		});
+		const sheet = readFileSync('src/visit-modals.ts', 'utf8');
+		assert.match(sheet, /suggestEscapeShouldHold\(this\.contentEl\)/);
+		try {
+			for (const field of fields) {
+				closed = 0;
+				field.button.click();
+				assert.equal(field.panel.hidden, false);
+				const down = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+				const up = new window.KeyboardEvent('keyup', { key: 'Escape', bubbles: true, cancelable: true });
+				window.dispatchEvent(down);
+				window.dispatchEvent(up);
+				assert.equal(field.panel.hidden, true);
+				assert.equal(closed, 0);
+				const downAgain = new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+				const upAgain = new window.KeyboardEvent('keyup', { key: 'Escape', bubbles: true, cancelable: true });
+				window.dispatchEvent(downAgain);
+				assert.equal(closed, 1);
+				window.dispatchEvent(upAgain);
+				assert.ok(closed >= 1);
+			}
+			closed = 0;
+			fields[0]?.button.click();
+			assert.equal(fields[0]?.panel.hidden, false);
+			close();
+			assert.equal(closed, 1);
+		} finally {
+			window.removeEventListener('keydown', onKey, true);
+			window.removeEventListener('keyup', onKey, true);
+			root.remove();
+		}
+	});
+
+	it('RV-B30 the plain Older Visits line stays hidden while the chevron shows', () => {
+		const preview = window.document.createElement('div');
+		preview.className = 'markdown-preview-view';
+		const plainWrap = window.document.createElement('div');
+		plainWrap.className = 'el-h3';
+		const plain = window.document.createElement('h3');
+		plain.textContent = 'Older Visits';
+		plainWrap.appendChild(plain);
+		preview.appendChild(plainWrap);
+		const section = window.document.createElement('div');
+		section.className = 'el-h5';
+		const stamp = window.document.createElement('h5');
+		stamp.className = 'rv-visit-stamp';
+		stamp.textContent = 'Thu, 4pm — Sep 4, 2026';
+		section.appendChild(stamp);
+		preview.appendChild(section);
+		window.document.body.appendChild(preview);
+		setOlderVisitsOpenState('eve-b30.md', true, preview);
+		markPreviewOlderVisits(preview, { limit: 0, collapseOlder: true }, 'eve-b30.md');
+		const chevron = preview.querySelector('h3.rv-older-visits');
+		assert.ok(chevron instanceof window.HTMLElement);
+		assert.equal(chevron.classList.contains('is-open'), true);
+		assert.equal(chevron.closest('.rv-older-source-hidden'), null);
+		assert.equal(plainWrap.classList.contains('rv-older-source-hidden'), true);
+		const live = window.document.createElement('div');
+		const livePlain = window.document.createElement('h3');
+		livePlain.textContent = 'Older Visits';
+		const widget = window.document.createElement('div');
+		widget.className = 'rv-older-visits-widget';
+		const liveChevron = window.document.createElement('h3');
+		liveChevron.className = 'rv-older-visits';
+		liveChevron.textContent = 'Older Visits';
+		widget.appendChild(liveChevron);
+		live.append(livePlain, widget);
+		concealPlainOlderHeadings(live);
+		assert.equal(livePlain.classList.contains('rv-older-source-hidden'), true);
+		assert.equal(liveChevron.classList.contains('rv-older-source-hidden'), false);
+		assert.match(css, /\.rv-older-source-hidden \{\s*display:\s*none !important;/);
+		assert.match(css, /\.cm-line\.rv-lp-older-heading \{\s*font-size:\s*0 !important;\s*line-height:\s*0 !important;/);
+		assert.match(css, /\.cm-line\.rv-lp-older-heading \.rv-older-visits \{\s*font-size:\s*var\(--h3-size, 1\.1em\) !important;/);
+		preview.remove();
+		clearOlderVisitsState();
+	});
+
+	it('RV-B30 a folded Recent Notes line hides later note lines and stops at the next section', () => {
+		const root = window.document.createElement('div');
+		const notes = window.document.createElement('div');
+		notes.className = 'cm-line rv-lp-notes-heading';
+		notes.textContent = '### Recent Notes:';
+		const folded = window.document.createElement('div');
+		folded.className = 'cm-line rv-recent-folded';
+		folded.textContent = '##### Mon, 9am — Sep 1, 2026';
+		const sentence = window.document.createElement('div');
+		sentence.className = 'cm-line';
+		sentence.textContent = 'She asked us to come back Friday.';
+		const older = window.document.createElement('div');
+		older.className = 'cm-line rv-lp-older-heading';
+		older.textContent = '### Older Visits';
+		const kept = window.document.createElement('div');
+		kept.className = 'cm-line';
+		kept.textContent = 'older body';
+		root.append(notes, folded, sentence, older, kept);
+		concealRecentFoldWidgets(root);
+		assert.equal(notes.classList.contains('rv-recent-folded'), false);
+		assert.equal(sentence.classList.contains('rv-recent-folded'), true);
+		assert.equal(older.classList.contains('rv-recent-folded'), false);
+		assert.equal(kept.classList.contains('rv-recent-folded'), false);
+	});
+
+	it('RV-B30 collapsing Recent Notes hides the notes when they are the last lines', async () => {
+		const sentences = [
+			'She was home and took the tract.',
+			'We talked about the video.',
+			'She asked us to come back Friday.',
+		];
+		const markdown = [
+			'### Recent Notes:',
+			'##### Mon, 9am — Sep 1, 2026',
+			...sentences,
+		].join('\n');
+		const level3 = [
+			'### Recent Notes:',
+			'### Mon, 9am — Sep 1, 2026',
+			...sentences,
+		].join('\n');
+		for (const [doc, path] of [[markdown, 'eve-eof.md'], [level3, 'eve-level3.md']] as const) {
+			const hidden = recentFoldLineStarts(doc, false, 3).map((from) => {
+				const end = doc.indexOf('\n', from);
+				return doc.slice(from, end === -1 ? undefined : end);
+			});
+			for (const sentence of sentences) assert.equal(hidden.some((line) => line.includes(sentence)), true);
+			assert.equal(hidden.some((line) => line.includes('Recent Notes')), false);
+		}
+		const parent = window.document.createElement('div');
+		parent.className = 'markdown-source-view is-live-preview';
+		window.document.body.appendChild(parent);
+		setRecentNotesOpenState('eve-eof.md', true);
+		const view = new EditorView({
+			parent,
+			state: EditorState.create({
+				doc: markdown,
+				extensions: visitPreviewExtension(() => ({ collapseOlder: true, limit: 3 }), () => 'eve-eof.md'),
+			}),
+		});
+		try {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const heading = view.dom.querySelector('h3.rv-visit-notes-heading');
+			assert.ok(heading instanceof window.HTMLElement);
+			heading.click();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			const shown = visibleEditorText(view.dom);
+			for (const sentence of sentences) assert.equal(shown.includes(sentence), false);
+			assert.match(shown, /Recent Notes/);
+		} finally {
+			view.destroy();
+			parent.remove();
+			setRecentNotesOpenState('eve-eof.md', true);
 		}
 	});
 });

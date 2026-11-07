@@ -33,6 +33,61 @@ export const SUGGEST_VISIBLE_ROWS = 5;
 export const SUGGEST_MATCH_LIMIT = 50;
 
 let suggestionListeners = 0;
+const openSuggestPanels = new Set<HTMLElement>();
+/** The Escape that closed a list still has a keyup. That keyup must not dismiss the modal. */
+let suggestEscapeArmed = false;
+
+function isEscapeKey(event: Event): boolean {
+	const key = 'key' in event ? String((event as KeyboardEvent).key) : '';
+	const code = 'code' in event ? String((event as KeyboardEvent).code) : '';
+	return key === 'Escape' || code === 'Escape';
+}
+
+/** True only while an Escape event is being dispatched. A stale `window.event` does not count. */
+function liveEscapeEvent(): Event | null {
+	const scopes = [globalThis, (globalThis as { window?: { event?: Event } }).window];
+	for (const scope of scopes) {
+		const evt = scope && 'event' in scope ? scope.event : undefined;
+		if (!evt || !isEscapeKey(evt)) continue;
+		const phase = 'eventPhase' in evt ? Number(evt.eventPhase) : 0;
+		if (phase !== 0) return evt;
+	}
+	return null;
+}
+
+function closeSuggestPanel(panel: HTMLElement): void {
+	panel.hidden = true;
+	panel.style.setProperty('display', 'none', 'important');
+	openSuggestPanels.delete(panel);
+}
+
+/** Close every open literature, media, or publisher list under `root`. */
+export function closeOpenSuggestLists(root?: ParentNode | null): void {
+	for (const panel of [...openSuggestPanels]) {
+		if (root && typeof root.contains === 'function' && !root.contains(panel)) continue;
+		closeSuggestPanel(panel);
+	}
+}
+
+/**
+ * Log visit's Escape handler closes the modal. While a list is open, or on
+ * the keyup of the Escape that just closed it, that close is held so the
+ * first Escape only dismisses the list.
+ */
+export function suggestEscapeShouldHold(root?: ParentNode | null): boolean {
+	const evt = liveEscapeEvent();
+	if (!evt) return false;
+	const openHere = [...openSuggestPanels].some((panel) => (
+		!root || typeof root.contains !== 'function' || root.contains(panel)
+	));
+	if (!openHere && !suggestEscapeArmed) return false;
+	if (openHere) closeOpenSuggestLists(root);
+	if (evt.type === 'keyup') queueMicrotask(() => { suggestEscapeArmed = false; });
+	else suggestEscapeArmed = true;
+	if (typeof evt.preventDefault === 'function') evt.preventDefault();
+	if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+	return true;
+}
 
 /** Live document and viewport listeners owned by open suggestion fields. */
 export function suggestionListenerCount(): number {
@@ -214,8 +269,12 @@ export function mountAlwaysChevron(
 	let armedDismiss = false;
 	const showPanel = (open: boolean): void => {
 		panel.hidden = !open;
-		if (open) panel.style.removeProperty('display');
-		else panel.style.setProperty('display', 'none', 'important');
+		if (open) {
+			panel.style.removeProperty('display');
+			openSuggestPanels.add(panel);
+		} else {
+			closeSuggestPanel(panel);
+		}
 	};
 	const paint = (): void => {
 		panel.replaceChildren();
@@ -406,20 +465,21 @@ export function mountAlwaysChevron(
 	};
 	// keydown hides the list. The matching keyup still has to stop, or Obsidian
 	// sees a keyup with the list already closed and dismisses the modal too.
-	let swallowEscape = false;
+	// Any open literature, media, or publisher list counts: the field that was
+	// mounted first otherwise lets the key through before this one sees it.
 	const onEscape = (event: Event): void => {
-		if (!(event instanceof KeyboardEvent) || event.key !== 'Escape') return;
-		const listOpen = !panel.hidden;
-		if (!listOpen && !swallowEscape) return;
-		event.preventDefault();
+		if (!isEscapeKey(event)) return;
+		const listOpen = openSuggestPanels.size > 0;
+		if (!listOpen && !suggestEscapeArmed) return;
+		if (typeof event.preventDefault === 'function') event.preventDefault();
 		event.stopPropagation();
+		if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
 		if (event.type === 'keyup') {
-			swallowEscape = false;
-			if (listOpen) showPanel(false);
+			suggestEscapeArmed = false;
 			return;
 		}
-		swallowEscape = true;
-		if (listOpen) showPanel(false);
+		suggestEscapeArmed = true;
+		if (listOpen) closeOpenSuggestLists();
 	};
 	const onViewport = (): void => {
 		if (!input.isConnected) {
@@ -442,6 +502,7 @@ export function mountAlwaysChevron(
 	const dispose = (): void => {
 		if (disposed) return;
 		disposed = true;
+		openSuggestPanels.delete(panel);
 		for (const stop of stops) stop();
 		observer?.disconnect();
 		observer = null;

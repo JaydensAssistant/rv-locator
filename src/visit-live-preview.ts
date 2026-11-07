@@ -6,7 +6,7 @@ import { paintLiveVisitHeading, publisherForVisit } from './visit-controls';
 import { mountHeadingChevron, visitStampLine } from './visit-display';
 import { attachVisitNoteArea, restoreVisitNoteCaret } from './visit-notes-field';
 import { visitNoteValue } from './visit-notes-store';
-import { olderVisitsOpen, setOlderVisitsOpenState } from './visit-older';
+import { concealPlainOlderHeadings, olderVisitsOpen, setOlderVisitsOpenState } from './visit-older';
 
 export interface VisitPreviewSettings {
 	collapseOlder: boolean;
@@ -413,8 +413,9 @@ export function setRecentNotesOpenState(path: string, open: boolean): void {
 }
 
 /**
- * Lines under Recent Notes. The fold stops at the first Older Visits stamp,
- * Return Suggestions, or the next heading of level 1–3.
+ * Lines under Recent Notes. Visit stamps and the notes under them stay in
+ * the fold. It stops at Older Visits, Return Suggestions, the next heading
+ * that is not a visit stamp, or the end of the note when nothing follows.
  */
 export function recentFoldLineStarts(markdown: string, open: boolean, limit = 3): number[] {
 	if (open) return [];
@@ -436,7 +437,10 @@ export function recentFoldLineStarts(markdown: string, open: boolean, limit = 3)
 		}
 		if (stopFrom != null && line.from >= stopFrom) break;
 		if (isReturnSuggestionsLine(trimmed)) break;
-		if (/^#{1,3}\s+/.test(trimmed)) break;
+		if (isOlderVisitsHeading(trimmed)) break;
+		// A level-3 visit stamp is still part of Recent Notes. Only the next
+		// real section heading ends the fold.
+		if (/^#{1,3}\s+/.test(trimmed) && visitStampLine(trimmed) == null) break;
 		hidden.push(line.from);
 	}
 	return hidden;
@@ -484,7 +488,11 @@ export function concealRecentFoldWidgets(root: ParentNode): void {
 function markRecentFoldSiblings(start: Element | null, direction: -1 | 1): void {
 	let sib = start;
 	while (sib) {
-		if (recentFoldBoundary(sib)) return;
+		if (direction < 0) {
+			if (sib.classList.contains('cm-line') || recentFoldBoundary(sib)) return;
+		} else if (recentFoldStopsForward(sib)) {
+			return;
+		}
 		if (sib instanceof HTMLElement && !sib.classList.contains('rv-recent-folded')) {
 			sib.classList.add('rv-recent-folded', 'rv-recent-fold-extra');
 			sib.dataset.rvRecentFold = '1';
@@ -492,6 +500,18 @@ function markRecentFoldSiblings(start: Element | null, direction: -1 | 1): void 
 		}
 		sib = direction < 0 ? sib.previousElementSibling : sib.nextElementSibling;
 	}
+}
+
+/** Forward of a folded line, keep going through note lines until the next section. */
+function recentFoldStopsForward(node: Element): boolean {
+	if (node.classList.contains('rv-recent-folded')) return false;
+	if (!node.classList.contains('cm-line')) return recentFoldBoundary(node);
+	if (node.classList.contains('rv-lp-older-heading') || node.classList.contains('rv-lp-notes-heading')) return true;
+	if (node.querySelector('.rv-older-visits, .rv-older-visits-widget, .rv-visit-notes-heading, .rv-notes-fold-stop, .rv-locator-return-suggestions, .callout, .callout-title')) return true;
+	const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim();
+	if (/^older visits\b/i.test(text) || /^return suggestions\b/i.test(text)) return true;
+	if (/^#{1,3}\s+/.test(text) && visitStampLine(text) == null) return true;
+	return false;
 }
 
 function recentFoldBoundary(node: Element): boolean {
@@ -941,6 +961,7 @@ export function visitPreviewExtension(
 				syncNotePath(view);
 				concealRecentFoldWidgets(view.dom);
 				concealHeadingFoldMarks(view.dom);
+				concealPlainOlderHeadings(view.dom);
 				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);
 			});
@@ -970,6 +991,7 @@ export function visitPreviewExtension(
 				syncNotePath(view);
 				concealRecentFoldWidgets(view.dom);
 				concealHeadingFoldMarks(view.dom);
+				concealPlainOlderHeadings(view.dom);
 				if (!changed) return;
 				lockHiddenMetaBindFields(view.dom);
 				paint?.(view.dom);

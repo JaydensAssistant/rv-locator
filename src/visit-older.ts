@@ -248,6 +248,7 @@ export function classifyVisitSection(
 	section.classList.toggle('rv-older-first', role === 'first-older');
 	if (role === 'first-older') ensureOlderHeader(section, path, preview);
 	paintOlderChrome(path, preview, spans.some((span) => span.older));
+	concealPlainOlderHeadings(preview);
 	return role;
 }
 
@@ -327,4 +328,24 @@ export function markPreviewOlderVisits(
 	const kept = readingOlderHeadings(preview)[0] ?? null;
 	dedupeOlderHeaders(preview, kept);
 	paintOlderChrome(path, preview, headings.length > cap);
+	concealPlainOlderHeadings(preview);
+}
+
+const PLAIN_OLDER_HEADING = /^older visits:?$/i;
+
+/**
+ * The file's own Older Visits heading stays in the note. Reading view draws
+ * it as a plain line beside the chevron heading, so that plain line is hidden.
+ */
+export function concealPlainOlderHeadings(root: ParentNode): void {
+	root.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (node.classList.contains('rv-older-visits')) return;
+		if (node.closest('.rv-older-visits, .rv-older-visits-widget, .rv-older-visits-wrap')) return;
+		const text = (node.textContent ?? '').replace(/\s+/g, ' ').trim().replace(/^#{1,6}\s+/, '');
+		if (!PLAIN_OLDER_HEADING.test(text)) return;
+		const wrap = node.closest('.el-h1, .el-h2, .el-h3, .el-h4, .el-h5, .el-h6, .markdown-preview-section');
+		const host = wrap instanceof HTMLElement && wrap.querySelector('.rv-older-visits') == null ? wrap : node;
+		host.classList.add('rv-older-source-hidden');
+	});
 }

@@ -7794,6 +7794,21 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 	text-align: center;
 }
 
+.rv-older-source-hidden {
+	display: none !important;
+}
+
+.cm-line.rv-lp-older-heading {
+	font-size: 0 !important;
+	line-height: 0 !important;
+}
+
+.cm-line.rv-lp-older-heading .rv-older-visits-widget,
+.cm-line.rv-lp-older-heading .rv-older-visits {
+	font-size: var(--h3-size, 1.1em) !important;
+	line-height: var(--h3-line-height, 1.3) !important;
+}
+
 /* Obsidian's heading fold draws a second chevron and a "..." row. */
 .cm-line.rv-lp-notes-heading > .cm-fold-indicator,
 .cm-line.rv-lp-notes-heading > .cm-foldPlaceholder,

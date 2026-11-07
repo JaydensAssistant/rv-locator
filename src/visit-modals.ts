@@ -2,7 +2,7 @@ import { Modal, Notice, Setting, SuggestModal, type App } from 'obsidian';
 import { emptyShare, type VisitShare } from './catalog';
 import { mountShareFields, type ShareFieldOptions } from './catalog-fields';
 import { iconizeModal, markModalTone } from './modal-chrome';
-import { mountAlwaysChevron, releaseSuggestionFields } from './suggest-field';
+import { mountAlwaysChevron, releaseSuggestionFields, suggestEscapeShouldHold } from './suggest-field';
 import { mountCampaignChoice } from './campaign-choice';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { coverageQuestion } from './modals';
@@ -77,6 +77,11 @@ export class VisitEditModal extends Modal {
 	}
 
 	onOpen(): void {
+		const rawClose = this.close.bind(this);
+		this.close = () => {
+			if (suggestEscapeShouldHold(this.contentEl)) return;
+			rawClose();
+		};
 		this.setTitle(this.options.title);
 		this.modalEl.addClass('rv-locator-modal', 'rv-locator-visit-editor');
 		markModalTone(this.modalEl, 'rv', this.buttonAccent);
