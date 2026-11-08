@@ -29,7 +29,7 @@ import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
+import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -730,6 +730,7 @@ export default class RVLocatorPlugin extends Plugin {
 			this.syncNoteMap();
 			this.applyLayoutClasses();
 			this.paintEarthStates();
+			if (this.hubMapOpen && this.coversHubOpen(file)) this.settleParkedHubMap(0);
 		} else if (this.noteMapOpen) {
 			this.syncNoteMap();
 		}
@@ -1003,14 +1004,16 @@ export default class RVLocatorPlugin extends Plugin {
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
 			const result = setViewState.call(this, plugin.previewViewState(this, viewState), eState);
-			const repaintReading = (): void => {
+			const after = (): void => {
 				if (plugin.unloaded) return;
 				const view = this.view;
-				if (!(view instanceof MarkdownView) || !view.file || view.getMode() !== 'preview') return;
-				plugin.scheduleReadingDecorate(view.file);
+				if (view instanceof MarkdownView && view.file && view.getMode() === 'preview') {
+					plugin.scheduleReadingDecorate(view.file);
+				}
+				plugin.landHistoryHubMap(this);
 			};
-			if (result instanceof Promise) return result.then((value) => { repaintReading(); return value; });
-			repaintReading();
+			if (result instanceof Promise) return result.then((value) => { after(); return value; });
+			after();
 			return result;
 		};
 		this.register(() => {
@@ -1940,6 +1943,8 @@ export default class RVLocatorPlugin extends Plugin {
 		this.hubMapOpen = true;
 		this.noteMapOpen = false;
 		this.applyLayoutClasses();
+		// Drop the note grid before the hub lays out. The parked map is not a child of the leaf.
+		this.syncNoteMap();
 		this.paintEarthStates();
 	}
 
@@ -1988,6 +1993,7 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		placeHandedMap(map, stage);
+		ensureHubMapHandle(stage);
 		lockHandedMapBand(map, band);
 		markHandedMapHost(stage);
 		const spacers = document.querySelectorAll('.rv-map-spacer');
@@ -1999,6 +2005,45 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		this.parkedHandle = null;
 		this.liveHubAdopter?.(map, api);
+	}
+
+	/**
+	 * History back restores the hub with setViewState, so the cover's
+	 * beforeRelease never runs. The parked note map has to move into the hub slot.
+	 */
+	landHistoryHubMap(leaf: WorkspaceLeaf): void {
+		if (this.unloaded) return;
+		const file = this.leafFile(leaf);
+		if (!(file instanceof TFile) || !this.coversHubOpen(file)) return;
+		const parked = document.querySelector('.rv-map-park .rv-hub-map, .rv-map-park .rv-note-map, .rv-map-park .rv-map-stage');
+		if (!this.hubMapOpen && !this.noteMapOpen && !(parked instanceof Element)) return;
+		if (this.noteMapOpen) {
+			this.parkOpenMap();
+			this.noteMapOpen = false;
+			this.hubMapOpen = true;
+			this.syncNoteMap();
+			this.applyLayoutClasses();
+			this.paintEarthStates();
+		}
+		this.settleParkedHubMap(0);
+	}
+
+	private leafFile(leaf: WorkspaceLeaf): TFile | null {
+		const view = leaf.view as { file?: TFile } | undefined;
+		const file = view?.file;
+		return file instanceof TFile ? file : null;
+	}
+
+	/** Put a parked map in the hub stage once that stage exists. The park stays up until then. */
+	private settleParkedHubMap(attempt: number): void {
+		if (this.unloaded || !this.hubMapOpen) return;
+		const parked = document.querySelector('.rv-map-park .rv-hub-map, .rv-map-park .rv-note-map');
+		if (!(parked instanceof HTMLElement)) return;
+		if (!(shownHubStage(document) instanceof HTMLElement)) {
+			if (attempt < 30) requestAnimationFrame(() => this.settleParkedHubMap(attempt + 1));
+			return;
+		}
+		this.handHubMapToLive();
 	}
 
 	/** Quick Switcher and every other direct hub open. Not a hub link, and not history back. */

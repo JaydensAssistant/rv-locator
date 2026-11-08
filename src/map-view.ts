@@ -4,7 +4,7 @@ import { glancableCardWidthPx } from './glancable-density';
 import { applyNoteMapFrame } from './hub-layout';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { paintGlanceFoot } from './glance-foot';
-import { appendBadge, mountUrgencyGlyph, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
+import { appendBadge, mountUrgencyGlyph, pinBadgeRings, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
 import { cardReturnLead } from './schedule';
 import { contentBottom, measureBottomChrome, POPUP_MARGIN_PX, readSafeAreaBottom } from './chrome-inset';
 import { dropPath, groupPinStacks, latToTileY, layoutIdenticalPins, lonToTileX, mapPressIsClick, pinsToDraw, pinUrgencyZ, popupClearOfChrome, rankPinsFromRenderedList, tapZoomsStack, zoomToRevealPin, type MapPin } from './map-pins';
@@ -1055,6 +1055,7 @@ export class RvMapView extends ItemView {
 		this.host.rememberLiveFix?.(this.user);
 		const painted = this.host.paintGlanceCard?.(shell, pin.path) === true;
 		if (!painted) this.paintFallbackCard(shell, pin);
+		pinBadgeRings(shell);
 		const card = shell.querySelector('.rv-locator-card');
 		const placeShell = (): void => {
 			snapAbsoluteOrigin(shell);

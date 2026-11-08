@@ -84,6 +84,21 @@ export function placeHandedMap(map: HTMLElement, stage: HTMLElement): void {
 	stage.appendChild(map);
 }
 
+/** The hub's own grip. A handed note map does not bring one with it. */
+export function ensureHubMapHandle(stage: HTMLElement): HTMLElement {
+	const found = stage.querySelector(':scope > .rv-hub-map-handle');
+	if (found instanceof HTMLElement) return found;
+	const handle = stage.ownerDocument.createElement('div');
+	handle.className = 'rv-hub-map-handle';
+	handle.setAttribute('role', 'separator');
+	handle.setAttribute('aria-orientation', 'horizontal');
+	handle.setAttribute('aria-label', 'Resize map');
+	const map = stage.querySelector(':scope > .rv-hub-map, :scope > .rv-note-map');
+	if (map) stage.insertBefore(handle, map);
+	else stage.appendChild(handle);
+	return handle;
+}
+
 /**
  * Keep the band the cover just showed. A percent height on the live stage
  * collapses, and the band is then only the theme background.

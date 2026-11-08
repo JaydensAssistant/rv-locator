@@ -4,8 +4,9 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { URGENCY_COLUMN_ID } from '../src/constants';
 import { clusterAppearance, groupPinStacks, orderByHubSort, pinUrgencyZ, type MapPin } from '../src/map-pins';
+import { clearBadgeStrokeCache, pinBadgeRings, pinBadgeStroke } from '../src/glancable-view';
 import { cardPaintKey } from '../src/hub-cache';
-import { claimParkedMap, lockHandedMapBand, mapStayForOpen, markHandedMapHost, moveMapToStage, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage } from '../src/map-handoff';
+import { claimParkedMap, ensureHubMapHandle, lockHandedMapBand, mapStayForOpen, markHandedMapHost, moveMapToStage, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage } from '../src/map-handoff';
 import { delayUntilNextLocalDay } from '../src/snooze';
 import { stagePaintBox } from '../src/map-view';
 import { annotateRowScores, displayedUrgency } from '../src/row-score';
@@ -426,5 +427,98 @@ describe('RV-B54 the map stays on screen', () => {
 		const delay = delayUntilNextLocalDay(noon, 2000);
 		assert.ok(delay > 11 * 60 * 60 * 1000 && delay < 13 * 60 * 60 * 1000);
 		assert.ok(delayUntilNextLocalDay(new Date(2026, 10, 8, 23, 59, 59, 0), 2000) >= 1000);
+	});
+
+	it('drops the note grid on the way back to the hub and lands a parked map in the hub slot', () => {
+		const main = source('src/main.ts');
+		const retain = main.slice(main.indexOf('private retainMapForHub'), main.indexOf('parkOpenMap(): boolean'));
+		assert.match(retain, /this\.noteMapOpen = false/);
+		assert.ok(retain.indexOf('this.noteMapOpen = false') < retain.indexOf('this.syncNoteMap()'));
+		const historyAt = main.indexOf('proto.setViewState = function');
+		const history = main.slice(historyAt, main.indexOf('this.register(() => {', historyAt));
+		assert.match(history, /landHistoryHubMap\(this\)/);
+		const opened = main.slice(main.indexOf('private onNoteOpened'), main.indexOf('private scheduleReadingDecorate'));
+		assert.match(opened, /this\.settleParkedHubMap\(0\)/);
+		const hand = main.slice(main.indexOf('private handHubMapToLive'), main.indexOf('private landHistoryHubMap'));
+		assert.match(hand, /ensureHubMapHandle\(stage\)/);
+		assert.match(source('src/glancable-view.ts'), /releaseHandedBandWhenLaidOut/);
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const doc = dom.window.document;
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const park = doc.createElement('div');
+		park.className = 'rv-map-park';
+		const map = doc.createElement('div');
+		map.className = 'rv-note-map rv-map';
+		const tiles = doc.createElement('div');
+		tiles.className = 'rv-map-stage';
+		tiles.appendChild(Object.assign(doc.createElement('img'), { className: 'rv-map-tile is-ready' }));
+		map.appendChild(tiles);
+		park.appendChild(map);
+		const stage = doc.createElement('div');
+		stage.className = 'rv-locator-stage';
+		doc.body.append(park, stage);
+		assert.equal(paintedHandoffMap(doc), map);
+		placeHandedMap(map, stage);
+		const handle = ensureHubMapHandle(stage);
+		park.remove();
+		assert.equal(map.parentElement, stage);
+		assert.equal(handle.className, 'rv-hub-map-handle');
+		assert.equal(handle.nextElementSibling, map);
+		assert.equal(doc.querySelector('.rv-map-park'), null);
+		assert.equal(stage.querySelector('.rv-map-tile.is-ready') != null, true);
+	});
+
+	it('RV-B56 restrokes urgency, priority, and the study ring after a fragment stored 2px', () => {
+		clearBadgeStrokeCache();
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		globalThis.Element = win.Element;
+		const real = win.getComputedStyle.bind(win);
+		win.getComputedStyle = ((elt: Element) => {
+			const style = real(elt);
+			if (elt instanceof win.HTMLElement && elt.style.visibility === 'hidden' && (elt.style.borderTopWidth === '2px' || elt.style.borderWidth === '2px')) {
+				return { borderTopWidth: '1.02px' } as CSSStyleDeclaration;
+			}
+			return style;
+		}) as typeof win.getComputedStyle;
+		const frag = win.document.createElement('div');
+		const urgency = win.document.createElement('button');
+		urgency.className = 'rv-locator-urgency';
+		const ring = win.document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+		ring.setAttribute('class', 'is-ring');
+		urgency.appendChild(ring);
+		frag.appendChild(urgency);
+		const pill = win.document.createElement('button');
+		pill.className = 'rv-locator-priority-pill';
+		frag.appendChild(pill);
+		try {
+			pinBadgeStroke(urgency);
+			pinBadgeStroke(pill);
+			assert.equal(urgency.dataset.rvStrokePx, undefined);
+			assert.equal(pill.dataset.rvStrokePx, undefined);
+			assert.equal(urgency.style.getPropertyValue('border-width'), '');
+			win.document.body.append(urgency, pill);
+			urgency.dataset.rvStrokePx = '2px';
+			urgency.style.setProperty('border-width', '2px', 'important');
+			urgency.style.setProperty('border-style', 'solid', 'important');
+			pill.dataset.rvStrokePx = '2px';
+			pill.style.setProperty('border-width', '2px', 'important');
+			pill.style.setProperty('border-style', 'solid', 'important');
+			pinBadgeRings(win.document.body);
+			assert.notEqual(urgency.dataset.rvStrokePx, '2px');
+			assert.equal(urgency.style.getPropertyValue('border-width'), urgency.dataset.rvStrokePx);
+			assert.equal(ring.style.getPropertyValue('stroke-width'), urgency.dataset.rvStrokePx);
+			assert.equal(pill.style.getPropertyValue('border-width'), urgency.dataset.rvStrokePx);
+			const chrome = source('src/note-chrome.ts');
+			const details = chrome.slice(chrome.indexOf('function paintUrgencyDetails'), chrome.indexOf('function setPaint'));
+			assert.match(details, /\.rv-locator-priority-pill/);
+			assert.match(details, /pinBadgeStroke\(node\)/);
+			assert.match(source('src/map-view.ts'), /pinBadgeRings\(shell\)/);
+		} finally {
+			win.getComputedStyle = real;
+			clearBadgeStrokeCache();
+		}
 	});
 });

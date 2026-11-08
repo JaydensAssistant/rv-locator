@@ -357,7 +357,7 @@ function paintUrgencyDetails(start: HTMLElement, accent: string): void {
 			setPaint(svg, 'stroke', accent, true);
 		});
 	});
-	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin').forEach((node) => {
+	start.querySelectorAll('.rv-locator-urgency, .rv-locator-map-pin, .rv-locator-priority-pill').forEach((node) => {
 		if (!(node instanceof HTMLElement) || !noteChromeOwnsUrgency(node)) return;
 		pinBadgeStroke(node);
 	});

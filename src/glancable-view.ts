@@ -12,6 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
+import { lockHandedMapBand } from './map-handoff';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -204,7 +205,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 				if (api || sitting.querySelector('.rv-map-stage')) this.hubMapApi = api;
 				else this.hubMapApi = this.plugin.mountHubMap(sitting);
 			}
+			this.ensureHubHandle(stage);
 			this.deferPaintedOrder(sitting);
+			this.releaseHandedBandWhenLaidOut();
 			return;
 		}
 		if (this.hubMapEl?.closest('.rv-map-park') && !this.plugin.wantsParkedMapBack?.()) return;
@@ -212,7 +215,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const doc = this.root.ownerDocument;
 		const inCover = this.root.closest('.rv-hub-swap-cover') != null;
 		// A blank spacer is the black/white band. The cover is already showing the painted map.
-		if (!inCover && doc.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer), .rv-hub-swap-cover .rv-note-map, .rv-map-park .rv-map-stage')) {
+		// A parked map is not a cover: history back has to claim it into this stage.
+		if (!inCover && doc.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer), .rv-hub-swap-cover .rv-note-map')) {
 			stage.querySelector(':scope > .rv-map-spacer')?.remove();
 			if (this.hubMapEl?.classList.contains('rv-map-spacer')) this.hubMapEl = null;
 			return;
@@ -226,7 +230,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const painted = parked.querySelector('.rv-map-stage') != null;
 			if (api || painted) this.hubMapApi = api;
 			else this.hubMapApi = this.plugin.mountHubMap(parked);
+			this.ensureHubHandle(stage);
 			this.deferPaintedOrder(parked);
+			this.releaseHandedBandWhenLaidOut();
 			return;
 		}
 		const handle = stage.createDiv('rv-hub-map-handle');
@@ -301,6 +307,56 @@ export class NearbyGlancableView extends NearbyBasesView {
 		stage.style.removeProperty('min-height');
 	}
 
+	/**
+	 * Once the live stage has a box, `--rv-map-size` owns the height.
+	 * The pixel lock stays through that frame so the band is not empty.
+	 */
+	private releaseHandedBandWhenLaidOut(left = 12): void {
+		const map = this.hubMapEl;
+		if (!map?.style.getPropertyValue('flex')) return;
+		const stage = map.querySelector('.rv-map-stage');
+		if (!(stage instanceof HTMLElement)) return;
+		const view = map.ownerDocument.defaultView;
+		const step = (): void => {
+			if (this.hubMapEl !== map || !map.isConnected) return;
+			const height = stage.getBoundingClientRect().height;
+			if (height < 2) {
+				if (left > 0) view?.requestAnimationFrame(() => this.releaseHandedBandWhenLaidOut(left - 1));
+				return;
+			}
+			this.releaseHandedBandLock();
+			const confirm = (): void => {
+				if (this.hubMapEl !== map || !map.isConnected) return;
+				if (stage.getBoundingClientRect().height >= 2) return;
+				lockHandedMapBand(map, height);
+			};
+			if (view?.requestAnimationFrame) view.requestAnimationFrame(confirm);
+			else confirm();
+		};
+		if (view?.requestAnimationFrame) view.requestAnimationFrame(step);
+		else step();
+	}
+
+	/** Bind the grip the handoff inserted. A fresh map already has one. */
+	private ensureHubHandle(stage: HTMLElement): void {
+		const found = stage.querySelector(':scope > .rv-hub-map-handle');
+		if (found instanceof HTMLElement) {
+			this.hubMapHandle = found;
+			this.bindHubHandle(found);
+			return;
+		}
+		const handle = stage.ownerDocument.createElement('div');
+		handle.className = 'rv-hub-map-handle';
+		handle.setAttribute('role', 'separator');
+		handle.setAttribute('aria-orientation', 'horizontal');
+		handle.setAttribute('aria-label', 'Resize map');
+		const map = this.hubMapEl;
+		if (map?.parentElement === stage) stage.insertBefore(handle, map);
+		else stage.appendChild(handle);
+		this.hubMapHandle = handle;
+		this.bindHubHandle(handle);
+	}
+
 	/** The cover is handing this view the map it already painted. */
 	private adoptHubMap(el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null): void {
 		if (hostIsHidden(this.root)) return;
@@ -313,8 +369,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const painted = el.querySelector('.rv-map-stage') != null;
 		if (api) this.hubMapApi = api;
 		else if (!this.hubMapApi && !painted) this.hubMapApi = this.plugin.mountHubMap(el);
+		this.ensureHubHandle(stage);
 		this.deferPaintedOrder(el);
 		this.syncHubMap();
+		this.releaseHandedBandWhenLaidOut();
 	}
 
 	protected override sortedGroups() {
@@ -1059,6 +1117,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private bindHubHandle(handle: HTMLElement): void {
+		if (handle.dataset.rvBound === '1') return;
+		handle.dataset.rvBound = '1';
 		handle.addEventListener('pointerdown', (event) => {
 			if (event.button !== 0) return;
 			event.preventDefault();
@@ -1408,18 +1468,29 @@ function badgeStrokePx(host: HTMLElement): string {
 }
 
 /** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. Measured once per document. */
+const RING_BADGES = '.rv-locator-urgency, .rv-locator-map-pin, .rv-locator-priority-pill';
+
 export function pinBadgeStroke(host: HTMLElement): void {
+	if (!host.isConnected) return;
 	const ghost = host.classList.contains('is-ghost');
 	const style = ghost ? 'dashed' : 'solid';
+	const wanted = badgeStrokePx(host);
 	const cached = host.dataset.rvStrokePx;
 	if (
-		cached
-		&& host.style.getPropertyValue('border-width') === cached
+		cached === wanted
+		&& host.style.getPropertyValue('border-width') === wanted
 		&& host.style.getPropertyValue('border-style') === style
 	) return;
-	const px = cached || badgeStrokePx(host);
-	host.dataset.rvStrokePx = px;
-	applyBadgeStroke(host, px);
+	host.dataset.rvStrokePx = wanted;
+	applyBadgeStroke(host, wanted);
+}
+
+/** Urgency, priority, and the study ring. A 2px stored in a fragment is not final. */
+export function pinBadgeRings(root: ParentNode): void {
+	if (typeof root.querySelectorAll !== 'function') return;
+	root.querySelectorAll(RING_BADGES).forEach((node) => {
+		if (node instanceof HTMLElement) pinBadgeStroke(node);
+	});
 }
 
 function applyBadgeStroke(host: HTMLElement, px: string): void {
