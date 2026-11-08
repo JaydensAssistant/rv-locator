@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, placeGlanceStage, revealHubCard, stackedEmbedCap } from './hub-layout';
+import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -47,7 +47,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private hubMapHandle: HTMLElement | null = null;
 	private hubMapApi: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
 	private renderedPaths: readonly string[] | null = null;
-	private hubMapRatio = 0.42;
 	private stackedLayout = false;
 	private searchOpen = false;
 	private hubScrollerStop: (() => void) | null = null;
@@ -66,6 +65,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.type = viewType;
 		this.quietBanner = true;
 		this.register(this.plugin.registerGlancePainter((parent, path) => this.paintCardForPath(parent, path)));
+		this.register(this.plugin.watchMapSplit(() => { this.syncHubMap(); }));
 		this.register(this.plugin.registerGlanceWidth(() => this.listCardWidth()));
 		this.register(this.plugin.registerGlanceLayout(() => {
 			this.rememberScrollbar();
@@ -415,6 +415,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (labeled || rows.length === 0 || cards.length === 0) {
 			super.fillScroll();
 			this.landArrival();
+			this.strokeHubRings();
 			return;
 		}
 		if (this.cardsMatch(cards, rows)) {
@@ -425,6 +426,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.applyColumnSnap();
 			this.publishPinOrder(rows.map((row) => row.path));
 			this.landArrival();
+			this.strokeHubRings();
 			return;
 		}
 		const atTop = this.directHubOpensAtTop();
@@ -442,6 +444,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 		else if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
 		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
 		this.landArrival();
+		this.strokeHubRings();
+	}
+
+	/** Cards are in the document. A stroke measured in the fragment is not kept. */
+	private strokeHubRings(): void {
+		if (this.scrollEl) pinBadgeRings(this.scrollEl);
 	}
 
 	/** A Quick Switcher open of the hub starts at the top. A return does not. */
@@ -475,13 +483,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		} else {
 			revealHubCard(this.scrollEl, card);
 		}
-		card.classList.remove('rv-card-flash');
-		if (!card.dataset.rvLandAt) card.dataset.rvLandAt = String(Date.now());
-		card.classList.add('rv-card-land');
-		if (card.dataset.rvLandTimer !== '1') {
-			card.dataset.rvLandTimer = '1';
-			window.setTimeout(() => card.classList.remove('rv-card-land'), 2000);
-		}
+		shadeHubCard(card);
 		const cover = this.root.closest('.rv-hub-swap-cover');
 		if (!cover && !hubLandingReady(scroller, card)) return;
 		if (!cover) this.plugin.takeHubArrival();
@@ -1055,7 +1057,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.toggleClass('is-map-fullscreen', full);
 		map?.toggleClass('is-fullscreen', full);
 		this.hubMapHandle?.setAttr('aria-orientation', this.stackedLayout ? 'horizontal' : 'vertical');
-		const size = `${Math.round(this.hubMapRatio * 100)}%`;
+		const size = `${Math.round(this.plugin.mapSplitRatio() * 100)}%`;
 		if (this.root.style.getPropertyValue('--rv-map-size') !== size) {
 			this.root.style.setProperty('--rv-map-size', size);
 		}
@@ -1124,7 +1126,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			event.preventDefault();
 			const startX = event.clientX;
 			const startY = event.clientY;
-			const start = this.hubMapRatio;
+			const start = this.plugin.mapSplitRatio();
 			const box = this.stageEl ?? this.root;
 			const height = box.clientHeight || 1;
 			const width = box.clientWidth || 1;
@@ -1132,17 +1134,19 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const move = (ev: PointerEvent): void => {
 				this.releaseHandedBandLock();
 				const delta = stacked ? (startY - ev.clientY) / height : (startX - ev.clientX) / width;
-				const next = start + delta;
-				this.hubMapRatio = Math.min(0.72, Math.max(0, next));
+				this.plugin.rememberMapSplit(start + delta, 'hub');
 				this.syncHubMap();
 			};
 			const stop = (): void => {
 				handle.ownerDocument.removeEventListener('pointermove', move);
 				handle.ownerDocument.removeEventListener('pointerup', stop);
-				if (this.hubMapRatio < 0.08) {
-					this.hubMapRatio = 0.42;
+				if (this.plugin.mapSplitRatio() < 0.08) {
+					this.plugin.rememberMapSplit(0.42, 'hub');
+					this.plugin.commitMapSplit();
 					this.plugin.hideSplitMap();
+					return;
 				}
+				this.plugin.commitMapSplit();
 			};
 			handle.ownerDocument.addEventListener('pointermove', move);
 			handle.ownerDocument.addEventListener('pointerup', stop);
@@ -1150,13 +1154,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private flashCard(path: string | null): void {
-		this.scrollEl.querySelectorAll('.rv-card-flash').forEach((node) => node.classList.remove('rv-card-flash'));
+		this.scrollEl.querySelectorAll('.rv-card-land, .rv-card-flash').forEach((node) => {
+			node.classList.remove('rv-card-land', 'rv-card-flash');
+		});
 		if (!path) return;
 		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
 		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
 		if (!(card instanceof HTMLElement)) return;
 		revealHubCard(this.scrollEl, card);
-		window.setTimeout(() => card.classList.remove('rv-card-flash'), 1600);
 	}
 
 	private mapCell(row: RowModel): CellModel | undefined {
@@ -1468,13 +1473,19 @@ function badgeStrokePx(host: HTMLElement): string {
 }
 
 /** Keep the painted badge and map-pin ring at 2 CSS px. Ghosts stay dashed. Measured once per document. */
-const RING_BADGES = '.rv-locator-urgency, .rv-locator-map-pin, .rv-locator-priority-pill';
+const RING_BADGES = '.rv-locator-urgency, .rv-locator-map-pin, .rv-locator-priority-pill, .rv-pin-head';
 
 export function pinBadgeStroke(host: HTMLElement): void {
 	if (!host.isConnected) return;
+	const wanted = badgeStrokePx(host);
+	if (host.classList.contains('rv-pin-head')) {
+		if (host.dataset.rvStrokePx === wanted) return;
+		host.dataset.rvStrokePx = wanted;
+		paintRingStroke(host, wanted);
+		return;
+	}
 	const ghost = host.classList.contains('is-ghost');
 	const style = ghost ? 'dashed' : 'solid';
-	const wanted = badgeStrokePx(host);
 	const cached = host.dataset.rvStrokePx;
 	if (
 		cached === wanted
@@ -1497,6 +1508,10 @@ function applyBadgeStroke(host: HTMLElement, px: string): void {
 	const ghost = host.classList.contains('is-ghost');
 	host.style.setProperty('border-style', ghost ? 'dashed' : 'solid', 'important');
 	host.style.setProperty('border-width', px, 'important');
+	paintRingStroke(host, px);
+}
+
+function paintRingStroke(host: HTMLElement, px: string): void {
 	host.querySelectorAll('line, circle.is-ring').forEach((node) => {
 		if (!(node instanceof Element) || !('style' in node)) return;
 		const mark = node as Element & { style: CSSStyleDeclaration };
@@ -1755,7 +1770,6 @@ export function mountUrgencyGlyph(host: HTMLElement, glyphs: string): void {
 		host.style.removeProperty('border-style');
 		host.style.removeProperty('border-width');
 		host.style.removeProperty('border-color');
-		return;
 	}
 	pinBadgeStroke(host);
 }

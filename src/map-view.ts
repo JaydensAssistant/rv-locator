@@ -885,6 +885,7 @@ export class RvMapView extends ItemView {
 				this.paintPin(layer, item.pin, item.point, placed, index === 0 ? drawn.label : null);
 			});
 		}
+		pinBadgeRings(layer);
 	}
 
 	private paintPin(

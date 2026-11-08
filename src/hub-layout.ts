@@ -130,7 +130,22 @@ export function revealHubCard(scrollEl: HTMLElement, card: HTMLElement): void {
 			/* A layout test document has no scrolling view. */
 		}
 	}
-	card.classList.add('rv-card-flash');
+	shadeHubCard(card);
+}
+
+/** The RV-188 full-card shade. A jump never draws an outline. */
+export function shadeHubCard(card: HTMLElement): void {
+	card.classList.remove('rv-card-flash');
+	if (!card.dataset.rvLandAt) card.dataset.rvLandAt = String(Date.now());
+	card.classList.add('rv-card-land');
+	if (card.dataset.rvLandTimer === '1') return;
+	card.dataset.rvLandTimer = '1';
+	const view = card.ownerDocument?.defaultView;
+	const clear = (): void => {
+		card.classList.remove('rv-card-land');
+		delete card.dataset.rvLandTimer;
+	};
+	if (view && typeof view.setTimeout === 'function') view.setTimeout(clear, 2000);
 }
 
 function isElement(node: unknown): node is HTMLElement {

@@ -83,7 +83,7 @@ import { urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
-import { DEFAULT_SETTINGS, attemptLogFullWidth, defaultNearbySort, mergeSettings, sanitizeNearbySort, type CacheEntry, type GeocodeHit, type NearbySortPreference, type RVLocatorSettings, type StoredPluginData } from './types';
+import { DEFAULT_SETTINGS, attemptLogFullWidth, clampMapSplit, defaultNearbySort, mergeSettings, sanitizeNearbySort, type CacheEntry, type GeocodeHit, type NearbySortPreference, type RVLocatorSettings, type StoredPluginData } from './types';
 import { NearbyVanillaView } from './vanilla-view';
 
 function cacheValue(frontmatter: { [key: string]: unknown } | undefined, key: string): unknown {
@@ -2566,32 +2566,61 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private noteMapHandle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
-	private noteMapRatio = 0.42;
+	private mapSplitDirty = false;
+	private mapSplitWatchers = new Set<() => void>();
+
+	/** The size last dragged on a hub, a base, or a note. */
+	mapSplitRatio(): number {
+		return this.settings.mapSplitRatio;
+	}
+
+	/** Live size. The write waits until the pointer is up. */
+	rememberMapSplit(next: number, surface: 'hub' | 'note'): void {
+		const ratio = clampMapSplit(next, surface);
+		if (this.settings.mapSplitRatio === ratio) return;
+		this.settings.mapSplitRatio = ratio;
+		this.mapSplitDirty = true;
+		for (const watch of this.mapSplitWatchers) watch();
+	}
+
+	/** Same save path as the other settings. One write for the finished drag. */
+	commitMapSplit(): void {
+		if (!this.mapSplitDirty) return;
+		this.mapSplitDirty = false;
+		void this.persist();
+	}
+
+	watchMapSplit(watch: () => void): () => void {
+		this.mapSplitWatchers.add(watch);
+		return () => { this.mapSplitWatchers.delete(watch); };
+	}
 
 	/** The grip is a grid track beside the map, so both move as one size. */
 	private bindNoteMapHandle(content: HTMLElement, handle: HTMLElement): void {
 		if (handle.dataset.rvBound === '1') return;
 		handle.dataset.rvBound = '1';
-		if (!content.style.getPropertyValue('--rv-note-map')) {
-			content.style.setProperty('--rv-note-map', `${Math.round(this.noteMapRatio * 100)}%`);
-		}
+		const paint = (): void => {
+			content.style.setProperty('--rv-note-map', `${Math.round(clampMapSplit(this.settings.mapSplitRatio, 'note') * 100)}%`);
+		};
+		paint();
 		handle.addEventListener('pointerdown', (event) => {
 			if (event.button !== 0) return;
 			event.preventDefault();
 			const startX = event.clientX;
 			const startY = event.clientY;
-			const start = this.noteMapRatio;
+			const start = clampMapSplit(this.settings.mapSplitRatio, 'note');
 			const box = content.getBoundingClientRect();
 			const side = content.classList.contains('is-note-map-side');
 			const span = Math.max(1, side ? box.width : box.height);
 			const move = (ev: PointerEvent): void => {
 				const delta = side ? (startX - ev.clientX) / span : (startY - ev.clientY) / span;
-				this.noteMapRatio = Math.min(0.72, Math.max(0.18, start + delta));
-				content.style.setProperty('--rv-note-map', `${Math.round(this.noteMapRatio * 100)}%`);
+				this.rememberMapSplit(start + delta, 'note');
+				paint();
 			};
 			const stop = (): void => {
 				handle.ownerDocument.removeEventListener('pointermove', move);
 				handle.ownerDocument.removeEventListener('pointerup', stop);
+				this.commitMapSplit();
 			};
 			handle.ownerDocument.addEventListener('pointermove', move);
 			handle.ownerDocument.addEventListener('pointerup', stop);

@@ -723,7 +723,8 @@ describe('hub pin scroll and narrow stack', () => {
 		class Box extends Base {
 			parentElement: Box | null = null;
 			ownerDocument: { defaultView: { getComputedStyle(node: Box): { overflowY: string; overflow: string } } };
-			classList: { contains(name: string): boolean; add(name: string): void };
+			classList: { contains(name: string): boolean; add(name: string): void; remove(name: string): void };
+			dataset: Record<string, string> = {};
 			scrollTop = 0;
 			clientHeight = 0;
 			scrollHeight = 0;
@@ -737,6 +738,7 @@ describe('hub pin scroll and narrow stack', () => {
 				this.classList = {
 					contains: (name: string) => this.names.has(name),
 					add: (name: string) => { this.names.add(name); },
+					remove: (name: string) => { this.names.delete(name); },
 				};
 				this.ownerDocument = {
 					defaultView: {
@@ -786,7 +788,8 @@ describe('hub pin scroll and narrow stack', () => {
 		revealHubCard(scroll as unknown as HTMLElement, card as unknown as HTMLElement);
 		assert.equal(scroll.scrollTop, 900 - (335 - 90) / 2);
 		assert.equal(view.scrollTop, 940 - (800 - 90) / 2);
-		assert.equal(card.classList.contains('rv-card-flash'), true);
+		assert.equal(card.classList.contains('rv-card-land'), true);
+		assert.equal(card.classList.contains('rv-card-flash'), false);
 		assert.equal(root.scrollTop, 0);
 	});
 });

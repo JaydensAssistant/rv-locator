@@ -191,6 +191,8 @@ export interface RVLocatorSettings {
 	studyShowSpoke: boolean;
 	/** Study cards hide Last Attempted unless this was turned on. */
 	studyShowAttempted: boolean;
+	/** Shared hub, base, and note map split. 0.42 is the first-run size. */
+	mapSplitRatio: number;
 }
 
 export type PriorityBand = 1 | 2 | 3 | 4 | 5;
@@ -389,6 +391,7 @@ export const DEFAULT_SETTINGS: RVLocatorSettings = {
 	studyRatio: 'lessons-studies',
 	studyShowSpoke: false,
 	studyShowAttempted: false,
+	mapSplitRatio: 0.42,
 };
 
 export type RouteProvider = 'google' | 'apple' | 'waze';
@@ -573,7 +576,15 @@ export function mergeSettings(partial: SettingsInput | null | undefined): RVLoca
 		studyRatio: input.studyRatio === 'studies-lessons' ? 'studies-lessons' : 'lessons-studies',
 		studyShowSpoke: input.studyShowSpoke === true,
 		studyShowAttempted: input.studyShowAttempted === true,
+		mapSplitRatio: boundedNumber(input.mapSplitRatio, 0, 0.72, DEFAULT_SETTINGS.mapSplitRatio),
 	};
+}
+
+/** Hub drag stops at 0. Note drag stops at 0.18. Both stop at 0.72. */
+export function clampMapSplit(value: number, surface: 'hub' | 'note'): number {
+	const min = surface === 'note' ? 0.18 : 0;
+	if (!Number.isFinite(value)) return DEFAULT_SETTINGS.mapSplitRatio;
+	return Math.min(0.72, Math.max(min, value));
 }
 
 function stringList(value: unknown): string[] {

@@ -3984,10 +3984,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	cursor: pointer;
 }
 
-.rv-card-flash,
 .rv-map .rv-map-pins > button.rv-map-pin.rv-pin-flash {
-	outline: 2px solid var(--interactive-accent);
-	outline-offset: 2px;
+	outline: none;
 }
 
 .rv-suggest-pending {
@@ -4157,10 +4155,39 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 }
 
 .rv-locator-view.is-side-map .rv-hub-map-handle {
+	position: relative;
+	z-index: 8;
 	display: block;
-	flex: 0 0 10px;
+	flex: 0 0 14px;
+	width: 14px;
+	overflow: visible;
 	cursor: ew-resize;
-	background: linear-gradient(var(--background-modifier-border), var(--background-modifier-border)) center / 3px 2.5rem no-repeat;
+	background: linear-gradient(#000, #000) center / 3px 100% no-repeat;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map-handle::before {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 5px;
+	height: 40px;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
+	background: #fff;
+	box-shadow: 0 0 0 1px #000;
+	pointer-events: none;
+}
+
+.rv-locator-view.is-side-map .rv-hub-map-handle::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 44px;
+	height: 44px;
+	transform: translate(-50%, -50%);
+	background: transparent;
 }
 
 .rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle {
@@ -4173,19 +4200,32 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	padding: 0;
 	overflow: visible;
 	cursor: ns-resize;
-	background: linear-gradient(var(--background-modifier-border), var(--background-modifier-border)) center / 2.5rem 3px no-repeat;
+	background: linear-gradient(#000, #000) center / 100% 3px no-repeat;
 }
 
-/* Finger target around the 14px strip. It overlaps the list bottom and the map top only.
-   The right 56px stays clear so the control column keeps its taps. */
+/* Same 40×5 white pill, 3px black bar, and 44×44 hit as the note grip. Dark and light. */
 .rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle::before {
 	content: '';
 	position: absolute;
-	left: 0;
-	right: 56px;
+	left: 50%;
 	top: 50%;
-	height: 40px;
-	transform: translateY(-50%);
+	width: 40px;
+	height: 5px;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
+	background: #fff;
+	box-shadow: 0 0 0 1px #000;
+	pointer-events: none;
+}
+
+.rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 44px;
+	height: 44px;
+	transform: translate(-50%, -50%);
 	background: transparent;
 }
 

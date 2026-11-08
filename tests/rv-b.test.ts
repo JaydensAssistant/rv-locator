@@ -169,6 +169,8 @@ function glancePlugin(bucket: { refresh: (() => void) | null }, extra: Record<st
 			return () => {};
 		},
 		registerGlancePainter: () => () => {},
+		watchMapSplit: () => () => {},
+		mapSplitRatio: () => 0.42,
 		registerGlanceWidth: () => () => {},
 		registerGlanceLayout: () => () => {},
 		registerHubScroller: () => () => {},
