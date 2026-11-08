@@ -170,7 +170,8 @@ describe('directions', () => {
 		assert.equal(waze, `https://waze.com/ul?q=${encodeURIComponent('1 Main St')}&navigate=yes`);
 		assert.equal(waze.includes('28.5'), false);
 		const open = readFileSync('src/main.ts', 'utf8');
-		const route = open.slice(open.indexOf('async openRoute'), open.indexOf('openCampaignModal'));
+		const routeAt = open.indexOf('async openRoute');
+		const route = open.slice(routeAt, open.indexOf('openCampaignModal', routeAt));
 		assert.match(route, /openExternalUrl/);
 		assert.doesNotMatch(route, /noopener|lat:|lon:/);
 	});

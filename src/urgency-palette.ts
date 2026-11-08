@@ -111,6 +111,18 @@ export function urgencyColorsFor(palette: UrgencyPaletteId, custom: UrgencyColor
 	return [...paletteById(palette).colors];
 }
 
+/**
+ * Hub and note chrome use band 0. The accent palette names `--interactive-accent`,
+ * so a concrete theme color is substituted before that variable is overwritten.
+ */
+export function hubAccentColor(palette: UrgencyPaletteId, custom: UrgencyColors, themeAccent = ''): string {
+	const color = urgencyColorsFor(palette, custom)[0] || '#1f8a4c';
+	if (!color.includes('var(--interactive-accent)')) return color;
+	const theme = themeAccent.trim();
+	if (theme && !theme.includes('var(')) return color.replaceAll('var(--interactive-accent)', theme);
+	return 'var(--text-accent)';
+}
+
 /** Colors to seed the custom pickers with. The accent palette is not hex, so it seeds from the default. */
 export function editableUrgencyColors(palette: UrgencyPaletteId, custom: UrgencyColors): UrgencyColors {
 	const colors = urgencyColorsFor(palette, custom);

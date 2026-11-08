@@ -692,7 +692,8 @@
 	display: flex;
 	flex-wrap: nowrap;
 	align-items: center;
-	gap: 2px 8px;
+	justify-content: flex-start;
+	gap: 4px;
 	min-width: 0;
 	max-width: 100%;
 	overflow: hidden;
@@ -741,15 +742,15 @@
 }
 
 .rv-locator-glancable .rv-locator-city-lg {
-	flex: 0 1 auto;
-	min-width: 0;
-	max-width: 100%;
-	overflow: hidden;
+	flex: 0 0 auto;
+	min-width: max-content;
+	max-width: none;
+	overflow: visible;
 	color: var(--text-normal);
 	font-size: calc(13px * var(--rv-font-scale, 1));
 	font-weight: 700;
 	line-height: round(nearest, calc(13px * var(--rv-font-scale, 1) * 1.25), 1px);
-	text-overflow: ellipsis;
+	text-overflow: clip;
 	white-space: nowrap;
 }
 
@@ -768,7 +769,7 @@
 }
 
 .rv-locator-glancable .rv-locator-card-street {
-	flex: 1 1000 auto;
+	flex: 0 1 auto;
 	min-width: 0;
 	max-width: 100%;
 	margin: 0;
@@ -1029,8 +1030,8 @@
 }
 
 .rv-may-cell.is-may {
-	border-color: #1f8a4c;
-	background: #1f8a4c;
+	border-color: var(--rv-hub-accent, #1f8a4c);
+	background: var(--rv-hub-accent, #1f8a4c);
 	color: #fff;
 }
 
@@ -2494,11 +2495,6 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-locator-place-earth svg {
 	width: 1em;
 	height: 1em;
-}
-
-.rv-locator-place-earth.is-on,
-.rv-locator-place-earth.is-on svg {
-	color: var(--rv-urgency-accent, var(--interactive-accent));
 }
 
 .rv-locator-place {
@@ -5700,6 +5696,12 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	width: 18px;
 	height: 18px;
 	--icon-size: 18px;
+}
+
+.rv-locator-glancable .rv-locator-campaign-mark,
+.rv-dashboard .rv-dash-campaign,
+.rv-dashboard .rv-dash-campaign svg,
+.rv-locator-glancable .rv-locator-campaign-mark svg {
 	color: var(--rv-urgency-accent, currentColor);
 }
 
@@ -6070,7 +6072,7 @@ body.rv-center-visit-notes .rv-older-heading {
 .workspace-leaf-content.is-note-map {
 	display: grid !important;
 	grid-template-columns: minmax(0, 1fr);
-	grid-template-rows: auto minmax(0, 1fr) 3px var(--rv-note-map, minmax(120px, 42%));
+	grid-template-rows: auto minmax(0, 1fr) 3px var(--rv-note-map, minmax(120px, 42%)) auto;
 	height: 100%;
 	min-height: 0;
 	width: 100%;
@@ -6181,7 +6183,7 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .workspace-leaf-content.is-note-map.is-note-map-side {
 	grid-template-columns: minmax(0, 1fr) 3px var(--rv-note-map, minmax(160px, 40%));
-	grid-template-rows: auto minmax(0, 1fr);
+	grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .workspace-leaf-content.is-note-map.is-note-map-side > .view-header {
@@ -6216,6 +6218,77 @@ body.rv-center-visit-notes .rv-older-heading {
 	box-shadow: -8px 0 18px rgba(0, 0, 0, 0.16);
 }
 
+/* The note uses the hub's bottom bar, so the map sits in the same place. */
+.workspace-leaf-content.is-rv-note {
+	position: relative;
+	--rv-note-bar: calc(42px + env(safe-area-inset-bottom, 0px));
+}
+
+.workspace-leaf-content.is-rv-note:not(.is-note-map) > .view-content {
+	padding-bottom: var(--rv-note-bar);
+}
+
+.workspace-leaf-content.is-rv-note > .rv-note-hub-bar {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	z-index: 8;
+	display: flex;
+	width: 100%;
+	box-sizing: border-box;
+	margin: 0;
+	border: 0;
+	padding: 2px 4px env(safe-area-inset-bottom, 0px);
+	background: var(--background-primary);
+}
+
+.workspace-leaf-content.is-rv-note.is-note-map > .rv-note-hub-bar {
+	position: relative;
+	left: auto;
+	right: auto;
+	bottom: auto;
+	grid-column: 1;
+	grid-row: 5;
+}
+
+.workspace-leaf-content.is-rv-note.is-note-map.is-note-map-side > .rv-note-hub-bar {
+	grid-column: 1 / -1;
+	grid-row: 3;
+}
+
+.rv-note-hub-bar .rv-locator-toolbar-actions {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	gap: 4px;
+	margin: 0;
+}
+
+.rv-note-hub-bar .rv-locator-toolbar-actions > button {
+	box-sizing: border-box;
+	flex: 1 1 0;
+	width: auto;
+	min-width: 0;
+	max-width: none;
+	height: 40px;
+	min-height: 40px;
+	border-width: 1px;
+	border-style: solid;
+}
+
+.rv-note-hub-bar .rv-locator-toolbar-actions > .rv-locator-new-rv {
+	margin: 0;
+	border-color: transparent;
+}
+
+.rv-note-hub-bar button[aria-disabled="true"] {
+	color: var(--text-faint);
+	opacity: 0.45;
+	pointer-events: none;
+	cursor: default;
+}
+
 .theme-dark .rv-hub-map,
 .theme-dark .rv-map-stage,
 .theme-dark .leaflet-container {
@@ -6224,13 +6297,14 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .rv-locator-glancable,
 .rv-locator-view,
+.rv-note-hub-bar,
 .internal-embed:has(.rv-locator-glancable),
 .markdown-embed:has(.rv-locator-glancable),
 .bases-embed.is-embed-capped {
-	--interactive-accent: #1f8a4c;
-	--interactive-accent-hover: #1f8a4c;
-	--text-accent: #1f8a4c;
-	--text-accent-hover: #1f8a4c;
+	--interactive-accent: var(--rv-hub-accent, #1f8a4c);
+	--interactive-accent-hover: var(--rv-hub-accent, #1f8a4c);
+	--text-accent: var(--rv-hub-accent, #1f8a4c);
+	--text-accent-hover: var(--rv-hub-accent, #1f8a4c);
 }
 
 .rv-locator-glancable,
@@ -8363,6 +8437,8 @@ button.rv-locator-map-pin > svg:not(.rv-urgency-glyph) {
 	color: var(--text-normal) !important;
 }
 
+.rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-status,
+.rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-status svg,
 .rv-locator-glancable .rv-locator-campaign-mark,
 .rv-locator-glancable .rv-locator-campaign-mark svg,
 .rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-campaign,

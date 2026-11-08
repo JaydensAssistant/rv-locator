@@ -178,7 +178,7 @@ export function buildMapPins(
 
 function pinColor(look: PinLook, row: MapPinSource, urgency: number | null, colors: readonly string[], status: RvStatus): string {
 	if (look === 'gender') return row.gender === 'Woman' ? '#ec4899' : '#3b82f6';
-	if (look === 'status') return STATUS_PIN_COLOR[status];
+	if (look === 'status') return status === 'Active' && colors[0] ? colors[0] : STATUS_PIN_COLOR[status];
 	if (look === 'priority') return priorityPinColor(row.priority, colors);
 	if (look === 'urgency') return urgencyAccentColor(urgency, row.priority, colors);
 	return interpolatePalette(row.shadeHeat ?? 0, colors);

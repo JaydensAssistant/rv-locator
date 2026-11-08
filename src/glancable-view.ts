@@ -83,6 +83,12 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 			if (adopt) this.register(adopt);
 		}
+		const stopSearch = this.plugin.registerHubSearch?.(() => {
+			if (this.root.closest('.rv-hub-swap-cover') || hostIsHidden(this.root)) return false;
+			this.openGlanceSearch();
+			return true;
+		});
+		if (stopSearch) this.register(stopSearch);
 		// A markdown file builds both reading and live-preview modes. The hidden
 		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
 		// delays the real hub. Paint when that mode is actually shown.
@@ -128,6 +134,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.ensureSearchField();
 		this.syncHubMapMount();
 		this.snapCardFrames();
+		if (!this.root.closest('.rv-hub-swap-cover') && !hostIsHidden(this.root) && this.plugin.takeHubSearch?.()) {
+			this.openGlanceSearch();
+		}
 	}
 
 	protected override afterChrome(): void {
@@ -704,7 +713,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const earth = place.createSpan('rv-locator-place-earth rv-card-earth');
 			earth.dataset.rvPath = row.path;
 			setIcon(earth, 'earth');
-			earth.classList.toggle('is-on', this.plugin.hubMapOpen && this.plugin.mapFocusPath === row.path);
 			place.addEventListener('click', (event) => {
 				event.preventDefault();
 				event.stopPropagation();

@@ -24,6 +24,7 @@ import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
+import { clearNoteHubBar, mountNoteHubBar } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
@@ -31,7 +32,7 @@ import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
-import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
+import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
 import { formatSlotOverride, parseSlotOverrides, SLOT_OVERRIDE_PROPERTY, type SlotOverride } from './slot-override';
@@ -61,7 +62,7 @@ import { cardPersonTitle, collisionSuffixOnly, filenameCollision, sanitizeNoteNa
 import { cacheStats, clearTileIndex, HOME_PAD_DEG, loadTileIndex } from './tile-index';
 import { AccentDriftGate, calloutTypeForChoice, readAccentHsl } from './suggestion-callout';
 import { navigatingToFile, withReadingPreview } from './reading-open';
-import { isRvDashboardNote, isRvLocatorSurface, refreshStampAgeLabels } from './rv-note-view';
+import { isRvDashboardNote, isRvHubNote, isRvLocatorSurface, refreshStampAgeLabels } from './rv-note-view';
 import { dismissNoteTitleModal, installRenameSwallow } from './rename-guard';
 import { applyHeadPin, storeFrontmatter } from './visit-paint-guard';
 import { clearBadgeStrokeCache, NearbyGlancableView } from './glancable-view';
@@ -79,7 +80,7 @@ import { idealityScore, insidePriorityFloor, urgencyAccentColor } from './scorin
 import { displayedUrgency } from './row-score';
 import { ageYears, registerRestroomIcons, replacePersonName } from './person-meta';
 import { generalModalAccent } from './modal-chrome';
-import { urgencyColorsFor } from './urgency-palette';
+import { hubAccentColor, urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
 import { RVLocatorSettingTab, startExtrasSync } from './settings-tab';
@@ -523,6 +524,75 @@ export default class RVLocatorPlugin extends Plugin {
 		body.toggleClass('rv-map-open', on && (this.hubMapOpen || this.noteMapOpen));
 		body.toggleClass('rv-hide-statusbar', on && shouldHideStatusBar(this.noteHidesStatusBar(), this.settings.hideStatusBar, this.standaloneBaseOpen()));
 		body.toggleClass('rv-hide-mobile-nav', on && shouldHideMobileNav(this.activeLocatorSurface(), this.standaloneBaseOpen()));
+		this.paintHubAccent();
+		this.syncNoteHubBar();
+	}
+
+	/** Band 0 of the active palette. Hub chrome and the note bar read `--rv-hub-accent`. */
+	private paintHubAccent(): void {
+		const view = document.defaultView;
+		let theme = '';
+		if (view && document.body) {
+			try { theme = view.getComputedStyle(document.body).getPropertyValue('--interactive-accent'); } catch { theme = ''; }
+		}
+		const color = hubAccentColor(this.settings.urgencyPalette, this.settings.urgencyCustomColors, theme);
+		document.documentElement.style.setProperty('--rv-hub-accent', color);
+	}
+
+	/** The hub bar on the open RV note. A hub leaf keeps its own bar. */
+	private syncNoteHubBar(): void {
+		const file = this.app.workspace.getActiveFile();
+		const data = file ? (this.cachedFrontmatter.get(file.path) ?? this.app.metadataCache.getFileCache(file)?.frontmatter) : null;
+		const record = (data ?? null) as Record<string, unknown> | null;
+		const show = Boolean(file && isRvDashboardNote(record) && !isRvHubNote(record));
+		const leaves = typeof this.app.workspace.getLeavesOfType === 'function'
+			? this.app.workspace.getLeavesOfType('markdown')
+			: [];
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || !(view.containerEl instanceof HTMLElement)) continue;
+			const content = view.containerEl;
+			if (!show || !file || view.file?.path !== file.path) {
+				clearNoteHubBar(content);
+				continue;
+			}
+			content.classList.add('is-rv-note');
+			mountNoteHubBar(content, file.path, {
+				noteMapLit: (path) => earthIsOn('note', this.earthFlags(), path),
+				toggleMap: (path) => { void this.openMapSoon(path); },
+				createNewRv: () => { void this.createNewRv(); },
+				openCampaign: () => { this.openCampaignModal(); },
+				openSearch: (path) => { this.openNoteBarSearch(path); },
+			});
+		}
+	}
+
+	/** Search needs the hub list, so the note bar opens that hub and then the field. */
+	private openNoteBarSearch(path: string): void {
+		const data = this.noteFrontmatter(path);
+		const hubs = hubRefs(readProperty(data, 'Hub')).map((hub) => resolveReturnHub(hub, this.settings.returnHubNote));
+		const target = hubs[0]?.target || this.settings.returnHubNote;
+		this.pendingHubSearch = true;
+		this.openHubLink(path, target);
+		if (this.askHubSearch()) this.pendingHubSearch = false;
+	}
+
+	registerHubSearch(open: () => boolean): () => void {
+		this.hubSearchOpeners.add(open);
+		return () => { this.hubSearchOpeners.delete(open); };
+	}
+
+	private askHubSearch(): boolean {
+		for (const open of this.hubSearchOpeners) {
+			if (open()) return true;
+		}
+		return false;
+	}
+
+	takeHubSearch(): boolean {
+		if (!this.pendingHubSearch) return false;
+		this.pendingHubSearch = false;
+		return true;
 	}
 
 	/** Hub notes, RV notes, and a base opened on its own hide the phone navbar. */
@@ -2434,10 +2504,11 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!(node instanceof HTMLElement)) return;
 			node.classList.toggle('is-on', earthIsOn('hub', flags));
 		});
-		root.querySelectorAll('.rv-card-earth[data-rv-path]').forEach((node) => {
+		root.querySelectorAll('.rv-note-bar-earth').forEach((node) => {
 			if (!(node instanceof HTMLElement)) return;
-			node.classList.toggle('is-on', earthIsOn('card', flags, node.dataset.rvPath ?? ''));
+			node.classList.toggle('is-on', earthIsOn('note', flags, node.dataset.rvPath ?? ''));
 		});
+		root.querySelectorAll('.rv-card-earth.is-on').forEach((node) => node.classList.remove('is-on'));
 	}
 
 	/**
@@ -2573,6 +2644,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private noteMapHandle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
 	private mapSplitDirty = false;
 	private mapSplitWatchers = new Set<() => void>();
+	private hubSearchOpeners = new Set<() => boolean>();
+	private pendingHubSearch = false;
 
 	/** The size last dragged on a hub, a base, or a note. */
 	mapSplitRatio(): number {
@@ -2644,6 +2717,7 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private syncNoteMap(): void {
+		this.syncNoteHubBar();
 		const content = this.noteMapHost();
 		if (!this.noteMapOpen || !content || leafHoldsHub(content)) {
 			if (this.noteMapHandle && this.noteMapHandle !== this.parkedHandle) this.noteMapHandle.destroy();

@@ -4,6 +4,8 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
 import { applyNoteMapFrame, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
+import { mountNoteHubBar } from '../src/note-hub-bar';
+import { hubAccentColor } from '../src/urgency-palette';
 import { clampMapSplit, mergeSettings } from '../src/types';
 
 function source(file: string): string {
@@ -200,5 +202,112 @@ describe('RV-B62 the note map stays on the note, at the hub\'s pixel height', ()
 		assert.match(glanceSrc, /querySelector\('\.rv-hub-swap-cover'\)/);
 		assert.match(glanceSrc, /writeMapBand\(this\.root/);
 		assert.doesNotMatch(map, /applyNoteMapFrame/);
+	});
+});
+
+describe('RV-B65 both title icons stay the text color', () => {
+	it('keeps the 18px box and drops the status glyph from the urgency color', () => {
+		const css = source('styles.css');
+		const at = css.indexOf('.rv-dashboard .rv-dash-status svg,');
+		const size = css.slice(at, css.indexOf('}', at));
+		assert.match(size, /width:\s*18px;/);
+		assert.match(size, /--icon-size:\s*18px;/);
+		assert.doesNotMatch(size, /--rv-urgency-accent/);
+		const neutralAt = css.indexOf('.rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-status,');
+		const neutral = css.slice(neutralAt, css.indexOf('}', neutralAt));
+		assert.match(neutral, /\.rv-dash-status svg,/);
+		assert.match(neutral, /\.rv-dash-campaign svg \{/);
+		assert.match(css.slice(neutralAt, neutralAt + 700), /color:\s*var\(--text-normal\) !important;/);
+	});
+});
+
+describe('RV-B63 the city sits right after the street', () => {
+	it('shrinks only the street and never ellipsizes the city', () => {
+		const css = source('styles.css');
+		const street = css.slice(css.indexOf('.rv-locator-glancable .rv-locator-card-street {'), css.indexOf('.rv-locator-glancable .rv-locator-when {'));
+		const city = css.slice(css.indexOf('.rv-locator-glancable .rv-locator-city-lg {'), css.indexOf('.rv-locator-glancable .rv-locator-distance-lg {'));
+		assert.match(street, /flex:\s*0 1 auto;/);
+		assert.match(street, /min-width:\s*0;/);
+		assert.match(street, /text-overflow:\s*ellipsis;/);
+		assert.doesNotMatch(street, /flex:\s*1 1000 auto;/);
+		assert.match(city, /flex:\s*0 0 auto;/);
+		assert.match(city, /text-overflow:\s*clip;/);
+		assert.doesNotMatch(city, /text-overflow:\s*ellipsis;/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-place \{[^}]*gap:\s*4px;/);
+		const cards = source('src/glance-card.ts');
+		assert.match(cards, /rv-locator-card-street/);
+		assert.match(cards, /rv-locator-city-lg/);
+		assert.match(cards, /rv-locator-distance-lg/);
+	});
+});
+
+describe('RV-B64 a card earth never lights', () => {
+	it('keeps the tap and the note map button, and drops the card on color', () => {
+		const glance = source('src/glancable-view.ts');
+		const main = source('src/main.ts');
+		const css = source('styles.css');
+		assert.match(glance, /toggleCardEarth\(row\.path\)/);
+		assert.doesNotMatch(glance, /classList\.toggle\('is-on'/);
+		assert.doesNotMatch(css, /\.rv-locator-place-earth\.is-on/);
+		assert.match(css, /\.rv-dashboard a\.rv-map-button\.is-on/);
+		assert.match(main, /earthIsOn\('card'/);
+		assert.match(main, /\.rv-card-earth\.is-on/);
+		assert.doesNotMatch(main, /earthIsOn\('card', flags, node\.dataset\.rvPath/);
+	});
+});
+
+describe('RV-B67 the hub accent is band 0', () => {
+	it('follows the palette, including a custom color, and leaves modal fallbacks', () => {
+		assert.equal(hubAccentColor('cotton-candy', ['#111', '#222', '#333', '#444']), '#14ac87');
+		assert.equal(hubAccentColor('custom', ['#abcdef', '#222', '#333', '#444']), '#abcdef');
+		assert.equal(hubAccentColor('default', ['#111', '#222', '#333', '#444']), '#1f8a4c');
+		const mixed = hubAccentColor('accent', ['#111', '#222', '#333', '#444'], '#14ac87');
+		assert.match(mixed, /#14ac87/);
+		assert.doesNotMatch(mixed, /var\(--interactive-accent\)/);
+		const css = source('styles.css');
+		assert.match(css, /--interactive-accent:\s*var\(--rv-hub-accent, #1f8a4c\);/);
+		assert.match(css, /\.rv-may-cell\.is-may \{[^}]*var\(--rv-hub-accent, #1f8a4c\)/);
+		assert.match(css, /--rv-modal-accent, #1f8a4c/);
+		assert.match(source('src/main.ts'), /paintHubAccent\(/);
+		assert.match(source('src/map-pins.ts'), /status === 'Active' && colors\[0\]/);
+	});
+});
+
+describe('RV-B66 the note shows the hub bar', () => {
+	it('keeps the same six slots, grays sort and filter, and sits under the map', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const leaf = dom.window.document.createElement('div');
+		const calls: string[] = [];
+		const bar = mountNoteHubBar(leaf, 'People/Ada.md', {
+			noteMapLit: () => true,
+			toggleMap: (path) => calls.push(`map:${path}`),
+			createNewRv: () => calls.push('new'),
+			openCampaign: () => calls.push('flag'),
+			openSearch: (path) => calls.push(`search:${path}`),
+		});
+		const labels = [...bar.querySelectorAll('button')].map((button) => button.getAttribute('aria-label'));
+		assert.deepEqual(labels, ['Sort', 'Search', 'Map', 'Campaign', 'Filters', 'New RV']);
+		const sort = bar.querySelector('[aria-label="Sort"]');
+		const filter = bar.querySelector('[aria-label="Filters"]');
+		assert.equal(sort instanceof dom.window.HTMLButtonElement && sort.disabled, true);
+		assert.equal(sort?.getAttribute('aria-disabled'), 'true');
+		assert.equal(filter instanceof dom.window.HTMLButtonElement && filter.disabled, true);
+		assert.equal(filter?.getAttribute('aria-disabled'), 'true');
+		(bar.querySelector('[aria-label="Search"]') as HTMLButtonElement).click();
+		(bar.querySelector('[aria-label="Map"]') as HTMLButtonElement).click();
+		(bar.querySelector('[aria-label="Campaign"]') as HTMLButtonElement).click();
+		(bar.querySelector('[aria-label="New RV"]') as HTMLButtonElement).click();
+		assert.deepEqual(calls, ['search:People/Ada.md', 'map:People/Ada.md', 'flag', 'new']);
+		assert.equal(bar.querySelector('.rv-note-bar-earth')?.classList.contains('is-on'), true);
+		const css = source('styles.css');
+		assert.match(css, /grid-template-rows:\s*auto minmax\(0, 1fr\) 3px var\(--rv-note-map, minmax\(120px, 42%\)\) auto;/);
+		assert.match(css, /\.is-note-map > \.rv-note-hub-bar \{[^}]*grid-row:\s*5;/);
+		assert.match(css, /button\[aria-disabled="true"\] \{[^}]*pointer-events:\s*none;/);
+		const main = source('src/main.ts');
+		assert.match(main, /openNoteBarSearch\(/);
+		assert.match(main, /openCampaignModal\(\)/);
+		assert.match(main, /this\.syncNoteHubBar\(\)/);
 	});
 });

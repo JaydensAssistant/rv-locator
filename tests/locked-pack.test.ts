@@ -164,7 +164,7 @@ describe('locked pack', () => {
 		assert.match(css, /\.rv-note-map-handle \{[^}]*background:\s*#000;/);
 		assert.match(css, /width:\s*40px;\s*height:\s*5px;/);
 		assert.match(css, /width:\s*44px;\s*height:\s*44px;/);
-		assert.match(css, /\.rv-locator-glancable,\s*\.rv-locator-view,[\s\S]*?--interactive-accent:\s*#1f8a4c;/);
+		assert.match(css, /\.rv-locator-glancable,\s*\.rv-locator-view,[\s\S]*?--interactive-accent:\s*var\(--rv-hub-accent, #1f8a4c\);/);
 		assert.match(css, /caret-color:\s*var\(--rv-urgency-accent\)/);
 		assert.match(css, /a\.rv-map-button:active svg,\s*\.rv-dashboard a\.rv-map-button\.is-on svg[\s\S]*?color:\s*var\(--rv-urgency-accent\)/);
 		assert.match(css, /\.modal-close-button \{[^}]*background:\s*transparent !important;[^}]*box-shadow:\s*none !important;/);

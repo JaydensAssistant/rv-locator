@@ -308,7 +308,7 @@ describe('location picker and return times', () => {
 		assert.match(css, /\.prompt\.rv-modal-general button\.mod-cta/);
 		assert.match(css, /\.prompt\.rv-modal-rv button\.mod-cta/);
 		assert.match(css, /\.prompt\.rv-modal-general,\s*\.prompt\.rv-modal-rv \.suggestion-highlight|\.prompt\.rv-modal-rv \.suggestion-highlight/);
-		assert.match(css, /--interactive-accent:\s*#1f8a4c/);
+		assert.match(css, /--interactive-accent:\s*var\(--rv-hub-accent, #1f8a4c\)/);
 		assert.match(css, /--interactive-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
 	});
 

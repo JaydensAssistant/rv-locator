@@ -96,8 +96,8 @@ describe('RV-239 RV-240 RV-242 RV-243', () => {
 	it('centers the return row, shrinks the street first, and drops the blur and the 8px overlay inset', () => {
 		const css = source('styles.css');
 		assert.match(css, /\.rv-locator-return-inline \{[^}]*align-items:\s*center;/);
-		assert.match(css, /\.rv-locator-card-street \{[^}]*flex:\s*1 1000 auto;/);
-		assert.match(css, /\.rv-locator-city-lg \{[^}]*flex:\s*0 1 auto;/);
+		assert.match(css, /\.rv-locator-card-street \{[^}]*flex:\s*0 1 auto;/);
+		assert.match(css, /\.rv-locator-city-lg \{[^}]*flex:\s*0 0 auto;/);
 		assert.match(css, /\.rv-map-bar button \{[^}]*backdrop-filter:\s*none;/);
 		assert.match(css, /body\.is-mobile\.is-floating-nav \.modal\.rv-locator-modal \.modal-title/);
 		assert.doesNotMatch(css, /\.rv-closed-title \{[^}]*padding-inline:\s*8px/);
