@@ -76,7 +76,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const dropLanding = this.plugin.registerHubLander?.(() => this.landArrival());
 		if (dropLanding) this.register(dropLanding);
 		if (!parentEl.closest('.rv-hub-swap-cover')) {
-			const adopt = this.plugin.registerLiveHub?.((el, api) => this.adoptHubMap(el, api));
+			const adopt = this.plugin.registerLiveHub?.((el, api) => {
+				if (hostIsHidden(this.root)) return;
+				this.adoptHubMap(el, api);
+			});
 			if (adopt) this.register(adopt);
 		}
 		// A markdown file builds both reading and live-preview modes. The hidden
@@ -189,6 +192,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private ensureHubMap(): void {
+		if (hostIsHidden(this.root)) return;
 		this.ensureHubFullscreenSync();
 		this.ensureStage();
 		const stage = this.stageEl ?? this.root;
@@ -197,9 +201,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.hubMapEl = sitting;
 			if (!this.hubMapApi) {
 				const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
-				this.hubMapApi = api ?? this.plugin.mountHubMap(sitting);
+				if (api || sitting.querySelector('.rv-map-stage')) this.hubMapApi = api;
+				else this.hubMapApi = this.plugin.mountHubMap(sitting);
 			}
-			if (this.renderedPaths) this.hubMapApi.applyRenderedOrder(this.renderedPaths);
+			if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
 			return;
 		}
 		if (this.hubMapEl?.closest('.rv-map-park') && !this.plugin.wantsParkedMapBack?.()) return;
@@ -218,9 +223,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 			stage.appendChild(parked);
 			this.hubMapEl = parked;
 			const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
-			this.hubMapApi = api ?? this.plugin.mountHubMap(parked);
-			if (this.renderedPaths) this.hubMapApi.applyRenderedOrder(this.renderedPaths);
-			this.hubMapApi.invalidateSize();
+			const painted = parked.querySelector('.rv-map-stage') != null;
+			if (api || painted) this.hubMapApi = api;
+			else this.hubMapApi = this.plugin.mountHubMap(parked);
+			if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
+			const view = stage.ownerDocument.defaultView;
+			if (view?.requestAnimationFrame) view.requestAnimationFrame(() => this.hubMapApi?.invalidateSize());
+			else this.hubMapApi?.invalidateSize();
 			return;
 		}
 		const handle = stage.createDiv('rv-hub-map-handle');
@@ -273,7 +282,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (el.parentElement !== stage) stage.appendChild(el);
 		this.hubMapEl = el;
 		if (api) this.hubMapApi = api;
-		else if (!this.hubMapApi) this.hubMapApi = this.plugin.mountHubMap(el);
+		else if (!this.hubMapApi && !el.querySelector('.rv-map-stage')) this.hubMapApi = this.plugin.mountHubMap(el);
 		if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
 		this.hubMapApi?.invalidateSize();
 	}

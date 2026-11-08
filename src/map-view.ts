@@ -72,6 +72,8 @@ export class RvMapView extends ItemView {
 	private selectedPath: string | null = null;
 	private detachMap: (() => void) | null = null;
 	private stageObserver: ResizeObserver | null = null;
+	/** True after a paint that used the stage's real box. A later 0-size paint keeps that frame. */
+	private laidOut = false;
 	private hideMapButton: HTMLElement | null = null;
 	private tileImgs = new Map<string, HTMLImageElement>();
 	private tileBacks = new Map<string, HTMLElement>();
@@ -547,8 +549,11 @@ export class RvMapView extends ItemView {
 		const stage = this.stage;
 		const pins = this.pinLayer;
 		if (!stage || !pins) return;
-		const width = stage.clientWidth || 640;
-		const height = stage.clientHeight || 480;
+		const box = stagePaintBox(stage.clientWidth, stage.clientHeight, this.laidOut);
+		if (!box) return;
+		this.laidOut = stage.clientWidth >= 2 && stage.clientHeight >= 2;
+		const width = box.width;
+		const height = box.height;
 		const z = Math.floor(this.zoom);
 		const frac = 2 ** (this.zoom - z);
 		const scale = 2 ** z;
@@ -1253,6 +1258,17 @@ export function sizePinGlyph(host: HTMLElement, px = MAP_PIN_GLYPH_PX): void {
 
 export function tileReady(img: HTMLImageElement | undefined): boolean {
 	return img?.classList.contains('is-ready') === true && img.naturalWidth > 0;
+}
+
+/**
+ * A stage that already painted at its real size must not throw that frame away
+ * while the next box is still 0. The first paint, including a test with no
+ * layout box, still uses a stand-in size so a zoom change can redraw.
+ */
+export function stagePaintBox(clientWidth: number, clientHeight: number, paintedAtRealSize: boolean): { width: number; height: number } | null {
+	if (clientWidth >= 2 && clientHeight >= 2) return { width: clientWidth, height: clientHeight };
+	if (paintedAtRealSize) return null;
+	return { width: 640, height: 480 };
 }
 
 /** A loaded coarser tile covers a new tile until its own image arrives. */

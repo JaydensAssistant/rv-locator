@@ -4,7 +4,8 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { URGENCY_COLUMN_ID } from '../src/constants';
 import { clusterAppearance, groupPinStacks, orderByHubSort, pinUrgencyZ, type MapPin } from '../src/map-pins';
-import { claimParkedMap, mapStayForOpen, moveMapToStage, parkMapNode } from '../src/map-handoff';
+import { claimParkedMap, mapStayForOpen, moveMapToStage, parkMapNode, placeHandedMap, shownHubStage } from '../src/map-handoff';
+import { stagePaintBox } from '../src/map-view';
 import { annotateRowScores, displayedUrgency } from '../src/row-score';
 import { urgencyScore } from '../src/scoring';
 import { sortRowsBy, type Sortable } from '../src/sort';
@@ -154,6 +155,14 @@ describe('RV-B53 snoozed cards on Urgency', () => {
 		assert.ok(pinUrgencyZ(1, false, true, 1_000) > pinUrgencyZ(1, false, true, 9_000));
 		assert.ok(pinUrgencyZ(1, false, true, 1_000) < pinUrgencyZ(0.2, false));
 		assert.equal(pinUrgencyZ(1, true, true), 0);
+		const soon = Date.UTC(2026, 10, 8);
+		const later = Date.UTC(2026, 10, 22);
+		const soonZ = pinUrgencyZ(1, false, true, soon);
+		const laterZ = pinUrgencyZ(1, false, true, later);
+		assert.notEqual(soonZ, laterZ);
+		assert.ok(soonZ > laterZ);
+		assert.ok(laterZ > pinUrgencyZ(1, false, true));
+		assert.ok(soonZ < pinUrgencyZ(0.2, false));
 		const [group] = groupPinStacks([
 			{ path: 'later', x: 0, y: 0, urgency: 9, priority: 9, snoozed: true, snoozeEndMs: 9_000 },
 			{ path: 'soon', x: 1, y: 0, urgency: 9, priority: 1, snoozed: true, snoozeEndMs: 1_000 },
@@ -240,5 +249,64 @@ describe('RV-B54 the map stays on screen', () => {
 		assert.match(source('src/glancable-view.ts'), /rv-map-spacer/);
 		const css = source('styles.css');
 		assert.match(css, /\.rv-map-park > \.rv-hub-map,\s*\n\.rv-map-park > \.rv-note-map \{[^}]*display:\s*flex !important/);
+	});
+
+	it('hands the painted map to the shown hub and keeps that frame when the stage has no size yet', () => {
+		const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>');
+		const host = globalThis as typeof globalThis & Record<string, unknown>;
+		host.HTMLElement = dom.window.HTMLElement;
+		host.Element = dom.window.Element;
+		const doc = dom.window.document;
+		const hidden = doc.createElement('div');
+		hidden.style.display = 'none';
+		const hiddenStage = doc.createElement('div');
+		hiddenStage.className = 'rv-locator-stage';
+		const hiddenCard = doc.createElement('div');
+		hiddenCard.className = 'rv-locator-card';
+		hiddenStage.appendChild(hiddenCard);
+		hidden.appendChild(hiddenStage);
+		const live = doc.createElement('div');
+		const liveStage = doc.createElement('div');
+		liveStage.className = 'rv-locator-stage';
+		const liveCard = doc.createElement('div');
+		liveCard.className = 'rv-locator-card';
+		const spacer = doc.createElement('div');
+		spacer.className = 'rv-hub-map rv-map-spacer';
+		liveStage.append(liveCard, spacer);
+		live.appendChild(liveStage);
+		const map = doc.createElement('div');
+		map.className = 'rv-hub-map';
+		const tiles = doc.createElement('div');
+		tiles.className = 'rv-map-stage';
+		const tile = doc.createElement('img');
+		tile.className = 'rv-map-tile is-ready';
+		tiles.appendChild(tile);
+		map.appendChild(tiles);
+		hiddenStage.appendChild(map);
+		doc.body.append(hidden, live);
+		assert.equal(shownHubStage(doc), liveStage);
+		placeHandedMap(map, liveStage);
+		assert.equal(map.parentElement, liveStage);
+		assert.equal(spacer.isConnected, false);
+		assert.equal(liveStage.querySelector('.rv-map-tile.is-ready'), tile);
+		assert.equal(stagePaintBox(0, 0, true), null);
+		assert.deepEqual(stagePaintBox(0, 0, false), { width: 640, height: 480 });
+		assert.deepEqual(stagePaintBox(392, 237, true), { width: 392, height: 237 });
+	});
+
+	it('carries an open map through the Quick Switcher onto an RV note and clears it for any other file', () => {
+		const main = source('src/main.ts');
+		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
+		assert.match(hook, /carryMapToOpenedFile\(file\)/);
+		const carry = main.slice(main.indexOf('carryMapToOpenedFile(file: TFile)'), main.indexOf('private settleNoteMap'));
+		assert.match(carry, /isRvDashboardNote/);
+		assert.match(carry, /this\.parkOpenMap\(\)/);
+		assert.match(carry, /this\.settleNoteMap\(file\.path, 0\)/);
+		assert.match(carry, /this\.hubMapOpen = false/);
+		assert.match(carry, /this\.noteMapOpen = false/);
+		assert.match(carry, /this\.applyLayoutClasses\(\)/);
+		assert.match(carry, /this\.syncNoteMap\(\)/);
+		assert.match(source('src/glancable-view.ts'), /hostIsHidden\(this\.root\)/);
+		assert.match(source('src/map-view.ts'), /stagePaintBox\(stage\.clientWidth, stage\.clientHeight/);
 	});
 });

@@ -1,3 +1,5 @@
+import { hostIsHidden } from './hub-cover';
+
 /** Fixed holder that keeps a map on screen while its view is swapped. */
 export const MAP_PARK_CLASS = 'rv-map-park';
 
@@ -23,10 +25,50 @@ export function visibleMapNode(doc: Document): HTMLElement | null {
 	for (let index = 0; index < nodes.length; index += 1) {
 		const node = nodes[index];
 		if (!(node instanceof HTMLElement)) continue;
+		if (node.classList.contains('rv-map-spacer')) continue;
 		if (node.closest('.rv-hub-swap-cover')) continue;
+		if (hostIsHidden(node)) continue;
 		return node;
 	}
 	return null;
+}
+
+/**
+ * The hub stage the user is looking at. A hidden markdown mode also has cards,
+ * and handing the map to that stage leaves the visible band as an empty spacer.
+ */
+export function shownHubStage(doc: Document): HTMLElement | null {
+	const cards = doc.querySelectorAll('.rv-locator-card');
+	let spacerStage: HTMLElement | null = null;
+	let fallback: HTMLElement | null = null;
+	for (let index = 0; index < cards.length; index += 1) {
+		const card = cards[index];
+		if (!(card instanceof HTMLElement) || card.closest('.rv-hub-swap-cover')) continue;
+		const stage = card.closest('.rv-locator-stage');
+		if (!(stage instanceof HTMLElement) || hostIsHidden(stage)) continue;
+		if (!fallback) fallback = stage;
+		if (stage.querySelector(':scope > .rv-map-spacer')) spacerStage = stage;
+	}
+	if (spacerStage) return spacerStage;
+	if (fallback) return fallback;
+	const spacers = doc.querySelectorAll('.rv-map-spacer');
+	for (let index = 0; index < spacers.length; index += 1) {
+		const spacer = spacers[index];
+		if (!(spacer instanceof HTMLElement) || spacer.closest('.rv-hub-swap-cover')) continue;
+		if (hostIsHidden(spacer)) continue;
+		const stage = spacer.closest('.rv-locator-stage');
+		if (stage instanceof HTMLElement) return stage;
+	}
+	return null;
+}
+
+/** Drop the blank reservation and put the painted map in the stage the user sees. */
+export function placeHandedMap(map: HTMLElement, stage: HTMLElement): void {
+	map.classList.remove('rv-note-map', 'rv-map-spacer');
+	map.classList.add('rv-hub-map');
+	const spacers = stage.querySelectorAll(':scope > .rv-map-spacer');
+	for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();
+	stage.appendChild(map);
 }
 
 /** Lift a map out of the view that is about to be replaced. The node stays connected. */

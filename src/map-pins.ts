@@ -273,8 +273,12 @@ export function popupClearOfChrome(
 export function pinUrgencyZ(urgency: number | null, selected = false, snoozed = false, snoozeEndMs: number | null = null): number {
 	if (snoozed) {
 		if (selected) return 0;
-		if (snoozeEndMs == null || !Number.isFinite(snoozeEndMs)) return -1e6;
-		return -Math.min(1e6 - 1, Math.max(1, snoozeEndMs / 1000));
+		// Seconds keep two real end dates apart. A raw epoch in milliseconds does not fit a z-index,
+		// and capping every date at the same floor stacked both snoozed pins together.
+		if (snoozeEndMs == null || !Number.isFinite(snoozeEndMs)) return -2_000_000_000;
+		const seconds = Math.round(snoozeEndMs / 1000);
+		const rank = Math.min(1_900_000_000, Math.max(1, seconds));
+		return -rank;
 	}
 	const heat = urgency == null || !Number.isFinite(urgency) ? 0 : Math.max(0, Math.round(urgency * 10));
 	const layer = Math.min(20, 1 + heat);

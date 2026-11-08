@@ -29,7 +29,7 @@ import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, parkMapNode, visibleMapNode } from './map-handoff';
+import { claimParkedMap as takeParkedMapNode, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -982,6 +982,8 @@ export default class RVLocatorPlugin extends Plugin {
 				plugin.retainMapForHub();
 				holdLeafForHubPaint(this.view?.containerEl, plugin.hubCoverOptions(file.basename));
 				plugin.paintEarthStates();
+			} else if (!plugin.unloaded) {
+				plugin.carryMapToOpenedFile(file);
 			}
 			return openFile.call(this, file, plugin.previewStateFor(file, openState));
 		};
@@ -1943,29 +1945,16 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Cover drop. The same map node moves into the live hub stage before the cover leaves. */
 	private handHubMapToLive(): void {
-		const map = document.querySelector('.rv-hub-swap-cover .rv-hub-map, .rv-map-park .rv-hub-map, .rv-map-park .rv-note-map');
+		const map = document.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer), .rv-map-park .rv-hub-map:not(.rv-map-spacer), .rv-map-park .rv-note-map');
 		if (!(map instanceof HTMLElement)) return;
-		const cards = document.querySelectorAll('.rv-locator-card');
-		let stage: HTMLElement | null = null;
-		for (let index = 0; index < cards.length; index += 1) {
-			const card = cards[index];
-			if (!(card instanceof HTMLElement) || card.closest('.rv-hub-swap-cover')) continue;
-			const found = card.closest('.rv-locator-stage');
-			if (found instanceof HTMLElement) {
-				stage = found;
-				break;
-			}
-		}
+		const stage = shownHubStage(document);
 		const api = this.parkedHandle ?? this.lastMapHandle;
 		if (!(stage instanceof HTMLElement)) {
 			if (!map.closest('.rv-map-park')) parkMapNode(map);
 			this.parkedHandle = api;
 			return;
 		}
-		map.classList.remove('rv-note-map', 'rv-map-spacer');
-		map.classList.add('rv-hub-map');
-		stage.querySelector(':scope > .rv-map-spacer')?.remove();
-		stage.appendChild(map);
+		placeHandedMap(map, stage);
 		const holders = document.querySelectorAll('.rv-map-park');
 		for (let index = 0; index < holders.length; index += 1) {
 			const holder = holders[index];
@@ -2291,6 +2280,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private liveHubAdopter: ((el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null) => void) | null = null;
 	/** The view that parked the map may claim it back. A refresh during the handoff may not. */
 	private returnParkedMap = false;
+	/** A card tap already parked the map and will settle it. The open hook must not settle twice. */
+	private noteMapHandoff = false;
 	private hubScrollers = new Set<(path: string | null) => void>();
 	private hubLanders = new Set<() => void>();
 
@@ -2343,31 +2334,78 @@ export default class RVLocatorPlugin extends Plugin {
 		this.mapFocusPath = path;
 		const file = this.app.vault.getFileByPath(path);
 		if (!(file instanceof TFile)) return;
+		this.noteMapHandoff = true;
 		this.parkOpenMap();
 		const active = this.app.workspace.getActiveFile();
 		const opened = active?.path === path
 			? Promise.resolve()
 			: this.app.workspace.getLeaf(false).openFile(file, { active: true, state: { mode: 'preview', source: false } });
-		const settle = (attempt: number): void => {
-			if (this.unloaded || this.mapFocusPath !== path) {
-				this.restoreParkedToHub();
-				return;
-			}
-			this.noteMapOpen = true;
-			this.syncNoteMap();
-			const placed = document.querySelector('.rv-note-map');
-			const stillParked = placed instanceof HTMLElement && placed.closest('.rv-map-park') != null;
-			if ((!placed || stillParked) && attempt < 4) {
-				this.noteMapOpen = false;
-				window.requestAnimationFrame(() => settle(attempt + 1));
-				return;
-			}
-			this.hubMapOpen = false;
-			this.paintEarthStates();
-			for (const callback of this.viewRefreshers) callback();
-			this.focusMapPin(path, true);
-		};
-		void Promise.resolve(opened).then(() => settle(0));
+		void Promise.resolve(opened).then(() => {
+			this.noteMapHandoff = false;
+			this.settleNoteMap(path, 0);
+		});
+	}
+
+	/**
+	 * Quick Switcher, the file explorer, and every other open. A card tap sets
+	 * `noteMapHandoff` and settles itself. An RV note keeps the painted map.
+	 * Anything else may close it, and then both flags and `rv-map-open` clear.
+	 */
+	carryMapToOpenedFile(file: TFile): void {
+		if (!this.hubMapOpen && !this.noteMapOpen) return;
+		if (this.noteMapHandoff && this.mapFocusPath === file.path) return;
+		if (this.coversHubOpen(file)) return;
+		const cached = this.cachedFrontmatter.get(file.path);
+		const stored = this.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+		if (isRvDashboardNote(cached ?? stored ?? null)) {
+			this.mapFocusPath = file.path;
+			this.parkOpenMap();
+			window.requestAnimationFrame(() => this.settleNoteMap(file.path, 0));
+			return;
+		}
+		this.hubMapOpen = false;
+		this.noteMapOpen = false;
+		this.mapFocusPath = null;
+		this.dropParkedMap();
+		this.syncNoteMap();
+		this.applyLayoutClasses();
+		this.paintEarthStates();
+		for (const callback of this.viewRefreshers) callback();
+	}
+
+	/** Move the parked map into the note once that note's leaf is actually showing. */
+	private settleNoteMap(path: string, attempt: number): void {
+		if (this.unloaded || this.mapFocusPath !== path) {
+			this.restoreParkedToHub();
+			return;
+		}
+		if (!this.shownNoteLeaf(path) && attempt < 90) {
+			window.requestAnimationFrame(() => this.settleNoteMap(path, attempt + 1));
+			return;
+		}
+		this.noteMapOpen = true;
+		this.syncNoteMap();
+		const placed = document.querySelector('.rv-note-map');
+		const stillParked = placed instanceof HTMLElement && placed.closest('.rv-map-park') != null;
+		if ((!placed || stillParked) && attempt < 90) {
+			this.noteMapOpen = false;
+			window.requestAnimationFrame(() => this.settleNoteMap(path, attempt + 1));
+			return;
+		}
+		this.hubMapOpen = false;
+		this.paintEarthStates();
+		for (const callback of this.viewRefreshers) callback();
+		this.focusMapPin(path, true);
+	}
+
+	private shownNoteLeaf(path: string): HTMLElement | null {
+		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
+			if (!noteSurfaceShown(view.containerEl)) continue;
+			return view.containerEl;
+		}
+		return null;
 	}
 
 	/** Card earth on the hub. A lit earth closes the hub map. An unlit earth opens it on that RV. */
