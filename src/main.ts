@@ -13,7 +13,7 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { countyNameKey, decideGeocodePick, homeCountyHits, mergeHomeFirst, placeFilterParam, preferHomeRegion } from './home-base';
-import { HUB_STACK_BELOW_PX, applyNoteMapFrame } from './hub-layout';
+import { HUB_STACK_BELOW_PX, applyNoteMapFrame, leafHoldsHub, mapPanePx, writeMapBand } from './hub-layout';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
@@ -1996,6 +1996,11 @@ export default class RVLocatorPlugin extends Plugin {
 		ensureHubMapHandle(stage);
 		lockHandedMapBand(map, band);
 		markHandedMapHost(stage);
+		const hub = stage.closest('.rv-locator-view');
+		if (hub instanceof HTMLElement) {
+			const leaf = hub.closest('.workspace-leaf-content') ?? hub.closest('.workspace-leaf') ?? hub;
+			writeMapBand(hub, mapPanePx(leaf instanceof HTMLElement ? leaf : hub, hub.classList.contains('is-side-map')), this.settings.mapSplitRatio, '--rv-map-size');
+		}
 		const spacers = document.querySelectorAll('.rv-map-spacer');
 		for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();
 		const holders = document.querySelectorAll('.rv-map-park');
@@ -2600,7 +2605,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (handle.dataset.rvBound === '1') return;
 		handle.dataset.rvBound = '1';
 		const paint = (): void => {
-			content.style.setProperty('--rv-note-map', `${Math.round(clampMapSplit(this.settings.mapSplitRatio, 'note') * 100)}%`);
+			this.paintNoteMapBand(content);
 		};
 		paint();
 		handle.addEventListener('pointerdown', (event) => {
@@ -2632,9 +2637,15 @@ export default class RVLocatorPlugin extends Plugin {
 	 * chooses side-by-side (~60/40) or stacked (note above, map below).
 	 * Switching to another note closes the panel.
 	 */
+	/** Same pixel band the hub writes, from the leaf under its header. */
+	private paintNoteMapBand(content: HTMLElement): void {
+		const side = content.classList.contains('is-note-map-side');
+		writeMapBand(content, mapPanePx(content, side), clampMapSplit(this.settings.mapSplitRatio, 'note'), '--rv-note-map');
+	}
+
 	private syncNoteMap(): void {
 		const content = this.noteMapHost();
-		if (!this.noteMapOpen || !content) {
+		if (!this.noteMapOpen || !content || leafHoldsHub(content)) {
 			if (this.noteMapHandle && this.noteMapHandle !== this.parkedHandle) this.noteMapHandle.destroy();
 			this.noteMapHandle = null;
 			this.noteMapResize?.disconnect();
@@ -2679,9 +2690,16 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Side-by-side at the hub breakpoint and wider. Narrow leaves stack. */
 	private watchNoteMapBox(content: HTMLElement): void {
 		const apply = (): void => {
+			if (!this.noteMapOpen || leafHoldsHub(content) || this.noteMapHost() !== content) {
+				this.noteMapResize?.disconnect();
+				this.noteMapResize = null;
+				content.classList.remove('is-note-map', 'is-note-map-side');
+				return;
+			}
 			const box = content.getBoundingClientRect();
 			const width = box.width > 0 ? box.width : content.clientWidth;
 			applyNoteMapFrame(content, width);
+			this.paintNoteMapBand(content);
 			this.syncNoteMapStatus(content);
 		};
 		apply();
@@ -2824,10 +2842,11 @@ export default class RVLocatorPlugin extends Plugin {
 	keepNoteMapLayout(): void {
 		if (!this.noteMapOpen) return;
 		const content = this.noteMapHost();
-		if (!content) return;
+		if (!content || leafHoldsHub(content)) return;
 		const box = content.getBoundingClientRect();
 		const width = box.width > 0 ? box.width : content.clientWidth;
 		applyNoteMapFrame(content, width);
+		this.paintNoteMapBand(content);
 		this.syncNoteMapStatus(content);
 	}
 

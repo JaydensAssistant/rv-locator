@@ -2605,6 +2605,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-locator-glancable .rv-locator-place-earth svg {
 	width: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
 	height: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
+	--icon-size: round(nearest, calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2)), 1px);
 }
 
 .rv-locator-glancable .rv-locator-return-line {
@@ -2730,6 +2731,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-locator-campaign-mark svg {
 	width: calc(14px * var(--rv-font-scale, 1));
 	height: calc(14px * var(--rv-font-scale, 1));
+	--icon-size: calc(14px * var(--rv-font-scale, 1));
 }
 
 .rv-locator-toolbar-actions {
@@ -3717,6 +3719,7 @@ a.rv-address-link.is-empty {
 .inline-title .rv-note-status svg {
 	width: 1em;
 	height: 1em;
+	--icon-size: 1em;
 }
 
 .rv-study-extra-select {
@@ -4074,7 +4077,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 /* The parked map stays visible for the frames between the hub stage and the note stage. */
 .rv-map-park {
 	position: fixed;
-	z-index: 60;
+	z-index: 80;
 	pointer-events: none;
 	overflow: hidden;
 }
@@ -4158,11 +4161,11 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	position: relative;
 	z-index: 8;
 	display: block;
-	flex: 0 0 14px;
-	width: 14px;
+	flex: 0 0 3px;
+	width: 3px;
 	overflow: visible;
 	cursor: ew-resize;
-	background: linear-gradient(#000, #000) center / 3px 100% no-repeat;
+	background: #000;
 }
 
 .rv-locator-view.is-side-map .rv-hub-map-handle::before {
@@ -4194,13 +4197,13 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	position: relative;
 	z-index: 8;
 	display: block;
-	flex: 0 0 14px;
-	height: 14px;
+	flex: 0 0 3px;
+	height: 3px;
 	margin: 0;
 	padding: 0;
 	overflow: visible;
 	cursor: ns-resize;
-	background: linear-gradient(#000, #000) center / 100% 3px no-repeat;
+	background: #000;
 }
 
 /* Same 40×5 white pill, 3px black bar, and 44×44 hit as the note grip. Dark and light. */
@@ -5691,9 +5694,12 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 .rv-locator-glancable .rv-locator-campaign-mark,
 .rv-dashboard .rv-dash-campaign,
 .rv-dashboard .rv-dash-campaign svg,
+.rv-dashboard .rv-dash-status,
+.rv-dashboard .rv-dash-status svg,
 .rv-locator-glancable .rv-locator-campaign-mark svg {
 	width: 18px;
 	height: 18px;
+	--icon-size: 18px;
 	color: var(--rv-urgency-accent, currentColor);
 }
 
@@ -6358,6 +6364,7 @@ body.rv-center-visit-notes .rv-older-heading {
 .rv-locator-glancable .rv-locator-card-name .rv-locator-campaign-mark svg {
 	width: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
 	height: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
+	--icon-size: calc(14px * var(--rv-font-scale, 1) * var(--rv-icon-scale, 1.2));
 	color: #fff;
 }
 

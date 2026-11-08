@@ -136,7 +136,7 @@ export function parkMapNode(el: HTMLElement): HTMLElement {
 	holder.style.top = `${rect.top}px`;
 	holder.style.width = `${Math.max(rect.width, 1)}px`;
 	holder.style.height = `${Math.max(rect.height, 1)}px`;
-	holder.style.zIndex = '60';
+	holder.style.zIndex = '80';
 	doc.body.appendChild(holder);
 	holder.appendChild(el);
 	return holder;

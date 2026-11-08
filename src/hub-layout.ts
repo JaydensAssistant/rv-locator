@@ -2,21 +2,35 @@
 export const HUB_STACK_BELOW_PX = 600;
 
 /**
+ * A hub or base leaf. The note-map grid belongs only on a markdown note
+ * that is showing the note map, never on the leaf that holds this view.
+ */
+export function leafHoldsHub(content: HTMLElement): boolean {
+	if (typeof content.querySelector !== 'function') return false;
+	return content.querySelector(':scope > .view-content .rv-locator-view, :scope > .view-content .rv-locator-glancable, :scope > .view-content .bases-embed, :scope > .view-content .block-language-base') != null;
+}
+
+/**
  * Note-map leaf classes. A width of 0 is an unmeasured or fullscreen frame:
  * keep the side class already on the leaf instead of dropping the layout.
+ * A hub or base leaf loses the class instead of gaining it.
  */
 export function applyNoteMapFrame(content: HTMLElement, width: number): void {
+	if (leafHoldsHub(content)) {
+		content.classList.remove('is-note-map', 'is-note-map-side');
+		return;
+	}
 	content.classList.add('is-note-map');
 	if (width > 0) content.classList.toggle('is-note-map-side', width >= HUB_STACK_BELOW_PX);
 }
 
-/** Visible drag strip, and the two-row bar without a safe-area inset. */
-export const STACKED_HANDLE_PX = 14;
+/** The 3px bar. The 44px hit is a pseudo-element, not this layout height. */
+export const STACKED_HANDLE_PX = 3;
 export const STACKED_BAR_PX = 84;
 export const DEFAULT_MAP_RATIO = 0.42;
 
 /**
- * Standalone on an 844px phone leaves a 734px hub (cards 363, handle 14, map 273, bar 84).
+ * Standalone on an 844px phone leaves a 734px hub (cards 374, handle 3, map 273, bar 84).
  * Used when the header, nav, and safe area cannot be measured.
  */
 export const MOBILE_CHROME_FALLBACK_PX = 110;
@@ -38,6 +52,36 @@ export function hubEmbedCapPx(viewportPx: number, embedTopPx: number, previewPad
 	const pad = Math.max(0, previewPadPx);
 	const occupied = top > 1 ? top : pad;
 	return Math.max(160, Math.round(viewport - occupied));
+}
+
+/**
+ * One pane for the note and the hub: the leaf under its header when stacked,
+ * the leaf width when the map sits beside the list. Both bands use this.
+ */
+export function mapPanePx(leaf: HTMLElement, side: boolean): number {
+	const box = typeof leaf.getBoundingClientRect === 'function' ? leaf.getBoundingClientRect() : { width: 0, height: 0 };
+	const width = box.width > 0 ? box.width : leaf.clientWidth;
+	if (side) return width > 0 ? width : 0;
+	const header = typeof leaf.querySelector === 'function'
+		? leaf.querySelector(':scope > .view-header, :scope > .workspace-leaf-content > .view-header')
+		: null;
+	const headerPx = header instanceof HTMLElement ? (header.getBoundingClientRect().height || header.offsetHeight || 0) : 0;
+	const height = box.height > 0 ? box.height : leaf.clientHeight;
+	return Math.max(0, height - headerPx);
+}
+
+/** Pixel band for a shared split. Zero means the pane is not laid out yet. */
+export function mapBandPx(panePx: number, ratio: number): number {
+	if (!(panePx > 0) || !Number.isFinite(ratio)) return 0;
+	return Math.max(0, Math.round(panePx * ratio));
+}
+
+/** Write the shared band. A measured pane is pixels; an unmeasured one is the same percent. */
+export function writeMapBand(host: HTMLElement, panePx: number, ratio: number, prop: '--rv-map-size' | '--rv-note-map'): void {
+	const px = mapBandPx(panePx, ratio);
+	const share = Number.isFinite(ratio) ? ratio : DEFAULT_MAP_RATIO;
+	const next = px > 0 ? `${px}px` : `${Math.round(share * 100)}%`;
+	if (host.style.getPropertyValue(prop) !== next) host.style.setProperty(prop, next);
 }
 
 /** Map is `mapRatio` of the stage. The handle is the rest of the stage after the cards. */

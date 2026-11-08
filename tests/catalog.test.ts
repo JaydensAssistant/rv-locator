@@ -525,7 +525,7 @@ describe('glancable smart search', () => {
 		assert.match(css, /p\.rv-hub-owned > strong[\s\S]*width:\s*max-content/);
 		assert.doesNotMatch(css, /p\.rv-hub-owned > strong,\s*\n[\s\S]{0,240}text-overflow:\s*ellipsis/);
 		assert.match(css, /\.rv-locator-view\.is-map-fullscreen \.rv-hub-map/);
-		assert.match(css, /flex:\s*0 0 14px/);
+		assert.match(css, /flex:\s*0 0 3px/);
 		assert.match(css, /\.rv-hub-map-handle::before \{[^}]*height:\s*40px/);
 		assert.match(css, /\.rv-map-credit \{[^}]*right:\s*0;[^}]*bottom:\s*0/);
 		assert.match(css, /\.rv-map-credit,\s*\n\.rv-map-scale \{[^}]*font-size:\s*10px;[^}]*line-height:\s*14px/);
@@ -544,7 +544,7 @@ describe('glancable smart search', () => {
 		assert.equal(glancePillContentPx(390, chips) > 42, true);
 		assert.equal(glancePillContentPx(430, chips) > glancePillContentPx(390, chips), true);
 		assert.equal(stackedEmbedCap(844, 110), 734);
-		assert.deepEqual(stackedStageSplit(650), { cards: 363, map: 273 });
+		assert.deepEqual(stackedStageSplit(650), { cards: 374, map: 273 });
 		assert.equal(sideMapMinPx(900), 630);
 		assert.equal(filtersDifferFromDefault('active', 'all', 'all'), false);
 		assert.equal(filtersDifferFromDefault('archive', 'all', 'all'), true);

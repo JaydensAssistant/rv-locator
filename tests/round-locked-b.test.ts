@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
-import { revealHubCard } from '../src/hub-layout';
+import { applyNoteMapFrame, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
 import { clampMapSplit, mergeSettings } from '../src/types';
 
 function source(file: string): string {
@@ -119,5 +119,86 @@ describe('RV-B59 a jump shades the card', () => {
 		revealHubCard(scroll, card);
 		assert.equal(card.classList.contains('rv-card-land'), true);
 		assert.equal(card.classList.contains('rv-card-flash'), false);
+	});
+});
+
+describe('RV-B60 title icons share one 18px box', () => {
+	it('sizes the status glyph like the campaign glyph, including icon-size', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-dashboard \.rv-dash-status,\s*\n\.rv-dashboard \.rv-dash-status svg,[\s\S]{0,80}width:\s*18px;\s*height:\s*18px;\s*--icon-size:\s*18px;/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-status-icon svg[\s\S]{0,600}--icon-size:/);
+		assert.match(css, /\.rv-locator-card-name \.rv-locator-campaign-mark svg \{[^}]*--icon-size:/);
+		assert.match(css, /\.inline-title \.rv-note-status svg \{[^}]*--icon-size:\s*1em;/);
+	});
+});
+
+describe('RV-B61 the divider is the note\'s 3px bar', () => {
+	it('uses a 3px black bar and a 44px hit on the hub and the base', () => {
+		assert.equal(STACKED_HANDLE_PX, 3);
+		const css = source('styles.css');
+		const stacked = css.slice(css.indexOf('.rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle {'), css.indexOf('.rv-locator-view.is-hub-map.is-stacked .rv-hub-map-handle::before'));
+		assert.match(stacked, /flex:\s*0 0 3px/);
+		assert.match(stacked, /height:\s*3px/);
+		assert.match(stacked, /background:\s*#000/);
+		assert.doesNotMatch(stacked, /linear-gradient/);
+		const side = css.slice(css.indexOf('.rv-locator-view.is-side-map .rv-hub-map-handle {'), css.indexOf('.rv-locator-view.is-side-map .rv-hub-map-handle::before'));
+		assert.match(side, /flex:\s*0 0 3px/);
+		assert.match(side, /width:\s*3px/);
+		assert.match(side, /background:\s*#000/);
+		assert.match(css, /\.rv-hub-map-handle::before \{[^}]*background:\s*#fff/);
+		assert.match(css, /\.rv-hub-map-handle::after \{[^}]*width:\s*44px;[^}]*height:\s*44px/);
+	});
+});
+
+describe('RV-B62 the note map stays on the note, at the hub\'s pixel height', () => {
+	it('refuses is-note-map on a hub leaf and shares one pixel band', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const doc = dom.window.document;
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const hub = doc.createElement('div');
+		hub.className = 'workspace-leaf-content is-note-map is-note-map-side';
+		const view = doc.createElement('div');
+		view.className = 'view-content';
+		const glance = doc.createElement('div');
+		glance.className = 'rv-locator-view';
+		view.appendChild(glance);
+		hub.appendChild(view);
+		applyNoteMapFrame(hub, 393);
+		assert.equal(hub.classList.contains('is-note-map'), false);
+		assert.equal(hub.classList.contains('is-note-map-side'), false);
+		const note = doc.createElement('div');
+		note.className = 'workspace-leaf-content';
+		applyNoteMapFrame(note, 393);
+		assert.equal(note.classList.contains('is-note-map'), true);
+		assert.equal(note.classList.contains('is-note-map-side'), false);
+		const ratio = 0.50667;
+		const leaf = doc.createElement('div');
+		const header = doc.createElement('div');
+		header.className = 'view-header';
+		leaf.appendChild(header);
+		leaf.getBoundingClientRect = () => ({ width: 393, height: 807.6, top: 0, left: 0, bottom: 807.6, right: 393, x: 0, y: 0, toJSON() { return {}; } }) as DOMRect;
+		header.getBoundingClientRect = () => ({ width: 393, height: 45, top: 0, left: 0, bottom: 45, right: 393, x: 0, y: 0, toJSON() { return {}; } }) as DOMRect;
+		const pane = mapPanePx(leaf, false);
+		assert.equal(pane, 807.6 - 45);
+		const px = mapBandPx(pane, ratio);
+		assert.equal(px, Math.round(pane * ratio));
+		const noteHost = doc.createElement('div');
+		const hubHost = doc.createElement('div');
+		writeMapBand(noteHost, pane, ratio, '--rv-note-map');
+		writeMapBand(hubHost, pane, ratio, '--rv-map-size');
+		assert.equal(noteHost.style.getPropertyValue('--rv-note-map'), `${px}px`);
+		assert.equal(hubHost.style.getPropertyValue('--rv-map-size'), noteHost.style.getPropertyValue('--rv-note-map'));
+		writeMapBand(hubHost, 0, ratio, '--rv-map-size');
+		assert.equal(hubHost.style.getPropertyValue('--rv-map-size'), '51%');
+		const main = source('src/main.ts');
+		const glanceSrc = source('src/glancable-view.ts');
+		const map = source('src/map-view.ts');
+		assert.match(main, /leafHoldsHub\(content\)/);
+		assert.match(main, /this\.noteMapHost\(\) !== content/);
+		assert.match(main, /paintNoteMapBand\(content\)/);
+		assert.match(glanceSrc, /querySelector\('\.rv-hub-swap-cover'\)/);
+		assert.match(glanceSrc, /writeMapBand\(this\.root/);
+		assert.doesNotMatch(map, /applyNoteMapFrame/);
 	});
 });

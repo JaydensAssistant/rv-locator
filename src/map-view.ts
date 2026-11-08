@@ -1,7 +1,6 @@
 import { ItemView, setIcon, type WorkspaceLeaf } from 'obsidian';
 import { armHoverTooltip, armIconTooltip } from './title-fit';
 import { glancableCardWidthPx } from './glancable-density';
-import { applyNoteMapFrame } from './hub-layout';
 import { GEOAPIFY_ATTRIBUTION, OSM_ATTRIBUTION } from './constants';
 import { paintGlanceFoot } from './glance-foot';
 import { appendBadge, mountUrgencyGlyph, pinBadgeRings, snapAbsoluteOrigin, snapFlowBox } from './glancable-view';
@@ -297,15 +296,13 @@ export class RvMapView extends ItemView {
 		this.repaintAfterLayout();
 	}
 
-	/** Side-by-side classes live on the leaf, not on the fullscreen map. */
+	/**
+	 * Fullscreen leaves the note unmeasured. The class is applied only by the
+	 * note host, and only while that note still has the map. The leaf that
+	 * holds a handed hub map is not this frame.
+	 */
 	private keepSplitMapFrame(): void {
 		if (this.fullscreenScope !== 'split') return;
-		const leaf = this.contentEl?.closest?.('.workspace-leaf-content');
-		if (leaf instanceof HTMLElement) {
-			const box = leaf.getBoundingClientRect();
-			const width = box.width > 0 ? box.width : leaf.clientWidth;
-			applyNoteMapFrame(leaf, width);
-		}
 		this.host.keepNoteMapLayout?.();
 	}
 

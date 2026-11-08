@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap } from './hub-layout';
+import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap, writeMapBand } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -213,10 +213,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (this.hubMapEl?.closest('.rv-map-park') && !this.plugin.wantsParkedMapBack?.()) return;
 		if (this.hubMapEl?.isConnected && this.root.contains(this.hubMapEl)) return;
 		const doc = this.root.ownerDocument;
-		const inCover = this.root.closest('.rv-hub-swap-cover') != null;
-		// A blank spacer is the black/white band. The cover is already showing the painted map.
-		// A parked map is not a cover: history back has to claim it into this stage.
-		if (!inCover && doc.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer), .rv-hub-swap-cover .rv-note-map')) {
+		// While the swap cover is up the painted map stays in the park, above the
+		// cover. Pulling it into this stage would hide the tiles under the cover.
+		// History back has no cover, so that path still claims the park.
+		if (doc.querySelector('.rv-hub-swap-cover')) {
 			stage.querySelector(':scope > .rv-map-spacer')?.remove();
 			if (this.hubMapEl?.classList.contains('rv-map-spacer')) this.hubMapEl = null;
 			return;
@@ -1057,10 +1057,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.toggleClass('is-map-fullscreen', full);
 		map?.toggleClass('is-fullscreen', full);
 		this.hubMapHandle?.setAttr('aria-orientation', this.stackedLayout ? 'horizontal' : 'vertical');
-		const size = `${Math.round(this.plugin.mapSplitRatio() * 100)}%`;
-		if (this.root.style.getPropertyValue('--rv-map-size') !== size) {
-			this.root.style.setProperty('--rv-map-size', size);
-		}
+		const pane = this.root.closest('.workspace-leaf-content')
+			?? this.root.closest('.workspace-leaf')
+			?? this.root;
+		writeMapBand(this.root, mapPanePx(pane instanceof HTMLElement ? pane : this.root, this.root.classList.contains('is-side-map')), this.plugin.mapSplitRatio(), '--rv-map-size');
 		this.sizeEmbedFrame();
 		this.hubMapApi?.invalidateSize();
 		const view = this.root.ownerDocument.defaultView;
