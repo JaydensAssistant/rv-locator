@@ -311,3 +311,26 @@ describe('RV-B66 the note shows the hub bar', () => {
 		assert.match(main, /this\.syncNoteHubBar\(\)/);
 	});
 });
+
+describe('RV-B68 the note bar stays one row', () => {
+	it('drops the hub sortbar sticky top on the note bar and both map variants', () => {
+		const css = source('styles.css');
+		const at = (selector: string): string => {
+			const start = css.indexOf(selector);
+			assert.ok(start >= 0, selector);
+			return css.slice(start, css.indexOf('}', start));
+		};
+		const parked = at('.workspace-leaf-content.is-rv-note > .rv-note-hub-bar {');
+		assert.match(parked, /position:\s*absolute;/);
+		assert.match(parked, /top:\s*auto;/);
+		assert.match(parked, /height:\s*auto;/);
+		assert.match(parked, /bottom:\s*0;/);
+		assert.doesNotMatch(parked, /position:\s*sticky/);
+		const stacked = at('.workspace-leaf-content.is-rv-note.is-note-map > .rv-note-hub-bar {');
+		assert.match(stacked, /top:\s*auto;/);
+		assert.match(stacked, /height:\s*auto;/);
+		const side = at('.workspace-leaf-content.is-rv-note.is-note-map.is-note-map-side > .rv-note-hub-bar {');
+		assert.match(side, /top:\s*auto;/);
+		assert.match(side, /height:\s*auto;/);
+	});
+});
