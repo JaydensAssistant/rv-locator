@@ -204,17 +204,17 @@ export class NearbyGlancableView extends NearbyBasesView {
 				if (api || sitting.querySelector('.rv-map-stage')) this.hubMapApi = api;
 				else this.hubMapApi = this.plugin.mountHubMap(sitting);
 			}
-			if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
+			this.deferPaintedOrder(sitting);
 			return;
 		}
 		if (this.hubMapEl?.closest('.rv-map-park') && !this.plugin.wantsParkedMapBack?.()) return;
 		if (this.hubMapEl?.isConnected && this.root.contains(this.hubMapEl)) return;
 		const doc = this.root.ownerDocument;
 		const inCover = this.root.closest('.rv-hub-swap-cover') != null;
-		if (!inCover && doc.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer)')) {
-			const found = stage.querySelector(':scope > .rv-map-spacer');
-			const spacer = found instanceof HTMLElement ? found : stage.createDiv('rv-hub-map rv-map-spacer');
-			this.hubMapEl = spacer;
+		// A blank spacer is the black/white band. The cover is already showing the painted map.
+		if (!inCover && doc.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer), .rv-hub-swap-cover .rv-note-map, .rv-map-park .rv-map-stage')) {
+			stage.querySelector(':scope > .rv-map-spacer')?.remove();
+			if (this.hubMapEl?.classList.contains('rv-map-spacer')) this.hubMapEl = null;
 			return;
 		}
 		this.hubMapEl = null;
@@ -226,10 +226,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const painted = parked.querySelector('.rv-map-stage') != null;
 			if (api || painted) this.hubMapApi = api;
 			else this.hubMapApi = this.plugin.mountHubMap(parked);
-			if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
-			const view = stage.ownerDocument.defaultView;
-			if (view?.requestAnimationFrame) view.requestAnimationFrame(() => this.hubMapApi?.invalidateSize());
-			else this.hubMapApi?.invalidateSize();
+			this.deferPaintedOrder(parked);
 			return;
 		}
 		const handle = stage.createDiv('rv-hub-map-handle');
@@ -274,17 +271,50 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.hubMapHandle = null;
 	}
 
+	/**
+	 * A map that already has tiles keeps that frame on the open path.
+	 * Reordering pins waits one frame so hub open does not paint the map twice.
+	 */
+	private deferPaintedOrder(map: HTMLElement): void {
+		const paths = this.renderedPaths;
+		if (!paths || !this.hubMapApi) return;
+		const painted = map.querySelector('.rv-map-tile.is-ready, .rv-map-stage') != null;
+		const run = (): void => { this.hubMapApi?.applyRenderedOrder(paths); };
+		if (!painted) {
+			run();
+			return;
+		}
+		const view = map.ownerDocument.defaultView;
+		if (view?.requestAnimationFrame) view.requestAnimationFrame(run);
+		else run();
+	}
+
+	/** A drag uses the ratio again. The handoff lock is only so the first frames stay painted. */
+	private releaseHandedBandLock(): void {
+		const map = this.hubMapEl;
+		if (!map) return;
+		map.style.removeProperty('flex');
+		map.style.removeProperty('min-height');
+		const stage = map.querySelector('.rv-map-stage');
+		if (!(stage instanceof HTMLElement)) return;
+		stage.style.removeProperty('height');
+		stage.style.removeProperty('min-height');
+	}
+
 	/** The cover is handing this view the map it already painted. */
 	private adoptHubMap(el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null): void {
+		if (hostIsHidden(this.root)) return;
 		const stage = this.stageEl ?? this.root;
-		el.classList.remove('rv-note-map');
+		el.classList.remove('rv-note-map', 'rv-map-spacer');
 		el.classList.add('rv-hub-map');
+		stage.querySelectorAll(':scope > .rv-map-spacer').forEach((node) => node.remove());
 		if (el.parentElement !== stage) stage.appendChild(el);
 		this.hubMapEl = el;
+		const painted = el.querySelector('.rv-map-stage') != null;
 		if (api) this.hubMapApi = api;
-		else if (!this.hubMapApi && !el.querySelector('.rv-map-stage')) this.hubMapApi = this.plugin.mountHubMap(el);
-		if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
-		this.hubMapApi?.invalidateSize();
+		else if (!this.hubMapApi && !painted) this.hubMapApi = this.plugin.mountHubMap(el);
+		this.deferPaintedOrder(el);
+		this.syncHubMap();
 	}
 
 	protected override sortedGroups() {
@@ -339,7 +369,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.landArrival();
 			return;
 		}
-		const top = this.scrollEl.scrollTop;
+		const atTop = this.directHubOpensAtTop();
+		const top = atTop ? 0 : this.scrollEl.scrollTop;
 		const left = this.scrollEl.scrollLeft;
 		this.patchGlanceCards(rows);
 		this.root.removeClass('is-glance-pending');
@@ -349,14 +380,23 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.applyColumnSnap();
 		this.snapCardFrames();
 		this.publishPinOrder(rows.map((row) => row.path));
-		if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
+		if (atTop || this.directHubOpensAtTop()) this.scrollEl.scrollTop = 0;
+		else if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
 		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
 		this.landArrival();
+	}
+
+	/** A Quick Switcher open of the hub starts at the top. A return does not. */
+	private directHubOpensAtTop(): boolean {
+		if (this.root.closest('.rv-hub-swap-cover')) return false;
+		if (hostIsHidden(this.root)) return false;
+		return this.plugin.hubOpensAtTop() && !this.plugin.peekHubArrival();
 	}
 
 	/** Hub link from an RV: scroll to that card and tint it, then let the tint fade. */
 	private landArrival(): void {
 		if (hostIsHidden(this.root)) return;
+		if (this.directHubOpensAtTop() && this.scrollEl) this.scrollEl.scrollTop = 0;
 		const path = this.plugin.peekHubArrival();
 		if (!path || !this.scrollEl) return;
 		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
@@ -716,9 +756,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private paintSignature(row: RowModel): string {
 		const facts = this.noteFrontmatter(row.path);
 		const live = this.liveRank(row);
+		const until = this.plugin.snoozeUntilFor(row.path);
+		const snoozed = this.plugin.snoozeActiveFor(row.path);
 		return `${cardPaintKey(row, {
 			locationProperty: this.plugin.settings.locationProperty,
-			snoozed: this.plugin.snoozeActiveFor(row.path),
+			snoozed,
+			snoozeUntil: until ? String(until.getTime()) : '',
+			snoozeDays: snoozed ? this.plugin.snoozeDaysLeftFor(row.path) : 0,
 			campaign: this.plugin.campaignMark(row.path),
 			age: ageCaption(readProperty(facts, 'Age'), readProperty(facts, 'Age Exact')),
 		})}\u001e${live.priority ?? ''}\u001f${live.status}\u001f${live.urgency ?? ''}`;
@@ -1026,6 +1070,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const width = box.clientWidth || 1;
 			const stacked = this.stackedLayout;
 			const move = (ev: PointerEvent): void => {
+				this.releaseHandedBandLock();
 				const delta = stacked ? (startY - ev.clientY) / height : (startX - ev.clientX) / width;
 				const next = start + delta;
 				this.hubMapRatio = Math.min(0.72, Math.max(0, next));

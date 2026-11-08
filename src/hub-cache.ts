@@ -72,6 +72,10 @@ export function hubGroupsFromCache(files: readonly HubCacheFile[], options: HubC
 export interface CardPaintExtra {
 	locationProperty?: string;
 	snoozed?: boolean;
+	/** Snooze end, epoch ms. A new length or a cleared snooze changes the card. */
+	snoozeUntil?: string;
+	/** Live days remaining. Changes when a day passes, so the foot does not stay stale. */
+	snoozeDays?: number | null;
 	campaign?: string | null;
 	age?: string;
 }
@@ -95,6 +99,8 @@ export function cardPaintKey(row: RowModel, extra: CardPaintExtra = {}): string 
 		row.gender ?? '',
 		extra.age ?? '',
 		extra.snoozed ? '1' : '0',
+		extra.snoozeUntil ?? '',
+		extra.snoozeDays != null ? String(extra.snoozeDays) : '',
 		extra.campaign ?? '',
 		row.addressStreet ?? '',
 		row.addressCity ?? '',

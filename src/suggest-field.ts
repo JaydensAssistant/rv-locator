@@ -34,8 +34,16 @@ export const SUGGEST_MATCH_LIMIT = 50;
 
 let suggestionListeners = 0;
 const openSuggestPanels = new Set<HTMLElement>();
-/** The Escape that closed a list still has a keyup. That keyup must not dismiss the modal. */
-let suggestEscapeArmed = false;
+/** The keyup of the Escape that closed a list must not dismiss the modal. */
+let holdSuggestKeyup = false;
+/** True only for the rest of the keydown that closed a list. A later keydown is a new press. */
+let heldSuggestThisTurn = false;
+
+function armSuggesterEscape(): void {
+	holdSuggestKeyup = true;
+	heldSuggestThisTurn = true;
+	queueMicrotask(() => { heldSuggestThisTurn = false; });
+}
 
 function isEscapeKey(event: Event): boolean {
 	const key = 'key' in event ? String((event as KeyboardEvent).key) : '';
@@ -80,13 +88,25 @@ export function suggestEscapeShouldHold(root?: ParentNode | null): boolean {
 	const openHere = [...openSuggestPanels].some((panel) => (
 		!root || typeof root.contains !== 'function' || root.contains(panel)
 	));
-	if (!openHere && !suggestEscapeArmed) return false;
-	if (openHere) closeOpenSuggestLists(root);
-	if (evt.type === 'keyup') queueMicrotask(() => { suggestEscapeArmed = false; });
-	else suggestEscapeArmed = true;
-	if (typeof evt.preventDefault === 'function') evt.preventDefault();
-	if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
-	return true;
+	if (evt.type === 'keyup') {
+		if (!holdSuggestKeyup) return false;
+		holdSuggestKeyup = false;
+		if (typeof evt.preventDefault === 'function') evt.preventDefault();
+		if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+		return true;
+	}
+	if (openHere) {
+		closeOpenSuggestLists(root);
+		armSuggesterEscape();
+		if (typeof evt.preventDefault === 'function') evt.preventDefault();
+		if (typeof evt.stopPropagation === 'function') evt.stopPropagation();
+		return true;
+	}
+	// The list was closed earlier in this same keydown. Hold the modal.
+	// A later keydown, even if the matching keyup never arrived, closes it.
+	if (heldSuggestThisTurn && holdSuggestKeyup) return true;
+	holdSuggestKeyup = false;
+	return false;
 }
 
 /** Live document and viewport listeners owned by open suggestion fields. */
@@ -475,17 +495,23 @@ export function mountAlwaysChevron(
 	// mounted first otherwise lets the key through before this one sees it.
 	const onEscape = (event: Event): void => {
 		if (!isEscapeKey(event)) return;
-		const listOpen = openSuggestPanels.size > 0;
-		if (!listOpen && !suggestEscapeArmed) return;
+		if (event.type === 'keyup') {
+			if (!holdSuggestKeyup) return;
+			if (typeof event.preventDefault === 'function') event.preventDefault();
+			event.stopPropagation();
+			if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+			holdSuggestKeyup = false;
+			return;
+		}
+		if (openSuggestPanels.size === 0) {
+			if (!heldSuggestThisTurn) holdSuggestKeyup = false;
+			return;
+		}
 		if (typeof event.preventDefault === 'function') event.preventDefault();
 		event.stopPropagation();
 		if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
-		if (event.type === 'keyup') {
-			suggestEscapeArmed = false;
-			return;
-		}
-		suggestEscapeArmed = true;
-		if (listOpen) closeOpenSuggestLists();
+		armSuggesterEscape();
+		closeOpenSuggestLists();
 	};
 	const onViewport = (): void => {
 		if (!input.isConnected) {

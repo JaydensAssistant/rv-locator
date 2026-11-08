@@ -62,6 +62,19 @@ export function shownHubStage(doc: Document): HTMLElement | null {
 	return null;
 }
 
+/** The painted map the cover or the park is showing. A spacer is not a map. */
+export function paintedHandoffMap(doc: Document): HTMLElement | null {
+	const nodes = doc.querySelectorAll('.rv-hub-swap-cover .rv-hub-map, .rv-hub-swap-cover .rv-note-map, .rv-map-park .rv-hub-map, .rv-map-park .rv-note-map');
+	let fallback: HTMLElement | null = null;
+	for (let index = 0; index < nodes.length; index += 1) {
+		const node = nodes[index];
+		if (!(node instanceof HTMLElement) || node.classList.contains('rv-map-spacer')) continue;
+		if (!fallback) fallback = node;
+		if (node.querySelector('.rv-map-stage')) return node;
+	}
+	return fallback;
+}
+
 /** Drop the blank reservation and put the painted map in the stage the user sees. */
 export function placeHandedMap(map: HTMLElement, stage: HTMLElement): void {
 	map.classList.remove('rv-note-map', 'rv-map-spacer');
@@ -69,6 +82,32 @@ export function placeHandedMap(map: HTMLElement, stage: HTMLElement): void {
 	const spacers = stage.querySelectorAll(':scope > .rv-map-spacer');
 	for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();
 	stage.appendChild(map);
+}
+
+/**
+ * Keep the band the cover just showed. A percent height on the live stage
+ * collapses, and the band is then only the theme background.
+ */
+export function lockHandedMapBand(map: HTMLElement, heightPx: number): void {
+	const stage = map.querySelector('.rv-map-stage');
+	if (!(stage instanceof HTMLElement)) return;
+	const height = Math.round(heightPx);
+	if (height < 2) return;
+	const px = `${height}px`;
+	stage.style.setProperty('height', px, 'important');
+	stage.style.setProperty('min-height', px, 'important');
+	map.style.setProperty('min-height', px, 'important');
+	map.style.setProperty('flex', `0 0 ${px}`, 'important');
+}
+
+/** The live hub has to be a map hub before the cover leaves, or the moved node stays `display: none`. */
+export function markHandedMapHost(stage: HTMLElement): void {
+	const view = stage.closest('.rv-locator-glancable') ?? stage.closest('.rv-locator-view');
+	if (!(view instanceof HTMLElement)) return;
+	view.classList.add('is-hub-map');
+	const body = stage.ownerDocument?.body;
+	const phone = body?.classList.contains('is-phone') === true || body?.classList.contains('is-mobile') === true;
+	if (phone || view.classList.contains('is-stacked')) view.classList.add('is-stacked');
 }
 
 /** Lift a map out of the view that is about to be replaced. The node stays connected. */

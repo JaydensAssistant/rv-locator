@@ -28,8 +28,8 @@ import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, w
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { holdLeafForHubPaint, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
+import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
+import { claimParkedMap as takeParkedMapNode, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, mergeHouseholdHubs, moveHubLeft } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -71,7 +71,7 @@ import { PriorityNudgeModal, UrgencySnoozeModal } from './score-modals';
 import { fillToastText, watchBottomToast } from './chrome-inset';
 import { basenameHasStamp, maskTitleElement, rvDisplayTitle } from './stamp-mask';
 import { currentReturnBucket, coveredCampaignFor, daypartAt, headingNewestIndex, readAttemptLog, stampDateTime, suggestReturnDigest, type AttemptBuckets } from './schedule';
-import { SNOOZE_LABEL_PROPERTY, SNOOZE_SLATE, SNOOZE_START_PROPERTY, URGENCY_SNOOZE_PROPERTY, formatSnoozeStart, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, snoozeDaysLeft, type SnoozeChoice, type SnoozeWrite } from './snooze';
+import { SNOOZE_LABEL_PROPERTY, SNOOZE_SLATE, SNOOZE_START_PROPERTY, URGENCY_SNOOZE_PROPERTY, delayUntilNextLocalDay, formatSnoozeStart, formatSnoozeUntil, parseSnoozeUntil, snoozeActive, snoozeDaysLeft, type SnoozeChoice, type SnoozeWrite } from './snooze';
 import { META_BIND_PLUGIN_ID, requiredSetupGaps, shouldPersistSetupWizardCompleted, shouldShowSetupNudge } from './setup-check';
 import { SetupWizardModal, readSetupSnapshot, shouldAutoOpenSetupWizard } from './setup-wizard';
 import { latLonFromUnknown, validLatLon } from './distance';
@@ -175,6 +175,11 @@ export default class RVLocatorPlugin extends Plugin {
 	housemateSourcePath: string | null = null;
 	/** RV note that opened the hub. The first painted card with this path gets the land tint. */
 	private hubArrivalPath: string | null = null;
+	/** Set only around a hub-link open, so a Quick Switcher open is not treated as a return. */
+	private hubLinkOpen = false;
+	/** A direct hub open starts the list at the top. A return leaves this false. */
+	private hubListAtTop = false;
+	private snoozeRollTimer: number | null = null;
 	private newRvCoverRelease: (() => void) | null = null;
 	private homeBiasKey = '';
 	private homeBiasPoint: GeocodeBias | null = null;
@@ -205,6 +210,12 @@ export default class RVLocatorPlugin extends Plugin {
 		registerRestroomIcons();
 		await this.loadPluginData();
 		this.installReadingModeOpen();
+		this.scheduleSnoozeDayRoll();
+		this.register(() => {
+			if (this.snoozeRollTimer == null) return;
+			window.clearTimeout(this.snoozeRollTimer);
+			this.snoozeRollTimer = null;
+		});
 		this.addSettingTab(new RVLocatorSettingTab(this.app, this));
 		this.registerHoverLinkSource(HOVER_SOURCE, {
 			display: 'RV Locator',
@@ -979,9 +990,12 @@ export default class RVLocatorPlugin extends Plugin {
 		const plugin = this;
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
+				if (plugin.hubLinkOpen) plugin.hubLinkOpen = false;
+				else plugin.noteDirectHubOpen();
 				plugin.retainMapForHub();
 				holdLeafForHubPaint(this.view?.containerEl, plugin.hubCoverOptions(file.basename));
 				plugin.paintEarthStates();
+				if (plugin.hubListAtTop) plugin.pinDirectHubScroll();
 			} else if (!plugin.unloaded) {
 				plugin.carryMapToOpenedFile(file);
 			}
@@ -1058,6 +1072,21 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const delay of AGE_REFRESH_DELAYS_MS) {
 			window.setTimeout(() => this.refreshOpenAges(), delay);
 		}
+	}
+
+	/**
+	 * One timer until the next local midnight. A mounted hub then rebuilds
+	 * the snooze-day foot. Nothing here runs while the hub is opening.
+	 */
+	private scheduleSnoozeDayRoll(): void {
+		if (this.snoozeRollTimer != null) window.clearTimeout(this.snoozeRollTimer);
+		const delay = delayUntilNextLocalDay(new Date());
+		this.snoozeRollTimer = window.setTimeout(() => {
+			this.snoozeRollTimer = null;
+			if (this.unloaded) return;
+			for (const callback of this.viewRefreshers) callback();
+			this.scheduleSnoozeDayRoll();
+		}, delay);
 	}
 
 	/**
@@ -1807,10 +1836,13 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		const active = this.app.workspace.getMostRecentLeaf();
+		this.hubLinkOpen = true;
+		this.hubListAtTop = false;
 		this.retainMapForHub();
 		holdLeafForHubPaint(active?.view?.containerEl, this.hubCoverOptions(dest?.basename ?? target));
 		this.paintEarthStates();
 		void this.app.workspace.openLinkText(target, sourcePath);
+		window.setTimeout(() => { this.hubLinkOpen = false; }, 0);
 	}
 
 	/** Phone frames before the hub view exists stay covered by the note. */
@@ -1943,18 +1975,23 @@ export default class RVLocatorPlugin extends Plugin {
 		return this.returnParkedMap;
 	}
 
-	/** Cover drop. The same map node moves into the live hub stage before the cover leaves. */
+	/** Cover drop. The same painted map is in the live hub, at the cover's height, before the cover leaves. */
 	private handHubMapToLive(): void {
-		const map = document.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer), .rv-map-park .rv-hub-map:not(.rv-map-spacer), .rv-map-park .rv-note-map');
+		const map = paintedHandoffMap(document);
 		if (!(map instanceof HTMLElement)) return;
 		const stage = shownHubStage(document);
 		const api = this.parkedHandle ?? this.lastMapHandle;
+		const band = map.getBoundingClientRect().height;
 		if (!(stage instanceof HTMLElement)) {
 			if (!map.closest('.rv-map-park')) parkMapNode(map);
 			this.parkedHandle = api;
 			return;
 		}
 		placeHandedMap(map, stage);
+		lockHandedMapBand(map, band);
+		markHandedMapHost(stage);
+		const spacers = document.querySelectorAll('.rv-map-spacer');
+		for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();
 		const holders = document.querySelectorAll('.rv-map-park');
 		for (let index = 0; index < holders.length; index += 1) {
 			const holder = holders[index];
@@ -1962,7 +1999,34 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		this.parkedHandle = null;
 		this.liveHubAdopter?.(map, api);
-		api?.invalidateSize();
+	}
+
+	/** Quick Switcher and every other direct hub open. Not a hub link, and not history back. */
+	private noteDirectHubOpen(): void {
+		this.hubArrivalPath = null;
+		this.hubListAtTop = true;
+	}
+
+	hubOpensAtTop(): boolean {
+		return this.hubListAtTop;
+	}
+
+	/** Put a direct hub open at scroll 0 once the list has a box. Returns keep their scroll. */
+	private pinDirectHubScroll(): void {
+		const step = (left: number): void => {
+			if (!this.hubListAtTop || this.unloaded) return;
+			const nodes = document.querySelectorAll('.rv-locator-scroll');
+			let pinned = false;
+			for (let index = 0; index < nodes.length; index += 1) {
+				const node = nodes[index];
+				if (!(node instanceof HTMLElement) || node.closest('.rv-hub-swap-cover') || hostIsHidden(node)) continue;
+				node.scrollTop = 0;
+				if (node.clientHeight > 1) pinned = true;
+			}
+			if (pinned || left <= 0) this.hubListAtTop = false;
+			else requestAnimationFrame(() => step(left - 1));
+		};
+		requestAnimationFrame(() => step(8));
 	}
 
 	/** Cached hub drawn into the swap cover. The same painter the real view uses. */

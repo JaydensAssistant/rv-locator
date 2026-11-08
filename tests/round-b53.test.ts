@@ -4,7 +4,9 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { URGENCY_COLUMN_ID } from '../src/constants';
 import { clusterAppearance, groupPinStacks, orderByHubSort, pinUrgencyZ, type MapPin } from '../src/map-pins';
-import { claimParkedMap, mapStayForOpen, moveMapToStage, parkMapNode, placeHandedMap, shownHubStage } from '../src/map-handoff';
+import { cardPaintKey } from '../src/hub-cache';
+import { claimParkedMap, lockHandedMapBand, mapStayForOpen, markHandedMapHost, moveMapToStage, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage } from '../src/map-handoff';
+import { delayUntilNextLocalDay } from '../src/snooze';
 import { stagePaintBox } from '../src/map-view';
 import { annotateRowScores, displayedUrgency } from '../src/row-score';
 import { urgencyScore } from '../src/scoring';
@@ -308,5 +310,121 @@ describe('RV-B54 the map stays on screen', () => {
 		assert.match(carry, /this\.syncNoteMap\(\)/);
 		assert.match(source('src/glancable-view.ts'), /hostIsHidden\(this\.root\)/);
 		assert.match(source('src/map-view.ts'), /stagePaintBox\(stage\.clientWidth, stage\.clientHeight/);
+	});
+
+	it('locks the handed map to the cover height before the cover leaves', () => {
+		const dom = new JSDOM('<!doctype html><body class="is-phone theme-dark"></body>');
+		const doc = dom.window.document;
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const cover = doc.createElement('div');
+		cover.className = 'rv-hub-swap-cover';
+		const map = doc.createElement('div');
+		map.className = 'rv-note-map rv-map';
+		const stage = doc.createElement('div');
+		stage.className = 'rv-map-stage';
+		stage.appendChild(Object.assign(doc.createElement('img'), { className: 'rv-map-tile is-ready' }));
+		map.appendChild(stage);
+		cover.appendChild(map);
+		const live = doc.createElement('div');
+		live.className = 'rv-locator-view is-stacked';
+		const liveStage = doc.createElement('div');
+		liveStage.className = 'rv-locator-stage';
+		const spacer = doc.createElement('div');
+		spacer.className = 'rv-hub-map rv-map-spacer';
+		liveStage.appendChild(spacer);
+		live.appendChild(liveStage);
+		doc.body.append(cover, live);
+		map.getBoundingClientRect = () => ({ height: 237, width: 392, top: 0, left: 0, bottom: 237, right: 392, x: 0, y: 0, toJSON() { return {}; } });
+		const handed = paintedHandoffMap(doc);
+		assert.equal(handed, map);
+		const band = map.getBoundingClientRect().height;
+		placeHandedMap(map, liveStage);
+		lockHandedMapBand(map, band);
+		markHandedMapHost(liveStage);
+		spacer.remove();
+		cover.remove();
+		assert.equal(map.parentElement, liveStage);
+		assert.equal(stage.style.getPropertyValue('height'), '237px');
+		assert.equal(stage.style.getPropertyPriority('min-height'), 'important');
+		assert.equal(live.classList.contains('is-hub-map'), true);
+		assert.equal(live.classList.contains('is-stacked'), true);
+		assert.equal(doc.querySelector('.rv-map-spacer'), null);
+		assert.equal(liveStage.querySelector('.rv-map-tile.is-ready') != null, true);
+		const main = source('src/main.ts');
+		const hand = main.slice(main.indexOf('private handHubMapToLive'), main.indexOf('private noteDirectHubOpen'));
+		assert.match(hand, /lockHandedMapBand\(map, band\)/);
+		assert.doesNotMatch(hand, /invalidateSize\(\)/);
+		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
+		assert.match(hook, /noteDirectHubOpen\(\)/);
+		assert.match(hook, /pinDirectHubScroll\(\)/);
+		const link = main.slice(main.indexOf('private openHubLink'), main.indexOf('private openHubLink') + 900);
+		assert.match(link, /this\.hubLinkOpen = true/);
+		assert.match(source('src/glancable-view.ts'), /hubOpensAtTop\(\)/);
+	});
+
+	it('RV-B55 repaints a mounted hub card from 1 day to 7 to 14 and back to 1', () => {
+		const row: RowModel = {
+			path: 'People/Ada.md',
+			name: 'Ada',
+			lat: null,
+			lon: null,
+			addressText: '',
+			addressStreet: null,
+			addressCity: null,
+			status: 'Active',
+			gender: null,
+			cells: [],
+			sortKeys: {},
+		};
+		const until = String(Date.UTC(2026, 10, 20));
+		const keyFor = (days: number | null, end = until): string => cardPaintKey(row, {
+			snoozed: days != null && days > 0,
+			snoozeUntil: days != null && days > 0 ? end : '',
+			snoozeDays: days,
+		});
+		const one = keyFor(1);
+		const week = keyFor(7);
+		const twoWeeks = keyFor(14);
+		const again = keyFor(1);
+		const cleared = keyFor(0);
+		assert.notEqual(one, week);
+		assert.notEqual(week, twoWeeks);
+		assert.equal(again, one);
+		assert.notEqual(cleared, one);
+		assert.notEqual(keyFor(7, until), keyFor(6, until));
+		const dom = new JSDOM('<!doctype html><body><article class="rv-locator-card" data-rv-paint=""><span class="rv-foot-days">1d</span></article></body>');
+		const card = dom.window.document.querySelector('.rv-locator-card');
+		const foot = dom.window.document.querySelector('.rv-foot-days');
+		assert.ok(card instanceof dom.window.HTMLElement);
+		assert.ok(foot instanceof dom.window.HTMLElement);
+		card.setAttribute('data-rv-paint', one);
+		const repaint = (days: number | null): void => {
+			const next = keyFor(days);
+			if (card.getAttribute('data-rv-paint') === next) return;
+			card.setAttribute('data-rv-paint', next);
+			foot.textContent = days != null && days > 0 ? `${days}d` : '';
+		};
+		for (const days of [7, 14, 1]) {
+			assert.notEqual(card.getAttribute('data-rv-paint'), days === 1 ? week : keyFor(days));
+			repaint(days);
+			assert.equal(foot.textContent, `${days}d`);
+			assert.equal(card.getAttribute('data-rv-paint'), keyFor(days));
+		}
+		repaint(1);
+		assert.equal(foot.textContent, '1d');
+		repaint(null);
+		assert.equal(foot.textContent, '');
+		assert.equal(card.getAttribute('data-rv-paint'), keyFor(null));
+		const glance = source('src/glancable-view.ts');
+		const signature = glance.slice(glance.indexOf('private paintSignature'), glance.indexOf('private paintSignature') + 700);
+		assert.match(signature, /snoozeUntil: until \? String\(until\.getTime\(\)\) : ''/);
+		assert.match(signature, /snoozeDays: snoozed \? this\.plugin\.snoozeDaysLeftFor\(row\.path\) : 0/);
+		assert.match(source('src/main.ts'), /scheduleSnoozeDayRoll/);
+		assert.match(source('src/hub-cache.ts'), /extra\.snoozeDays != null \? String\(extra\.snoozeDays\) : ''/);
+		const noon = new Date(2026, 10, 8, 12, 0, 0, 0);
+		const delay = delayUntilNextLocalDay(noon, 2000);
+		assert.ok(delay > 11 * 60 * 60 * 1000 && delay < 13 * 60 * 60 * 1000);
+		assert.ok(delayUntilNextLocalDay(new Date(2026, 10, 8, 23, 59, 59, 0), 2000) >= 1000);
 	});
 });

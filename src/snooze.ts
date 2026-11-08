@@ -76,6 +76,15 @@ export function formatSnoozeStart(date: Date): string {
 	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+/**
+ * Wait until just after the next local midnight, then the hub can repaint
+ * snooze days. The wait is one timer. It is not work on the hub-open path.
+ */
+export function delayUntilNextLocalDay(now: Date, graceMs = 2000): number {
+	const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+	return Math.max(1000, next.getTime() - now.getTime() + graceMs);
+}
+
 /** Days still ahead. 0 once the until-datetime has passed. */
 export function snoozeDaysLeft(until: Date, now: Date): number {
 	const ms = until.getTime() - now.getTime();

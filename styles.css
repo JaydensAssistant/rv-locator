@@ -4141,6 +4141,11 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.16);
 }
 
+/* A handed stage must not collapse to the theme background. */
+.rv-locator-view.is-hub-map.is-stacked > .rv-locator-stage > .rv-hub-map > .rv-map-stage {
+	min-height: 120px !important;
+}
+
 .rv-hub-map .rv-map,
 .rv-hub-map .rv-map-stage,
 .rv-hub-map .rv-map-settle,

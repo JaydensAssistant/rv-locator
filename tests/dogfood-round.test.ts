@@ -783,6 +783,43 @@ describe('dogfood round', () => {
 		}
 	});
 
+	it('a missed Escape keyup still lets the next Escape close the sheet', async () => {
+		const root = window.document.createElement('div');
+		window.document.body.appendChild(root);
+		let closed = 0;
+		const close = (): void => {
+			if (suggestEscapeShouldHold(root)) return;
+			closed += 1;
+		};
+		const onKey = (event: Event): void => {
+			if (!(event instanceof window.KeyboardEvent) || event.key !== 'Escape') return;
+			close();
+		};
+		window.addEventListener('keydown', onKey, true);
+		const host = window.document.createElement('div');
+		const input = window.document.createElement('input');
+		host.appendChild(input);
+		root.appendChild(host);
+		mountAlwaysChevron(input, () => ['Alpha'], () => {});
+		const button = host.querySelector('button');
+		const panel = host.querySelector('.rv-suggest-panel');
+		assert.ok(button instanceof window.HTMLButtonElement);
+		assert.ok(panel instanceof window.HTMLElement);
+		try {
+			button.click();
+			assert.equal(panel.hidden, false);
+			window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+			assert.equal(panel.hidden, true);
+			assert.equal(closed, 0);
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			window.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+			assert.equal(closed, 1);
+		} finally {
+			window.removeEventListener('keydown', onKey, true);
+			root.remove();
+		}
+	});
+
 	it('RV-B30 the plain Older Visits line stays hidden while the chevron shows', () => {
 		const preview = window.document.createElement('div');
 		preview.className = 'markdown-preview-view';
