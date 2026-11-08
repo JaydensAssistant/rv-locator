@@ -73,8 +73,11 @@ export function annotateRowScores(
 	});
 	const factor = settings.homeLikelihoodEnabled ? likelihoodForNow(buckets, now) : 1;
 	const ideality = base == null ? null : base * factor;
+	const snoozed = snoozeActive(snoozeUntil, now);
 	return {
 		...row,
+		urgencySnoozed: snoozed,
+		urgencySnoozeEnd: snoozed && snoozeUntil ? snoozeUntil.getTime() : null,
 		sortKeys: {
 			...row.sortKeys,
 			[URGENCY_COLUMN_ID]: numberKey(urgency),

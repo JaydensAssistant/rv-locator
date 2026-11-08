@@ -275,6 +275,8 @@ export interface HubCoverPaint {
 	mount?: (host: HTMLElement) => (() => void) | void;
 	/** The live card now sits where the cover had it. Clear the one-shot arrival. */
 	onLand?: (path: string) => void;
+	/** Move a map out of the cover before the cover node is removed. */
+	beforeRelease?: () => void;
 }
 
 function snapshotReady(host: HTMLElement): boolean {
@@ -403,6 +405,11 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 			handoffCoverLanding(doc, options?.onLand);
 		} catch {
 			// A missing live card still has to drop the cover.
+		}
+		try {
+			options?.beforeRelease?.();
+		} catch {
+			// The cover still has to drop if the map handoff throws.
 		}
 		try {
 			dispose?.();

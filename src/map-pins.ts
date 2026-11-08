@@ -2,7 +2,7 @@ import { DISTANCE_COLUMN_ID, IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './con
 import { interpolatePalette, type MapShadeMode } from './map-shade';
 import { SNOOZE_SLATE } from './snooze';
 import { urgencyAccentColor, urgencyMark, urgencyScore, insidePriorityFloor } from './scoring';
-import { sortRowsBy, type Sortable } from './sort';
+import { compareUrgencyPlacement, sortRowsBy, type Sortable } from './sort';
 import { statusIcon, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
 import type { LatLon, PriorityDays } from './types';
 
@@ -36,6 +36,8 @@ export interface MapPinSource {
 	avoid?: boolean;
 	/** Active snooze. The pin is slate with a moon, not the urgency mark. */
 	snoozed?: boolean;
+	/** End of an active snooze. The soonest end sorts first inside the snoozed group. */
+	snoozeEndMs?: number | null;
 	/** 0–1 heat used when the map is not shaded by urgency bands. */
 	shadeHeat?: number;
 	gender?: RvGender | null;
@@ -78,6 +80,8 @@ export interface MapPin {
 	stateIcon: PinStateIcon | null;
 	/** Snooze paint. The moon is not a dashed ghost. */
 	snoozed: boolean;
+	/** End of an active snooze. Null when the pin is awake. */
+	snoozeEndMs?: number | null;
 	/** Status icon when the hub is filtered by status. Null keeps the glyph. */
 	shadeIcon: string | null;
 	/** Gender mark when the hub is filtered to men or women. */
@@ -162,6 +166,7 @@ export function buildMapPins(
 			fresh,
 			stateIcon: snoozed ? SNOOZE_PIN_ICON : pinStateIcon(fresh, row.avoid === true),
 			snoozed,
+			snoozeEndMs: snoozed ? (row.snoozeEndMs ?? null) : null,
 			shadeIcon: null,
 			markText: null,
 			rank: pins.length,
@@ -186,7 +191,7 @@ export interface ClusterAppearance {
 	ghost: boolean;
 }
 
-/** Cluster chrome follows the hottest pin. A ghost cluster is only all ghosts. */
+/** Cluster chrome follows the hottest pin. A snoozed pin never beats an awake one. A ghost cluster is only all ghosts. */
 export function clusterAppearance(pins: readonly MapPin[]): ClusterAppearance {
 	let best: MapPin | null = null;
 	for (const pin of pins) {
@@ -194,9 +199,8 @@ export function clusterAppearance(pins: readonly MapPin[]): ClusterAppearance {
 			best = pin;
 			continue;
 		}
-		const urgency = pin.urgency ?? -1;
-		const bestUrgency = best.urgency ?? -1;
-		if (urgency > bestUrgency || (urgency === bestUrgency && pin.priority > best.priority)) best = pin;
+		const heat = heatCompare(pin, best);
+		if (heat < 0 || (heat === 0 && pin.priority > best.priority)) best = pin;
 	}
 	return {
 		color: best?.color ?? '',
@@ -266,8 +270,12 @@ export function popupClearOfChrome(
  * A snoozed pin stays at the bottom, including inside a red cluster.
  * The number stays under the map controls (z-index 30).
  */
-export function pinUrgencyZ(urgency: number | null, selected = false, snoozed = false): number {
-	if (snoozed) return 0;
+export function pinUrgencyZ(urgency: number | null, selected = false, snoozed = false, snoozeEndMs: number | null = null): number {
+	if (snoozed) {
+		if (selected) return 0;
+		if (snoozeEndMs == null || !Number.isFinite(snoozeEndMs)) return -1e6;
+		return -Math.min(1e6 - 1, Math.max(1, snoozeEndMs / 1000));
+	}
 	const heat = urgency == null || !Number.isFinite(urgency) ? 0 : Math.max(0, Math.round(urgency * 10));
 	const layer = Math.min(20, 1 + heat);
 	return selected ? Math.min(24, layer + 4) : layer;
@@ -292,15 +300,13 @@ export interface StackMember {
 	priority: number;
 	/** A snoozed pin sorts under every awake pin in the same cluster. */
 	snoozed?: boolean;
+	/** Soonest end paints above a later snooze, still under every awake pin. */
+	snoozeEndMs?: number | null;
 }
 
 function hotter(a: StackMember, b: StackMember): number {
-	const leftSnooze = a.snoozed === true ? 1 : 0;
-	const rightSnooze = b.snoozed === true ? 1 : 0;
-	if (leftSnooze !== rightSnooze) return leftSnooze - rightSnooze;
-	const left = a.urgency ?? -1;
-	const right = b.urgency ?? -1;
-	if (left !== right) return right - left;
+	const heat = heatCompare(a, b);
+	if (heat !== 0) return heat;
 	return b.priority - a.priority;
 }
 
@@ -361,6 +367,7 @@ export interface LayoutPin {
 	urgency: number | null;
 	priority: number;
 	snoozed?: boolean;
+	snoozeEndMs?: number | null;
 }
 
 export interface IdenticalLayout {
@@ -370,14 +377,27 @@ export interface IdenticalLayout {
 }
 
 function heatOrder(a: LayoutPin, b: LayoutPin): number {
-	const leftSnooze = a.snoozed === true ? 1 : 0;
-	const rightSnooze = b.snoozed === true ? 1 : 0;
-	if (leftSnooze !== rightSnooze) return leftSnooze - rightSnooze;
-	const left = a.urgency ?? -1;
-	const right = b.urgency ?? -1;
-	if (left !== right) return right - left;
+	const heat = heatCompare(a, b);
+	if (heat !== 0) return heat;
 	if (a.priority !== b.priority) return b.priority - a.priority;
 	return a.path.localeCompare(b.path);
+}
+
+/** Hottest first. Snoozed pins follow every awake pin, soonest snooze first. */
+function heatCompare(
+	a: { snoozed?: boolean; snoozeEndMs?: number | null; urgency: number | null },
+	b: { snoozed?: boolean; snoozeEndMs?: number | null; urgency: number | null },
+): number {
+	return compareUrgencyPlacement(
+		{ snoozed: a.snoozed === true, snoozeEndMs: a.snoozeEndMs ?? null, urgency: urgencySortable(a.urgency) },
+		{ snoozed: b.snoozed === true, snoozeEndMs: b.snoozeEndMs ?? null, urgency: urgencySortable(b.urgency) },
+		'DESC',
+	);
+}
+
+function urgencySortable(urgency: number | null): Sortable {
+	if (urgency == null || !Number.isFinite(urgency)) return { kind: 'empty' };
+	return { kind: 'number', value: urgency };
 }
 
 /** Radius that keeps neighbouring pins far enough apart to tap, and at least 28px. */
@@ -450,6 +470,9 @@ export interface PinSortFacts {
 	metDays: number | null;
 	city: string;
 	ideality: number | null;
+	/** Active snooze. Absent means awake, so older callers keep their order. */
+	snoozed?: boolean;
+	snoozeEndMs?: number | null;
 }
 
 /**
@@ -466,13 +489,15 @@ export function orderByHubSort<T extends PinSortFacts>(
 		lat: Number.isFinite(row.lat) ? row.lat : null,
 		lon: Number.isFinite(row.lon) ? row.lon : null,
 		sortKeys: pinSortKeys(row, thresholds),
+		urgencySnoozed: row.snoozed === true,
+		urgencySnoozeEnd: row.snoozed === true ? (row.snoozeEndMs ?? null) : null,
 		row,
 	}));
 	return sortRowsBy(wrapped, [sort], fix, DISTANCE_COLUMN_ID).map((item) => item.row);
 }
 
 function pinSortKeys(row: PinSortFacts, thresholds: PriorityDays): Record<string, Sortable> {
-	const urgency = urgencyScore(row.days, row.priority, thresholds);
+	const urgency = row.snoozed === true && row.priority > 0 ? 0 : urgencyScore(row.days, row.priority, thresholds);
 	return {
 		[URGENCY_COLUMN_ID]: numberKey(urgency),
 		[IDEALITY_COLUMN_ID]: numberKey(row.ideality),

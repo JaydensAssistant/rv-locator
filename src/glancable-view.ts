@@ -75,6 +75,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.toggleClass('is-stacked', this.stackedLayout);
 		const dropLanding = this.plugin.registerHubLander?.(() => this.landArrival());
 		if (dropLanding) this.register(dropLanding);
+		if (!parentEl.closest('.rv-hub-swap-cover')) {
+			const adopt = this.plugin.registerLiveHub?.((el, api) => this.adoptHubMap(el, api));
+			if (adopt) this.register(adopt);
+		}
 		// A markdown file builds both reading and live-preview modes. The hidden
 		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
 		// delays the real hub. Paint when that mode is actually shown.
@@ -187,8 +191,38 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private ensureHubMap(): void {
 		this.ensureHubFullscreenSync();
 		this.ensureStage();
-		if (this.hubMapEl) return;
 		const stage = this.stageEl ?? this.root;
+		const sitting = stage.querySelector(':scope > .rv-hub-map:not(.rv-map-spacer)');
+		if (sitting instanceof HTMLElement) {
+			this.hubMapEl = sitting;
+			if (!this.hubMapApi) {
+				const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
+				this.hubMapApi = api ?? this.plugin.mountHubMap(sitting);
+			}
+			if (this.renderedPaths) this.hubMapApi.applyRenderedOrder(this.renderedPaths);
+			return;
+		}
+		if (this.hubMapEl?.closest('.rv-map-park') && !this.plugin.wantsParkedMapBack?.()) return;
+		if (this.hubMapEl?.isConnected && this.root.contains(this.hubMapEl)) return;
+		const doc = this.root.ownerDocument;
+		const inCover = this.root.closest('.rv-hub-swap-cover') != null;
+		if (!inCover && doc.querySelector('.rv-hub-swap-cover .rv-hub-map:not(.rv-map-spacer)')) {
+			const found = stage.querySelector(':scope > .rv-map-spacer');
+			const spacer = found instanceof HTMLElement ? found : stage.createDiv('rv-hub-map rv-map-spacer');
+			this.hubMapEl = spacer;
+			return;
+		}
+		this.hubMapEl = null;
+		const parked = this.plugin.claimParkedMap?.('rv-hub-map') ?? null;
+		if (parked) {
+			stage.appendChild(parked);
+			this.hubMapEl = parked;
+			const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
+			this.hubMapApi = api ?? this.plugin.mountHubMap(parked);
+			if (this.renderedPaths) this.hubMapApi.applyRenderedOrder(this.renderedPaths);
+			this.hubMapApi.invalidateSize();
+			return;
+		}
 		const handle = stage.createDiv('rv-hub-map-handle');
 		handle.setAttr('role', 'separator');
 		handle.setAttr('aria-orientation', 'horizontal');
@@ -213,12 +247,35 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private removeHubMap(): void {
+		const el = this.hubMapEl;
+		const ownedHere = el != null && el.isConnected && this.root.contains(el) && !el.classList.contains('rv-map-spacer');
+		if (!ownedHere) {
+			if (el?.classList.contains('rv-map-spacer')) el.remove();
+			this.hubMapEl = null;
+			this.hubMapApi = null;
+			this.hubMapHandle?.remove();
+			this.hubMapHandle = null;
+			return;
+		}
 		this.hubMapApi?.destroy();
 		this.hubMapApi = null;
 		this.hubMapEl?.remove();
 		this.hubMapHandle?.remove();
 		this.hubMapEl = null;
 		this.hubMapHandle = null;
+	}
+
+	/** The cover is handing this view the map it already painted. */
+	private adoptHubMap(el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null): void {
+		const stage = this.stageEl ?? this.root;
+		el.classList.remove('rv-note-map');
+		el.classList.add('rv-hub-map');
+		if (el.parentElement !== stage) stage.appendChild(el);
+		this.hubMapEl = el;
+		if (api) this.hubMapApi = api;
+		else if (!this.hubMapApi) this.hubMapApi = this.plugin.mountHubMap(el);
+		if (this.renderedPaths) this.hubMapApi?.applyRenderedOrder(this.renderedPaths);
+		this.hubMapApi?.invalidateSize();
 	}
 
 	protected override sortedGroups() {

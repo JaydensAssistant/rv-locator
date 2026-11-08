@@ -1,3 +1,4 @@
+import { URGENCY_COLUMN_ID } from './constants';
 import type { LatLon } from './types';
 import { haversineMeters } from './distance';
 
@@ -18,6 +19,13 @@ export interface DistanceSortable {
 	lat: number | null;
 	lon: number | null;
 	sortKeys: Record<string, Sortable>;
+	/**
+	 * Present on rows annotated for urgency. True puts the row under every
+	 * awake row. Absent keeps the plain urgency comparison.
+	 */
+	urgencySnoozed?: boolean;
+	/** End of an active snooze. Soonest first inside the snoozed group. */
+	urgencySnoozeEnd?: number | null;
 }
 
 /** Header click: ascending, descending, then back to the Base's own order. */
@@ -116,9 +124,50 @@ function compareRow(
 	if (sort.property === distanceProperty) {
 		return compareNullableNumber(metersOf(a, fix), metersOf(b, fix), sort.direction);
 	}
+	if (sort.property === URGENCY_COLUMN_ID && (a.urgencySnoozed !== undefined || b.urgencySnoozed !== undefined)) {
+		return compareUrgencyPlacement(
+			{
+				snoozed: a.urgencySnoozed === true,
+				snoozeEndMs: a.urgencySnoozeEnd ?? null,
+				urgency: a.sortKeys[sort.property] ?? { kind: 'empty' },
+			},
+			{
+				snoozed: b.urgencySnoozed === true,
+				snoozeEndMs: b.urgencySnoozeEnd ?? null,
+				urgency: b.sortKeys[sort.property] ?? { kind: 'empty' },
+			},
+			sort.direction,
+		);
+	}
 	const left = a.sortKeys[sort.property] ?? { kind: 'empty' as const };
 	const right = b.sortKeys[sort.property] ?? { kind: 'empty' as const };
 	return compareSortable(left, right, sort.direction);
+}
+
+/**
+ * Urgency order shared by the hub list and the map. An active snooze sorts
+ * under every awake card in either direction. Inside that group the soonest
+ * end comes first, also in either direction. Awake cards keep the usual
+ * empty-last urgency comparison.
+ */
+export function compareUrgencyPlacement(
+	a: { snoozed: boolean; snoozeEndMs: number | null; urgency: Sortable },
+	b: { snoozed: boolean; snoozeEndMs: number | null; urgency: Sortable },
+	direction: SortDirection,
+): number {
+	if (a.snoozed !== b.snoozed) return a.snoozed ? 1 : -1;
+	if (a.snoozed && b.snoozed) {
+		const left = finiteEnd(a.snoozeEndMs);
+		const right = finiteEnd(b.snoozeEndMs);
+		if (left === right) return 0;
+		return left < right ? -1 : 1;
+	}
+	return compareSortable(a.urgency, b.urgency, direction);
+}
+
+function finiteEnd(value: number | null): number {
+	if (value == null || !Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+	return value;
 }
 
 export function compareSortable(a: Sortable, b: Sortable, direction: SortDirection): number {

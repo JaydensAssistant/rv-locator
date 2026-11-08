@@ -570,6 +570,7 @@ export class RvMapView extends ItemView {
 			urgency: item.pin.urgency,
 			priority: item.pin.priority,
 			snoozed: item.pin.snoozed === true,
+			snoozeEndMs: item.pin.snoozeEndMs ?? null,
 		})), Math.floor(this.zoom));
 		const placed = projected.map((item) => {
 			const point = laid.points.get(item.pin.path) ?? item.point;
@@ -868,6 +869,7 @@ export class RvMapView extends ItemView {
 			urgency: item.pin.urgency,
 			priority: item.pin.priority,
 			snoozed: item.pin.snoozed === true,
+			snoozeEndMs: item.pin.snoozeEndMs ?? null,
 		}));
 		const groups = groupPinStacks(members);
 		for (const group of groups) {
@@ -923,7 +925,7 @@ export class RvMapView extends ItemView {
 		button.dataset.rvPath = pin.path;
 		button.style.left = `${point.x}px`;
 		button.style.top = `${point.y}px`;
-		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected, snoozed));
+		button.style.zIndex = String(pinUrgencyZ(pin.urgency, selected, snoozed, pin.snoozeEndMs ?? null));
 		if (this.flashPath === pin.path && Date.now() < this.flashUntil) button.addClass('rv-pin-flash');
 		button.addEventListener('pointerdown', (event) => {
 			if (event.button > 0) return;

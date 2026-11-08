@@ -320,7 +320,7 @@ describe('2026-10-12 dogfood round 2', () => {
 		]);
 		assert.equal(group?.[0]?.path, 'red');
 		const map = source('src/map-view.ts');
-		assert.match(map, /pinUrgencyZ\(pin\.urgency, selected, snoozed\)/);
+		assert.match(map, /pinUrgencyZ\(pin\.urgency, selected, snoozed, pin\.snoozeEndMs \?\? null\)/);
 	});
 
 	it('joins the empty note header, centers the hub, and fits the narrow controls', () => {

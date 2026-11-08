@@ -72,6 +72,10 @@ export interface RowModel {
 	gender: RvGender | null;
 	cells: CellModel[];
 	sortKeys: Record<string, Sortable>;
+	/** True while an active snooze holds this card under every awake card on Urgency. */
+	urgencySnoozed?: boolean;
+	/** Snooze end in epoch ms. Null when the card is awake. */
+	urgencySnoozeEnd?: number | null;
 }
 
 export interface GroupModel {
