@@ -928,7 +928,9 @@ describe('home base pick', () => {
 		assert.equal(canonicalUsCounty('Citrus'), 'Citrus County, FL');
 		assert.equal(canonicalUsCounty('Citrus County, FL'), 'Citrus County, FL');
 		assert.equal(canonicalUsCounty('Marion'), null);
-		assert.deepEqual(normalizeCountyList(['Citrus', 'Citrus County, FL']), ['Citrus County, FL']);
+		assert.deepEqual(normalizeCountyList(['Citrus', 'Citrus County, FL']), ['Citrus']);
+		assert.deepEqual(mergeSettings({ homeCounties: ['Citrus County, Florida'] }).homeCounties, ['Citrus County, Florida']);
+		assert.equal(hitInHomeCounties({ county: 'Citrus County' }, ['Citrus County, Florida']), true);
 		assert.equal(countyFilterParam(['Citrus County, FL', 'Marion County, FL']), 'Citrus County|Marion County');
 		assert.equal(glancableCardSlotPx(1236, DEFAULT_SETTINGS), 400);
 		assert.equal(glancableCardSlotPx(400, DEFAULT_SETTINGS), 380);

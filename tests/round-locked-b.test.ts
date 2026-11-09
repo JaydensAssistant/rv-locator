@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
+import { APP_TABS, appBarSlotPx, appendAppSlot } from '../src/app-bar';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
-import { applyNoteMapFrame, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
+import { applyNoteMapFrame, hubUsesStackedMap, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
 import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
 import { buildCountySuggestUrl, countyGeocodeText } from '../src/address';
 import { seatMapGrip } from '../src/map-handoff';
@@ -194,7 +195,10 @@ describe('RV-B62 the note map stays on the note, at the hub\'s pixel height', ()
 		assert.equal(noteHost.style.getPropertyValue('--rv-note-map'), `${px}px`);
 		assert.equal(hubHost.style.getPropertyValue('--rv-map-size'), noteHost.style.getPropertyValue('--rv-note-map'));
 		writeMapBand(hubHost, 0, ratio, '--rv-map-size');
-		assert.equal(hubHost.style.getPropertyValue('--rv-map-size'), '51%');
+		assert.equal(hubHost.style.getPropertyValue('--rv-map-size'), `${px}px`);
+		const fresh = doc.createElement('div');
+		writeMapBand(fresh, 0, ratio, '--rv-map-size');
+		assert.equal(fresh.style.getPropertyValue('--rv-map-size'), '51%');
 		const main = source('src/main.ts');
 		const glanceSrc = source('src/glancable-view.ts');
 		const map = source('src/map-view.ts');
@@ -338,8 +342,11 @@ describe('RV-254 the tab bar', () => {
 	it('uses the same five labels, a scrolling sort row, and the note urgency accent', () => {
 		const nearby = source('src/nearby-view.ts');
 		const css = source('styles.css');
-		assert.match(nearby, /'Hub', 'house'/);
-		assert.match(nearby, /'New', 'plus'/);
+		const bar = source('src/app-bar.ts');
+		assert.match(bar, /label: 'Hub', icon: 'house'/);
+		assert.match(bar, /label: 'New', icon: 'plus'/);
+		assert.match(nearby, /APP_TABS/);
+		assert.match(source('src/note-hub-bar.ts'), /APP_TABS/);
 		assert.match(nearby, /door-open/);
 		assert.match(nearby, /'urgency', 'distance', 'attempted', 'spoke', 'priority', 'met', 'city', 'ideality'/);
 		assert.match(css, /\.rv-app-bar > \.rv-app-slot/);
@@ -408,14 +415,75 @@ describe('RV-B74 county search', () => {
 describe('RV-B72 selection and the address copy button', () => {
 	it('uses the urgency accent in notes and the hub accent in the hub', () => {
 		const css = source('styles.css');
-		assert.match(css, /\.workspace-leaf-content\.is-rv-note ::selection/);
-		assert.match(css, /\.rv-locator-glancable ::selection/);
-		assert.match(css, /var\(--rv-urgency-accent, #1f8a4c\) 45%/);
-		assert.match(css, /var\(--rv-hub-accent, #1f8a4c\) 45%/);
+		assert.match(css, /\.theme-light \.workspace-leaf-content\.is-rv-note ::selection/);
+		assert.match(css, /\.theme-light \.rv-locator-view ::selection/);
+		assert.match(css, /var\(--rv-urgency-accent, #1f8a4c\) 45%, transparent\) !important/);
+		assert.match(css, /var\(--rv-hub-accent, #1f8a4c\) 45%, transparent\) !important/);
 		assert.match(source('src/note-chrome.ts'), /Address copied/);
 		assert.match(source('src/note-chrome.ts'), /setIcon\(copy, 'copy'\)/);
 		assert.match(css, /\.rv-closed-title \.rv-type \{\s*color:\s*var\(--text-faint\)/);
 		assert.match(css, /padding-left:\s*12px !important/);
 		assert.match(css, /\.rv-qf-search:focus[\s\S]*border-radius:\s*0 !important/);
+	});
+});
+
+describe('the hub, bases, and note bars share one geometry', () => {
+	it('is full width with five equal slots and the same labels', () => {
+		assert.equal(appBarSlotPx(390), 78);
+		assert.equal(APP_TABS.length, 5);
+		const css = source('styles.css');
+		const sortbar = css.slice(
+			css.indexOf('.rv-locator-glancable .rv-locator-sortbar {'),
+			css.indexOf('}', css.indexOf('.rv-locator-glancable .rv-locator-sortbar {')),
+		);
+		assert.match(sortbar, /padding:\s*2px 0 0/);
+		assert.doesNotMatch(sortbar, /4px/);
+		assert.match(css, /\.rv-app-bar > \.rv-app-slot \{[^}]*flex:\s*1 1 0/);
+		const noteRule = css.slice(
+			css.indexOf('.workspace-leaf-content.is-rv-note > .rv-note-hub-bar {'),
+			css.indexOf('}', css.indexOf('.workspace-leaf-content.is-rv-note > .rv-note-hub-bar {')),
+		);
+		assert.match(noteRule, /width:\s*100%/);
+		assert.match(noteRule, /padding:\s*2px 0/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-sortbar:has\(> \.rv-app-bar\) \{[^}]*padding-left:\s*0/);
+		const dom = new JSDOM('<!doctype html><body></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const leaf = dom.window.document.createElement('div');
+		const note = mountNoteHubBar(leaf, 'People/Ada.md', {
+			noteMapLit: () => false,
+			toggleMap: () => {},
+			createNewRv: () => {},
+			openCampaign: () => {},
+			openSearch: () => {},
+			openHub: () => {},
+		});
+		const hub = dom.window.document.createElement('div');
+		hub.className = 'rv-locator-sortbar rv-app-bar';
+		for (const tab of APP_TABS) appendAppSlot(hub, tab.label, tab.icon, { extra: tab.id === 'map' ? 'rv-hub-earth' : '' });
+		const noteSlots = Array.from(note.querySelectorAll('.rv-app-slot'));
+		const hubSlots = Array.from(hub.querySelectorAll('.rv-app-slot'));
+		assert.equal(noteSlots.length, hubSlots.length);
+		noteSlots.forEach((slot, index) => {
+			const other = hubSlots[index];
+			assert.ok(other instanceof dom.window.HTMLElement);
+			assert.equal(slot.querySelector('.rv-app-label')?.textContent, other.querySelector('.rv-app-label')?.textContent);
+			assert.equal(slot.getAttribute('aria-label'), other.getAttribute('aria-label'));
+			assert.equal(slot.classList.contains('rv-app-slot'), true);
+		});
+		assert.match(source('src/nearby-view.ts'), /for \(const tab of APP_TABS\)/);
+		assert.match(css, /html\.theme-light \.workspace-leaf-content\.is-rv-app > \.view-header :is\(/);
+		assert.match(css, /\.is-rv-app > \.view-header :is\([\s\S]*button/);
+		assert.equal(hubUsesStackedMap(false, 0, false, 390), true);
+		assert.equal(hubUsesStackedMap(false, 0), false);
+		assert.match(source('src/glancable-view.ts'), /if \(specified < STROKE_TARGET_PX\) resolved = '2px'/);
+		assert.match(source('src/nearby-view.ts'), /scrollIntoView/);
+		assert.match(source('src/nearby-view.ts'), /keepMenuOnScreen/);
+		assert.match(source('src/main.ts'), /keepMenuOnScreen/);
+		assert.match(source('src/home-base.ts'), /Keep the user's spelling/);
+		assert.match(css, /\.rv-locator-view\.is-hub-map\.is-stacked \.rv-hub-map > \.rv-map-stage \{[^}]*min-height:\s*120px !important/);
+		assert.match(css, /\.rv-locator-card-actions \{[^}]*z-index:\s*4/);
+		assert.match(css, /\.rv-visit-more \{[^}]*z-index:\s*2/);
+		assert.match(css, /\.rv-hub-chip \{[^}]*min-width:\s*2\.5rem/);
 	});
 });

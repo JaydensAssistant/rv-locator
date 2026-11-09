@@ -1,4 +1,5 @@
-import { setIcon, type IconName } from 'obsidian';
+import { setIcon } from 'obsidian';
+import { APP_TABS, appendAppSlot } from './app-bar';
 
 /** The hub bottom bar, mounted on an RV note so the map does not jump. */
 export interface NoteHubBarHost {
@@ -12,14 +13,6 @@ export interface NoteHubBarHost {
 	openHub(path: string): void;
 }
 
-const NOTE_TABS: readonly { label: string; icon: IconName; id: string }[] = [
-	{ id: 'hub', label: 'Hub', icon: 'house' },
-	{ id: 'search', label: 'Search', icon: 'search' },
-	{ id: 'campaign', label: 'Campaign', icon: 'flag' },
-	{ id: 'map', label: 'Map', icon: 'earth' },
-	{ id: 'new', label: 'New', icon: 'plus' },
-];
-
 /** Same five slots as the hub and bases. */
 export function mountNoteHubBar(leaf: HTMLElement, path: string, host: NoteHubBarHost): HTMLElement {
 	const found = leaf.querySelector(':scope > .rv-note-hub-bar');
@@ -32,17 +25,9 @@ export function mountNoteHubBar(leaf: HTMLElement, path: string, host: NoteHubBa
 		bar = doc.createElement('div');
 		bar.className = 'rv-locator-sortbar rv-note-hub-bar rv-app-bar';
 		const current = (): string => bar.dataset.rvPath ?? '';
-		for (const tab of NOTE_TABS) {
-			const button = doc.createElement('button');
-			button.type = 'button';
-			button.className = `rv-app-slot rv-note-tab-${tab.id}`;
-			button.setAttribute('aria-label', tab.label);
+		for (const tab of APP_TABS) {
+			const button = appendAppSlot(bar, tab.label, tab.icon, { extra: `rv-note-tab-${tab.id}` });
 			if (tab.id === 'map') button.classList.add('rv-note-bar-earth');
-			setIcon(button, tab.icon);
-			const label = doc.createElement('span');
-			label.className = 'rv-app-label';
-			label.textContent = tab.label;
-			button.appendChild(label);
 			button.addEventListener('click', () => {
 				const note = current();
 				if (tab.id === 'hub') host.openHub(note);
@@ -51,7 +36,6 @@ export function mountNoteHubBar(leaf: HTMLElement, path: string, host: NoteHubBa
 				else if (tab.id === 'map') host.toggleMap(note);
 				else host.createNewRv();
 			});
-			bar.appendChild(button);
 		}
 		leaf.appendChild(bar);
 	}

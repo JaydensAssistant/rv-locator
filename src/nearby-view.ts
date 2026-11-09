@@ -15,6 +15,7 @@ import type RVLocatorPlugin from './main';
 import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
 import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
+import { APP_TABS, appendAppSlot, keepMenuOnScreen } from './app-bar';
 import { armHoverTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
@@ -651,14 +652,18 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			this.barSlot(bar, 'Campaign', 'flag', settings.campaignListFilter !== 'all', (event) => this.openCampaignFilterMenu(event), settings.campaignListFilter !== 'all');
 			return;
 		}
-		this.barSlot(bar, 'Hub', 'house', false, () => {
-			this.sortMenuOpen = true;
-			this.paintSortPresets();
-		});
-		this.barSlot(bar, 'Search', 'search', false, () => { this.openGlanceSearch(); });
-		this.barSlot(bar, 'Campaign', 'flag', false, () => { this.plugin.openCampaignModal(); });
-		this.barSlot(bar, 'Map', 'earth', this.plugin.hubMapOpen, () => { void this.plugin.openMapSoon(); }, false, 'rv-hub-earth');
-		this.barSlot(bar, 'New', 'plus', false, () => { void this.plugin.createNewRv(); });
+		for (const tab of APP_TABS) {
+			const on = tab.id === 'map' && this.plugin.hubMapOpen;
+			this.barSlot(bar, tab.label, tab.icon, on, () => {
+				if (tab.id === 'hub') {
+					this.sortMenuOpen = true;
+					this.paintSortPresets();
+				} else if (tab.id === 'search') this.openGlanceSearch();
+				else if (tab.id === 'campaign') this.plugin.openCampaignModal();
+				else if (tab.id === 'map') void this.plugin.openMapSoon();
+				else void this.plugin.createNewRv();
+			}, false, tab.id === 'map' ? 'rv-hub-earth' : '');
+		}
 	}
 
 	private barSlot(
@@ -670,12 +675,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		dot = false,
 		extra = '',
 	): void {
-		const button = bar.createEl('button', {
-			cls: `rv-app-slot${on ? ' is-on' : ''}${dot ? ' has-dot' : ''}${extra ? ` ${extra}` : ''}`,
-			attr: { type: 'button', 'aria-label': label },
-		});
-		setIcon(button, icon);
-		button.createSpan({ cls: 'rv-app-label', text: label });
+		const button = appendAppSlot(bar, label, icon, { on, dot, extra });
 		button.addEventListener('click', (event) => {
 			event.preventDefault();
 			action(event);
@@ -721,7 +721,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				.setChecked(id === current)
 				.onClick(() => { choose(id); }));
 		}
+		const slot = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+		if (slot && typeof slot.scrollIntoView === 'function') {
+			try { slot.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* The slot is already on screen. */ }
+		}
 		menu.showAtMouseEvent(event);
+		keepMenuOnScreen(slot);
 	}
 
 	private syncPositionSource(): void {

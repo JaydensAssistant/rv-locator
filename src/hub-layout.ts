@@ -76,11 +76,13 @@ export function mapBandPx(panePx: number, ratio: number): number {
 	return Math.max(0, Math.round(panePx * ratio));
 }
 
-/** Write the shared band. A measured pane is pixels; an unmeasured one is the same percent. */
+/** Write the shared band. A measured pane is pixels. A later 0 measure keeps that pixel band. */
 export function writeMapBand(host: HTMLElement, panePx: number, ratio: number, prop: '--rv-map-size' | '--rv-note-map'): void {
 	const px = mapBandPx(panePx, ratio);
 	const share = Number.isFinite(ratio) ? ratio : DEFAULT_MAP_RATIO;
-	const next = px > 0 ? `${px}px` : `${Math.round(share * 100)}%`;
+	const previous = host.style.getPropertyValue('--rv-map-size').trim() || host.style.getPropertyValue('--rv-note-map').trim();
+	const kept = px <= 0 && /^\d+(\.\d+)?px$/.test(previous);
+	const next = px > 0 ? `${px}px` : kept ? previous : `${Math.round(share * 100)}%`;
 	// One band for the hub and the note. Writing both names keeps the handoff from
 	// falling back to a percent on the name the other view was using.
 	if (host.style.getPropertyValue('--rv-map-size') !== next) host.style.setProperty('--rv-map-size', next);
@@ -117,8 +119,10 @@ export function sideMapMinPx(viewportPx: number): number {
  * Phone hub, or a narrow pane. A width of 0 has not been measured, so the
  * caller can keep the last known narrow state instead of treating it as wide.
  */
-export function hubUsesStackedMap(isMobile: boolean, width: number, knownNarrow = false): boolean {
+export function hubUsesStackedMap(isMobile: boolean, width: number, knownNarrow = false, frameWidth = 0): boolean {
 	if (isMobile) return true;
+	const frame = Number.isFinite(frameWidth) ? frameWidth : 0;
+	if (frame > 0 && frame < HUB_STACK_BELOW_PX) return true;
 	if (width > 0) return width < HUB_STACK_BELOW_PX;
 	return knownNarrow;
 }

@@ -198,8 +198,9 @@ export function normalizeCountyList(value: unknown): string[] {
 	for (const item of chunks) {
 		const trimmed = item.trim();
 		if (!trimmed) continue;
-		const stored = canonicalUsCounty(trimmed) ?? trimmed;
-		const key = countyStorageKey(stored);
+		// Keep the user's spelling. Canonical form is only the dedupe key.
+		const stored = trimmed;
+		const key = countyStorageKey(canonicalUsCounty(trimmed) ?? trimmed);
 		if (!key || seen.has(key)) continue;
 		seen.add(key);
 		names.push(stored);

@@ -24,6 +24,7 @@ import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
+import { keepMenuOnScreen } from './app-bar';
 import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -496,6 +497,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.registerEvent(this.app.workspace.on('layout-change', () => {
 			this.scheduleAgeRefresh();
 			this.releaseClosedVisitNotes();
+			this.syncNoteHubBar();
 		}));
 		this.registerEvent(this.app.workspace.on('css-change', () => {
 			this.recolorOpenSuggestions();
@@ -541,19 +543,22 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** The hub bar on each open RV note. A hub leaf keeps its own bar. */
 	private syncNoteHubBar(): void {
-		const leaves = typeof this.app.workspace.getLeavesOfType === 'function'
-			? this.app.workspace.getLeavesOfType('markdown')
-			: [];
-		for (const leaf of leaves) {
-			const view = leaf.view;
-			if (!(view instanceof MarkdownView) || !(view.containerEl instanceof HTMLElement)) continue;
-			const content = view.containerEl;
-			const file = view.file;
+		for (const leaf of this.workspaceLeaves()) {
+			const view = leaf.view as { containerEl?: HTMLElement; file?: TFile | null } | undefined;
+			const content = view?.containerEl;
+			if (!(content instanceof HTMLElement)) continue;
+			const file = view instanceof MarkdownView && view.file instanceof TFile ? view.file : null;
 			const data = file ? (this.cachedFrontmatter.get(file.path) ?? this.app.metadataCache.getFileCache(file)?.frontmatter) : null;
 			const record = (data ?? null) as Record<string, unknown> | null;
 			const surface = Boolean(file && isRvLocatorSurface(record));
-			const ownBase = content.querySelector('.rv-locator-view') != null;
-			content.classList.toggle('is-rv-app', surface || ownBase);
+			let host = content;
+			if (!content.classList.contains('workspace-leaf-content') && typeof content.closest === 'function') {
+				const leafEl = content.closest('.workspace-leaf-content');
+				if (leafEl instanceof HTMLElement) host = leafEl;
+			}
+			const ownBase = host.querySelector('.rv-locator-view, .rv-locator-glancable') != null;
+			host.classList.toggle('is-rv-app', surface || ownBase);
+			if (!(view instanceof MarkdownView)) continue;
 			const show = Boolean(file && isRvDashboardNote(record) && !isRvHubNote(record));
 			if (!show || !file) {
 				clearNoteHubBar(content);
@@ -1947,7 +1952,9 @@ export default class RVLocatorPlugin extends Plugin {
 			this.app.workspace.iterateAllLeaves((leaf) => { leaves.push(leaf); });
 			if (leaves.length > 0) return leaves;
 		}
-		for (const type of ['markdown', 'bases']) leaves.push(...this.app.workspace.getLeavesOfType(type));
+		for (const type of ['markdown', 'bases', GLANCABLE_VIEW_TYPE]) {
+			if (typeof this.app.workspace.getLeavesOfType === 'function') leaves.push(...this.app.workspace.getLeavesOfType(type));
+		}
 		return leaves;
 	}
 
@@ -3643,7 +3650,12 @@ export default class RVLocatorPlugin extends Plugin {
 			.onClick(() => { this.confirmArchive(file); }));
 		menu.addSeparator();
 		menu.addItem((item) => item.setTitle('Snooze').setIcon('moon').onClick(() => { this.openSnoozeModal(path, file.basename); }));
+		const slot = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+		if (slot && typeof slot.scrollIntoView === 'function') {
+			try { slot.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* The badge is already on screen. */ }
+		}
 		menu.showAtMouseEvent(event);
+		keepMenuOnScreen(slot);
 	}
 
 	private openSnoozeModal(path: string, displayName: string): void {

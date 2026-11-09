@@ -74,6 +74,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}, this.root));
 		this.stackedLayout = this.readStacked();
 		this.root.toggleClass('is-stacked', this.stackedLayout);
+		this.markAppLeaf();
 		const dropLanding = this.plugin.registerHubLander?.(() => this.landArrival());
 		if (dropLanding) this.register(dropLanding);
 		if (!parentEl.closest('.rv-hub-swap-cover')) {
@@ -187,7 +188,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			|| body?.classList.contains('is-phone') === true
 			|| body?.classList.contains('is-mobile') === true;
 		const width = this.root.clientWidth || this.root.parentElement?.clientWidth || 0;
-		const stacked = hubUsesStackedMap(phone, width, this.plugin.hubPaneNarrow);
+		const frame = this.root.ownerDocument?.defaultView?.innerWidth ?? 0;
+		const stacked = hubUsesStackedMap(phone, width, this.plugin.hubPaneNarrow, frame);
 		if (width > 0) this.plugin.hubPaneNarrow = stacked;
 		return stacked;
 	}
@@ -299,16 +301,36 @@ export class NearbyGlancableView extends NearbyBasesView {
 		else run();
 	}
 
-	/** A drag uses the ratio again. The handoff lock is only so the first frames stay painted. */
+	/** The leaf that owns this hub or bases view hides its Obsidian header buttons. */
+	private markAppLeaf(): void {
+		const leaf = typeof this.root.closest === 'function' ? this.root.closest('.workspace-leaf-content') : null;
+		if (leaf instanceof HTMLElement) leaf.classList.add('is-rv-app');
+	}
+
+	/**
+	 * A drag uses the ratio again. The handoff lock is only so the first frames
+	 * stay painted. If dropping it collapses the stage, put the lock back in
+	 * the same turn so a frame never paints at height 0.
+	 */
 	private releaseHandedBandLock(): void {
 		const map = this.hubMapEl;
 		if (!map) return;
+		const flex = map.style.flex;
+		const mapMin = map.style.minHeight;
 		map.style.removeProperty('flex');
 		map.style.removeProperty('min-height');
 		const stage = map.querySelector('.rv-map-stage');
 		if (!(stage instanceof HTMLElement)) return;
+		const height = stage.style.height;
+		const min = stage.style.minHeight;
 		stage.style.removeProperty('height');
 		stage.style.removeProperty('min-height');
+		const laid = stage.getBoundingClientRect().height;
+		if (laid >= 2) return;
+		if (flex) map.style.flex = flex;
+		if (mapMin) map.style.minHeight = mapMin;
+		if (height) stage.style.height = height;
+		if (min) stage.style.minHeight = min;
 	}
 
 	/**
@@ -1429,11 +1451,6 @@ function probeBorderRatio(host: HTMLElement): number {
 	try {
 		const computed = Number.parseFloat(view.getComputedStyle(probe).borderTopWidth);
 		if (Number.isFinite(computed) && computed > 0 && Math.abs(computed - 2) > 0.02) ratio = computed / 2;
-		else {
-			const offset = probe.offsetWidth;
-			const painted = probe.getBoundingClientRect().width;
-			if (offset > 0.5 && painted > 0) ratio = painted / offset;
-		}
 	} finally {
 		probe.remove();
 	}
@@ -1470,6 +1487,7 @@ function badgeStrokePx(host: HTMLElement): string {
 			resolved = strokeLabel(specified);
 		}
 	}
+	if (specified < STROKE_TARGET_PX) resolved = '2px';
 	if (doc) strokeByDocument.set(doc, { generation: strokeGeneration, px: resolved });
 	return resolved;
 }
@@ -1514,7 +1532,7 @@ function applyBadgeStroke(host: HTMLElement, px: string): void {
 }
 
 function paintRingStroke(host: HTMLElement, px: string): void {
-	host.querySelectorAll('line, circle.is-ring').forEach((node) => {
+	host.querySelectorAll('line, circle').forEach((node) => {
 		if (!(node instanceof Element) || !('style' in node)) return;
 		const mark = node as Element & { style: CSSStyleDeclaration };
 		mark.style.setProperty('stroke-width', px, 'important');

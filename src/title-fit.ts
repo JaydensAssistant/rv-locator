@@ -290,7 +290,11 @@ export function mountClosedTitle(
 		input.insertAdjacentElement('afterend', overlay);
 	}
 	const read = (): string => {
-		if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) return input.value;
+		const tag = input.tagName;
+		if ((tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') && 'value' in input) {
+			const value = (input as HTMLInputElement).value;
+			if (typeof value === 'string') return value;
+		}
 		return input.getAttribute('value') ?? '';
 	};
 	const paint = (): void => {
