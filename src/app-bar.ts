@@ -53,21 +53,28 @@ export function keepMenuOnScreen(anchor: EventTarget | null): void {
 	if (!(el instanceof HTMLElement) || typeof el.getBoundingClientRect !== 'function') return;
 	const box = el.getBoundingClientRect();
 	if (!Number.isFinite(box.height) || box.height <= 0) return;
-	const margin = 8;
-	const height = view.innerHeight > 0 ? view.innerHeight : box.bottom;
+	const margin = 12;
+	const visual = view.visualViewport?.height ?? 0;
+	const rawHeight = view.innerHeight > 0 ? view.innerHeight : box.bottom;
+	const height = visual > 0 ? Math.min(rawHeight, visual) : rawHeight;
 	const width = view.innerWidth > 0 ? view.innerWidth : box.right;
+	const limit = Math.floor(height) - margin;
 	let top = box.top;
 	let left = box.left;
-	if (box.bottom > height - margin) {
+	if (box.bottom > limit) {
 		const anchorTop = node && typeof node.getBoundingClientRect === 'function'
 			? node.getBoundingClientRect().top
 			: box.top;
 		const above = anchorTop - box.height - margin;
-		top = above >= margin ? above : Math.max(margin, height - box.height - margin);
+		top = above >= margin ? above : Math.max(margin, limit - box.height);
 	}
 	if (top < margin) top = margin;
+	if (top + box.height > limit) top = Math.max(margin, limit - box.height);
 	if (left + box.width > width - margin) left = Math.max(margin, width - box.width - margin);
 	if (left < margin) left = margin;
-	el.style.top = `${Math.round(top)}px`;
-	el.style.left = `${Math.round(left)}px`;
+	el.style.top = `${Math.floor(top)}px`;
+	el.style.left = `${Math.floor(left)}px`;
+	if (el.dataset.rvMenuClamp === '1') return;
+	el.dataset.rvMenuClamp = '1';
+	if (view.requestAnimationFrame) view.requestAnimationFrame(() => keepMenuOnScreen(anchor));
 }

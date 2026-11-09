@@ -493,7 +493,8 @@ function paintQuickFactsCallout(callout: HTMLElement, path: string, data: Record
 		dashboard.style.setProperty('--rv-urgency-accent', accent);
 		paintUrgencyInk(dashboard, accent);
 	}
-	if (content.dataset.rvFactsPaint === key && content.classList.contains('rv-qf-body') && content.childElementCount > 0) return;
+	const rowsLive = content.querySelector(':scope > .rv-qf-row') != null;
+	if (content.dataset.rvFactsPaint === key && content.classList.contains('rv-qf-body') && rowsLive) return;
 	paintFactsTitle(title, path, data, status, priority, urgency, host);
 	paintFactsBody(content, path, data, status, priority, host);
 	content.dataset.rvFactsPaint = key;
@@ -803,6 +804,7 @@ function paintQuickList(
 		lines.push(host);
 	}
 	if (extra > 0 && labelEl instanceof HTMLElement) {
+		valueEl.classList.add('is-overflow');
 		labelEl.createSpan({ cls: 'rv-qf-plus', text: `+${extra}` });
 		const chevron = labelEl.createSpan({
 			cls: 'rv-qf-chevron',

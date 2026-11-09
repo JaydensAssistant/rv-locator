@@ -12,7 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
-import { liftMapGrip, lockHandedMapBand, seatMapGrip } from './map-handoff';
+import { liftMapGrip, lockHandedMapBand, retireEmptyMapPark, seatMapGrip } from './map-handoff';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -236,6 +236,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const parked = this.plugin.claimParkedMap?.('rv-hub-map') ?? null;
 		if (parked) {
 			stage.appendChild(parked);
+			retireEmptyMapPark(parked.ownerDocument);
 			this.hubMapEl = parked;
 			const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
 			const painted = parked.querySelector('.rv-map-stage') != null;
@@ -334,8 +335,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	/**
-	 * Once the live stage has a box, `--rv-map-size` owns the height.
-	 * The pixel lock stays through that frame so the band is not empty.
+	 * Once the live stage has a box, keep that pixel height.
+	 * Clearing the lock and confirming on the next frame was the one paint
+	 * where `.rv-map-stage` was 0px and the grip was gone (hub → note → hub →
+	 * base → note). The lock stays. A drag writes a new pixel height in the
+	 * same turn.
 	 */
 	private releaseHandedBandWhenLaidOut(left = 12): void {
 		const map = this.hubMapEl;
@@ -350,14 +354,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 				if (left > 0) view?.requestAnimationFrame(() => this.releaseHandedBandWhenLaidOut(left - 1));
 				return;
 			}
-			this.releaseHandedBandLock();
-			const confirm = (): void => {
-				if (this.hubMapEl !== map || !map.isConnected) return;
-				if (stage.getBoundingClientRect().height >= 2) return;
-				lockHandedMapBand(map, height);
-			};
-			if (view?.requestAnimationFrame) view.requestAnimationFrame(confirm);
-			else confirm();
+			lockHandedMapBand(map, height);
 		};
 		if (view?.requestAnimationFrame) view.requestAnimationFrame(step);
 		else step();
@@ -474,7 +471,26 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	/** Cards are in the document. A stroke measured in the fragment is not kept. */
 	private strokeHubRings(): void {
+		this.dropDuplicateCards();
 		if (this.scrollEl) pinBadgeRings(this.scrollEl);
+	}
+
+	/**
+	 * One card per path. A second grid (the cover snapshot left in the scroller,
+	 * or a hidden markdown mode that became visible) paints the same card again,
+	 * about a 6px gap below the first.
+	 */
+	private dropDuplicateCards(): void {
+		const scroll = this.scrollEl;
+		if (!scroll || typeof scroll.querySelectorAll !== 'function') return;
+		const seen = new Set<string>();
+		scroll.querySelectorAll('.rv-locator-card').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			const path = node.getAttribute('data-rv-path') ?? '';
+			if (!path) return;
+			if (seen.has(path)) node.remove();
+			else seen.add(path);
+		});
 	}
 
 	/** A Quick Switcher open of the hub starts at the top. A return does not. */
@@ -1156,10 +1172,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const width = box.clientWidth || 1;
 			const stacked = this.stackedLayout;
 			const move = (ev: PointerEvent): void => {
-				this.releaseHandedBandLock();
 				const delta = stacked ? (startY - ev.clientY) / height : (startX - ev.clientX) / width;
 				this.plugin.rememberMapSplit(start + delta, 'hub');
+				this.releaseHandedBandLock();
 				this.syncHubMap();
+				const band = this.hubMapEl?.querySelector('.rv-map-stage');
+				if (this.hubMapEl && band instanceof HTMLElement) {
+					const laid = band.getBoundingClientRect().height;
+					if (laid >= 2) lockHandedMapBand(this.hubMapEl, laid);
+				}
 			};
 			const stop = (): void => {
 				handle.ownerDocument.removeEventListener('pointermove', move);
@@ -1532,10 +1553,19 @@ function applyBadgeStroke(host: HTMLElement, px: string): void {
 }
 
 function paintRingStroke(host: HTMLElement, px: string): void {
+	// The hub ring reports the specified width (3.938px). The note urgency
+	// control reports the painted border (3.048px). Use the painted border so
+	// every ring is the same thickness.
+	let stroke = px;
+	const view = host.ownerDocument.defaultView;
+	if (host.style.getPropertyValue('border-width') && view && typeof view.getComputedStyle === 'function') {
+		const used = Number.parseFloat(view.getComputedStyle(host).borderTopWidth);
+		if (Number.isFinite(used) && used >= 1) stroke = strokeLabel(used);
+	}
 	host.querySelectorAll('line, circle').forEach((node) => {
 		if (!(node instanceof Element) || !('style' in node)) return;
 		const mark = node as Element & { style: CSSStyleDeclaration };
-		mark.style.setProperty('stroke-width', px, 'important');
+		mark.style.setProperty('stroke-width', stroke, 'important');
 		mark.setAttribute('vector-effect', 'non-scaling-stroke');
 		mark.style.setProperty('vector-effect', 'non-scaling-stroke');
 		mark.style.setProperty('stroke-linecap', 'round');

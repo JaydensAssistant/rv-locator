@@ -1926,6 +1926,39 @@ describe('smoke layout', () => {
 		assert.equal(reading?.querySelector('.stale'), null);
 	});
 
+	it('repaints Last Attempted when the callout body was replaced but the paint key stayed', () => {
+		const callout = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div><div class="callout-content"></div></div>';
+		const root = window.document.createElement('div');
+		root.className = 'workspace-leaf-content';
+		root.innerHTML = `<div class="markdown-preview-view">${callout}</div>`;
+		const facts = {
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			Priority: 3,
+			'Last Attempted': '2026-11-09T15:04:00',
+			Met: '2026-10-01T10:00:00',
+			'Left Publications': ['Tract', 'Brochure', 'Magazine', 'Book'],
+		};
+		const host = chromeHost(facts, { count: 0 });
+		decorateNoteChrome(root, 'People/Green.md', host);
+		const content = root.querySelector('.callout-content');
+		assert.ok(content instanceof window.HTMLElement);
+		assert.equal(content.querySelector('.rv-cal-day')?.textContent, '9');
+		assert.equal(content.querySelector('.rv-qf-plus')?.textContent, '+3');
+		assert.ok(content.querySelector('.rv-qf-value.is-overflow .rv-qf-search'));
+		const key = content.dataset.rvFactsPaint ?? '';
+		content.classList.add('rv-qf-body');
+		const stale = window.document.createElement('span');
+		stale.className = 'stale-facts';
+		stale.textContent = 'old attempt';
+		content.replaceChildren(stale);
+		content.dataset.rvFactsPaint = key;
+		decorateNoteChrome(root, 'People/Green.md', host);
+		assert.equal(content.querySelector('.stale-facts'), null);
+		assert.equal(content.querySelector('.rv-cal-day')?.textContent, '9');
+		assert.ok(content.querySelector(':scope > .rv-qf-row'));
+	});
+
 	it('drops suggestion listeners after the log-visit modal closes', async () => {
 		await new Promise((resolve) => setTimeout(resolve, 0));
 		const before = suggestionListenerCount();

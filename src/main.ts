@@ -31,7 +31,7 @@ import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, liftMapGrip, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
+import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, liftMapGrip, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, retireEmptyMapPark, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -2756,6 +2756,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const parked = this.claimParkedMap('rv-note-map');
 			if (parked) {
 				content.appendChild(parked);
+				retireEmptyMapPark(content.ownerDocument);
 				map = parked;
 				const adopted = this.takeParkedHandle();
 				if (adopted) this.noteMapHandle = adopted;

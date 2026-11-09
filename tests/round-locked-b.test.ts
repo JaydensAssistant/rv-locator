@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { APP_TABS, appBarSlotPx, appendAppSlot } from '../src/app-bar';
+import { APP_TABS, appBarSlotPx, appendAppSlot, keepMenuOnScreen } from '../src/app-bar';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
 import { applyNoteMapFrame, hubUsesStackedMap, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
 import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
 import { buildCountySuggestUrl, countyGeocodeText } from '../src/address';
-import { seatMapGrip } from '../src/map-handoff';
+import { claimParkedMap, parkMapNode, seatMapGrip } from '../src/map-handoff';
 import { hubAccentColor } from '../src/urgency-palette';
 import { clampMapSplit, mergeSettings } from '../src/types';
 
@@ -485,5 +485,76 @@ describe('the hub, bases, and note bars share one geometry', () => {
 		assert.match(css, /\.rv-locator-card-actions \{[^}]*z-index:\s*4/);
 		assert.match(css, /\.rv-visit-more \{[^}]*z-index:\s*2/);
 		assert.match(css, /\.rv-hub-chip \{[^}]*min-width:\s*2\.5rem/);
+	});
+});
+
+describe('phone smoke after 0db3626', () => {
+	it('keeps the map in the sized park and does not clear the pixel lock on a timer', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const doc = dom.window.document;
+		const map = doc.createElement('div');
+		map.className = 'rv-hub-map';
+		const stage = doc.createElement('div');
+		stage.className = 'rv-map-stage';
+		stage.style.height = '320px';
+		map.appendChild(stage);
+		doc.body.appendChild(map);
+		const holder = parkMapNode(map);
+		const claimed = claimParkedMap(doc, 'rv-note-map');
+		assert.equal(claimed, map);
+		assert.equal(map.parentElement, holder);
+		assert.equal(holder.classList.contains('rv-map-park'), true);
+		const glance = source('src/glancable-view.ts');
+		const laid = glance.slice(glance.indexOf('private releaseHandedBandWhenLaidOut'), glance.indexOf('private releaseHubGrip'));
+		assert.match(laid, /lockHandedMapBand\(map, height\)/);
+		assert.doesNotMatch(laid, /releaseHandedBandLock\(\)/);
+		assert.match(glance, /retireEmptyMapPark/);
+	});
+
+	it('gives Visit options a real box and lets the menu stay on screen', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-visit-more \{[^}]*min-width:\s*32px !important/);
+		assert.match(css, /\.rv-visit-more \{[^}]*min-height:\s*32px !important/);
+		assert.match(css, /\.rv-visit-more svg \{[^}]*width:\s*18px !important/);
+		assert.match(source('src/visit-controls.ts'), /aria-label': label/);
+		assert.match(source('src/main.ts'), /editVisit\(body, entry, added/);
+		assert.match(source('src/main.ts'), /removeVisit\(body, entry\)/);
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		Object.defineProperty(win, 'innerHeight', { value: 801, configurable: true });
+		Object.defineProperty(win, 'innerWidth', { value: 390, configurable: true });
+		const anchor = win.document.createElement('button');
+		const menu = win.document.createElement('div');
+		menu.className = 'menu';
+		const box = { top: 700, bottom: 801.5, left: 8, right: 200, width: 192, height: 101.5, x: 8, y: 700, toJSON: () => ({}) };
+		menu.getBoundingClientRect = () => box;
+		win.document.body.append(anchor, menu);
+		keepMenuOnScreen(anchor);
+		const top = Number.parseFloat(menu.style.top);
+		assert.ok(top + box.height <= 801 - 12);
+	});
+
+	it('stops the hub cover from taking taps and from offsetting a second card', () => {
+		const css = source('styles.css');
+		const cover = css.slice(css.indexOf('.workspace-leaf > .rv-hub-swap-cover {'), css.indexOf('.workspace-leaf > .rv-hub-swap-cover > .view-header'));
+		assert.match(cover, /pointer-events:\s*none !important/);
+		const snapshot = css.slice(css.indexOf('.rv-hub-snapshot-body {'), css.indexOf('.rv-hub-snapshot-body > .rv-locator-view'));
+		assert.match(snapshot, /padding-top:\s*env\(safe-area-inset-top, 0px\)/);
+		assert.doesNotMatch(snapshot, /\+ 6px/);
+		assert.match(source('src/glancable-view.ts'), /dropDuplicateCards/);
+		assert.match(css, /\.rv-closed-title \{[^}]*color:\s*var\(--text-faint\)/);
+		assert.match(css, /\.rv-closed-title \{[^}]*font-weight:\s*400/);
+		assert.match(css, /list-style-position:\s*inside !important/);
+		assert.match(css, /\.rv-qf-value\.is-overflow \.rv-qf-search-wrap/);
+		assert.match(css, /\.rv-qf-search-wrap,\s*\n\.rv-qf-search-wrap:focus-within \{[^}]*border:\s*0 !important/);
+		assert.match(css, /\.rv-qf-search-wrap,\s*\n\.rv-qf-search-wrap:focus-within \{[^}]*border-radius:\s*0 !important/);
+		assert.match(css, /\.rv-qf-search-wrap,\s*\n\.rv-qf-search-wrap:focus-within \{[^}]*box-shadow:\s*none !important/);
+		assert.match(css, /\.rv-qf-label \.rv-qf-plus,\s*\n\.rv-qf-label \.rv-qf-chevron \{[^}]*min-height:\s*28px !important/);
+		assert.match(source('src/glancable-view.ts'), /borderTopWidth/);
+		assert.match(source('src/note-chrome.ts'), /:scope > \.rv-qf-row/);
+		assert.match(source('src/app-bar.ts'), /const margin = 12/);
 	});
 });

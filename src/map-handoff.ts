@@ -128,6 +128,12 @@ export function seatMapGrip(stage: HTMLElement, before: Element | null): HTMLEle
 		grip.setAttribute('aria-orientation', 'horizontal');
 		grip.setAttribute('aria-label', 'Resize map');
 	}
+	// A collapsed stage has no box for an in-flow grip. Leave the pinned
+	// divider on screen until the band has a height, or that frame has neither.
+	const band = before instanceof HTMLElement ? before.querySelector('.rv-map-stage') : null;
+	if (band instanceof HTMLElement && grip.classList.contains('is-pinned') && band.getBoundingClientRect().height < 2) {
+		return grip;
+	}
 	const hub = stage.closest('.rv-locator-view, .rv-locator-stage, .rv-locator-glancable');
 	grip.classList.remove('is-pinned', 'rv-map-grip');
 	grip.style.position = '';
@@ -196,17 +202,24 @@ export function parkMapNode(el: HTMLElement): HTMLElement {
 
 /**
  * Take the parked map and keep it in the document. The caller moves it into
- * the next stage. Removing the holder first would drop the node.
+ * the next stage. The node stays in the sized park until that move. Parking
+ * it on the body first is the frame where the stage is 0px and the grip is gone.
  */
 export function claimParkedMap(doc: Document, className: 'rv-hub-map' | 'rv-note-map'): HTMLElement | null {
 	const el = doc.querySelector(`.${MAP_PARK_CLASS} .rv-hub-map, .${MAP_PARK_CLASS} .rv-note-map`);
 	if (!(el instanceof HTMLElement)) return null;
-	const holder = el.parentElement;
 	el.classList.remove('rv-hub-map', 'rv-note-map');
 	el.classList.add(className);
-	(holder?.parentElement ?? doc.body).appendChild(el);
-	holder?.remove();
 	return el;
+}
+
+/** Drop a park once its map has moved into the next stage. */
+export function retireEmptyMapPark(doc: Document): void {
+	const holders = doc.querySelectorAll(`.${MAP_PARK_CLASS}`);
+	for (let index = 0; index < holders.length; index += 1) {
+		const holder = holders[index];
+		if (holder && !holder.querySelector('.rv-hub-map, .rv-note-map')) holder.remove();
+	}
 }
 
 /** Reuse the same map node in the next stage. */

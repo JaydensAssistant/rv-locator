@@ -2042,17 +2042,28 @@ body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > 
 .rv-visit-more {
 	position: relative;
 	z-index: 2;
-	display: inline-flex;
+	display: inline-flex !important;
 	align-items: center;
 	justify-content: center;
+	flex: 0 0 32px !important;
+	box-sizing: border-box;
+	width: 32px !important;
+	min-width: 32px !important;
+	height: 32px !important;
+	min-height: 32px !important;
 	margin-left: 0.35em;
-	padding: 0.1em 0.25em;
-	height: auto;
+	padding: 0 !important;
 	vertical-align: middle;
 	background: none;
 	box-shadow: none;
 	color: var(--text-faint);
-	--icon-size: var(--icon-xs, 14px);
+	font-size: 16px !important;
+	line-height: 32px !important;
+	visibility: visible !important;
+	opacity: 1 !important;
+	pointer-events: auto !important;
+	overflow: visible !important;
+	--icon-size: 18px;
 }
 
 .rv-visit-more:hover,
@@ -2061,8 +2072,10 @@ body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > 
 }
 
 .rv-visit-more svg {
-	width: var(--icon-xs, 14px);
-	height: var(--icon-xs, 14px);
+	display: block !important;
+	width: 18px !important;
+	height: 18px !important;
+	flex: 0 0 18px;
 }
 
 /*
@@ -2168,8 +2181,8 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(ul, ol, li) {
 	width: auto;
 	margin-inline: 0;
-	padding-inline-start: 1.2em;
-	list-style-position: outside;
+	padding-inline-start: 0;
+	list-style-position: inside;
 	text-align: left;
 }
 
@@ -2177,8 +2190,8 @@ body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv
 body.rv-suggestions-outside-left.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) :is(ul, ol) {
 	width: auto;
 	margin-inline: 0;
-	padding-inline-start: 1.2em;
-	list-style-position: outside;
+	padding-inline-start: 0;
+	list-style-position: inside;
 	text-align: left;
 }
 
@@ -2986,7 +2999,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	align-items: baseline;
 	gap: 0.35em;
 	min-width: 0;
-	overflow: hidden;
+	overflow: visible;
 	white-space: nowrap;
 }
 
@@ -5464,7 +5477,8 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	font-family: inherit;
 	line-height: inherit;
 	pointer-events: none;
-	color: var(--text-normal);
+	color: var(--text-faint);
+	font-weight: 400;
 }
 
 .rv-closed-title[hidden] {
@@ -5492,6 +5506,13 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	margin-left: 6px;
 	color: var(--rv-modal-accent, #1f8a4c);
 	font-weight: 650;
+}
+
+.rv-closed-title .rv-title-text,
+.rv-closed-title .rv-title-pre,
+.rv-closed-title .rv-title-suffix {
+	color: var(--text-faint);
+	font-weight: 400;
 }
 
 .rv-closed-title .rv-title-text {
@@ -5803,8 +5824,9 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 .callout.rv-locator-return-suggestions :is(ul, ol),
 .callout.rv-locator-attempt-log :is(ul, ol) {
 	margin-left: 0;
-	padding-inline-start: 1.15em;
-	list-style-position: outside;
+	margin-inline: 0;
+	padding-inline-start: 0;
+	list-style-position: inside;
 }
 
 .rv-dashboard .rv-hub-line {
@@ -9455,16 +9477,34 @@ body.is-phone .rv-dashboard .rv-qf-head-dot {
 	padding-top: 24px !important;
 }
 
-/* Suggestion bullets share the Attempt Log callout's left and right edges. */
-body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol),
-.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol) {
+/* Suggestion and Attempt Log bullets sit on the 12px content edge. */
+.callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol) {
 	width: 100%;
 	max-width: 100%;
-	margin-inline: 0;
-	padding-inline-start: 1.15em;
-	list-style-position: outside;
+	margin-inline: 0 !important;
+	padding-inline-start: 0 !important;
+	list-style-position: inside !important;
 	text-align: left;
 	box-sizing: border-box;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol),
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > :is(ul, ol),
+.rv-dashboard .callout.rv-locator-return-suggestions .callout > .callout-content > :is(ul, ol),
+.rv-dashboard .callout.rv-locator-attempt-log > .callout-content > :is(ul, ol) {
+	width: 100%;
+	max-width: 100%;
+	margin-inline: 0 !important;
+	padding-inline-start: 0 !important;
+	list-style-position: inside !important;
+	text-align: left;
+	box-sizing: border-box;
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions .callout,
+.rv-dashboard .callout.rv-locator-return-suggestions .callout > .callout-content {
+	margin-left: 0 !important;
+	padding-left: 0 !important;
 }
 
 .rv-dashboard .callout.rv-locator-attempt-log {
@@ -9841,12 +9881,26 @@ body.is-mobile:not(.is-phone) .rv-map-bar button {
 
 .rv-qf-label .rv-qf-plus,
 .rv-qf-label .rv-qf-chevron {
+	display: inline-flex !important;
+	flex: 0 0 auto !important;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: auto !important;
+	min-width: 28px !important;
+	height: 28px !important;
+	min-height: 28px !important;
 	border: 0;
 	background: transparent;
 	box-shadow: none;
-	padding: 0;
+	padding: 0 4px;
 	color: var(--text-muted);
+	font-size: 13px !important;
 	font-weight: 400;
+	line-height: 1 !important;
+	pointer-events: auto !important;
+	overflow: visible !important;
+	visibility: visible !important;
 }
 
 .rv-qf-label .rv-qf-chevron svg {
@@ -10035,23 +10089,29 @@ h5.rv-visit-stamp + .rv-item-strip {
 	display: none !important;
 }
 
-.rv-qf-search-wrap {
+.rv-qf-search-wrap,
+.rv-qf-search-wrap:focus-within {
 	display: none;
 	align-items: center;
 	gap: 6px;
 	box-sizing: border-box;
 	width: 100%;
-	height: 24px;
+	height: 28px;
+	min-height: 28px;
 	margin-top: 6px;
 	padding: 0 8px;
 	overflow: hidden;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--pill-r, 5px);
-	background: var(--background-secondary);
+	border: 0 !important;
+	border-radius: 0 !important;
+	box-shadow: none !important;
+	background: var(--background-secondary) !important;
 	color: var(--text-muted);
 }
 
-.rv-qf-value.is-open .rv-qf-search-wrap {
+.rv-qf-value.is-open .rv-qf-search-wrap,
+.rv-qf-value.is-overflow .rv-qf-search-wrap,
+.rv-qf-value.is-open .rv-qf-search-wrap:focus-within,
+.rv-qf-value.is-overflow .rv-qf-search-wrap:focus-within {
 	display: flex;
 }
 
@@ -10420,7 +10480,7 @@ body.rv-hub-swapping .mobile-navbar {
 	overflow: hidden !important;
 	box-sizing: border-box;
 	margin: 0 !important;
-	pointer-events: auto;
+	pointer-events: none !important;
 	background: var(--background-primary);
 }
 
@@ -10446,7 +10506,7 @@ body.rv-hub-swapping .mobile-navbar {
 	flex-direction: column;
 	overflow: hidden;
 	box-sizing: border-box;
-	padding-top: calc(env(safe-area-inset-top, 0px) + 6px);
+	padding-top: env(safe-area-inset-top, 0px);
 	background: var(--background-primary);
 	pointer-events: none;
 }
