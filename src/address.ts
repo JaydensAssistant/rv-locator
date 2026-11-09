@@ -125,10 +125,34 @@ export function readCountyPlaceId(body: unknown, county: string): string | null 
 	return null;
 }
 
-/** County type-ahead for the home-county setting. */
+/**
+ * "Citrus County, Florida" stays as written. A bare county name gains "County"
+ * so the geocode search can resolve a place id.
+ */
+export function countyGeocodeText(line: string): string {
+	const trimmed = line.trim().replace(/\s+/g, ' ');
+	if (!trimmed) return '';
+	if (/county/i.test(trimmed)) return trimmed;
+	const comma = trimmed.indexOf(',');
+	const name = (comma >= 0 ? trimmed.slice(0, comma) : trimmed).trim();
+	const rest = comma >= 0 ? trimmed.slice(comma + 1).trim() : '';
+	const head = `${name} County`;
+	return rest ? `${head}, ${rest}` : head;
+}
+
+/**
+ * County place ids come from geocode search. Autocomplete rejects `type=county`.
+ */
 export function buildCountySuggestUrl(text: string, apiKey: string, region: GeoapifyRegion = 'global'): string {
-	const url = new URL(buildAutocompleteUrl(text, apiKey, region));
+	const query = countyGeocodeText(text);
+	if (!query) throw new Error('Address is empty.');
+	if (!apiKey.trim()) throw new Error('API key is empty.');
+	const url = new URL(geocodeEndpoint(region));
+	url.searchParams.set('text', query);
 	url.searchParams.set('type', 'county');
+	url.searchParams.set('format', 'json');
+	url.searchParams.set('limit', '5');
+	url.searchParams.set('apiKey', apiKey.trim());
 	return url.toString();
 }
 

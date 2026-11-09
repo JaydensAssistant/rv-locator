@@ -456,7 +456,28 @@
 .rv-locator-glancable {
 	container-name: rvlocator;
 	container-type: inline-size;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
 	overflow-x: hidden;
+}
+
+.rv-locator-glancable > .rv-locator-scroll {
+	flex: 1 1 auto;
+	min-height: 0;
+}
+
+.rv-locator-glancable > .rv-locator-sortbar {
+	position: relative;
+	top: auto;
+	bottom: auto;
+	order: 4;
+	flex: 0 0 auto;
+	border: 0;
+	padding: 0;
+	overflow: visible;
+	background: var(--background-primary);
 }
 
 /* The hub paints its own cards. The Bases Views bar is not that toolbar, and hiding
@@ -1891,7 +1912,9 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 }
 
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-add,
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > button.rv-copy-address,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p button.rv-copy-address {
 	display: inline-flex;
 	align-items: center;
 	justify-content: center;
@@ -1903,7 +1926,8 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 	vertical-align: middle;
 }
 
-.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button,
+.rv-dashboard button.rv-copy-address {
 	margin-left: 0;
 	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
 	border-radius: var(--button-radius, var(--radius-s, 4px));
@@ -1913,11 +1937,13 @@ span.mb-button.rv-visit-btn > button.mb-button-inner svg {
 	text-decoration: none;
 }
 
-.rv-dashboard a.rv-map-button:hover {
+.rv-dashboard a.rv-map-button:hover,
+.rv-dashboard button.rv-copy-address:hover {
 	color: var(--text-normal);
 }
 
-.rv-dashboard a.rv-map-button svg {
+.rv-dashboard a.rv-map-button svg,
+.rv-dashboard button.rv-copy-address svg {
 	width: var(--icon-s, 16px);
 	height: var(--icon-s, 16px);
 }
@@ -5418,6 +5444,12 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	display: none !important;
 }
 
+.rv-closed-title .rv-type {
+	color: var(--text-faint);
+	font-weight: 400;
+	opacity: 1;
+}
+
 .rv-closed-title .rv-title-pre,
 .rv-closed-title .rv-type,
 .rv-closed-title .rv-title-suffix,
@@ -5731,9 +5763,21 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 
 .callout.rv-locator-attempt-log,
 .callout.rv-locator-attempt-log .callout-content,
-.callout.rv-locator-attempt-log > .callout-title {
+.callout.rv-locator-attempt-log > .callout-title,
+.callout.rv-locator-return-suggestions,
+.callout.rv-locator-return-suggestions > .callout-content,
+.callout.rv-locator-return-suggestions > .callout-title {
 	text-align: start;
 	font-weight: var(--font-normal, 400);
+	padding-left: 12px !important;
+	padding-right: 12px !important;
+}
+
+.callout.rv-locator-return-suggestions :is(ul, ol),
+.callout.rv-locator-attempt-log :is(ul, ol) {
+	margin-left: 0;
+	padding-inline-start: 1.15em;
+	list-style-position: outside;
 }
 
 .rv-dashboard .rv-hub-line {
@@ -6000,7 +6044,7 @@ body.rv-center-visit-notes .rv-older-heading {
 	width: 100%;
 }
 
-.rv-locator-glancable .rv-locator-toolbar-actions > button {
+.rv-locator-glancable .rv-locator-toolbar-actions > button:not(.rv-app-slot) {
 	flex: 1 1 0 !important;
 	width: auto !important;
 	min-width: 0 !important;
@@ -6010,8 +6054,9 @@ body.rv-center-visit-notes .rv-older-heading {
 }
 
 .rv-locator-glancable.is-search-open .rv-locator-toolbar-actions,
-.rv-locator-glancable.is-search-open .rv-locator-sort-scroll {
-	display: none;
+.rv-locator-glancable.is-search-open .rv-locator-sort-scroll,
+.rv-locator-glancable.is-search-open .rv-app-bar {
+	display: none !important;
 }
 
 .rv-locator-glancable.is-search-open .rv-locator-search,
@@ -6221,7 +6266,7 @@ body.rv-center-visit-notes .rv-older-heading {
 /* The note uses the hub's bottom bar, so the map sits in the same place. */
 .workspace-leaf-content.is-rv-note {
 	position: relative;
-	--rv-note-bar: calc(42px + env(safe-area-inset-bottom, 0px));
+	--rv-note-bar: calc(52px + env(safe-area-inset-bottom, 0px));
 }
 
 .workspace-leaf-content.is-rv-note:not(.is-note-map) > .view-content {
@@ -6241,8 +6286,12 @@ body.rv-center-visit-notes .rv-older-heading {
 	box-sizing: border-box;
 	margin: 0;
 	border: 0;
-	padding: 2px 4px env(safe-area-inset-bottom, 0px);
+	padding: 2px 0 env(safe-area-inset-bottom, 0px);
 	background: var(--background-primary);
+	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--text-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--text-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
 }
 
 .workspace-leaf-content.is-rv-note.is-note-map > .rv-note-hub-bar {
@@ -6295,6 +6344,187 @@ body.rv-center-visit-notes .rv-older-heading {
 	cursor: default;
 }
 
+.rv-app-bar {
+	display: flex;
+	align-items: stretch;
+	width: 100%;
+	min-width: 0;
+	gap: 0;
+	overflow: visible;
+}
+
+.rv-app-bar.is-scroll {
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.rv-app-bar > .rv-app-slot {
+	box-sizing: border-box;
+	flex: 1 1 0;
+	min-width: 0;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 1px;
+	height: 48px;
+	margin: 0;
+	padding: 4px 0 2px;
+	border: 0 !important;
+	border-radius: 0 !important;
+	background: transparent !important;
+	box-shadow: none !important;
+	color: var(--text-muted);
+	cursor: pointer;
+	font-size: 10px;
+	font-weight: 500;
+	line-height: 12px;
+}
+
+.rv-app-bar.is-scroll > .rv-app-slot {
+	flex: 0 0 20%;
+	min-width: 20%;
+}
+
+.rv-app-bar > .rv-app-slot.is-on,
+.rv-app-bar > .rv-app-slot.has-dot {
+	color: var(--interactive-accent);
+}
+
+.rv-app-bar > .rv-app-slot svg {
+	width: 22px;
+	height: 22px;
+	color: currentColor;
+}
+
+.rv-app-bar .rv-app-label {
+	display: block;
+	max-width: 100%;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+	font-size: 10px;
+	line-height: 12px;
+}
+
+.rv-app-bar > .rv-app-slot.has-dot {
+	position: relative;
+}
+
+.rv-app-bar > .rv-app-slot.has-dot::after {
+	content: '';
+	position: absolute;
+	top: 6px;
+	right: 22%;
+	width: 6px;
+	height: 6px;
+	border-radius: 999px;
+	background: var(--interactive-accent);
+}
+
+.rv-app-divider {
+	flex: 0 0 1px;
+	width: 1px;
+	align-self: stretch;
+	margin: 10px 0;
+	background: var(--background-modifier-border);
+}
+
+.rv-note-find {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 4px 8px 0;
+}
+
+.rv-note-find-input {
+	flex: 1 1 auto;
+	min-width: 0;
+	height: 32px;
+	margin: 0;
+	padding: 0 8px;
+	border: 0;
+	border-radius: 8px;
+	background: var(--background-secondary);
+	color: var(--text-normal);
+	box-shadow: none;
+}
+
+.rv-note-find-close {
+	flex: 0 0 32px;
+	width: 32px;
+	height: 32px;
+	border: 0;
+	background: transparent;
+	color: var(--text-muted);
+}
+
+.workspace-leaf-content.is-rv-note.is-finding:not(.is-note-map) > .view-content {
+	padding-bottom: calc(var(--rv-note-bar) + 36px);
+}
+
+body > .rv-map-grip.is-pinned {
+	display: block !important;
+	height: 3px !important;
+	background: #000 !important;
+	z-index: 81;
+	pointer-events: none;
+}
+
+body > .rv-map-grip.is-pinned::before {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 40px;
+	height: 5px;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
+	background: #fff;
+	box-shadow: 0 0 0 1px #000;
+}
+
+.workspace-leaf-content.is-rv-note ::selection,
+.rv-dashboard ::selection {
+	background: color-mix(in srgb, var(--rv-urgency-accent, #1f8a4c) 45%, transparent);
+	color: var(--text-normal);
+}
+
+.workspace-leaf-content.is-rv-note ::-moz-selection,
+.rv-dashboard ::-moz-selection {
+	background: color-mix(in srgb, var(--rv-urgency-accent, #1f8a4c) 45%, transparent);
+	color: var(--text-normal);
+}
+
+.rv-locator-glancable ::selection,
+.rv-locator-view ::selection,
+.bases-embed ::selection {
+	background: color-mix(in srgb, var(--rv-hub-accent, #1f8a4c) 45%, transparent);
+	color: var(--text-normal);
+}
+
+.rv-locator-glancable ::-moz-selection,
+.rv-locator-view ::-moz-selection,
+.bases-embed ::-moz-selection {
+	background: color-mix(in srgb, var(--rv-hub-accent, #1f8a4c) 45%, transparent);
+	color: var(--text-normal);
+}
+
+.workspace-leaf-content.is-rv-app > .view-header :is(
+	.view-header-nav-buttons,
+	.view-header-left-button,
+	.view-header-left-buttons,
+	.view-actions,
+	.view-header-right-buttons
+) {
+	display: none !important;
+	visibility: hidden !important;
+	pointer-events: none !important;
+}
+
 .theme-dark .rv-hub-map,
 .theme-dark .rv-map-stage,
 .theme-dark .leaflet-container {
@@ -6303,7 +6533,6 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .rv-locator-glancable,
 .rv-locator-view,
-.rv-note-hub-bar,
 .internal-embed:has(.rv-locator-glancable),
 .markdown-embed:has(.rv-locator-glancable),
 .bases-embed.is-embed-capped {
@@ -8649,6 +8878,15 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 	border-style: solid !important;
 }
 
+.rv-locator-glancable .rv-app-bar > .rv-app-slot {
+	border-width: 0 !important;
+	border-style: none !important;
+	height: 48px;
+	min-height: 48px;
+	background: transparent !important;
+	box-shadow: none !important;
+}
+
 .rv-locator-glancable .rv-locator-toolbar-actions > .rv-locator-new-rv {
 	border-color: transparent !important;
 }
@@ -9739,26 +9977,24 @@ h5.rv-visit-stamp + .rv-item-strip {
 	height: 14px;
 }
 
-.rv-qf-search {
+.rv-qf-search,
+.rv-qf-search:focus,
+.rv-qf-search:focus-visible {
 	flex: 1 1 auto;
 	width: auto;
 	min-width: 0;
 	height: 22px;
 	margin: 0;
 	padding: 0;
-	border: 0;
-	border-radius: var(--pill-r, 5px);
-	background: transparent;
-	box-shadow: none;
+	border: 0 !important;
+	border-radius: 0 !important;
+	background: var(--background-secondary) !important;
+	box-shadow: none !important;
+	outline: none !important;
 	color: var(--text-normal);
 	font: inherit;
 	font-size: 13px;
 	font-weight: 400;
-}
-
-.rv-qf-search:focus {
-	outline: none;
-	box-shadow: none;
 }
 
 .rv-qf-dash {

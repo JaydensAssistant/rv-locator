@@ -4,7 +4,9 @@ import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
 import { applyNoteMapFrame, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
-import { mountNoteHubBar } from '../src/note-hub-bar';
+import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
+import { buildCountySuggestUrl, countyGeocodeText } from '../src/address';
+import { seatMapGrip } from '../src/map-handoff';
 import { hubAccentColor } from '../src/urgency-palette';
 import { clampMapSplit, mergeSettings } from '../src/types';
 
@@ -274,7 +276,7 @@ describe('RV-B67 the hub accent is band 0', () => {
 });
 
 describe('RV-B66 the note shows the hub bar', () => {
-	it('keeps the same six slots, grays sort and filter, and sits under the map', () => {
+	it('keeps five labeled slots under the map', () => {
 		const dom = new JSDOM('<!doctype html><body></body>');
 		globalThis.HTMLElement = dom.window.HTMLElement;
 		globalThis.Element = dom.window.Element;
@@ -286,27 +288,24 @@ describe('RV-B66 the note shows the hub bar', () => {
 			createNewRv: () => calls.push('new'),
 			openCampaign: () => calls.push('flag'),
 			openSearch: (path) => calls.push(`search:${path}`),
+			openHub: (path) => calls.push(`hub:${path}`),
 		});
-		const labels = [...bar.querySelectorAll('button')].map((button) => button.getAttribute('aria-label'));
-		assert.deepEqual(labels, ['Sort', 'Search', 'Map', 'Campaign', 'Filters', 'New RV']);
-		const sort = bar.querySelector('[aria-label="Sort"]');
-		const filter = bar.querySelector('[aria-label="Filters"]');
-		assert.equal(sort instanceof dom.window.HTMLButtonElement && sort.disabled, true);
-		assert.equal(sort?.getAttribute('aria-disabled'), 'true');
-		assert.equal(filter instanceof dom.window.HTMLButtonElement && filter.disabled, true);
-		assert.equal(filter?.getAttribute('aria-disabled'), 'true');
+		const labels = [...bar.querySelectorAll('.rv-app-slot')].map((button) => button.getAttribute('aria-label'));
+		assert.deepEqual(labels, ['Hub', 'Search', 'Campaign', 'Map', 'New']);
+		(bar.querySelector('[aria-label="Hub"]') as HTMLButtonElement).click();
 		(bar.querySelector('[aria-label="Search"]') as HTMLButtonElement).click();
 		(bar.querySelector('[aria-label="Map"]') as HTMLButtonElement).click();
 		(bar.querySelector('[aria-label="Campaign"]') as HTMLButtonElement).click();
-		(bar.querySelector('[aria-label="New RV"]') as HTMLButtonElement).click();
-		assert.deepEqual(calls, ['search:People/Ada.md', 'map:People/Ada.md', 'flag', 'new']);
+		(bar.querySelector('[aria-label="New"]') as HTMLButtonElement).click();
+		assert.deepEqual(calls, ['hub:People/Ada.md', 'search:People/Ada.md', 'map:People/Ada.md', 'flag', 'new']);
 		assert.equal(bar.querySelector('.rv-note-bar-earth')?.classList.contains('is-on'), true);
 		const css = source('styles.css');
-		assert.match(css, /grid-template-rows:\s*auto minmax\(0, 1fr\) 3px var\(--rv-note-map, minmax\(120px, 42%\)\) auto;/);
+		assert.match(css, /var\(--rv-note-map, minmax\(120px, 42%\)\)/);
 		assert.match(css, /\.is-note-map > \.rv-note-hub-bar \{[^}]*grid-row:\s*5;/);
-		assert.match(css, /button\[aria-disabled="true"\] \{[^}]*pointer-events:\s*none;/);
 		const main = source('src/main.ts');
-		assert.match(main, /openNoteBarSearch\(/);
+		assert.match(main, /openNoteFind\(/);
+		assert.match(main, /openNoteHub\(/);
+		assert.doesNotMatch(main, /openNoteBarSearch\(/);
 		assert.match(main, /openCampaignModal\(\)/);
 		assert.match(main, /this\.syncNoteHubBar\(\)/);
 	});
@@ -332,5 +331,91 @@ describe('RV-B68 the note bar stays one row', () => {
 		const side = at('.workspace-leaf-content.is-rv-note.is-note-map.is-note-map-side > .rv-note-hub-bar {');
 		assert.match(side, /top:\s*auto;/);
 		assert.match(side, /height:\s*auto;/);
+	});
+});
+
+describe('RV-254 the tab bar', () => {
+	it('uses the same five labels, a scrolling sort row, and the note urgency accent', () => {
+		const nearby = source('src/nearby-view.ts');
+		const css = source('styles.css');
+		assert.match(nearby, /'Hub', 'house'/);
+		assert.match(nearby, /'New', 'plus'/);
+		assert.match(nearby, /door-open/);
+		assert.match(nearby, /'urgency', 'distance', 'attempted', 'spoke', 'priority', 'met', 'city', 'ideality'/);
+		assert.match(css, /\.rv-app-bar > \.rv-app-slot/);
+		assert.match(css, /text-overflow:\s*clip/);
+		assert.match(css, /\.rv-note-hub-bar \{[^}]*--interactive-accent:\s*var\(--rv-urgency-accent/);
+		assert.doesNotMatch(css, /\.rv-note-hub-bar,\s*\n\.internal-embed/);
+		assert.match(css, /\.is-rv-app > \.view-header/);
+	});
+});
+
+describe('RV-252 in-note find', () => {
+	it('selects a word in the note and does not open the hub', () => {
+		const dom = new JSDOM('<!doctype html><body><div class="view-content"><p>64 South Harrison Street</p></div></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const leaf = dom.window.document.body;
+		const content = leaf.querySelector('.view-content') as HTMLElement;
+		const index = revealNoteMatch(content, 'Harrison', 0);
+		assert.equal(index, 0);
+		openNoteFind(leaf);
+		assert.ok(leaf.querySelector('.rv-note-find-input'));
+		assert.match(source('src/main.ts'), /openNoteFindFor\(/);
+	});
+});
+
+describe('RV-B70 one grip', () => {
+	it('seats the pinned grip instead of creating another', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const doc = dom.window.document;
+		const grip = doc.createElement('div');
+		grip.className = 'rv-note-map-handle rv-map-grip is-pinned';
+		doc.body.appendChild(grip);
+		const stage = doc.createElement('div');
+		stage.className = 'rv-locator-stage';
+		const map = doc.createElement('div');
+		map.className = 'rv-hub-map';
+		stage.appendChild(map);
+		doc.body.appendChild(stage);
+		const seated = seatMapGrip(stage, map);
+		assert.equal(seated, grip);
+		assert.equal(stage.querySelectorAll('.rv-hub-map-handle, .rv-note-map-handle').length, 1);
+		assert.equal(grip.className, 'rv-hub-map-handle');
+		assert.equal(grip.classList.contains('is-pinned'), false);
+	});
+});
+
+describe('RV-B74 county search', () => {
+	it('asks geocode search for the county and falls back when the home pass is empty', () => {
+		assert.equal(countyGeocodeText('Citrus County, Florida'), 'Citrus County, Florida');
+		assert.equal(countyGeocodeText('Citrus'), 'Citrus County');
+		const url = new URL(buildCountySuggestUrl('Citrus County, Florida', 'test-key'));
+		assert.match(url.pathname, /\/v1\/geocode\/search$/);
+		assert.equal(url.searchParams.get('type'), 'county');
+		assert.equal(url.searchParams.get('text'), 'Citrus County, Florida');
+		assert.doesNotMatch(url.pathname, /autocomplete/);
+		const main = source('src/main.ts');
+		assert.match(main, /planned\.hits\.length === 0\) return \{ hits: \[\], allowBroad: true/);
+		assert.match(main, /return await this\.homeProximity\(\)/);
+		assert.doesNotMatch(main, /suggestBias\(\): Promise<GeocodeBias \| null> \{\s*return this\.currentMapFix\(\)/);
+		assert.match(source('src/address-suggest.ts'), /hits\.length === 0\) \{\s*this\.cache\.delete\(key\)/);
+	});
+});
+
+describe('RV-B72 selection and the address copy button', () => {
+	it('uses the urgency accent in notes and the hub accent in the hub', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.workspace-leaf-content\.is-rv-note ::selection/);
+		assert.match(css, /\.rv-locator-glancable ::selection/);
+		assert.match(css, /var\(--rv-urgency-accent, #1f8a4c\) 45%/);
+		assert.match(css, /var\(--rv-hub-accent, #1f8a4c\) 45%/);
+		assert.match(source('src/note-chrome.ts'), /Address copied/);
+		assert.match(source('src/note-chrome.ts'), /setIcon\(copy, 'copy'\)/);
+		assert.match(css, /\.rv-closed-title \.rv-type \{\s*color:\s*var\(--text-faint\)/);
+		assert.match(css, /padding-left:\s*12px !important/);
+		assert.match(css, /\.rv-qf-search:focus[\s\S]*border-radius:\s*0 !important/);
 	});
 });

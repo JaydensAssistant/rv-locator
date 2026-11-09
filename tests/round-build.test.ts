@@ -77,7 +77,8 @@ describe('RV-B43 earth state', () => {
 		assert.match(openMap, /paintEarthStates\(\)/);
 		assert.match(source('src/nearby-view.ts'), /this\.plugin\.keepMapWithNote\(path\)/);
 		assert.match(source('src/glancable-view.ts'), /toggleCardEarth\(row\.path\)/);
-		assert.match(source('src/note-chrome.ts'), /host\.noteMapLit \? host\.noteMapLit\(path\) : host\.mapOpen\(\)/);
+		assert.match(source('src/note-hub-bar.ts'), /host\.noteMapLit\(path\)/);
+		assert.match(source('src/note-chrome.ts'), /Address copied/);
 		const css = source('styles.css');
 		assert.equal(css.includes('body.rv-map-open .rv-dashboard a.rv-map-button'), false);
 	});

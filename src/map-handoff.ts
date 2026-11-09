@@ -82,21 +82,71 @@ export function placeHandedMap(map: HTMLElement, stage: HTMLElement): void {
 	const spacers = stage.querySelectorAll(':scope > .rv-map-spacer');
 	for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();
 	stage.appendChild(map);
+	seatMapGrip(stage, map);
 }
 
-/** The hub's own grip. A handed note map does not bring one with it. */
+function isMapGrip(node: Element | null): node is HTMLElement {
+	return node instanceof HTMLElement && (
+		node.classList.contains('rv-map-grip')
+		|| node.classList.contains('rv-hub-map-handle')
+		|| node.classList.contains('rv-note-map-handle')
+	);
+}
+
+/**
+ * Keep the divider on screen while the map moves. The same node is pinned,
+ * then seated in the next stage. It is not removed and not recreated.
+ */
+export function liftMapGrip(grip: HTMLElement): void {
+	if (!isMapGrip(grip)) return;
+	const doc = grip.ownerDocument;
+	if (grip.classList.contains('is-pinned') && grip.parentElement === doc.body) return;
+	const rect = grip.getBoundingClientRect();
+	grip.classList.add('rv-map-grip', 'is-pinned');
+	grip.style.position = 'fixed';
+	grip.style.left = `${rect.left}px`;
+	grip.style.top = `${rect.top}px`;
+	grip.style.width = `${Math.max(rect.width, 1)}px`;
+	grip.style.height = '3px';
+	grip.style.zIndex = '81';
+	grip.style.margin = '0';
+	doc.body.appendChild(grip);
+}
+
+/** Put the one grip into this stage. A pinned grip is reused. */
+export function seatMapGrip(stage: HTMLElement, before: Element | null): HTMLElement {
+	const doc = stage.ownerDocument;
+	const pinned = doc.querySelector('body > .rv-map-grip.is-pinned, .rv-map-grip.is-pinned');
+	let grip = pinned instanceof HTMLElement ? pinned : null;
+	if (!grip) {
+		const local = stage.querySelector(':scope > .rv-map-grip, :scope > .rv-hub-map-handle, :scope > .rv-note-map-handle');
+		if (local instanceof HTMLElement) grip = local;
+	}
+	if (!grip) {
+		grip = doc.createElement('div');
+		grip.setAttribute('role', 'separator');
+		grip.setAttribute('aria-orientation', 'horizontal');
+		grip.setAttribute('aria-label', 'Resize map');
+	}
+	const hub = stage.closest('.rv-locator-view, .rv-locator-stage, .rv-locator-glancable');
+	grip.classList.remove('is-pinned', 'rv-map-grip');
+	grip.style.position = '';
+	grip.style.left = '';
+	grip.style.top = '';
+	grip.style.width = '';
+	grip.style.height = '';
+	grip.style.zIndex = '';
+	grip.style.margin = '';
+	grip.className = hub ? 'rv-hub-map-handle' : 'rv-note-map-handle';
+	if (before && before.parentElement === stage) stage.insertBefore(grip, before);
+	else if (grip.parentElement !== stage) stage.appendChild(grip);
+	return grip;
+}
+
+/** The hub's own grip. A handed map keeps the grip it already had. */
 export function ensureHubMapHandle(stage: HTMLElement): HTMLElement {
-	const found = stage.querySelector(':scope > .rv-hub-map-handle');
-	if (found instanceof HTMLElement) return found;
-	const handle = stage.ownerDocument.createElement('div');
-	handle.className = 'rv-hub-map-handle';
-	handle.setAttribute('role', 'separator');
-	handle.setAttribute('aria-orientation', 'horizontal');
-	handle.setAttribute('aria-label', 'Resize map');
 	const map = stage.querySelector(':scope > .rv-hub-map, :scope > .rv-note-map');
-	if (map) stage.insertBefore(handle, map);
-	else stage.appendChild(handle);
-	return handle;
+	return seatMapGrip(stage, map);
 }
 
 /**
@@ -138,6 +188,8 @@ export function parkMapNode(el: HTMLElement): HTMLElement {
 	holder.style.height = `${Math.max(rect.height, 1)}px`;
 	holder.style.zIndex = '80';
 	doc.body.appendChild(holder);
+	const grip = el.previousElementSibling;
+	if (isMapGrip(grip)) liftMapGrip(grip);
 	holder.appendChild(el);
 	return holder;
 }

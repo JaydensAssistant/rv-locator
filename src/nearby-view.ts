@@ -2,7 +2,7 @@ import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverPar
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { refillKeepingFocus } from './keep-focus';
 import { applyControlSizedPills, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
-import { CAMPAIGN_LIST_LABEL, GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, filtersDifferFromDefault, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter } from './status';
+import { CAMPAIGN_LIST_ORDER, GENDER_FILTER_LABEL, GENDER_FILTER_ORDER, RETURN_SCOPE_LABEL, RETURN_SCOPE_ORDER, SNOOZE_FILTER_LABEL, SNOOZE_FILTER_ORDER, type CampaignListFilter } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
 import { Notice } from 'obsidian';
@@ -15,7 +15,7 @@ import type RVLocatorPlugin from './main';
 import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
 import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
-import { armHoverTooltip, armIconTooltip } from './title-fit';
+import { armHoverTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
 import type { LatLon } from './types';
@@ -541,18 +541,20 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	private paintSortPresets(): void {
 		const stamp = this.sortPaintStamp();
-		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll')) return;
+		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll, .rv-app-bar')) return;
 		this.sortPaintStampSeen = stamp;
 		this.releaseSortSize();
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		const search = this.searchSlot;
 		const glancable = this.mode === 'glancable';
 		refillKeepingFocus(this.sortEl, search, () => {
-		const actions = glancable && !this.sortMenuOpen ? this.sortEl.createDiv('rv-locator-toolbar-actions') : null;
+		if (glancable) {
+			this.paintGlancableTabs();
+			if (search && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
+			return;
+		}
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
-		const showPills = !glancable || this.sortMenuOpen;
-		if (glancable && !showPills) this.sortButtonsEl.addClass('is-hidden');
-		const pillHost = glancable ? this.sortButtonsEl.createDiv('rv-locator-sort-pills') : this.sortButtonsEl;
+		const pillHost = this.sortButtonsEl;
 		const current = this.localSort;
 		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
 			const active = current.property.toLowerCase() === preset.property.toLowerCase();
@@ -565,7 +567,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 					'aria-label': label,
 				},
 			});
-			const marks = glancable ? button.createSpan('rv-sort-marks') : button;
+			const marks = button;
 			const icon = marks.createSpan('rv-sort-icon');
 			setIcon(icon, sortPresetIcon(preset.id));
 			if (active) {
@@ -577,69 +579,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
 				this.plugin.setNearbySort(nextPresetSort(current, preset));
-				if (glancable) this.paintSortPresets();
-			});
-		}
-		if (glancable && this.sortMenuOpen) {
-			const close = this.sortEl.createEl('button', {
-				cls: 'rv-locator-toolbar-quiet rv-sort-close',
-				attr: { type: 'button', 'aria-label': 'Close sort' },
-			});
-			setIcon(close, 'x');
-			close.addEventListener('click', () => {
-				this.sortMenuOpen = false;
-				this.paintSortPresets();
 			});
 		}
 		this.paintSortExtras();
-		const actionHost = actions ?? this.sortEl;
-		if (glancable && !this.sortMenuOpen) {
-			const sortButton = actionHost.createEl('button', {
-				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Sort' },
-			});
-			armIconTooltip(sortButton, 'Sort');
-			setIcon(sortButton, 'arrow-up-down');
-			sortButton.addEventListener('click', () => {
-				this.sortMenuOpen = true;
-				this.paintSortPresets();
-			});
-			const searchButton = actionHost.createEl('button', {
-				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Search' },
-			});
-			armIconTooltip(searchButton, 'Search');
-			setIcon(searchButton, 'search');
-			searchButton.addEventListener('click', () => { this.openGlanceSearch(); });
-			const map = actionHost.createEl('button', {
-				cls: 'rv-locator-toolbar-quiet rv-hub-earth',
-				attr: { type: 'button', 'aria-label': 'Map' },
-			});
-			armIconTooltip(map, 'Map');
-			setIcon(map, 'earth');
-			map.toggleClass('is-on', this.plugin.hubMapOpen);
-			map.addEventListener('click', () => { void this.plugin.openMapSoon(); });
-			const campaign = actionHost.createEl('button', {
-				cls: 'rv-locator-toolbar-quiet',
-				attr: { type: 'button', 'aria-label': 'Campaign' },
-			});
-			armIconTooltip(campaign, 'Campaign');
-			setIcon(campaign, 'flag');
-			campaign.addEventListener('click', () => { this.plugin.openCampaignModal(); });
-			this.paintFilterButton(actionHost);
-			const create = actionHost.createEl('button', {
-				cls: 'rv-locator-new-rv',
-				attr: {
-					type: 'button',
-					'aria-label': 'New RV',
-				},
-			});
-			armIconTooltip(create, 'New RV');
-			setIcon(create, 'plus');
-			create.addEventListener('click', () => {
-				void this.plugin.createNewRv();
-			});
-		}
 		equalizeSortPills(pillHost);
 		if (search && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
 		});
@@ -680,43 +622,106 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		// Ideality planner was removed in 1.2.6. It may return later.
 	}
 
-	/**
-	 * Campaign, Active, and Men+Women leave the pill row.
-	 * One button cycles the same three filters from a menu.
-	 */
-	private paintFilterButton(host: HTMLElement): void {
-		const scope = this.plugin.settings.returnScope;
-		const gender = this.plugin.settings.genderFilter;
-		const campaignFilter = this.plugin.settings.campaignListFilter;
-		const snooze = this.plugin.settings.snoozeListFilter;
-		const narrowed = filtersDifferFromDefault(scope, gender, campaignFilter, snooze);
-		const button = host.createEl('button', {
-			cls: `rv-locator-toolbar-quiet rv-locator-filter${narrowed ? ' is-filtering' : ''}`,
-			attr: { type: 'button', 'aria-label': 'Filters' },
+	/** Edge-to-edge tab bar. Hub opens the sort and filter row. */
+	private paintGlancableTabs(): void {
+		const bar = this.sortEl.createDiv({ cls: `rv-app-bar${this.sortMenuOpen ? ' is-scroll' : ''}` });
+		this.sortButtonsEl = bar;
+		if (this.sortMenuOpen) {
+			this.barSlot(bar, 'Close', 'x', false, () => {
+				this.sortMenuOpen = false;
+				this.paintSortPresets();
+			});
+			const order = ['urgency', 'distance', 'attempted', 'spoke', 'priority', 'met', 'city', 'ideality'];
+			const presets = visibleSortPresets(this.plugin.settings.sortChips)
+				.slice()
+				.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+			const current = this.localSort;
+			for (const preset of presets) {
+				const active = current.property.toLowerCase() === preset.property.toLowerCase();
+				this.barSlot(bar, sortPresetShortLabel(preset), sortPresetIcon(preset.id), active, () => {
+					this.plugin.setNearbySort(nextPresetSort(current, preset));
+					this.paintSortPresets();
+				});
+			}
+			bar.createDiv('rv-app-divider');
+			const settings = this.plugin.settings;
+			this.barSlot(bar, 'Snoozed', 'moon', settings.snoozeListFilter !== 'all', (event) => this.openSnoozeMenu(event), settings.snoozeListFilter !== 'all');
+			this.barSlot(bar, 'Scope', 'layers', settings.returnScope !== 'active', (event) => this.openScopeMenu(event), settings.returnScope !== 'active');
+			this.barSlot(bar, 'Gender', 'user', settings.genderFilter !== 'all', (event) => this.openGenderMenu(event), settings.genderFilter !== 'all');
+			this.barSlot(bar, 'Campaign', 'flag', settings.campaignListFilter !== 'all', (event) => this.openCampaignFilterMenu(event), settings.campaignListFilter !== 'all');
+			return;
+		}
+		this.barSlot(bar, 'Hub', 'house', false, () => {
+			this.sortMenuOpen = true;
+			this.paintSortPresets();
 		});
-		armIconTooltip(button, 'Filters');
-		setIcon(button, 'list-filter');
-		if (narrowed) button.createSpan({ cls: 'rv-filter-dot', attr: { 'aria-hidden': 'true' } });
+		this.barSlot(bar, 'Search', 'search', false, () => { this.openGlanceSearch(); });
+		this.barSlot(bar, 'Campaign', 'flag', false, () => { this.plugin.openCampaignModal(); });
+		this.barSlot(bar, 'Map', 'earth', this.plugin.hubMapOpen, () => { void this.plugin.openMapSoon(); }, false, 'rv-hub-earth');
+		this.barSlot(bar, 'New', 'plus', false, () => { void this.plugin.createNewRv(); });
+	}
+
+	private barSlot(
+		bar: HTMLElement,
+		label: string,
+		icon: string,
+		on: boolean,
+		action: (event: MouseEvent) => void,
+		dot = false,
+		extra = '',
+	): void {
+		const button = bar.createEl('button', {
+			cls: `rv-app-slot${on ? ' is-on' : ''}${dot ? ' has-dot' : ''}${extra ? ` ${extra}` : ''}`,
+			attr: { type: 'button', 'aria-label': label },
+		});
+		setIcon(button, icon);
+		button.createSpan({ cls: 'rv-app-label', text: label });
 		button.addEventListener('click', (event) => {
-			const menu = new Menu();
-			menu.addItem((item) => item
-				.setTitle(CAMPAIGN_LIST_LABEL[campaignFilter])
-				.setIcon('flag')
-				.onClick(() => { void this.plugin.setCampaignListFilter(nextCampaignListFilter(campaignFilter)); }));
-			menu.addItem((item) => item
-				.setTitle(RETURN_SCOPE_LABEL[scope])
-				.setIcon('layers')
-				.onClick(() => { void this.plugin.setReturnScope(nextReturnScope(scope)); }));
-			menu.addItem((item) => item
-				.setTitle(GENDER_FILTER_LABEL[gender])
-				.setIcon(gender === 'women' ? 'venus' : gender === 'men' ? 'mars' : 'venus-and-mars')
-				.onClick(() => { void this.plugin.setGenderFilter(nextGenderFilter(gender)); }));
-			menu.addItem((item) => item
-				.setTitle(SNOOZE_FILTER_LABEL[snooze])
-				.setIcon('moon')
-				.onClick(() => { void this.plugin.setSnoozeListFilter(nextSnoozeListFilter(snooze)); }));
-			menu.showAtMouseEvent(event);
+			event.preventDefault();
+			action(event);
 		});
+	}
+
+	private openSnoozeMenu(event: MouseEvent): void {
+		this.openChoiceMenu(event, SNOOZE_FILTER_ORDER, SNOOZE_FILTER_LABEL, this.plugin.settings.snoozeListFilter, (id) => {
+			void this.plugin.setSnoozeListFilter(id);
+		});
+	}
+
+	private openScopeMenu(event: MouseEvent): void {
+		this.openChoiceMenu(event, RETURN_SCOPE_ORDER, RETURN_SCOPE_LABEL, this.plugin.settings.returnScope, (id) => {
+			void this.plugin.setReturnScope(id);
+		});
+	}
+
+	private openGenderMenu(event: MouseEvent): void {
+		this.openChoiceMenu(event, GENDER_FILTER_ORDER, GENDER_FILTER_LABEL, this.plugin.settings.genderFilter, (id) => {
+			void this.plugin.setGenderFilter(id);
+		});
+	}
+
+	private openCampaignFilterMenu(event: MouseEvent): void {
+		const labels: Record<CampaignListFilter, string> = { all: 'All', uncovered: 'Uncovered', covered: 'Covered' };
+		this.openChoiceMenu(event, CAMPAIGN_LIST_ORDER, labels, this.plugin.settings.campaignListFilter, (id) => {
+			void this.plugin.setCampaignListFilter(id);
+		});
+	}
+
+	private openChoiceMenu<T extends string>(
+		event: MouseEvent,
+		order: readonly T[],
+		labels: Record<T, string>,
+		current: T,
+		choose: (id: T) => void,
+	): void {
+		const menu = new Menu();
+		for (const id of order) {
+			menu.addItem((item) => item
+				.setTitle(labels[id])
+				.setChecked(id === current)
+				.onClick(() => { choose(id); }));
+		}
+		menu.showAtMouseEvent(event);
 	}
 
 	private syncPositionSource(): void {
@@ -967,7 +972,7 @@ function sortPresetIcon(id: string): string {
 		priority: 'gauge',
 		spoke: 'message-circle',
 		attempted: 'clock',
-		met: 'home',
+		met: 'door-open',
 		city: 'building-2',
 	};
 	return icons[id] ?? 'arrow-up-down';

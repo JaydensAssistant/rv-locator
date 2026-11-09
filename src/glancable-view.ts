@@ -12,7 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
-import { lockHandedMapBand } from './map-handoff';
+import { liftMapGrip, lockHandedMapBand, seatMapGrip } from './map-handoff';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -244,13 +244,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.releaseHandedBandWhenLaidOut();
 			return;
 		}
-		const handle = stage.createDiv('rv-hub-map-handle');
-		handle.setAttr('role', 'separator');
-		handle.setAttr('aria-orientation', 'horizontal');
-		handle.setAttr('aria-label', 'Resize map');
 		const map = stage.createDiv('rv-hub-map');
-		stage.appendChild(handle);
 		stage.appendChild(map);
+		const handle = seatMapGrip(stage, map);
 		this.hubMapEl = map;
 		this.hubMapHandle = handle;
 		this.hubMapApi = this.plugin.mountHubMap(map);
@@ -274,14 +270,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (el?.classList.contains('rv-map-spacer')) el.remove();
 			this.hubMapEl = null;
 			this.hubMapApi = null;
-			this.hubMapHandle?.remove();
-			this.hubMapHandle = null;
+			this.releaseHubGrip();
 			return;
 		}
 		this.hubMapApi?.destroy();
 		this.hubMapApi = null;
 		this.hubMapEl?.remove();
-		this.hubMapHandle?.remove();
+		this.releaseHubGrip();
 		this.hubMapEl = null;
 		this.hubMapHandle = null;
 	}
@@ -346,22 +341,21 @@ export class NearbyGlancableView extends NearbyBasesView {
 		else step();
 	}
 
-	/** Bind the grip the handoff inserted. A fresh map already has one. */
-	private ensureHubHandle(stage: HTMLElement): void {
-		const found = stage.querySelector(':scope > .rv-hub-map-handle');
-		if (found instanceof HTMLElement) {
-			this.hubMapHandle = found;
-			this.bindHubHandle(found);
+	/** The map is moving. Keep the grip. Closing the map drops it. */
+	private releaseHubGrip(): void {
+		const grip = this.hubMapHandle;
+		this.hubMapHandle = null;
+		if (!(grip instanceof HTMLElement)) return;
+		if (this.plugin.hubMapOpen || this.plugin.noteMapOpen) {
+			liftMapGrip(grip);
 			return;
 		}
-		const handle = stage.ownerDocument.createElement('div');
-		handle.className = 'rv-hub-map-handle';
-		handle.setAttribute('role', 'separator');
-		handle.setAttribute('aria-orientation', 'horizontal');
-		handle.setAttribute('aria-label', 'Resize map');
-		const map = this.hubMapEl;
-		if (map?.parentElement === stage) stage.insertBefore(handle, map);
-		else stage.appendChild(handle);
+		if (!grip.classList.contains('is-pinned')) grip.remove();
+	}
+
+	/** Bind the grip the handoff inserted. A fresh map already has one. */
+	private ensureHubHandle(stage: HTMLElement): void {
+		const handle = seatMapGrip(stage, this.hubMapEl);
 		this.hubMapHandle = handle;
 		this.bindHubHandle(handle);
 	}

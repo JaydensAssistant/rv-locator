@@ -259,6 +259,7 @@ export class RvMapView extends ItemView {
 			}
 		}
 		this.paint();
+		this.settleFrame();
 	}
 
 	/** Card list order for this hub. Rank is the index in that array. */
@@ -370,6 +371,23 @@ export class RvMapView extends ItemView {
 		this.centerOnOpen();
 		this.syncFullscreen();
 		this.paint();
+		this.settleFrame();
+	}
+
+	/** One more paint after layout, so a recenter is not stuck on the grey frame. */
+	private settleQueued = false;
+
+	private settleFrame(): void {
+		if (this.settleQueued) return;
+		this.settleQueued = true;
+		const win = this.stage?.ownerDocument.defaultView;
+		const run = (): void => {
+			this.settleQueued = false;
+			this.invalidateSize();
+			this.paint();
+		};
+		if (win?.requestAnimationFrame) win.requestAnimationFrame(() => { win.requestAnimationFrame(run); });
+		else run();
 	}
 
 	private centerOnOpen(): void {
@@ -653,6 +671,7 @@ export class RvMapView extends ItemView {
 					img.addEventListener('load', () => {
 						if (!img || img.naturalWidth <= 0) return;
 						img.classList.add('is-ready');
+						img.classList.remove('is-holding');
 						this.tileSrc.set(key, img.currentSrc || img.src);
 						this.tileIndex = noteViewedTile(this.tileIndex, {
 							z,
@@ -661,6 +680,7 @@ export class RvMapView extends ItemView {
 							home: tileIsHome(z, wrapped, y, box),
 						}, Date.now());
 						saveTileIndex(this.tileIndex);
+						this.settleFrame();
 					});
 					img.src = `https://tile.openstreetmap.org/${z}/${wrapped}/${y}.png`;
 					this.tileImgs.set(key, img);

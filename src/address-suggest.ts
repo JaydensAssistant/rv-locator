@@ -81,7 +81,7 @@ export function prefixCacheCovers(
 	const key = normalizeSuggestQuery(query);
 	if (key.length < ADDRESS_SUGGEST_MIN_CHARS) return null;
 	const exact = cache.get(key);
-	if (exact) return [...exact];
+	if (exact && exact.length > 0) return [...exact];
 	let best = '';
 	for (const cached of cache.keys()) {
 		if (key.startsWith(cached) && cached.length > best.length) best = cached;
@@ -274,11 +274,24 @@ export class AddressSuggestController {
 		this.noteHome(gen, query, result);
 	}
 
+	/** Empty lists are not stored, and a stored empty list is dropped. */
+	private rememberSuggest(query: string, hits: readonly GeocodeHit[]): void {
+		for (const [key, cached] of this.cache) {
+			if (cached.length === 0) this.cache.delete(key);
+		}
+		const key = normalizeSuggestQuery(query);
+		if (hits.length === 0) {
+			this.cache.delete(key);
+			return;
+		}
+		this.cache.set(key, [...hits]);
+	}
+
 	private noteHome(gen: number, query: string, result: SuggestFetchResult): void {
 		const hits = [...result.hits];
 		const near = result.near ?? hits.map((hit) => hit.formattedAddress);
 		this.nearKeys = new Set(near.map((value) => value.trim().toLowerCase()));
-		this.cache.set(normalizeSuggestQuery(query), hits);
+		this.rememberSuggest(query, hits);
 		if (gen < this.renderedGen) {
 			this.pump();
 			return;
@@ -311,7 +324,7 @@ export class AddressSuggestController {
 		}
 		this.inFlight -= 1;
 		const merged = mergeHomeFirst(job.home, broad);
-		this.cache.set(normalizeSuggestQuery(job.query), merged);
+		this.rememberSuggest(job.query, merged);
 		if (job.gen < this.renderedGen) {
 			this.pump();
 			return;

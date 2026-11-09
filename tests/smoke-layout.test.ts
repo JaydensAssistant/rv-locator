@@ -367,8 +367,8 @@ describe('smoke layout', () => {
 		assert.equal(writes.count, 1);
 		const paragraph = root.querySelector('p.rv-hub-owned');
 		assert.ok(paragraph?.querySelector('.rv-hub-add'));
-		assert.ok(paragraph?.querySelector('a.rv-map-button'));
-		assert.equal(paragraph?.querySelectorAll('.rv-map-button').length, 1);
+		assert.ok(paragraph?.querySelector('button.rv-copy-address'));
+		assert.equal(paragraph?.querySelectorAll('a.rv-map-button').length, 0);
 	});
 
 	it('hoists note sections that render before the heading, including a list, and again after a scroll re-render', () => {

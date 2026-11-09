@@ -281,7 +281,7 @@ export interface HubCoverPaint {
 
 function snapshotReady(host: HTMLElement): boolean {
 	return host.querySelector('.rv-locator-card') != null
-		&& host.querySelector('.rv-locator-toolbar-actions button') != null;
+		&& host.querySelector('.rv-locator-toolbar-actions button, .rv-app-slot') != null;
 }
 
 const COVER_CRUMB = '.view-header-title-parent, .view-header-breadcrumb, .view-header-breadcrumb-container';

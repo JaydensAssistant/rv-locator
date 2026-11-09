@@ -81,7 +81,11 @@ export function writeMapBand(host: HTMLElement, panePx: number, ratio: number, p
 	const px = mapBandPx(panePx, ratio);
 	const share = Number.isFinite(ratio) ? ratio : DEFAULT_MAP_RATIO;
 	const next = px > 0 ? `${px}px` : `${Math.round(share * 100)}%`;
-	if (host.style.getPropertyValue(prop) !== next) host.style.setProperty(prop, next);
+	// One band for the hub and the note. Writing both names keeps the handoff from
+	// falling back to a percent on the name the other view was using.
+	if (host.style.getPropertyValue('--rv-map-size') !== next) host.style.setProperty('--rv-map-size', next);
+	if (host.style.getPropertyValue('--rv-note-map') !== next) host.style.setProperty('--rv-note-map', next);
+	void prop;
 }
 
 /** Map is `mapRatio` of the stage. The handle is the rest of the stage after the cards. */

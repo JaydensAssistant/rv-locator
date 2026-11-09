@@ -1,4 +1,4 @@
-import { Menu, setIcon } from 'obsidian';
+import { Menu, Notice, setIcon } from 'obsidian';
 import { attemptLogCallouts, isLogCalloutTitle } from './attempt-digest';
 import { expandFoldedHost, scrollPreviewTarget } from './callout-fold';
 import { pickDayJump, type DayJumpCandidate } from './day-jump';
@@ -1294,7 +1294,7 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 			child.classList.remove('rv-address-hidden');
 			continue;
 		}
-		if (child.classList.contains('rv-map-button') || child.classList.contains('rv-address-line')) {
+		if (child.classList.contains('rv-map-button') || child.classList.contains('rv-copy-address') || child.classList.contains('rv-address-line')) {
 			child.classList.remove('rv-address-hidden');
 			continue;
 		}
@@ -1316,7 +1316,7 @@ function decorateAddress(paragraph: HTMLElement, path: string, data: Record<stri
 	};
 	input.classList.add('rv-address-input');
 	showAddressLink(paragraph, input, path, host);
-	ensureEarthButton(paragraph, path, host);
+	ensureCopyButton(paragraph, path);
 	assembleAddressLine(paragraph);
 }
 
@@ -1352,7 +1352,7 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	if (!(field instanceof HTMLElement)) return;
 	const input = paragraph.querySelector('input.rv-address-input');
 	const link = paragraph.querySelector('a.rv-address-link');
-	const earth = paragraph.querySelector('a.rv-map-button');
+	const earth = paragraph.querySelector('button.rv-copy-address');
 	const fieldKids: Node[] = [];
 	if (input) fieldKids.push(input);
 	if (link instanceof HTMLElement) fieldKids.push(link);
@@ -1402,26 +1402,30 @@ function assembleAddressLine(paragraph: HTMLElement): void {
 	}
 }
 
-function ensureEarthButton(paragraph: HTMLElement, path: string, host: NoteChromeHost): void {
-	let earth = paragraph.querySelector(':scope > a.rv-map-button, :scope > .rv-address-line > a.rv-map-button');
-	if (!(earth instanceof HTMLElement)) {
-		const link = paragraph.ownerDocument.createElement('a');
-		link.className = 'rv-map-button';
-		link.setAttribute('href', '#');
-		link.setAttribute('aria-label', 'Map');
-		link.setAttribute('rel', 'noopener');
-		setIcon(link, 'earth');
-		link.addEventListener('click', (event) => {
+function ensureCopyButton(paragraph: HTMLElement, path: string): void {
+	paragraph.querySelectorAll('a.rv-map-button').forEach((node) => node.remove());
+	let button = paragraph.querySelector(':scope > button.rv-copy-address, :scope > .rv-address-line > button.rv-copy-address');
+	if (!(button instanceof HTMLElement) || button.tagName !== 'BUTTON') {
+		const copy = paragraph.ownerDocument.createElement('button');
+		copy.type = 'button';
+		copy.className = 'rv-copy-address';
+		copy.setAttribute('aria-label', 'Copy address');
+		setIcon(copy, 'copy');
+		copy.addEventListener('click', (event) => {
 			event.preventDefault();
 			event.stopPropagation();
-			host.openMap(path);
+			const input = paragraph.querySelector('input.rv-address-input');
+			const stored = input instanceof HTMLInputElement ? input.value.trim() : '';
+			if (!stored) return;
+			const clipboard = paragraph.ownerDocument.defaultView?.navigator?.clipboard;
+			if (clipboard && typeof clipboard.writeText === 'function') void clipboard.writeText(stored);
+			new Notice('Address copied');
 		});
-		paragraph.appendChild(link);
-		earth = link;
+		paragraph.appendChild(copy);
+		button = copy;
 	}
-	if (!(earth instanceof HTMLElement)) return;
-	earth.dataset.rvPath = path;
-	earth.classList.toggle('is-on', host.noteMapLit ? host.noteMapLit(path) : host.mapOpen());
+	if (!(button instanceof HTMLElement) || button.tagName !== 'BUTTON') return;
+	button.dataset.rvPath = path;
 }
 
 function armAddressEdit(link: HTMLElement, input: HTMLInputElement): void {

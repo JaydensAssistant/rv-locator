@@ -391,6 +391,7 @@ export class Menu {
 class MenuItem {
 	setTitle(_title: string): this { return this; }
 	setIcon(_icon: string): this { return this; }
+	setChecked(_on: boolean): this { return this; }
 	onClick(_cb: () => void): this { return this; }
 }
 

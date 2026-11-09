@@ -61,11 +61,10 @@ describe('2026-10-13 feedback', () => {
 
 	it('keeps the sort row open until the close button', () => {
 		const view = source('src/nearby-view.ts');
-		const paint = view.slice(view.indexOf('private paintSortPresets'), view.indexOf('protected paintSortExtras'));
-		const pick = paint.slice(paint.indexOf('button.addEventListener'), paint.indexOf('if (glancable && this.sortMenuOpen)'));
-		assert.doesNotMatch(pick, /sortMenuOpen = false/);
-		assert.match(paint, /this\.sortEl\.createEl\('button'/);
-		assert.match(paint, /rv-sort-close/);
+		const paint = view.slice(view.indexOf('private paintGlancableTabs'), view.indexOf('private barSlot'));
+		const sorts = paint.slice(paint.indexOf('setNearbySort'), paint.indexOf("bar.createDiv('rv-app-divider')"));
+		assert.doesNotMatch(sorts, /sortMenuOpen = false/);
+		assert.match(paint, /'Close', 'x'/);
 		assert.match(paint, /this\.sortMenuOpen = false/);
 	});
 

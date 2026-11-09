@@ -24,13 +24,13 @@ import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
-import { clearNoteHubBar, mountNoteHubBar } from './note-hub-bar';
+import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, shownHubStage, visibleMapNode } from './map-handoff';
+import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, liftMapGrip, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -539,12 +539,8 @@ export default class RVLocatorPlugin extends Plugin {
 		document.documentElement.style.setProperty('--rv-hub-accent', color);
 	}
 
-	/** The hub bar on the open RV note. A hub leaf keeps its own bar. */
+	/** The hub bar on each open RV note. A hub leaf keeps its own bar. */
 	private syncNoteHubBar(): void {
-		const file = this.app.workspace.getActiveFile();
-		const data = file ? (this.cachedFrontmatter.get(file.path) ?? this.app.metadataCache.getFileCache(file)?.frontmatter) : null;
-		const record = (data ?? null) as Record<string, unknown> | null;
-		const show = Boolean(file && isRvDashboardNote(record) && !isRvHubNote(record));
 		const leaves = typeof this.app.workspace.getLeavesOfType === 'function'
 			? this.app.workspace.getLeavesOfType('markdown')
 			: [];
@@ -552,7 +548,14 @@ export default class RVLocatorPlugin extends Plugin {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || !(view.containerEl instanceof HTMLElement)) continue;
 			const content = view.containerEl;
-			if (!show || !file || view.file?.path !== file.path) {
+			const file = view.file;
+			const data = file ? (this.cachedFrontmatter.get(file.path) ?? this.app.metadataCache.getFileCache(file)?.frontmatter) : null;
+			const record = (data ?? null) as Record<string, unknown> | null;
+			const surface = Boolean(file && isRvLocatorSurface(record));
+			const ownBase = content.querySelector('.rv-locator-view') != null;
+			content.classList.toggle('is-rv-app', surface || ownBase);
+			const show = Boolean(file && isRvDashboardNote(record) && !isRvHubNote(record));
+			if (!show || !file) {
 				clearNoteHubBar(content);
 				continue;
 			}
@@ -562,19 +565,31 @@ export default class RVLocatorPlugin extends Plugin {
 				toggleMap: (path) => { void this.openMapSoon(path); },
 				createNewRv: () => { void this.createNewRv(); },
 				openCampaign: () => { this.openCampaignModal(); },
-				openSearch: (path) => { this.openNoteBarSearch(path); },
+				openSearch: (path) => { this.openNoteFindFor(path); },
+				openHub: (path) => { this.openNoteHub(path); },
 			});
 		}
 	}
 
-	/** Search needs the hub list, so the note bar opens that hub and then the field. */
-	private openNoteBarSearch(path: string): void {
+	/** Search stays in the note. It does not open the hub. */
+	private openNoteFindFor(path: string): void {
+		const leaves = typeof this.app.workspace.getLeavesOfType === 'function'
+			? this.app.workspace.getLeavesOfType('markdown')
+			: [];
+		for (const leaf of leaves) {
+			const view = leaf.view;
+			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
+			if (view.containerEl instanceof HTMLElement) openNoteFind(view.containerEl);
+		}
+	}
+
+	/** Hub tab. Opens the note's hub file even when this leaf has no history. */
+	private openNoteHub(path: string): void {
 		const data = this.noteFrontmatter(path);
 		const hubs = hubRefs(readProperty(data, 'Hub')).map((hub) => resolveReturnHub(hub, this.settings.returnHubNote));
 		const target = hubs[0]?.target || this.settings.returnHubNote;
-		this.pendingHubSearch = true;
+		if (!target) return;
 		this.openHubLink(path, target);
-		if (this.askHubSearch()) this.pendingHubSearch = false;
 	}
 
 	registerHubSearch(open: () => boolean): () => void {
@@ -2729,14 +2744,6 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		content.classList.add('is-note-map');
 		this.watchNoteMapBox(content);
-		let handle = content.querySelector(':scope > .rv-note-map-handle');
-		if (!(handle instanceof HTMLElement)) {
-			handle = content.createDiv('rv-note-map-handle');
-			handle.setAttribute('role', 'separator');
-			handle.setAttribute('aria-orientation', 'horizontal');
-			handle.setAttribute('aria-label', 'Resize map');
-		}
-		if (handle instanceof HTMLElement) this.bindNoteMapHandle(content, handle);
 		let map = content.querySelector(':scope > .rv-note-map');
 		if (!(map instanceof HTMLElement) || !map.isConnected) {
 			const parked = this.claimParkedMap('rv-note-map');
@@ -2752,6 +2759,8 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 		}
 		if (!(map instanceof HTMLElement)) return;
+		const grip = seatMapGrip(content, map);
+		this.bindNoteMapHandle(content, grip);
 		if (!this.noteMapHandle) this.noteMapHandle = this.mountHubMap(map, 'split');
 		for (const delay of [0, 250]) {
 			window.setTimeout(() => {
@@ -2906,7 +2915,12 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		for (const host of hosts) {
 			host.classList.remove('is-note-map', 'is-note-map-side');
-			host.querySelector(':scope > .rv-note-map-handle')?.remove();
+			const grip = host.querySelector(':scope > .rv-note-map-handle, :scope > .rv-map-grip');
+			if (grip instanceof HTMLElement) {
+				const moving = host.ownerDocument.querySelector('.rv-map-park') != null || this.hubMapOpen || this.noteMapOpen;
+				if (moving) liftMapGrip(grip);
+				else if (!grip.classList.contains('is-pinned')) grip.remove();
+			}
 			host.querySelector(':scope > .rv-note-map')?.remove();
 		}
 		this.syncNoteMapStatus(null);
@@ -3093,6 +3107,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const place = placeFilterParam(ids);
 		const remote = await this.autocompleteAddress(query, bias, false, false, place, 10);
 		const planned = homeCountyHits(vault, remote, counties);
+		if (planned.hits.length === 0) return { hits: [], allowBroad: true, near: [] };
 		return { hits: planned.hits, allowBroad: false, near: planned.near };
 	}
 
@@ -3128,11 +3143,14 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private async countyPlaceIds(counties: readonly string[]): Promise<string[]> {
-		const keys = [...new Set(counties.map((county) => countyNameKey(county)).filter((name) => name.length > 0))];
-		const ids = await Promise.all(keys.map(async (key) => {
+		const lines = counties.map((line) => line.trim()).filter((line) => line.length > 0);
+		const ids = await Promise.all(lines.map(async (line) => {
+			const key = countyNameKey(line);
+			if (!key) return null;
 			const cached = this.countyPlaceCache.get(key);
 			if (cached) return cached;
-			const id = await this.lookupCountyPlaceId(key);
+			this.countyPlaceCache.delete(key);
+			const id = await this.lookupCountyPlaceId(line);
 			if (id) this.countyPlaceCache.set(key, id);
 			return id;
 		}));
@@ -3144,7 +3162,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const name = countyNameKey(county);
 		if (!apiKey || !name) return null;
 		try {
-			const url = buildCountySuggestUrl(`${name} County`, apiKey, this.settings.geoapifyRegion);
+			const url = buildCountySuggestUrl(county, apiKey, this.settings.geoapifyRegion);
 			const response = await fetch(url);
 			if (!response.ok) return null;
 			return readCountyPlaceId(await response.json(), name);
@@ -3158,9 +3176,9 @@ export default class RVLocatorPlugin extends Plugin {
 		return this.autocompleteAddress(query, bias, false);
 	}
 
-	/** Distance-test point, then a live GPS fix, then one geocode of the first home county. */
+	/** Home counties, then a live GPS fix. The map center is not a home. */
 	private async suggestBias(): Promise<GeocodeBias | null> {
-		return this.currentMapFix() ?? this.liveFix ?? await this.homeProximity();
+		return await this.homeProximity() ?? this.liveFix ?? null;
 	}
 
 	/**
