@@ -505,8 +505,7 @@ describe('RV-B9 swap cover', () => {
 		parent.remove();
 
 		const main = source('src/main.ts');
-		assert.match(main, /holdLeafForHubPaint\(active\?\.view\?\.containerEl,/);
-		assert.match(main, /holdLeafForHubPaint\(this\.view\?\.containerEl,/);
+		assert.doesNotMatch(main, /holdLeafForHubPaint\(/);
 		assert.match(main, /coversHubOpen\(file\)/);
 		assert.match(main, /releaseHubSwapCover\(document, true\)/);
 		const glance = source('src/glancable-view.ts');

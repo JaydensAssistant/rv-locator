@@ -91,12 +91,16 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.plugin.nudgeIncompleteSetup();
 		if (this.mode === 'glancable') {
 			this.plugin.resetHubFilters();
-			const stopSort = this.plugin.registerBarPainter?.(() => {
-				if (!this.root?.isConnected) return;
-				if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) return;
+			const stopSort = this.plugin.registerHubSortOpener?.(() => {
+				const root = this.root;
+				if (!root?.isConnected || root.ownerDocument == null) return false;
+				if (typeof root.closest === 'function' && root.closest('.rv-hub-swap-cover')) return false;
+				if (!this.chromeReady) this.ensureChrome();
+				if (!this.sortEl?.isConnected) return false;
 				this.sortMenuOpen = true;
 				this.sortPaintStampSeen = '';
 				this.paintSortPresets();
+				return true;
 			});
 			if (stopSort) this.register(stopSort);
 		}
@@ -552,8 +556,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	}
 
 	private paintSortPresets(): void {
+		if (!this.sortEl?.isConnected) return;
 		const stamp = this.sortPaintStamp();
-		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll, .rv-app-bar, .rv-bar-spacer')) return;
+		const sortRow = this.root.ownerDocument?.querySelector('.rv-bar-shell > .rv-bar-sort');
+		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll, .rv-app-bar, .rv-bar-spacer')) {
+			if (!this.sortMenuOpen || sortRow) return;
+		}
 		this.sortPaintStampSeen = stamp;
 		this.releaseSortSize();
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
@@ -637,12 +645,17 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	/** The shared bar stays outside this view. Sort options fill its one row. */
 	private paintGlancableTabs(): void {
+		if (!this.sortEl?.isConnected || this.sortEl.ownerDocument == null) return;
 		ensureBarSpacer(this.sortEl);
 		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) return;
-		const file = this.plugin.app.workspace.getActiveFile?.();
-		if (file) this.plugin.syncAppBarFromActive();
-		else if (this.plugin.barIsHeld()) this.plugin.followAppBar();
-		else this.plugin.syncAppBar('hub', '');
+		if (!this.sortMenuOpen) {
+			const file = this.plugin.app.workspace.getActiveFile?.();
+			if (file) this.plugin.syncAppBarFromActive();
+			else if (this.plugin.barIsHeld()) this.plugin.followAppBar();
+			else this.plugin.syncAppBar('hub', '');
+		} else {
+			this.plugin.followAppBar();
+		}
 		const surface = this.plugin.barSurface();
 		if (this.sortMenuOpen && surface === 'hub') {
 			const bar = this.plugin.sortBarHost();

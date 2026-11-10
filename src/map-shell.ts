@@ -12,10 +12,31 @@ export interface MapShell {
 	grip: HTMLElement;
 }
 
+function ownerDoc(node: unknown): Document | null {
+	if (node == null || typeof node !== 'object') return null;
+	const doc = (node as { ownerDocument?: unknown }).ownerDocument;
+	if (doc == null || typeof (doc as Document).createElement !== 'function') return null;
+	return doc as Document;
+}
+
 /** The shell is a child of the workspace container, never of a leaf or a view. */
 export function createMapShell(container: HTMLElement): MapShell {
-	const doc = container.ownerDocument;
-	const found = container.querySelector(`:scope > .${MAP_SHELL_CLASS}`);
+	const host = ownerDoc(container) ? container : (typeof document !== 'undefined' ? document.body : null);
+	const doc = ownerDoc(host);
+	if (!host || !doc) {
+		const fallback = typeof document !== 'undefined' ? document : null;
+		const root = fallback ? fallback.createElement('div') : ({} as HTMLElement);
+		const grip = fallback ? fallback.createElement('div') : ({} as HTMLElement);
+		const map = fallback ? fallback.createElement('div') : ({} as HTMLElement);
+		if (fallback) {
+			root.className = MAP_SHELL_CLASS;
+			grip.className = 'rv-hub-map-handle';
+			map.className = 'rv-hub-map';
+			root.append(grip, map);
+		}
+		return { root, map, grip };
+	}
+	const found = host.querySelector(`:scope > .${MAP_SHELL_CLASS}`);
 	if (found instanceof HTMLElement) {
 		const map = found.querySelector(':scope > .rv-hub-map');
 		const grip = found.querySelector(':scope > .rv-hub-map-handle');
@@ -31,7 +52,7 @@ export function createMapShell(container: HTMLElement): MapShell {
 	const map = doc.createElement('div');
 	map.className = 'rv-hub-map';
 	root.append(grip, map);
-	container.appendChild(root);
+	host.appendChild(root);
 	return { root, map, grip };
 }
 
@@ -68,9 +89,15 @@ export function copyShellBand(host: HTMLElement, bandPx: number): void {
 
 /** The slot a view reserves. The shell is not a child of this node. */
 export function ensureMapSpacer(host: HTMLElement): HTMLElement {
+	const doc = ownerDoc(host);
+	if (!host || !doc || typeof host.querySelector !== 'function') {
+		const spacer = (typeof document !== 'undefined' ? document : doc)?.createElement('div');
+		if (spacer) spacer.className = MAP_SPACER_CLASS;
+		return spacer ?? ({} as HTMLElement);
+	}
 	const sitting = host.querySelector(':scope > .rv-map-spacer');
 	if (sitting instanceof HTMLElement) return sitting;
-	const spacer = host.ownerDocument.createElement('div');
+	const spacer = doc.createElement('div');
 	spacer.className = MAP_SPACER_CLASS;
 	spacer.setAttribute('aria-hidden', 'true');
 	host.appendChild(spacer);
@@ -87,20 +114,23 @@ export function sizeMapSpacer(spacer: HTMLElement, bandPx: number, side: boolean
 		spacer.style.maxHeight = 'none';
 		return;
 	}
-	if (bandPx < MIN_BOX) return;
-	const span = bandPx + GRIP_PX;
+	if (bandPx < MIN_BOX || typeof spacer.style?.setProperty !== 'function') return;
+	const span = `${bandPx + GRIP_PX}px`;
 	if (side) {
-		spacer.style.flex = `0 0 ${span}px`;
-		spacer.style.width = `${span}px`;
-		spacer.style.maxWidth = `${span}px`;
-		spacer.style.height = '100%';
-		spacer.style.maxHeight = 'none';
+		spacer.style.setProperty('flex', `0 0 ${span}`, 'important');
+		spacer.style.setProperty('width', span, 'important');
+		spacer.style.setProperty('max-width', span, 'important');
+		spacer.style.setProperty('min-width', span, 'important');
+		spacer.style.setProperty('height', '100%', 'important');
+		spacer.style.setProperty('max-height', 'none', 'important');
 	} else {
-		spacer.style.flex = `0 0 ${span}px`;
-		spacer.style.width = '100%';
-		spacer.style.maxWidth = 'none';
-		spacer.style.height = `${span}px`;
-		spacer.style.maxHeight = `${span}px`;
+		spacer.style.setProperty('flex', `0 0 ${span}`, 'important');
+		spacer.style.setProperty('width', '100%', 'important');
+		spacer.style.setProperty('max-width', 'none', 'important');
+		spacer.style.setProperty('height', span, 'important');
+		spacer.style.setProperty('max-height', span, 'important');
+		spacer.style.setProperty('min-height', span, 'important');
+		spacer.style.setProperty('align-self', 'stretch', 'important');
 	}
 }
 
@@ -138,6 +168,7 @@ function boxHidden(node: HTMLElement): boolean {
 
 /** The spacer that currently owns the map slot. A cover spacer is only a fallback. */
 export function visibleMapSpacer(doc: Document): HTMLElement | null {
+	if (doc == null || typeof doc.querySelectorAll !== 'function') return null;
 	const nodes = doc.querySelectorAll('.rv-map-spacer');
 	let cover: HTMLElement | null = null;
 	for (let index = 0; index < nodes.length; index += 1) {
@@ -166,6 +197,8 @@ export function placeShellOver(shell: HTMLElement, spacer: HTMLElement | null): 
 	shell.style.top = `${rect.top}px`;
 	shell.style.width = `${rect.width}px`;
 	shell.style.height = `${rect.height}px`;
+	shell.style.minHeight = `${rect.height}px`;
+	shell.style.maxHeight = `${rect.height}px`;
 	return true;
 }
 

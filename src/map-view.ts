@@ -998,11 +998,13 @@ export class RvMapView extends ItemView {
 			this.setZoom(zoomToRevealPin(zed), true);
 			return;
 		}
-		if (this.fullscreenScope === 'split' && !this.isFullscreen()) {
+		if (!this.isFullscreen() && (this.fullscreenScope === 'hub' || this.fullscreenScope === 'split')) {
 			this.pinTapKind = 'open';
 			this.selectedPath = chosen.path;
 			this.popupPath = null;
-			this.host.openSplitNote?.(chosen.path);
+			const path = button.dataset.rvPath || chosen.path;
+			if (this.fullscreenScope === 'hub') this.host.openMapNote(path);
+			else this.host.openSplitNote?.(path);
 			button.addClass('is-selected');
 			return;
 		}

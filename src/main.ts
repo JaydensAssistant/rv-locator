@@ -31,7 +31,7 @@ import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, w
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
+import { hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { shownHubStage } from './map-handoff';
 import { copyShellBand, createMapShell, destroyMapShell, ensureMapSpacer, holdShellSize, markShellSide, placeShellOver, removeMapSpacers, shellBandPx, showMapShell, sizeMapSpacer, visibleMapSpacer, writeShellBand } from './map-shell';
 import { paintedHubLeaf } from './hub-open';
@@ -1090,7 +1090,6 @@ export default class RVLocatorPlugin extends Plugin {
 				if (plugin.hubLinkOpen) plugin.hubLinkOpen = false;
 				else plugin.noteDirectHubOpen();
 				plugin.retainMapForHub();
-				holdLeafForHubPaint(this.view?.containerEl, plugin.hubCoverOptions(file.basename));
 				plugin.paintEarthStates();
 				if (plugin.hubListAtTop) plugin.pinDirectHubScroll();
 			} else if (!plugin.unloaded) {
@@ -1946,7 +1945,6 @@ export default class RVLocatorPlugin extends Plugin {
 		this.hubLinkOpen = true;
 		this.hubListAtTop = false;
 		this.retainMapForHub();
-		holdLeafForHubPaint(active?.view?.containerEl, this.hubCoverOptions(dest?.basename ?? target));
 		this.paintEarthStates();
 		void this.app.workspace.openLinkText(target, sourcePath);
 		window.setTimeout(() => { this.hubLinkOpen = false; }, 0);
@@ -2749,7 +2747,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** Side-by-side at the hub breakpoint and wider. Narrow leaves stack. */
 	private watchNoteMapBox(content: HTMLElement): void {
+		if (content == null || content.ownerDocument == null) return;
+		let seen = '';
 		const apply = (): void => {
+			if (!content.isConnected || content.ownerDocument == null) {
+				this.noteMapResize?.disconnect();
+				this.noteMapResize = null;
+				return;
+			}
 			if (!this.noteMapOpen || leafHoldsHub(content) || this.noteMapHost() !== content) {
 				this.noteMapResize?.disconnect();
 				this.noteMapResize = null;
@@ -2758,6 +2763,9 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 			const box = content.getBoundingClientRect();
 			const width = box.width > 0 ? box.width : content.clientWidth;
+			const key = `${Math.round(width)}|${this.settings.mapSplitRatio}`;
+			if (key === seen && content.querySelector(':scope > .rv-map-spacer')) return;
+			seen = key;
 			applyNoteMapFrame(content, width);
 			this.paintNoteMapBand(content);
 			this.syncNoteMapStatus(content);
@@ -3069,15 +3077,16 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Keep the shell on the spacer. A spacer without a box leaves the last rect. */
 	followMapShell(): void {
 		const shell = this.mapShell?.root;
-		if (!shell || this.unloaded) return;
+		if (!shell?.isConnected || this.unloaded || shell.ownerDocument == null) return;
 		showMapShell(shell);
 		this.placeShellNow();
 		if (this.shellRaf) return;
-		const view = shell.ownerDocument.defaultView;
+		const view = shell.ownerDocument?.defaultView;
 		if (!view?.requestAnimationFrame) return;
 		const tick = (): void => {
 			this.shellRaf = 0;
-			if (!this.mapShell || this.unloaded || (!this.hubMapOpen && !this.noteMapOpen)) return;
+			const live = this.mapShell?.root;
+			if (!live?.isConnected || this.unloaded || live.ownerDocument == null || (!this.hubMapOpen && !this.noteMapOpen)) return;
 			this.placeShellNow();
 			if (this.hubMapOpen || this.noteMapOpen) this.shellRaf = view.requestAnimationFrame(tick);
 		};
@@ -3086,7 +3095,7 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private placeShellNow(): void {
 		const shell = this.mapShell?.root;
-		if (!shell) return;
+		if (!shell?.isConnected || shell.ownerDocument == null) return;
 		const band = shellBandPx(shell);
 		if (band >= 2) holdShellSize(shell, band, shell.classList.contains('is-side'));
 		const spacer = visibleMapSpacer(shell.ownerDocument);
@@ -3100,9 +3109,17 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	private watchShellSpacer(spacer: HTMLElement): void {
-		if (typeof ResizeObserver === 'undefined' || this.shellWatch === spacer) return;
+		if (typeof ResizeObserver === 'undefined' || !spacer?.isConnected || this.shellWatch === spacer) return;
 		if (!this.shellObserver) {
-			this.shellObserver = new ResizeObserver(() => { this.placeShellNow(); });
+			this.shellObserver = new ResizeObserver(() => {
+				const watched = this.shellWatch;
+				if (!watched?.isConnected || watched.ownerDocument == null) {
+					this.shellObserver?.disconnect();
+					this.shellWatch = null;
+					return;
+				}
+				this.placeShellNow();
+			});
 		}
 		this.shellObserver.disconnect();
 		this.shellWatch = spacer;
@@ -3199,20 +3216,41 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.barPainters.delete(paint); };
 	}
 
+	private hubSortOpeners = new Set<() => boolean>();
+
+	/** The hub view that is on screen right now. Resolved when Sort is tapped. */
+	registerHubSortOpener(open: () => boolean): () => void {
+		this.hubSortOpeners.add(open);
+		return () => { this.hubSortOpeners.delete(open); };
+	}
+
 	private openBarSort(): void {
 		if (this.barSurfaceNow !== 'hub') return;
-		for (const paint of this.barPainters) paint();
+		let opened = false;
+		for (const open of this.hubSortOpeners) {
+			try {
+				if (open()) opened = true;
+			} catch {
+				/* A torn-down view must not block the live hub. */
+			}
+		}
+		if (opened) return;
+		for (const paint of this.barPainters) {
+			try { paint(); } catch { /* same */ }
+		}
 	}
 
 	/** The sort row lives in the shell. The five tabs stay underneath it. */
 	sortBarHost(): HTMLElement {
 		const bar = this.ensureAppBar();
-		const found = bar.querySelector(':scope > .rv-bar-sort');
+		const doc = bar?.ownerDocument;
+		const found = bar?.querySelector(':scope > .rv-bar-sort');
 		if (found instanceof HTMLElement) {
 			bar.classList.add('is-sort-open');
 			return found;
 		}
-		const sort = bar.ownerDocument.createElement('div');
+		if (!bar || !doc) return bar;
+		const sort = doc.createElement('div');
 		sort.className = 'rv-bar-sort rv-app-bar is-scroll';
 		bar.appendChild(sort);
 		bar.classList.add('is-sort-open');
@@ -3242,14 +3280,14 @@ export default class RVLocatorPlugin extends Plugin {
 
 	followAppBar(): void {
 		const bar = this.appBar;
-		if (!bar || this.unloaded || bar.classList.contains('is-away')) return;
+		if (!bar?.isConnected || this.unloaded || bar.classList.contains('is-away') || bar.ownerDocument == null) return;
 		this.placeBarNow();
 		if (this.barRaf) return;
-		const view = bar.ownerDocument.defaultView;
+		const view = bar.ownerDocument?.defaultView;
 		if (!view?.requestAnimationFrame) return;
 		const tick = (): void => {
 			this.barRaf = 0;
-			if (!this.appBar || this.unloaded || this.appBar.classList.contains('is-away')) return;
+			if (!this.appBar?.isConnected || this.appBar.ownerDocument == null || this.unloaded || this.appBar.classList.contains('is-away')) return;
 			this.placeBarNow();
 			this.barRaf = view.requestAnimationFrame(tick);
 		};
@@ -3258,15 +3296,25 @@ export default class RVLocatorPlugin extends Plugin {
 
 	private placeBarNow(): void {
 		const bar = this.appBar;
-		if (!bar || bar.classList.contains('is-away')) return;
+		if (!bar?.isConnected || bar.classList.contains('is-away') || bar.ownerDocument == null) return;
 		const spacer = visibleBarSpacer(bar.ownerDocument);
 		placeBarOver(bar, spacer);
 		if (spacer) this.watchBarSpacer(spacer);
 	}
 
 	private watchBarSpacer(spacer: HTMLElement): void {
-		if (typeof ResizeObserver === 'undefined' || this.barWatch === spacer) return;
-		if (!this.barObserver) this.barObserver = new ResizeObserver(() => { this.placeBarNow(); });
+		if (typeof ResizeObserver === 'undefined' || !spacer?.isConnected || this.barWatch === spacer) return;
+		if (!this.barObserver) {
+			this.barObserver = new ResizeObserver(() => {
+				const watched = this.barWatch;
+				if (!watched?.isConnected || watched.ownerDocument == null) {
+					this.barObserver?.disconnect();
+					this.barWatch = null;
+					return;
+				}
+				this.placeBarNow();
+			});
+		}
 		this.barObserver.disconnect();
 		this.barWatch = spacer;
 		this.barObserver.observe(spacer);

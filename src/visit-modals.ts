@@ -7,7 +7,7 @@ import { mountCampaignChoice } from './campaign-choice';
 import { campaignIsActive, localDay, type CampaignRecord } from './campaign';
 import { coverageQuestion } from './modals';
 import { companionChoices, publisherBands } from './companions';
-import { clockFace, dateInputValue, defaultPastVisitTime, describeVisit, hour24FromFace, isFutureVisit, snapFiveMinutes, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
+import { clockFace, dateInputValue, defaultPastVisitTime, describeVisit, hour24FromFace, isFutureVisit, visitWhenFrom, type VisitEntry, type VisitFacts } from './visit-editor';
 
 export interface VisitEditOptions {
 	title: string;
@@ -46,9 +46,10 @@ export function readVisitControls(
 	let hour = current.hour;
 	let minute = current.minute;
 	if (hourEl instanceof HTMLElement && meridiemEl instanceof HTMLElement) {
-		const face = Number((hourEl as HTMLSelectElement).value);
+		const raw = (hourEl as HTMLSelectElement).value;
+		const face = Number(raw);
 		const meridiem = (meridiemEl as HTMLSelectElement).value === 'PM' ? 'PM' : 'AM';
-		if (Number.isInteger(face)) hour = hour24FromFace(face, meridiem);
+		if (raw !== '' && Number.isInteger(face) && face >= 1 && face <= 12) hour = hour24FromFace(face, meridiem);
 	}
 	if (minuteEl instanceof HTMLElement) {
 		const next = Number((minuteEl as HTMLSelectElement).value);
@@ -86,10 +87,8 @@ export class VisitEditModal extends Modal {
 		const rounded = options.initial ? { date: start.when, hour: start.when.getHours() } : defaultPastVisitTime(start.when);
 		this.home = start.home;
 		this.dateText = dateInputValue(rounded.date);
-		this.hour = rounded.hour;
-		const snapped = options.initial ? snapFiveMinutes(start.when.getMinutes()) : 0;
-		this.minute = snapped;
-		if (options.initial && start.when.getMinutes() >= 58) this.hour = (this.hour + 1) % 24;
+		this.hour = options.initial ? start.when.getHours() : rounded.hour;
+		this.minute = options.initial ? start.when.getMinutes() : 0;
 		this.companion = start.companion;
 		this.covered = options.covered === true || (options.initial?.covered != null && options.initial.covered.length > 0);
 		this.share = {
@@ -164,7 +163,12 @@ export class VisitEditModal extends Modal {
 		});
 		time.addDropdown((dropdown) => {
 			dropdown.selectEl.setAttribute('aria-label', 'Minute');
-			for (let minute = 0; minute < 60; minute += 5) dropdown.addOption(String(minute), String(minute).padStart(2, '0'));
+			const minutes = new Set<number>();
+			for (let minute = 0; minute < 60; minute += 5) minutes.add(minute);
+			if (this.minute >= 0 && this.minute <= 59) minutes.add(this.minute);
+			for (const minute of [...minutes].sort((a, b) => a - b)) {
+				dropdown.addOption(String(minute), String(minute).padStart(2, '0'));
+			}
 			dropdown.setValue(String(this.minute));
 			dropdown.onChange((value) => { this.minute = Number(value); });
 		});

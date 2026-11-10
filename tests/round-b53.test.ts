@@ -240,9 +240,11 @@ describe('RV-B54 the map stays on screen', () => {
 		assert.match(keep, /this\.focusMapPin\(path, true\)/);
 		assert.match(keep, /this\.paintEarthStates\(\)/);
 		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
-		assert.ok(hook.indexOf('retainMapForHub') < hook.indexOf('holdLeafForHubPaint'));
+		assert.match(hook, /retainMapForHub/);
+		assert.doesNotMatch(hook, /holdLeafForHubPaint/);
 		const link = main.slice(main.indexOf('private openHubLink'), main.indexOf('private coversHubOpen'));
-		assert.ok(link.indexOf('this.retainMapForHub()') < link.indexOf('holdLeafForHubPaint'));
+		assert.match(link, /this\.retainMapForHub\(\)/);
+		assert.doesNotMatch(link, /holdLeafForHubPaint/);
 		const opened = main.slice(main.indexOf('private onNoteOpened'), main.indexOf('private scheduleReadingDecorate'));
 		const branch = opened.slice(opened.indexOf('this.noteMapOpen && file && file.path !== this.mapFocusPath'));
 		assert.match(branch, /coversHubOpen\(file\)/);

@@ -18,11 +18,24 @@ export interface BarTabHost {
 	openSort(): void;
 }
 
+function ownerDoc(node: unknown): Document | null {
+	if (node == null || typeof node !== 'object') return null;
+	const doc = (node as { ownerDocument?: unknown }).ownerDocument;
+	if (doc == null || typeof (doc as Document).createElement !== 'function') return null;
+	return doc as Document;
+}
+
 /** The five slots, created once. A later call returns the same node. */
 export function createBarShell(container: HTMLElement): HTMLElement {
-	const found = container.querySelector(`:scope > .${BAR_SHELL_CLASS}`);
+	const host = ownerDoc(container) ? container : (typeof document !== 'undefined' ? document.body : null);
+	const doc = ownerDoc(host);
+	if (!host || !doc) {
+		const fallback = typeof document !== 'undefined' ? document.createElement('div') : ({} as HTMLElement);
+		if (typeof document !== 'undefined') fallback.className = BAR_SHELL_CLASS;
+		return fallback;
+	}
+	const found = host.querySelector(`:scope > .${BAR_SHELL_CLASS}`);
 	if (found instanceof HTMLElement) return found;
-	const doc = container.ownerDocument;
 	const bar = doc.createElement('div');
 	bar.className = BAR_SHELL_CLASS;
 	bar.style.minHeight = `${BAR_MIN_PX}px`;
@@ -41,7 +54,7 @@ export function createBarShell(container: HTMLElement): HTMLElement {
 		row.appendChild(button);
 	}
 	bar.appendChild(row);
-	container.appendChild(bar);
+	host.appendChild(bar);
 	return bar;
 }
 
@@ -106,9 +119,15 @@ export function barTabId(slot: Element): string {
 
 /** The slot a view reserves. The bar is not a child of this node. */
 export function ensureBarSpacer(host: HTMLElement): HTMLElement {
+	const doc = ownerDoc(host);
+	if (!host || !doc || typeof host.querySelector !== 'function') {
+		const spacer = (typeof document !== 'undefined' ? document : doc)?.createElement('div');
+		if (spacer) spacer.className = BAR_SPACER_CLASS;
+		return spacer ?? ({} as HTMLElement);
+	}
 	const sitting = host.querySelector(':scope > .rv-bar-spacer');
 	if (sitting instanceof HTMLElement) return sitting;
-	const spacer = host.ownerDocument.createElement('div');
+	const spacer = doc.createElement('div');
 	spacer.className = BAR_SPACER_CLASS;
 	spacer.setAttribute('aria-hidden', 'true');
 	host.appendChild(spacer);
@@ -130,6 +149,7 @@ function boxHidden(node: HTMLElement): boolean {
 
 /** The spacer under the bar. A cover spacer is only a fallback. */
 export function visibleBarSpacer(doc: Document): HTMLElement | null {
+	if (doc == null || typeof doc.querySelectorAll !== 'function') return null;
 	const nodes = doc.querySelectorAll('.rv-bar-spacer');
 	let cover: HTMLElement | null = null;
 	for (let index = 0; index < nodes.length; index += 1) {

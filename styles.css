@@ -4115,6 +4115,31 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	min-height: 0;
 }
 
+.rv-locator-glancable.is-hub-map.is-stacked .rv-locator-stage {
+	display: flex !important;
+	flex-direction: column !important;
+	flex: 1 1 auto;
+	min-height: 0;
+	height: 100%;
+	overflow: hidden;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked .rv-locator-stage > .rv-locator-scroll {
+	flex: 1 1 auto !important;
+	min-height: 0 !important;
+	order: 0;
+	overflow: auto;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked .rv-locator-stage > .rv-map-spacer {
+	flex: 0 0 calc(3px + var(--rv-map-size, 316px)) !important;
+	order: 1;
+	width: 100% !important;
+	height: calc(3px + var(--rv-map-size, 316px)) !important;
+	min-height: calc(3px + var(--rv-map-size, 316px)) !important;
+	max-height: calc(3px + var(--rv-map-size, 316px)) !important;
+}
+
 .rv-locator-glancable.is-stacked .rv-locator-sortbar {
 	order: 2;
 	position: relative;
@@ -4136,13 +4161,13 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 /* The one map. It is not a child of a leaf, and a view swap cannot detach it. */
 .rv-map-shell {
 	position: fixed;
-	z-index: 70;
+	z-index: 30;
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
 	margin: 0;
 	pointer-events: none;
-	overflow: visible;
+	overflow: hidden;
 }
 
 .rv-map-shell.is-side {
@@ -4220,6 +4245,12 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	width: 100%;
 	height: 100%;
 	max-height: 100%;
+	pointer-events: auto;
+}
+
+.rv-map-shell .rv-map-pins,
+.rv-map-shell .rv-map-pin {
+	pointer-events: auto;
 }
 
 .rv-locator-stage > .rv-map-spacer,
@@ -4230,10 +4261,14 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	min-height: 0;
 }
 
-.workspace-leaf-content.is-note-map > .rv-map-spacer {
-	grid-column: 1;
-	grid-row: 3 / 5;
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .rv-map-spacer {
+	grid-column: 1 !important;
+	grid-row: 3 / 5 !important;
+	align-self: stretch !important;
 	width: 100%;
+	height: calc(3px + var(--rv-note-map, var(--rv-map-size, 316px))) !important;
+	min-height: calc(3px + var(--rv-note-map, var(--rv-map-size, 316px))) !important;
+	max-height: calc(3px + var(--rv-note-map, var(--rv-map-size, 316px))) !important;
 }
 
 .workspace-leaf-content.is-note-map.is-note-map-side > .rv-map-spacer {
@@ -5935,7 +5970,10 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 .callout.rv-locator-attempt-log > .callout-title,
 .callout.rv-locator-return-suggestions,
 .callout.rv-locator-return-suggestions > .callout-content,
-.callout.rv-locator-return-suggestions > .callout-title {
+.callout.rv-locator-return-suggestions > .callout-title,
+.callout.rv-locator-attempt-log,
+.callout.rv-locator-attempt-log > .callout-content,
+.callout.rv-locator-attempt-log > .callout-title {
 	text-align: start;
 	font-weight: var(--font-normal, 400);
 	padding-left: 12px !important;
@@ -6306,14 +6344,18 @@ body.rv-center-visit-notes .rv-older-heading {
 }
 
 .workspace-leaf-content.is-note-map > .view-content {
-	grid-column: 1;
-	grid-row: 2;
+	grid-column: 1 !important;
+	grid-row: 2 !important;
 	position: relative !important;
 	inset: auto !important;
+	top: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	left: auto !important;
 	width: auto !important;
 	height: auto !important;
 	max-width: 100%;
-	max-height: none;
+	max-height: 100% !important;
 	min-width: 0;
 	min-height: 0;
 	flex: unset !important;
@@ -6572,7 +6614,7 @@ body.rv-center-visit-notes .rv-older-heading {
 /* One tab bar for the hub, bases, and notes. A view swap never detaches it. */
 .rv-bar-shell {
 	position: fixed;
-	z-index: 80;
+	z-index: 32;
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
@@ -6581,6 +6623,16 @@ body.rv-center-visit-notes .rv-older-heading {
 	padding: 2px 0 env(safe-area-inset-bottom, 0px);
 	background: var(--background-primary);
 	pointer-events: auto;
+}
+
+/* The bar stays under a locator modal. The footer also clears the 52px bar. */
+.modal-container:has(.modal.rv-locator-modal) {
+	z-index: 80;
+}
+
+.modal.rv-locator-modal {
+	padding-bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+	box-sizing: border-box;
 }
 
 .rv-bar-shell.is-note {
@@ -9742,10 +9794,15 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	box-sizing: border-box;
 }
 
-.rv-dashboard .callout.rv-locator-return-suggestions .callout,
-.rv-dashboard .callout.rv-locator-return-suggestions .callout > .callout-content {
+.rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log),
+.rv-dashboard .callout.rv-locator-return-suggestions .callout:not(.rv-locator-attempt-log) > .callout-content {
 	margin-left: 0 !important;
 	padding-left: 0 !important;
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout.rv-locator-attempt-log {
+	margin-left: -12px !important;
+	margin-right: -12px !important;
 }
 
 .rv-dashboard .callout.rv-locator-attempt-log {
@@ -11490,7 +11547,8 @@ body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type {
 /* Keep that bullet on the content edge. The text, including a wrapped line,
    starts a clear gap to its right. */
 .callout.rv-locator-return-suggestions li,
-.callout.rv-locator-return-suggestions .callout li {
+.callout.rv-locator-return-suggestions .callout li,
+.callout.rv-locator-attempt-log li {
 	position: relative;
 	list-style: none !important;
 	padding-left: calc(0.55em + max(0.55em, 8px)) !important;
@@ -11499,7 +11557,8 @@ body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type {
 }
 
 .callout.rv-locator-return-suggestions li::before,
-.callout.rv-locator-return-suggestions .callout li::before {
+.callout.rv-locator-return-suggestions .callout li::before,
+.callout.rv-locator-attempt-log li::before {
 	content: '•';
 	position: absolute;
 	left: 0;
