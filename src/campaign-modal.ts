@@ -67,6 +67,8 @@ export class CampaignModal extends Modal {
 		if (active) this.paintEndFooter();
 		else {
 			const footer = contentEl.createDiv('rv-modal-actions is-footer');
+			const cancel = footer.createEl('button', { text: 'Cancel', cls: 'rv-modal-cancel', attr: { type: 'button' } });
+			cancel.addEventListener('click', () => this.close());
 			const start = footer.createEl('button', { text: 'Start campaign', attr: { type: 'button' } });
 			start.addClass('mod-cta');
 			start.addEventListener('click', () => this.startCampaign());

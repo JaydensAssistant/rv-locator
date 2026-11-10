@@ -14,7 +14,7 @@ export interface SnoozeModalState {
 
 /**
  * Custom duration and label. Quick row is 1d / 7d / 14d, then a non-linear slider.
- * Footer is always Clear | Cancel | Snooze, or Update while a snooze is already set.
+ * Footer is always Cancel | Clear | Snooze, or Update while a snooze is already set.
  */
 export class UrgencySnoozeModal extends Modal {
 	buttonAccent = '';
@@ -80,8 +80,8 @@ export class UrgencySnoozeModal extends Modal {
 				});
 			});
 		const footer = contentEl.createDiv('rv-modal-actions is-footer');
+		const cancel = footer.createEl('button', { text: 'Cancel', cls: 'rv-modal-cancel', attr: { type: 'button' } });
 		const clear = footer.createEl('button', { text: 'Clear', attr: { type: 'button' } });
-		const cancel = footer.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
 		const save = footer.createEl('button', { text: this.snoozed ? 'Update' : 'Snooze', attr: { type: 'button' } });
 		clear.disabled = !this.snoozed;
 		cancel.addEventListener('click', () => this.close());

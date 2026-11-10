@@ -319,3 +319,45 @@ function asDate(value: unknown): Date | null {
 	if (typeof value === 'string') return parseDriveInstant(value) ?? parseFlexibleDate(value);
 	return null;
 }
+
+/** Hub search sees the name and a few properties. It does not see note text. */
+export interface HubSearchFields {
+	name: string;
+	gender: string;
+	status: string;
+	age: number | null;
+}
+
+const HUB_GENDER: Record<string, string> = {
+	man: 'man',
+	male: 'man',
+	woman: 'woman',
+	female: 'woman',
+};
+
+const HUB_STATUS = new Set(['study', 'active', 'inactive']);
+
+/**
+ * Every term must match. man/male and woman/female are Gender, a bare number
+ * is that Age, 30s is the decade, and study/active/inactive are Status.
+ * Anything else is a case-insensitive piece of the RV name.
+ */
+export function matchesHubSearch(fields: HubSearchFields, raw: string): boolean {
+	const terms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
+	if (terms.length === 0) return true;
+	return terms.every((term) => hubTermMatches(fields, term));
+}
+
+function hubTermMatches(fields: HubSearchFields, term: string): boolean {
+	const gender = HUB_GENDER[term];
+	if (gender) return fields.gender.trim().toLowerCase() === gender;
+	if (HUB_STATUS.has(term)) return fields.status.trim().toLowerCase() === term;
+	const decade = /^(\d+)s$/.exec(term);
+	if (decade) {
+		if (fields.age == null) return false;
+		const start = Number(decade[1]);
+		return fields.age >= start && fields.age <= start + 9;
+	}
+	if (/^\d+$/.test(term)) return fields.age === Number(term);
+	return fields.name.toLowerCase().includes(term);
+}

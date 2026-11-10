@@ -407,7 +407,7 @@ function openChange(
 	paintList('');
 	paintSlider();
 	const actions = panel.createDiv('rv-modal-actions is-footer');
-	const cancel = actions.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+	const cancel = actions.createEl('button', { text: 'Cancel', cls: 'rv-modal-cancel', attr: { type: 'button' } });
 	const done = actions.createEl('button', { text: 'Done', attr: { type: 'button' } });
 	done.classList.add('mod-cta');
 	done.textContent = 'Done';

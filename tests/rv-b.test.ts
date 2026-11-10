@@ -26,6 +26,8 @@ import type { RowModel } from '../src/model';
 import { fitEndEllipsis, mountFittedTitle } from '../src/title-fit';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { fillItemStrip } from '../src/visit-controls';
+import { matchesHubSearch } from '../src/glance-search';
+import { revealNoteMatch } from '../src/note-hub-bar';
 import { TFile, type QueryController } from 'obsidian';
 import type RVLocatorPlugin from '../src/main';
 
@@ -1741,5 +1743,241 @@ describe('RV-B15 snoozed visit gradient', () => {
 		assert.match(css, /\.rv-dashboard\.is-snoozed button\.rv-locator-urgency \{[^}]*color:\s*#6b7a99 !important;/);
 		assert.match(css, /\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(1\) > button\.mb-button-inner \{[^}]*clamp\(0\.46, l, 0\.80\)/);
 		assert.match(css, /\.rv-dashboard \.mb-button-group\.mb-button-group > span\.mb-button\.rv-visit-btn:nth-child\(5\) > button\.mb-button-inner \{[^}]*clamp\(0\.34, calc\(l - 0\.24\), 0\.56\)/);
+	});
+});
+
+describe('RV-B89 attempt log bullet and padding', () => {
+	it('hides Obsidian’s list bullet and pads the nested title and content', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.callout\.rv-locator-attempt-log li::before \{[^}]*content:\s*'•'/);
+		assert.match(css, /\.callout\.rv-locator-attempt-log \.list-bullet::after \{[^}]*display:\s*none !important/);
+		const nested = css.slice(
+			css.indexOf('.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-content'),
+			css.indexOf('.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log :is(ul, ol)'),
+		);
+		assert.match(nested, /padding-left:\s*12px !important/);
+		assert.doesNotMatch(nested, /padding-left:\s*0 !important/);
+		assert.match(css, /\.callout\.rv-locator-attempt-log :is\(ul, ol\) \{[^}]*padding-left:\s*0 !important/);
+		assert.doesNotMatch(css, /margin-left:\s*-12px/);
+	});
+});
+
+describe('RV-B90 hub return does not shift', () => {
+	it('shares the header box, hides cover controls, and sorts the cover with the active sort', () => {
+		const css = source('styles.css');
+		const header = css.slice(
+			css.indexOf('.workspace-leaf > .rv-hub-swap-cover > .view-header {'),
+			css.indexOf('.rv-hub-snapshot-body {'),
+		);
+		assert.match(header, /position:\s*relative !important/);
+		assert.doesNotMatch(header, /height:\s*var\(--header-height\)/);
+		assert.doesNotMatch(header, /min-height:\s*var\(--header-height\)/);
+		assert.match(header, /\.workspace-leaf > \.rv-hub-swap-cover > \.view-header :is\([\s\S]*button[\s\S]*display:\s*none !important/);
+		const land = css.slice(css.indexOf('.theme-dark .rv-locator-card.rv-card-land'), css.indexOf('.theme-light .rv-locator-card.rv-card-land'));
+		assert.match(land, /--rv-land:\s*rgba\(255, 255, 255, 0\.09\)/);
+		assert.doesNotMatch(land, /outline:\s*1px/);
+
+		const hubBar = css.slice(
+			css.indexOf('.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-sortbar {'),
+			css.indexOf('.rv-locator-glancable.is-stacked .rv-locator-sortbar {'),
+		);
+		const noteBar = css.slice(
+			css.indexOf('.workspace-leaf-content.is-rv-note.is-note-map > .rv-bar-spacer {'),
+			css.indexOf('.workspace-leaf-content.is-rv-note.is-note-map.is-note-map-side > .rv-bar-spacer {'),
+		);
+		const band = 'height: calc(52px + env(safe-area-inset-bottom, 0px))';
+		assert.match(hubBar, /padding:\s*0/);
+		assert.match(hubBar, /gap:\s*0/);
+		assert.ok(hubBar.includes(band));
+		assert.ok(noteBar.includes(band));
+
+		const main = source('src/main.ts');
+		const surface = main.slice(main.indexOf('glanceSurfacePath(surface: HTMLElement)'), main.indexOf('private pathForSurface'));
+		assert.match(surface, /closest\('\.rv-hub-swap-cover'\)/);
+		assert.match(surface, /coverHubPath/);
+		assert.match(main, /hubCoverOptions\(file\.basename, file\.path\)/);
+		const nearby = source('src/nearby-view.ts');
+		const cached = nearby.slice(nearby.indexOf('protected loadCachedModel'), nearby.indexOf('protected adoptHeldGlance'));
+		assert.match(cached, /this\.groups = this\.rankedGroups\(\)/);
+		const glance = source('src/glancable-view.ts');
+		const opening = glance.slice(glance.indexOf('private openingRows'), glance.indexOf('private paintStubCard'));
+		assert.doesNotMatch(opening, /rankedGroups|sortedGroups/);
+
+		clearGlanceHold();
+		const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+		const people: Array<[string, number]> = [
+			['Eve Carter', 40],
+			['Red Lane', 90],
+			['Alpha Snooze', 200],
+		];
+		const rows = people.map(([name, days]) => ({
+			...sampleRow(),
+			path: `People/${name}.md`,
+			name,
+			cells: [
+				{ id: 'note.priority', text: '3', title: 'Priority', kind: 'text' as const, numeric: true },
+				{ id: 'note.last spoke', text: 'spoke', title: 'Last Spoke', kind: 'text' as const, numeric: false, daysSince: days },
+			],
+		}));
+		const settings = { ...DEFAULT_SETTINGS, distanceTest: true };
+		const expected = sortRowsBy(
+			rows.map((row) => annotateRowScores(
+				row,
+				null,
+				settings,
+				null,
+				new Date(),
+				row.path.endsWith('Alpha Snooze.md') ? later : null,
+			)),
+			[{ property: URGENCY_COLUMN_ID, direction: 'DESC' }],
+			null,
+			DISTANCE_COLUMN_ID,
+		).map((row) => row.path);
+		assert.equal(expected[0], 'People/Red Lane.md');
+		assert.equal(expected[expected.length - 1], 'People/Alpha Snooze.md');
+		const plugin = glancePlugin({ refresh: null }, {
+			nearbySort: { property: URGENCY_COLUMN_ID, direction: 'DESC' },
+			settings,
+			snoozeUntilFor: (path: string) => path.endsWith('Alpha Snooze.md') ? later : null,
+			hubCacheModel: () => ({ columns: [], groups: [{ label: null, rows }] }),
+			glanceSurfacePath(surface: HTMLElement) {
+				if (surface?.closest?.('.rv-hub-swap-cover')) return 'Hubs/Return Visits.md';
+				return 'Hubs/Return Visits.md';
+			},
+		});
+		const cover = window.document.createElement('div');
+		cover.className = 'rv-hub-swap-cover';
+		const coverHost = window.document.createElement('div');
+		cover.append(coverHost);
+		const liveHost = window.document.createElement('div');
+		window.document.body.append(cover, liveHost);
+		new NearbyGlancableView({} as QueryController, coverHost, plugin);
+		clearGlanceHold();
+		new NearbyGlancableView({} as QueryController, liveHost, plugin);
+		const painted = (host: HTMLElement) => [...host.querySelectorAll('.rv-locator-card')].map((card) => card.getAttribute('data-rv-path'));
+		const coverPaths = painted(coverHost);
+		const livePaths = painted(liveHost);
+		assert.deepEqual(coverPaths, expected);
+		assert.deepEqual(livePaths, expected);
+		assert.notDeepEqual(coverPaths, rows.map((row) => row.path));
+		cover.remove();
+		liveHost.remove();
+		clearGlanceHold();
+	});
+});
+
+describe('RV-265 hub search uses name and properties', () => {
+	it('ANDs gender, decade, status, and exact age, and leaves in-note find on the body', () => {
+		const woman = { name: 'Ada', gender: 'Woman', status: 'Study', age: 34 };
+		const man = { name: 'Ben', gender: 'Man', status: 'Active', age: 34 };
+		const older = { name: 'Cara', gender: 'Woman', status: 'Study', age: 41 };
+		const exact = { name: 'Dee', gender: 'Woman', status: 'Inactive', age: 15 };
+		assert.equal(matchesHubSearch(woman, 'woman 30s study'), true);
+		assert.equal(matchesHubSearch(man, 'woman 30s study'), false);
+		assert.equal(matchesHubSearch(older, 'woman 30s study'), false);
+		assert.equal(matchesHubSearch(man, 'male'), true);
+		assert.equal(matchesHubSearch(woman, 'female'), true);
+		assert.equal(matchesHubSearch(exact, '15'), true);
+		assert.equal(matchesHubSearch(woman, '15'), false);
+		assert.equal(matchesHubSearch(woman, 'man'), false);
+		assert.equal(matchesHubSearch({ name: 'Lane Woman', gender: 'Man', status: 'Active', age: 40 }, 'woman'), false);
+		assert.equal(matchesHubSearch(woman, 'ada'), true);
+		assert.equal(matchesHubSearch(exact, 'inactive'), true);
+
+		clearGlanceHold();
+		const rows = [woman, man, older].map((person) => ({
+			...sampleRow(),
+			path: `People/${person.name}.md`,
+			name: person.name,
+			gender: person.gender,
+			status: person.status,
+		}));
+		const plugin = glancePlugin({ refresh: null }, {
+			noteFrontmatter: (path: string) => {
+				const person = [woman, man, older].find((item) => path.endsWith(`${item.name}.md`));
+				if (!person) return null;
+				return { Age: person.age, Gender: person.gender, Status: person.status, Notes: 'a man stopped by the study' };
+			},
+			hubCacheModel: () => ({ columns: [], groups: [{ label: null, rows }] }),
+		});
+		const host = window.document.createElement('div');
+		window.document.body.append(host);
+		const view = new NearbyGlancableView({} as QueryController, host, plugin);
+		(view as unknown as { openGlanceSearch(): void }).openGlanceSearch();
+		const input = host.querySelector('.rv-locator-search-input');
+		assert.ok(input instanceof window.HTMLInputElement);
+		assert.equal(input.parentElement?.classList.contains('rv-suggest-host'), true);
+		assert.equal(host.querySelector('.rv-locator-search > button.rv-suggest-chevron') instanceof window.HTMLButtonElement, true);
+		input.value = 'woman 30s study';
+		input.dispatchEvent(new window.Event('input'));
+		const shown = [...host.querySelectorAll('.rv-locator-card')].map((card) => card.getAttribute('data-rv-path'));
+		assert.deepEqual(shown, ['People/Ada.md']);
+		host.remove();
+		clearGlanceHold();
+
+		const note = window.document.createElement('div');
+		note.textContent = 'a man stopped by the study';
+		window.document.body.append(note);
+		assert.equal(revealNoteMatch(note, 'man', 0), 0);
+		assert.match(note.textContent ?? '', /man/);
+		note.remove();
+		const glance = source('src/glancable-view.ts');
+		assert.doesNotMatch(glance.slice(glance.indexOf('private openingRows'), glance.indexOf('private paintStubCard')), /matchesGlanceQuery|loadSearchBodies/);
+		assert.match(source('src/note-hub-bar.ts'), /function revealNoteMatch/);
+	});
+});
+
+describe('RV-266 modal cancel is the left button', () => {
+	it('puts Cancel first, hides the X when a footer exists, and keeps Keep and Stay', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-locator-modal \.rv-modal-actions button\.rv-modal-cancel \{[^}]*border:\s*1px solid var\(--background-modifier-border\) !important/);
+		assert.match(css, /\.modal\.rv-locator-modal:has\(\.rv-modal-actions\) \.modal-close-button/);
+		assert.doesNotMatch(css, /\.prompt(?![^,{]*rv-modal-actions)[^{]*\.prompt-close-button \{[^}]*display:\s*none/);
+		const snooze = source('src/score-modals.ts');
+		const footer = snooze.slice(snooze.indexOf("createDiv('rv-modal-actions is-footer')"), snooze.indexOf('clear.disabled'));
+		assert.ok(footer.indexOf("text: 'Cancel'") < footer.indexOf("text: 'Clear'"));
+		assert.ok(footer.indexOf("text: 'Clear'") < footer.indexOf('Update'));
+		assert.match(snooze, /setButtonText\('Stay'\)/);
+		const override = source('src/override-modal.ts');
+		const slot = override.slice(override.indexOf("setClass('rv-modal-actions')"), override.indexOf('No overrides'));
+		assert.ok(slot.indexOf("setButtonText('Cancel')") < slot.indexOf("setButtonText('Avoid')"));
+		assert.ok(slot.indexOf("setButtonText('Avoid')") < slot.indexOf("setButtonText('Try')"));
+		const campaign = source('src/campaign-modal.ts');
+		const start = campaign.slice(campaign.indexOf('else {'), campaign.indexOf('private paintEndFooter'));
+		assert.ok(start.indexOf("text: 'Cancel'") < start.indexOf("text: 'Start campaign'"));
+		assert.match(campaign, /text: 'Keep'/);
+		const bulk = source('src/modals.ts');
+		const geocode = bulk.slice(bulk.indexOf('Counting notes'), bulk.indexOf('private async refreshPreview'));
+		assert.ok(geocode.indexOf("'Cancel'") < geocode.indexOf("setButtonText('Start')"));
+		assert.match(geocode, /dismissLabel\?\.\('Stop'\)/);
+		assert.match(geocode, /dismissLabel\?\.\('Cancel'\)/);
+		assert.doesNotMatch(geocode, /setButtonText\('Close'\)/);
+		const visits = bulk.slice(bulk.indexOf('Choose folder'), bulk.indexOf("export type VisitMenuAnswer"));
+		assert.ok(visits.indexOf("'Cancel'") < visits.indexOf("setButtonText('Fill')"));
+		const wizard = source('src/setup-wizard.ts');
+		const step1 = wizard.slice(wizard.indexOf('private async renderHome'), wizard.indexOf('private renderColors'));
+		assert.ok(step1.indexOf("setButtonText('Cancel')") < step1.indexOf("setButtonText('Save and continue')"));
+		const step2 = wizard.slice(wizard.indexOf('private renderColors'), wizard.indexOf('private async saveColorsAndContinue'));
+		assert.ok(step2.indexOf("setButtonText('Cancel')") < step2.indexOf("setButtonText('Save and continue')"));
+	});
+});
+
+describe('RV-267 hub search matches the suggester field', () => {
+	it('shares the input and clear-button rules with the suggester', () => {
+		const css = source('styles.css');
+		const fieldStart = css.indexOf('.rv-suggest-host > input,\n.rv-locator-modal .rv-suggest-host > input,\n.rv-locator-search > .rv-locator-search-input {');
+		const field = css.slice(fieldStart, css.indexOf('.rv-suggest-host > .rv-suggest-panel', fieldStart));
+		assert.match(field, /\.rv-locator-search > \.rv-locator-search-input \{/);
+		assert.match(field, /height:\s*40px/);
+		assert.match(field, /border:\s*1px solid var\(--background-modifier-border\)/);
+		assert.match(field, /border-right-width:\s*0/);
+		assert.match(field, /border-radius:\s*6px 0 0 6px/);
+		assert.match(field, /\.rv-locator-search > button\.rv-suggest-chevron,/);
+		assert.match(field, /\.rv-suggest-host > button\.rv-suggest-chevron \{[^}]*border-radius:\s*0 6px 6px 0/);
+		assert.match(css, /\.theme-dark \.rv-locator-search > \.rv-locator-search-input,[\s\S]*?background:\s*#2a2a2a/);
+		assert.match(css, /\.theme-dark \.rv-locator-search > button\.rv-suggest-chevron,[\s\S]*?border-color:\s*var\(--rv-modal-accent\) !important/);
+		assert.doesNotMatch(field, /#1f8a4c|#14ac87|#d63c3c/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-search\.rv-suggest-host \{[^}]*--rv-modal-accent:\s*var\(--rv-hub-accent\)/);
+		assert.match(css, /\.rv-suggest-host > input::placeholder,\s*\n\.rv-locator-search > \.rv-locator-search-input::placeholder \{[^}]*color:\s*var\(--text-faint\)/);
 	});
 });

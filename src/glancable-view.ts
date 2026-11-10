@@ -1,4 +1,4 @@
-import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
+import { Platform, setIcon, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
 import { embedCapCss, hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollExact, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap, viewportHeightPx } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
@@ -26,10 +26,10 @@ import { cardReturnLead } from './schedule';
 import { SNOOZE_SLATE, snoozeCardCaption } from './snooze';
 import { calendarDaysSince, formatGlanceableCounter } from './dates';
 import { readProperty } from './frontmatter';
-import { GLANCE_MATCH_SCOPE, glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery, type GlanceQuery } from './glance-search';
+import { matchesHubSearch, type HubSearchFields } from './glance-search';
 import { formatStudyFraction } from './catalog';
 import { resolveStatus, sanitizeGender, statusIcon } from './status';
-import { ageCaption, appendPersonMeta } from './person-meta';
+import { ageCaption, ageYears, appendPersonMeta } from './person-meta';
 import { paintGlanceFoot } from './glance-foot';
 import type { GlancableChromeFlags, GlancableLineId } from './types';
 
@@ -39,10 +39,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private chromeHost: HTMLElement | null = null;
 	private glanceQuery = '';
 	private searchInput: HTMLInputElement | null = null;
-	private bodyCache = new Map<string, { mtime: number; body: string }>();
-	private bodiesLoading = false;
-	private parsedKey = '';
-	private parsedQuery: GlanceQuery | null = null;
 	private stageEl: HTMLElement | null = null;
 	private hubMapEl: HTMLElement | null = null;
 	private hubMapHandle: HTMLElement | null = null;
@@ -321,15 +317,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 	/** Current search and snooze filter, keeping the ranked order. */
 	private filterGlanceGroups(groups: readonly GroupModel[]): GroupModel[] {
 		const text = this.glanceQuery.trim();
-		if (text) this.loadSearchBodies();
-		const query = text ? this.queryFor(text) : null;
 		return groups
 			.map((group) => ({
 				label: group.label,
 				rows: group.rows.filter((row) => {
 					if (!this.plugin.passesSnoozeFilter(row.path)) return false;
-					if (!query) return true;
-					return matchesGlanceQuery(this.recordFor(row), query, GLANCE_MATCH_SCOPE);
+					if (!text) return true;
+					return matchesHubSearch(this.hubFields(row), text);
 				}),
 			}))
 			.filter((group) => group.rows.length > 0);
@@ -468,12 +462,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 */
 	private openingRows(): RowModel[] {
 		const text = this.glanceQuery.trim();
-		const query = text ? this.queryFor(text) : null;
 		const rows: RowModel[] = [];
 		for (const group of this.groups) {
 			for (const row of group.rows) {
 				if (!this.plugin.passesSnoozeFilter(row.path)) continue;
-				if (query && !matchesGlanceQuery(this.recordFor(row), query, GLANCE_MATCH_SCOPE)) continue;
+				if (text && !matchesHubSearch(this.hubFields(row), text)) continue;
 				rows.push(row);
 			}
 		}
@@ -878,7 +871,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const slot = this.searchSlot ?? this.sortEl.createDiv('rv-locator-search-slot');
 		this.searchSlot = slot;
 		if (slot.parentElement !== this.sortEl) this.sortEl.appendChild(slot);
-		const row = slot.createDiv('rv-locator-search');
+		const row = slot.createDiv('rv-locator-search rv-suggest-host');
 		const input = row.createEl('input', {
 			cls: 'rv-locator-search-input',
 			attr: {
@@ -902,70 +895,44 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.searchReplacesBar(false);
 		});
 		const clear = row.createEl('button', {
-			cls: 'rv-locator-toolbar-quiet',
-			attr: { type: 'button', 'aria-label': 'Close search' },
+			cls: 'rv-suggest-chevron',
+			attr: { type: 'button', 'aria-label': 'Clear search' },
 		});
 		armIconTooltip(clear, 'Close search');
 		setIcon(clear, 'x');
 		clear.addEventListener('click', () => {
-			this.searchReplacesBar(false);
+			if (!this.glanceQuery.trim()) {
+				this.searchReplacesBar(false);
+				return;
+			}
+			this.glanceQuery = '';
+			input.value = '';
+			this.renderBody();
+			input.focus();
 		});
 	}
 
 	private clearSearch(): void {
 		this.glanceQuery = '';
-		this.parsedKey = '';
-		this.parsedQuery = null;
 		if (this.searchInput) this.searchInput.value = '';
 		this.renderBody();
 	}
 
-	private queryFor(text: string): GlanceQuery {
-		if (this.parsedKey !== text || !this.parsedQuery) {
-			this.parsedQuery = parseGlanceQuery(text, new Date());
-			this.parsedKey = text;
-		}
-		return this.parsedQuery;
-	}
-
-	private recordFor(row: RowModel) {
-		const file = this.app.vault.getAbstractFileByPath(row.path);
-		const frontmatter = file instanceof TFile
-			? (this.app.metadataCache.getFileCache(file)?.frontmatter ?? null) as Record<string, unknown> | null
-			: null;
-		return glanceRecordFromNote({
+	/** Name, Gender, Status, and Age. Note body text is not a hub search field. */
+	private hubFields(row: RowModel): HubSearchFields {
+		const facts = this.noteFrontmatter(row.path);
+		const storedAge = ageYears(readProperty(facts, 'Age'));
+		const exactAge = ageYears(readProperty(facts, 'Age Exact'));
+		const genderRaw = readProperty(facts, 'Gender');
+		const statusRaw = readProperty(facts, 'Status');
+		const gender = typeof genderRaw === 'string' && genderRaw.trim() ? genderRaw : (row.gender ?? '');
+		const status = typeof statusRaw === 'string' && statusRaw.trim() ? statusRaw : (row.status ?? '');
+		return {
 			name: row.name,
-			address: row.addressText || row.addressStreet || '',
-			city: row.addressCity || '',
-			frontmatter,
-			body: this.bodyCache.get(row.path)?.body ?? '',
-		});
-	}
-
-	private loadSearchBodies(): void {
-		if (this.bodiesLoading) return;
-		const files: TFile[] = [];
-		for (const group of this.groups) {
-			for (const row of group.rows) {
-				const file = this.app.vault.getAbstractFileByPath(row.path);
-				if (!(file instanceof TFile)) continue;
-				const cached = this.bodyCache.get(file.path);
-				if (!cached || cached.mtime !== file.stat.mtime) files.push(file);
-			}
-		}
-		if (files.length === 0) return;
-		this.bodiesLoading = true;
-		void Promise.all(files.map(async (file) => {
-			try {
-				const body = await this.app.vault.cachedRead(file);
-				this.bodyCache.set(file.path, { mtime: file.stat.mtime, body });
-			} catch {
-				// Frontmatter still searches name, address, dates, and logged titles.
-			}
-		})).then(() => {
-			this.bodiesLoading = false;
-			if (this.glanceQuery.trim()) this.renderBody();
-		});
+			gender,
+			status,
+			age: storedAge ?? exactAge,
+		};
 	}
 
 	/** Painted width of a list card in this view. The map popup copies it. */

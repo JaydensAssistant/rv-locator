@@ -210,6 +210,21 @@ export class BulkGeocodeModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
+				dismissLabel = (label) => {
+					button.setButtonText(label);
+				};
+				button.setButtonText(this.running ? 'Stop' : 'Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
+				button.onClick(() => {
+					if (this.running) {
+						this.plugin.requestBulkStop();
+						new Notice('Stopping after the current note.');
+						return;
+					}
+					this.close();
+				});
+			})
+			.addButton((button) => {
 				button.setButtonText('Start');
 				button.setCta();
 				button.onClick(() => {
@@ -230,23 +245,9 @@ export class BulkGeocodeModal extends Modal {
 						if (progress.isShown()) {
 							button.setDisabled(false);
 							button.setButtonText('Start');
-							dismissLabel?.('Close');
+							dismissLabel?.('Cancel');
 						}
 					});
-				});
-			})
-			.addButton((button) => {
-				dismissLabel = (label) => {
-					button.setButtonText(label);
-				};
-				button.setButtonText(this.running ? 'Stop' : 'Close');
-				button.onClick(() => {
-					if (this.running) {
-						this.plugin.requestBulkStop();
-						new Notice('Stopping after the current note.');
-						return;
-					}
-					this.close();
 				});
 			});
 		iconizeModal(contentEl);
@@ -353,6 +354,21 @@ export class SuccessfulVisitsModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
+				dismissLabel = (label) => {
+					button.setButtonText(label);
+				};
+				button.setButtonText(this.running ? 'Stop' : 'Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
+				button.onClick(() => {
+					if (this.running) {
+						this.plugin.requestBulkStop();
+						new Notice('Stopping after the current note.');
+						return;
+					}
+					this.close();
+				});
+			})
+			.addButton((button) => {
 				button.setButtonText('Fill');
 				button.setCta();
 				button.onClick(() => {
@@ -373,23 +389,9 @@ export class SuccessfulVisitsModal extends Modal {
 						if (progress.isShown()) {
 							button.setDisabled(false);
 							button.setButtonText('Fill');
-							dismissLabel?.('Close');
+							dismissLabel?.('Cancel');
 						}
 					});
-				});
-			})
-			.addButton((button) => {
-				dismissLabel = (label) => {
-					button.setButtonText(label);
-				};
-				button.setButtonText('Close');
-				button.onClick(() => {
-					if (this.running) {
-						this.plugin.requestBulkStop();
-						new Notice('Stopping after the current note.');
-						return;
-					}
-					this.close();
 				});
 			});
 		iconizeModal(contentEl);
@@ -422,6 +424,11 @@ export class VisitConfirmModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
+				button.onClick(() => this.finish(null));
+			})
+			.addButton((button) => {
 				button.setButtonText('Not home');
 				button.onClick(() => this.finish('miss'));
 			})
@@ -436,10 +443,6 @@ export class VisitConfirmModal extends Modal {
 			});
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
-			.addButton((button) => {
-				button.setButtonText('Cancel');
-				button.onClick(() => this.finish(null));
-			})
 			.addButton((button) => {
 				button.setButtonText('Archive');
 				button.onClick(() => this.finish('archive'));
@@ -559,7 +562,7 @@ export class CompanionSuggestModal extends Modal {
 			});
 		}
 		const bar = contentEl.createDiv('rv-locator-suggest-actions is-end rv-modal-actions');
-		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+		const cancel = bar.createEl('button', { text: 'Cancel', cls: 'rv-modal-cancel', attr: { type: 'button' } });
 		cancel.addEventListener('click', () => {
 			this.gate.cancel();
 			this.close();

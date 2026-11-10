@@ -242,6 +242,7 @@ export class NewRvIdentityModal extends Modal {
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
@@ -519,7 +520,7 @@ export class EditAttributesModal extends Modal {
 			});
 		});
 		const bar = this.contentEl.createDiv('rv-modal-actions');
-		const cancel = bar.createEl('button', { text: 'Cancel', attr: { type: 'button' } });
+		const cancel = bar.createEl('button', { text: 'Cancel', cls: 'rv-modal-cancel', attr: { type: 'button' } });
 		const save = bar.createEl('button', { text: 'Save', cls: 'mod-cta', attr: { type: 'button' } });
 		cancel.addEventListener('click', () => {
 			this.onDone(null);

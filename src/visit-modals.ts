@@ -221,6 +221,7 @@ export class VisitEditModal extends Modal {
 		actions
 			.addButton((button) => {
 				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
@@ -239,6 +240,7 @@ export class VisitEditModal extends Modal {
 			confirm
 				.addButton((button) => {
 					button.setButtonText('Cancel');
+					button.buttonEl?.classList.add('rv-modal-cancel');
 					button.onClick(() => this.showVisitPane('edit'));
 				})
 				.addButton((button) => {
@@ -385,6 +387,7 @@ export class LiteraturePromptModal extends Modal {
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
@@ -461,6 +464,7 @@ export class ConfirmActionModal extends Modal {
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {

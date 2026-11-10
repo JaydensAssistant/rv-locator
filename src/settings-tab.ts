@@ -1079,6 +1079,7 @@ class CatalogRenameModal extends Modal {
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {
@@ -1151,6 +1152,7 @@ class ExtrasSyncConfirmModal extends Modal {
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
 				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
 				button.onClick(() => this.close());
 			})
 			.addButton((button) => {

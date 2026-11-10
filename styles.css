@@ -647,8 +647,8 @@
 }
 
 .rv-locator-glancable .rv-locator-search-slot.is-focused .rv-locator-search-input {
-	border-color: var(--interactive-accent);
-	box-shadow: 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 28%, transparent);
+	border-color: var(--background-modifier-border);
+	box-shadow: none;
 }
 
 .rv-locator-glancable .rv-locator-toolbar-quiet,
@@ -4026,8 +4026,8 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-locator-search {
 	display: flex;
 	flex: 1 1 auto;
-	align-items: center;
-	gap: 6px;
+	align-items: stretch;
+	gap: 0;
 	width: 100%;
 	min-width: 0;
 }
@@ -4037,17 +4037,12 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	box-sizing: border-box;
 	width: 100%;
 	min-width: 0;
-	min-height: 40px;
 	margin: 0;
 	padding: 4px 10px;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: 999px;
-	background: var(--background-primary);
 	color: var(--text-normal);
 	font: inherit;
 	font-family: var(--font-interface, var(--font-ui, ui-sans-serif, system-ui, sans-serif));
 	outline: none;
-	transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
 .rv-stamp-date,
@@ -4214,6 +4209,12 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-sortbar {
 	order: 3;
 	flex: 0 0 auto;
+	gap: 0;
+	padding: 0;
+	height: calc(52px + env(safe-area-inset-bottom, 0px));
+	min-height: 52px;
+	max-height: calc(52px + env(safe-area-inset-bottom, 0px));
+	box-sizing: border-box;
 }
 
 .rv-locator-glancable.is-stacked .rv-locator-sortbar {
@@ -6683,8 +6684,12 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .workspace-leaf-content.is-rv-note.is-note-map > .rv-bar-spacer {
 	position: relative;
-	height: auto;
+	height: calc(52px + env(safe-area-inset-bottom, 0px));
 	min-height: 52px;
+	max-height: calc(52px + env(safe-area-inset-bottom, 0px));
+	padding: 0;
+	margin: 0;
+	box-sizing: border-box;
 	grid-column: 1;
 	grid-row: 5;
 	pointer-events: none;
@@ -7594,6 +7599,18 @@ button.rv-study-toggle {
 .modal.rv-locator-modal .rv-modal-actions.is-footer button,
 .modal.rv-locator-modal .setting-item.rv-modal-actions button {
 	flex: 1 1 0;
+}
+
+.rv-locator-modal .rv-modal-actions button.rv-modal-cancel {
+	background: transparent !important;
+	border: 1px solid var(--background-modifier-border) !important;
+	box-shadow: none !important;
+	color: var(--text-muted);
+}
+
+.modal.rv-locator-modal:has(.rv-modal-actions) .modal-close-button,
+.modal.rv-locator-modal:has(.rv-modal-actions) .modal-header-button.mod-raised {
+	display: none !important;
 }
 
 .rv-locator-modal .setting-item.rv-modal-actions {
@@ -9951,10 +9968,15 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	padding-left: 0 !important;
 }
 
-.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log,
+.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log {
+	padding-left: 0 !important;
+	margin-left: 0 !important;
+	margin-right: 0 !important;
+}
+
 .rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-content,
 .rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-title {
-	padding-left: 0 !important;
+	padding-left: 12px !important;
 	margin-left: 0 !important;
 	margin-right: 0 !important;
 }
@@ -10964,10 +10986,32 @@ body.rv-hub-swapping .mobile-navbar {
 	bottom: auto !important;
 	left: auto !important;
 	flex: 0 0 auto;
-	height: var(--header-height);
-	min-height: var(--header-height);
+	box-sizing: border-box;
 	width: 100% !important;
 	pointer-events: none;
+}
+
+.workspace-leaf > .rv-hub-swap-cover > .view-header :is(
+	.view-header-nav-buttons,
+	.view-header-left-button,
+	.view-header-left-buttons,
+	.view-header-icon,
+	.view-actions,
+	.view-header-right-buttons,
+	.clickable-icon,
+	.view-action,
+	button
+) {
+	display: none !important;
+	visibility: hidden !important;
+	pointer-events: none !important;
+	width: 0 !important;
+	min-width: 0 !important;
+	height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	overflow: hidden !important;
+	opacity: 0 !important;
 }
 
 /* Same top inset the full-base preview uses, so the cover cards sit where the
@@ -11058,8 +11102,13 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	align-items: stretch;
 }
 
+.rv-locator-glancable .rv-locator-search.rv-suggest-host {
+	--rv-modal-accent: var(--rv-hub-accent);
+}
+
 .rv-suggest-host > input,
-.rv-locator-modal .rv-suggest-host > input {
+.rv-locator-modal .rv-suggest-host > input,
+.rv-locator-search > .rv-locator-search-input {
 	box-sizing: border-box;
 	height: 40px;
 	min-height: 40px;
@@ -11068,8 +11117,15 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	border-right-width: 0;
 	border-radius: 6px 0 0 6px;
 	box-shadow: none;
+	font: inherit;
 }
 
+.rv-suggest-host > input::placeholder,
+.rv-locator-search > .rv-locator-search-input::placeholder {
+	color: var(--text-faint);
+}
+
+.rv-locator-search > button.rv-suggest-chevron,
 .rv-suggest-host > button.rv-suggest-chevron {
 	border: 1px solid var(--interactive-accent);
 	border-radius: 0 6px 6px 0;
@@ -11302,18 +11358,22 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 }
 
 .theme-dark .rv-locator-modal .rv-suggest-host > input,
-.theme-dark .rv-study-change-modal input[type="search"] {
+.theme-dark .rv-study-change-modal input[type="search"],
+.theme-dark .rv-locator-search > .rv-locator-search-input,
+.theme-dark .rv-suggest-host > input {
 	background: #2a2a2a;
 	border-color: #262626;
 }
 
-.theme-dark .rv-suggest-host > button.rv-suggest-chevron {
+.theme-dark .rv-suggest-host > button.rv-suggest-chevron,
+.theme-dark .rv-locator-search > button.rv-suggest-chevron {
 	border-color: var(--rv-modal-accent);
 	color: var(--rv-modal-accent);
 	background: #2a2a2a;
 }
 
 .rv-suggest-host > button.rv-suggest-chevron,
+.rv-locator-search > button.rv-suggest-chevron,
 .modal.rv-locator-modal button.rv-age-symbol {
 	border: 1px solid var(--interactive-accent) !important;
 	border-radius: 0 6px 6px 0 !important;
@@ -11328,6 +11388,7 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	color: var(--rv-modal-accent) !important;
 }
 
+.theme-dark .rv-locator-search > button.rv-suggest-chevron,
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron,
 .theme-dark .modal.rv-locator-modal button.rv-age-symbol {
 	border-color: var(--rv-modal-accent) !important;
@@ -11728,4 +11789,14 @@ body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type {
 	line-height: inherit;
 	text-align: start;
 	color: inherit;
+}
+
+.callout.rv-locator-return-suggestions .list-bullet,
+.callout.rv-locator-return-suggestions .callout .list-bullet,
+.callout.rv-locator-attempt-log .list-bullet,
+.callout.rv-locator-return-suggestions .list-bullet::after,
+.callout.rv-locator-return-suggestions .callout .list-bullet::after,
+.callout.rv-locator-attempt-log .list-bullet::after {
+	content: none !important;
+	display: none !important;
 }

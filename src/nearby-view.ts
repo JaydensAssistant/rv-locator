@@ -229,6 +229,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.columns = cached.columns;
 		this.groups = cached.groups;
 		this.glanceFromCache = true;
+		this.groups = this.rankedGroups();
 		return true;
 	}
 
@@ -275,9 +276,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected openGlanceSearch(): void {}
 
 	/**
-	 * Full list in the current sort, including B53 snooze order. Search and
-	 * the snooze filter are applied later. The open turn reads the cached
-	 * result and does not call this.
+	 * Full list in the persisted sort, including B53 snooze order. Search and
+	 * the snooze filter are applied later. The vault-cache open uses this so
+	 * the cover and the live hub paint the same order.
 	 */
 	protected rankedGroups(): GroupModel[] {
 		const sorts = this.effectiveSorts();

@@ -202,13 +202,18 @@ export class SetupWizardModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
-				button.setButtonText('Save and continue');
-				button.setCta();
-				button.onClick(() => { void this.saveHomeAndContinue(); });
+				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
+				button.onClick(() => { this.close(); });
 			})
 			.addButton((button) => {
 				button.setButtonText('Skip');
 				button.onClick(() => { this.showStep('colors'); });
+			})
+			.addButton((button) => {
+				button.setButtonText('Save and continue');
+				button.setCta();
+				button.onClick(() => { void this.saveHomeAndContinue(); });
 			});
 		iconizeModal(contentEl);
 	}
@@ -229,13 +234,18 @@ export class SetupWizardModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
-				button.setButtonText('Save and continue');
-				button.setCta();
-				button.onClick(() => { void this.saveColorsAndContinue(); });
+				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
+				button.onClick(() => { this.close(); });
 			})
 			.addButton((button) => {
 				button.setButtonText('Skip');
 				button.onClick(() => { this.showStep('plugins'); });
+			})
+			.addButton((button) => {
+				button.setButtonText('Save and continue');
+				button.setCta();
+				button.onClick(() => { void this.saveColorsAndContinue(); });
 			});
 		iconizeModal(contentEl);
 	}
@@ -277,7 +287,7 @@ export class SetupWizardModal extends Modal {
 			});
 			item.createDiv({ cls: 'rv-locator-check-detail', text: check.detail });
 		}
-		const actions = contentEl.createDiv({ cls: 'rv-locator-setup-actions' });
+		const actions = contentEl.createDiv({ cls: 'rv-locator-setup-actions rv-modal-actions' });
 		this.actionButton(actions, 'Community plugins', () => { this.actions.openCommunityPlugins(); });
 		this.actionButton(actions, 'Templater settings', () => { this.actions.openTemplaterSettings(); });
 		this.actionButton(actions, 'Meta Bind settings', () => { this.actions.openMetaBindSettings(); });

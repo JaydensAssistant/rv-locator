@@ -118,6 +118,11 @@ export class SlotOverrideModal extends Modal {
 		new Setting(contentEl)
 			.setClass('rv-modal-actions')
 			.addButton((button) => {
+				button.setButtonText('Cancel');
+				button.buttonEl?.classList.add('rv-modal-cancel');
+				button.onClick(() => this.close());
+			})
+			.addButton((button) => {
 				button.setButtonText('Avoid');
 				button.onClick(() => this.save('avoid'));
 			})

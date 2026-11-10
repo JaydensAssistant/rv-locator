@@ -179,6 +179,8 @@ export default class RVLocatorPlugin extends Plugin {
 	housemateSourcePath: string | null = null;
 	/** RV note that opened the hub. The first painted card with this path gets the land tint. */
 	private hubArrivalPath: string | null = null;
+	/** Hub file the cover is opening. The snapshot sorts under this path, not the note it covers. */
+	private coverHubPath = '';
 	/** Set only around a hub-link open, so a Quick Switcher open is not treated as a return. */
 	private hubLinkOpen = false;
 	/** A direct hub open starts the list at the top. A return leaves this false. */
@@ -1005,6 +1007,9 @@ export default class RVLocatorPlugin extends Plugin {
 
 	/** The file this list belongs to. A hub and a base keep separate card models. */
 	glanceSurfacePath(surface: HTMLElement): string {
+		if (surface && typeof surface.closest === 'function' && surface.closest('.rv-hub-swap-cover') && this.coverHubPath) {
+			return this.coverHubPath;
+		}
 		const markdown = surface ? this.pathForSurface(surface) : '';
 		if (markdown) return markdown;
 		const workspace = this.app.workspace as {
@@ -1199,7 +1204,7 @@ export default class RVLocatorPlugin extends Plugin {
 				}
 				plugin.retainMapForHub();
 				const leafEl = (this.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
-				holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(file.basename));
+				holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(file.basename, file.path));
 				plugin.paintEarthStates();
 				if (plugin.hubListAtTop) plugin.pinDirectHubScroll();
 			} else if (!plugin.unloaded) {
@@ -1237,7 +1242,7 @@ export default class RVLocatorPlugin extends Plugin {
 							plugin.hubLinkOpen = false;
 							plugin.hubListAtTop = false;
 							const leafEl = (this.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
-							holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(next.basename));
+							holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(next.basename, next.path));
 						}
 						plugin.quiesceHubWork();
 					}
@@ -2085,7 +2090,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.hubListAtTop = false;
 		this.retainMapForHub();
 		const leafEl = (active?.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
-		holdLeafForHubPaint(leafEl, this.hubCoverOptions(dest?.basename ?? target));
+		holdLeafForHubPaint(leafEl, this.hubCoverOptions(dest?.basename ?? target, dest?.path ?? ''));
 		this.paintEarthStates();
 		void this.app.workspace.openLinkText(target, sourcePath);
 	}
@@ -2203,7 +2208,8 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/** Cover options for a hub open. A landed card clears the one-shot arrival. */
-	private hubCoverOptions(title: string): HubCoverPaint {
+	private hubCoverOptions(title: string, path = ''): HubCoverPaint {
+		if (path) this.coverHubPath = path;
 		return {
 			title,
 			mount: (host) => this.mountHubSnapshot(host),

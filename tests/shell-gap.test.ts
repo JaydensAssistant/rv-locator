@@ -351,12 +351,12 @@ describe('dark phone layout', () => {
 		assert.ok(log && logContent);
 		assert.equal(styleOf(log).paddingLeft, '0px');
 		assert.equal(styleOf(log).marginLeft, '0px');
-		assert.equal(styleOf(logContent).paddingLeft, '0px');
+		assert.equal(styleOf(logContent).paddingLeft, '12px');
 		assert.equal(styleOf(doc.getElementById('log-list')!).paddingLeft, '0px');
 		assert.doesNotMatch(css, /margin-left:\s*-12px/);
 		const suggestEdge = 36 + 12;
 		const logEdge = suggestEdge + (usedPx(styleOf, log, 'margin-left') ?? 0) + (usedPx(styleOf, log, 'padding-left') ?? 0) + (usedPx(styleOf, logContent, 'padding-left') ?? 0);
-		assert.equal(logEdge, suggestEdge);
+		assert.equal(logEdge, suggestEdge + 12);
 	});
 });
 
