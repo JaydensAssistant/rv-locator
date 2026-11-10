@@ -4140,6 +4140,73 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	max-height: calc(3px + var(--rv-map-size, 316px)) !important;
 }
 
+/* Stacked hub and base. The scroller ends at the band. The spacer is the next sibling, then the bar. */
+.workspace-leaf-content:has(.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen)) {
+	display: flex !important;
+	flex-direction: column !important;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden !important;
+}
+
+.workspace-leaf-content:has(.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen)) > .view-content {
+	position: relative !important;
+	inset: auto !important;
+	top: auto !important;
+	right: auto !important;
+	bottom: auto !important;
+	left: auto !important;
+	flex: 1 1 0% !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	overflow: hidden !important;
+}
+
+.workspace-leaf-content:has(.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen)) > .view-content :is(.markdown-preview-view, .markdown-reading-view, .markdown-source-view, .markdown-preview-sizer, .bases-embed, .block-language-base, .bases-view) {
+	position: static !important;
+	height: 100%;
+	min-height: 0 !important;
+	overflow: hidden !important;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) {
+	position: absolute;
+	inset: 0;
+	height: auto;
+	overflow: hidden;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-stage {
+	flex: 1 1 0% !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	overflow: hidden !important;
+	order: 1;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-stage > .rv-locator-scroll {
+	flex: 1 1 auto !important;
+	height: 100% !important;
+	min-height: 0 !important;
+	overflow: auto !important;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-map-spacer {
+	flex: 0 0 calc(3px + var(--rv-map-size, 316px)) !important;
+	order: 2;
+	width: 100% !important;
+	height: calc(3px + var(--rv-map-size, 316px)) !important;
+	min-height: calc(3px + var(--rv-map-size, 316px)) !important;
+	max-height: calc(3px + var(--rv-map-size, 316px)) !important;
+	overflow: hidden;
+	pointer-events: none;
+}
+
+.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-sortbar {
+	order: 3;
+	flex: 0 0 auto;
+}
+
 .rv-locator-glancable.is-stacked .rv-locator-sortbar {
 	order: 2;
 	position: relative;
@@ -6360,6 +6427,49 @@ body.rv-center-visit-notes .rv-older-heading {
 	min-height: 0;
 	flex: unset !important;
 	overflow: auto;
+}
+
+/* Stacked note. The grid string above stays for the wide leaf. This column ends the scroller at the band. */
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) {
+	display: flex !important;
+	flex-direction: column !important;
+	height: 100%;
+	min-height: 0;
+	overflow: hidden !important;
+}
+
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .view-header {
+	flex: 0 0 auto;
+	order: 0;
+}
+
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .view-content {
+	order: 1;
+	flex: 1 1 0% !important;
+	height: 0 !important;
+	max-height: none !important;
+	min-height: 0 !important;
+	overflow: auto !important;
+}
+
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .view-content :is(.markdown-preview-view, .markdown-reading-view, .markdown-source-view) {
+	position: relative !important;
+	inset: auto !important;
+	top: auto !important;
+	height: auto !important;
+	min-height: 0;
+	overflow: visible !important;
+}
+
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .rv-map-spacer {
+	order: 2;
+	flex: 0 0 calc(3px + var(--rv-note-map, var(--rv-map-size, 316px))) !important;
+}
+
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .rv-bar-spacer,
+.workspace-leaf-content.is-note-map:not(.is-note-map-side) > .rv-note-hub-bar {
+	order: 3;
+	flex: 0 0 auto;
 }
 
 /* RV-171. Bottom spacer so a stacked map close can keep the old scroll offset. */
@@ -9800,9 +9910,19 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 	padding-left: 0 !important;
 }
 
-.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout.rv-locator-attempt-log {
-	margin-left: -12px !important;
-	margin-right: -12px !important;
+.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log,
+.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-content,
+.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-title {
+	padding-left: 0 !important;
+	margin-left: 0 !important;
+	margin-right: 0 !important;
+}
+
+.rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log :is(ul, ol) {
+	margin-left: 0 !important;
+	margin-inline-start: 0 !important;
+	padding-left: 0 !important;
+	padding-inline-start: 0 !important;
 }
 
 .rv-dashboard .callout.rv-locator-attempt-log {

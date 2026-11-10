@@ -2131,7 +2131,9 @@ export default class RVLocatorPlugin extends Plugin {
 		const shell = this.mapShell;
 		if (!shell?.map.querySelector('.rv-map-stage')) return;
 		const stage = shownHubStage(document);
-		const spacer = stage instanceof HTMLElement ? stage.querySelector(':scope > .rv-map-spacer') : null;
+		const glance = stage?.closest('.rv-locator-glancable');
+		const spacer = (stage instanceof HTMLElement ? stage.querySelector(':scope > .rv-map-spacer') : null)
+			?? (glance instanceof HTMLElement ? glance.querySelector(':scope > .rv-map-spacer') : null);
 		const box = spacer instanceof HTMLElement ? spacer.getBoundingClientRect() : null;
 		if (!box || box.height < 2) {
 			if (attempt < 30) requestAnimationFrame(() => this.settleParkedHubMap(attempt + 1));
@@ -2474,6 +2476,8 @@ export default class RVLocatorPlugin extends Plugin {
 	hubPaneNarrow = false;
 	/** Last GPS fix reported by a hub view, for address bias. */
 	liveFix: { lat: number; lon: number } | null = null;
+	/** Set for one pin-order call. The map scans the vault between frames instead of inside the card paint. */
+	deferMapPinScan = false;
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
 	private countyPlaceCache = new Map<string, string>();
 	private mapCanvases = new Set<{ refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
@@ -3735,8 +3739,10 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	listMapPins(): MapPin[] {
-		const colors = urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors);
-		const rows = this.app.vault.getMarkdownFiles().map((file) => {
+		return this.pinsFromRows(this.app.vault.getMarkdownFiles().map((file) => this.mapPinRow(file)));
+	}
+
+	private mapPinRow(file: TFile) {
 			const frontmatter = this.noteFrontmatter(file.path) ?? undefined;
 			const point = latLonFromUnknown(readProperty(frontmatter, this.settings.locationProperty));
 			const priority = finiteVisitCount(readProperty(frontmatter, 'Priority')) ?? 0;
@@ -3803,7 +3809,10 @@ export default class RVLocatorPlugin extends Plugin {
 					driveDates: driveDateRows(frontmatter),
 				},
 			};
-		});
+	}
+
+	private pinsFromRows(rows: ReturnType<RVLocatorPlugin['mapPinRow']>[]): MapPin[] {
+		const colors = urgencyColorsFor(this.settings.urgencyPalette, this.settings.urgencyCustomColors);
 		const look = pinLookForHub(this.nearbySort.property, this.settings.returnScope, this.settings.genderFilter);
 		const ordered = orderByHubSort(rows, this.nearbySort, this.currentMapFix() ?? this.liveFix, this.settings.urgencyThresholdDays);
 		const heats = shadeHeats(heatModeForSort(this.nearbySort.property), ordered);
@@ -3815,6 +3824,49 @@ export default class RVLocatorPlugin extends Plugin {
 			look,
 			look === 'status' && this.settings.returnScope === 'archive',
 		);
+	}
+
+	/**
+	 * Hub open paints the cards, then walks the vault a slice at a time.
+	 * A tap between slices is delivered. The pin layer stays up until the scan finishes.
+	 */
+	scanMapPins(done: (pins: MapPin[]) => void): () => void {
+		const files = this.app.vault.getMarkdownFiles();
+		const rows: ReturnType<RVLocatorPlugin['mapPinRow']>[] = [];
+		let index = 0;
+		let dead = false;
+		const view = typeof window === 'undefined' ? null : window;
+		const schedule = (fn: () => void): void => {
+			if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(fn);
+			else if (view) view.setTimeout(fn, 0);
+			else fn();
+		};
+		const step = (): void => {
+			if (dead) return;
+			const started = typeof performance === 'undefined' ? 0 : performance.now();
+			const start = index;
+			while (index < files.length) {
+				const file = files[index];
+				index += 1;
+				if (file) rows.push(this.mapPinRow(file));
+				const count = index - start;
+				const slow = count > 1 && typeof performance !== 'undefined' && performance.now() - started > 8;
+				if (index < files.length && (count >= 12 || slow)) {
+					schedule(step);
+					return;
+				}
+			}
+			done(this.pinsFromRows(rows));
+		};
+		schedule(step);
+		return () => { dead = true; };
+	}
+
+	/** The card paint set this. One call consumes it so a later map move still scans immediately. */
+	takeDeferredPinScan(): boolean {
+		const on = this.deferMapPinScan;
+		this.deferMapPinScan = false;
+		return on;
 	}
 
 	openMapNote(path: string): void {

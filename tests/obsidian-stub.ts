@@ -422,6 +422,22 @@ export class MarkdownRenderChild extends Component {
 	}
 }
 
+export class PluginSettingTab {
+	constructor(_app?: unknown, _plugin?: unknown) {}
+}
+export class Plugin {
+	app: unknown;
+	register(cb?: () => void): void { void cb; }
+	addCommand(): void {}
+	addSettingTab(): void {}
+	addRibbonIcon(): void {}
+	loadData(): Promise<unknown> { return Promise.resolve({}); }
+	saveData(): Promise<void> { return Promise.resolve(); }
+}
+export class MarkdownView {}
+export class WorkspaceLeaf {}
+export function getFrontMatterInfo(_text?: string): { contentStart: number } { return { contentStart: 0 }; }
+export function parseYaml(_text?: string): Record<string, unknown> { return {}; }
 export class ItemView {}
 export class BasesView {
 	register(_cb: () => void): void {}

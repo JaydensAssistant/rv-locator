@@ -135,9 +135,45 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected fillScroll(): void {
 		const top = this.scrollEl.scrollTop;
 		const left = this.scrollEl.scrollLeft;
+		const live = this.scrollEl;
+		const doc = live.ownerDocument;
+		const canStage = doc != null && typeof doc.createElement === 'function' && typeof live.replaceChildren === 'function';
+		if (!canStage) {
+			this.fillScrollInPlace();
+			return;
+		}
+		const bucket = doc.createElement('div');
+		this.distanceEls.clear();
+		this.distanceRows.clear();
+		const saved = this.scrollEl;
+		this.scrollEl = bucket;
+		try {
+			this.paintScrollContents();
+		} finally {
+			this.scrollEl = saved;
+		}
+		const nodes = Array.from(bucket.childNodes);
+		const kept = nodes.length === 0 && this.mode === 'glancable' && !this.glanceDataSeen && live.querySelector('.rv-locator-card') != null;
+		if (!kept) live.replaceChildren(...nodes);
+		if (live.scrollTop !== top) live.scrollTop = top;
+		if (live.scrollLeft !== left) live.scrollLeft = left;
+		this.afterListSwap();
+	}
+
+	/** A test double with no document. Production always stages into a real element. */
+	private fillScrollInPlace(): void {
+		const top = this.scrollEl.scrollTop;
+		const left = this.scrollEl.scrollLeft;
 		this.scrollEl.empty();
 		this.distanceEls.clear();
 		this.distanceRows.clear();
+		this.paintScrollContents();
+		if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
+		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
+		this.afterListSwap();
+	}
+
+	private paintScrollContents(): void {
 		if (this.totalRows() === 0) {
 			if (!(this.mode === 'glancable' && !this.glanceDataSeen)) {
 				this.scrollEl.createDiv({
@@ -152,9 +188,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			this.root.removeClass('is-glance-pending');
 		}
 		this.paintListTail();
-		this.scrollEl.scrollTop = top;
-		this.scrollEl.scrollLeft = left;
 	}
+
+	/** Glancable snaps cards and rings after the new list is in the live scroller. */
+	protected afterListSwap(): void {}
 
 	/** Glancable retags the Bases toolbar after each paint. */
 	protected afterRender(): void {}

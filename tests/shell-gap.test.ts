@@ -8,6 +8,8 @@ import { readVisitControls, VisitEditModal } from '../src/visit-modals';
 import { createMapShell, ensureMapSpacer, placeShellOver, sizeMapSpacer, visibleMapSpacer } from '../src/map-shell';
 import { createBarShell, ensureBarSpacer } from '../src/bar-shell';
 import { stampDateTime } from '../src/schedule';
+import RVLocatorPlugin from '../src/main';
+import { DEFAULT_SETTINGS, defaultNearbySort } from '../src/types';
 
 function source(file: string): string {
 	return readFileSync(file, 'utf8');
@@ -211,14 +213,23 @@ describe('dark phone layout', () => {
     <div class="rv-map-spacer" id="note-spacer"></div>
     <div class="rv-bar-spacer" id="note-bar"></div>
   </div>
-  <div class="rv-locator-view rv-locator-glancable is-hub-map is-stacked" id="hub" style="height:746px;width:381px;--rv-map-size:316px">
-    <div class="rv-locator-stage">
-      <div class="rv-locator-scroll" id="hub-scroll">
-        <button class="rv-locator-card" data-rv-path="People/Yellow Lane.md" style="height:72px">Yellow Lane</button>
-        <button class="rv-locator-card" data-rv-path="People/Red Lane.md" style="height:72px">Red Lane</button>
-        <button class="rv-locator-card" data-rv-path="People/Eve Carter.md" style="height:72px">Eve Carter</button>
+  <div class="workspace-leaf-content" id="hub-leaf" style="height:796px;width:381px">
+    <div class="view-content" id="hub-view">
+      <div class="rv-locator-view rv-locator-glancable is-hub-map is-stacked" id="hub" style="width:381px;--rv-map-size:316px">
+        <div class="rv-locator-stage">
+          <div class="rv-locator-scroll" id="hub-scroll">
+            <button class="rv-locator-card" data-rv-path="People/Yellow Lane.md" style="height:72px">Yellow Lane</button>
+            <button class="rv-locator-card" data-rv-path="People/Red Lane.md" style="height:72px">Red Lane</button>
+            <button class="rv-locator-card" data-rv-path="People/Eve Carter.md" style="height:72px">Eve Carter</button>
+            <button class="rv-locator-card" data-rv-path="People/Green.md" style="height:72px">Green</button>
+            <button class="rv-locator-card" data-rv-path="People/Smoke Dark.md" style="height:72px">Smoke Dark</button>
+            <button class="rv-locator-card" data-rv-path="People/Smoke Light.md" style="height:72px">Smoke Light</button>
+            <button class="rv-locator-card" data-rv-path="People/Last Card.md" style="height:72px">Last Card</button>
+          </div>
+        </div>
+        <div class="rv-map-spacer" id="hub-spacer"></div>
+        <div class="rv-locator-sortbar"><div class="rv-bar-spacer" id="hub-bar"></div></div>
       </div>
-      <div class="rv-map-spacer" id="hub-spacer"></div>
     </div>
   </div>
   <div class="modal-container" id="modal-layer">
@@ -228,9 +239,11 @@ describe('dark phone layout', () => {
   </div>
   <div class="rv-bar-shell" id="bar"></div>
   <div class="rv-map-shell" id="shell"><div class="rv-hub-map"><div class="rv-map-stage"><div class="rv-map-pins"><button class="rv-map-pin" id="pin" data-rv-path="People/Red Lane.md" type="button">Red Lane</button></div></div></div></div>
-  <div class="callout rv-locator-return-suggestions"><div class="callout-content" id="suggest-content"><ul><li>Come back Tuesday</li></ul>
-    <div class="callout rv-locator-attempt-log"><div class="callout-content" id="log-content"><ul><li>Tried</li></ul></div></div>
-  </div></div>
+  <div class="rv-dashboard" id="dash">
+    <div class="callout rv-locator-return-suggestions" id="suggest"><div class="callout-content" id="suggest-content"><ul><li id="suggest-item">Come back Tuesday</li></ul>
+      <div class="callout rv-locator-attempt-log" id="log"><div class="callout-content" id="log-content"><ul id="log-list"><li id="log-item">Tried</li></ul></div></div>
+    </div></div>
+  </div>
 </body></html>`, { pretendToBeVisual: true });
 		const doc = dom.window.document;
 		const styleOf = (el: Element) => dom.window.getComputedStyle(el);
@@ -252,10 +265,26 @@ describe('dark phone layout', () => {
 		const hubSpacerH = usedPx(styleOf, hubSpacer, 'height');
 		assert.equal(noteSpacerH, 319);
 		assert.equal(hubSpacerH, 319);
-		const noteBodyH = 798 - 319;
+		const note = doc.getElementById('note');
+		const hubView = doc.getElementById('hub-view');
+		assert.ok(note && hubView);
+		const axis = (el: Element): string => {
+			const style = styleOf(el);
+			return `${style.overflow} ${style.overflowY}`;
+		};
+		assert.equal(styleOf(note).display, 'flex');
+		assert.match(styleOf(noteBody).flex, /^1 1 0/);
+		assert.match(axis(noteBody), /auto/);
+		assert.match(axis(hubView), /hidden/);
+		assert.match(axis(hubScroll), /auto/);
+		assert.equal(hubSpacer.parentElement?.id, 'hub');
+		assert.equal(noteSpacer.parentElement?.id, 'note');
+		const noteBar = 52;
+		const noteBodyH = 798 - 319 - noteBar;
 		const noteBodyBox = box(0, 0, 381, noteBodyH);
 		const noteSpacerBox = box(noteBodyH, 0, 381, 319);
-		const hubScrollH = 746 - 319;
+		const hubBar = usedPx(styleOf, doc.getElementById('hub-bar')!, 'height') ?? 52;
+		const hubScrollH = 796 - 319 - hubBar;
 		const hubScrollBox = box(0, 0, 381, hubScrollH);
 		const hubSpacerBox = box(hubScrollH, 0, 381, 319);
 		noteSpacer.getBoundingClientRect = () => ({ ...noteSpacerBox, x: noteSpacerBox.left, y: noteSpacerBox.top, toJSON() { return {}; } });
@@ -266,13 +295,29 @@ describe('dark phone layout', () => {
 		assert.equal(overlaps(noteBodyBox, shellBox), false);
 		assert.equal(overlaps(hubScrollBox, hubSpacerBox), false);
 		const cards = [...doc.querySelectorAll('.rv-locator-card')];
-		assert.equal(cards.length, 3);
+		assert.equal(cards.length, 7);
 		const boxes = new Map<Element, Box>();
+		const clippedBottom = (top: number, height: number, scrollTop: number, viewH: number): number => {
+			const y = top - scrollTop;
+			if (y >= viewH || y + height <= 0) return viewH;
+			return Math.min(y + height, viewH);
+		};
 		cards.forEach((card, index) => {
-			const cardBox = box(index * 72, 0, 381, 72);
-			boxes.set(card, cardBox);
-			assert.equal(overlaps(cardBox, hubSpacerBox), false);
+			const top = index * 72;
+			const visible = clippedBottom(top, 72, 0, hubScrollH);
+			assert.ok(visible <= hubSpacerBox.top, `${card.textContent} visible bottom ${visible} crosses ${hubSpacerBox.top}`);
+			boxes.set(card, box(top, 0, 381, 72));
 		});
+		const contentH = cards.length * 72;
+		const maxScroll = Math.max(0, contentH - hubScrollH);
+		const lastTop = (cards.length - 1) * 72 - maxScroll;
+		const lastBottom = lastTop + 72;
+		assert.ok(lastTop >= 0 && lastBottom <= hubScrollH, `last card ${lastTop}-${lastBottom} in ${hubScrollH}`);
+		const sections = [...doc.querySelectorAll('#note-body .sec')];
+		const sectionH = 80;
+		const noteMax = Math.max(0, sections.length * sectionH - noteBodyH);
+		const lastSectionTop = (sections.length - 1) * sectionH - noteMax;
+		assert.ok(lastSectionTop >= 0 && lastSectionTop + sectionH <= noteBodyH);
 		const pinBox = box(hubSpacerBox.top + 40, 40, 27, 27);
 		boxes.set(pin, pinBox);
 		boxes.set(shell, shellBox);
@@ -298,6 +343,93 @@ describe('dark phone layout', () => {
 		assert.equal(styleOf(shell).pointerEvents, 'none');
 		assert.equal(styleOf(pin).pointerEvents, 'auto');
 		assert.equal(styleOf(doc.getElementById('suggest-content')!).paddingLeft, '12px');
-		assert.equal(styleOf(doc.getElementById('log-content')!).paddingLeft, '12px');
+		const log = doc.getElementById('log');
+		const logContent = doc.getElementById('log-content');
+		assert.ok(log && logContent);
+		assert.equal(styleOf(log).paddingLeft, '0px');
+		assert.equal(styleOf(log).marginLeft, '0px');
+		assert.equal(styleOf(logContent).paddingLeft, '0px');
+		assert.equal(styleOf(doc.getElementById('log-list')!).paddingLeft, '0px');
+		assert.doesNotMatch(css, /margin-left:\s*-12px/);
+		const suggestEdge = 36 + 12;
+		const logEdge = suggestEdge + (usedPx(styleOf, log, 'margin-left') ?? 0) + (usedPx(styleOf, log, 'padding-left') ?? 0) + (usedPx(styleOf, logContent, 'padding-left') ?? 0);
+		assert.equal(logEdge, suggestEdge);
+	});
+});
+
+describe('hub open long task', () => {
+	it('paints cards before the vault pin scan and keeps each slice shorter than the old scan', () => {
+		const files = Array.from({ length: 2000 }, (_item, index) => ({
+			path: `People/N${index}.md`,
+			basename: `N${index}`,
+			stat: { mtime: 1 },
+			frontmatter: {
+				Location: '28.54, -81.38',
+				Priority: (index % 4) + 1,
+				Status: 'Active',
+				Address: `${index} Lane`,
+				City: 'Orlando',
+				'Last Spoke': '2026-11-01',
+				Visits: 2,
+				'Successful Visits': 1,
+			},
+		}));
+		const plugin = Object.create(RVLocatorPlugin.prototype) as RVLocatorPlugin;
+		const bag = plugin as unknown as Record<string, unknown>;
+		bag.settings = { ...DEFAULT_SETTINGS };
+		bag.nearbySort = defaultNearbySort();
+		bag.cachedFrontmatter = new Map();
+		bag.hubOverride = new Map();
+		bag.addressOverride = new Map();
+		bag.visitPaint = new Map();
+		bag.attemptBuckets = new Map();
+		bag.liveFix = null;
+		bag.deferMapPinScan = false;
+		bag.app = {
+			vault: {
+				getMarkdownFiles: () => files,
+				getFileByPath: (path: string) => files.find((file) => file.path === path) ?? null,
+			},
+			metadataCache: {
+				getFileCache: (file: { frontmatter?: Record<string, unknown> }) => ({ frontmatter: file.frontmatter }),
+			},
+		};
+		const before = performance.now();
+		const pins = plugin.listMapPins();
+		const fullMs = performance.now() - before;
+		assert.ok(pins.length > 0);
+		const queued: Array<() => void> = [];
+		const priorWindow = (globalThis as { window?: unknown }).window;
+		(globalThis as { window?: { requestAnimationFrame: (fn: () => void) => number; setTimeout: (fn: () => void, ms: number) => number } }).window = {
+			requestAnimationFrame: (fn) => {
+				queued.push(fn);
+				return queued.length;
+			},
+			setTimeout: (fn) => {
+				queued.push(fn);
+				return queued.length;
+			},
+		};
+		const scheduled = performance.now();
+		let finished = 0;
+		plugin.scanMapPins(() => { finished += 1; });
+		const scheduleMs = performance.now() - scheduled;
+		assert.equal(finished, 0);
+		let maxSlice = 0;
+		let slices = 0;
+		while (queued.length > 0) {
+			const step = queued.shift();
+			const sliceStart = performance.now();
+			step?.();
+			maxSlice = Math.max(maxSlice, performance.now() - sliceStart);
+			slices += 1;
+		}
+		if (priorWindow === undefined) delete (globalThis as { window?: unknown }).window;
+		else (globalThis as { window?: unknown }).window = priorWindow;
+		assert.equal(finished, 1);
+		assert.ok(slices > 1, `expected more than one slice, got ${slices}`);
+		assert.ok(scheduleMs < 100, `scheduling the scan took ${scheduleMs.toFixed(1)}ms`);
+		assert.ok(maxSlice < fullMs, `a slice of ${maxSlice.toFixed(1)}ms was not shorter than the ${fullMs.toFixed(1)}ms scan`);
+		console.log(`HUB-OPEN before-sync-scan ${fullMs.toFixed(1)}ms after-schedule ${scheduleMs.toFixed(1)}ms max-slice ${maxSlice.toFixed(1)}ms slices ${slices}`);
 	});
 });

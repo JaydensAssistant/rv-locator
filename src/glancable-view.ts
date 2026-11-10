@@ -48,6 +48,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private hubMapApi: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
 	private renderedPaths: readonly string[] | null = null;
 	private stackedLayout = false;
+	private glanceFrame = 0;
 	private searchOpen = false;
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
@@ -99,6 +100,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	override onunload(): void {
 		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
+		this.root.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.hubMapEl = null;
 		this.hubMapHandle = null;
 		this.root.ownerDocument.body.classList.remove('rv-hide-backlinks');
@@ -217,8 +219,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 			?? this.root.closest('.workspace-leaf')
 			?? this.root;
 		const band = this.plugin.sharedMapBand(mapPanePx(pane instanceof HTMLElement ? pane : this.root, side));
-		const spacer = ensureMapSpacer(stage);
-		sizeMapSpacer(spacer, band, side, this.plugin.hubMapIsFullscreen());
+		const fullscreen = this.plugin.hubMapIsFullscreen();
+		const spacerHost = !side && !fullscreen ? this.root : stage;
+		const other = spacerHost === this.root ? this.stageEl : this.root;
+		other?.querySelector(':scope > .rv-map-spacer')?.remove();
+		const spacer = spacerHost === stage ? ensureMapSpacer(stage) : ensureMapSpacer(this.root);
+		if (spacerHost === this.root && this.sortEl?.parentElement === this.root) this.root.insertBefore(spacer, this.sortEl);
+		sizeMapSpacer(spacer, band, side, fullscreen);
 		copyShellBand(this.root, band);
 		markShellSide(shell.root, side);
 		this.hubMapEl = shell.map;
@@ -239,6 +246,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private removeHubMap(): void {
 		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
+		this.root.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.hubMapEl = null;
 		this.hubMapHandle = null;
 		if (!this.plugin.hubMapOpen && !this.plugin.noteMapOpen) {
@@ -251,18 +259,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 * A map that already has tiles keeps that frame on the open path.
 	 * Reordering pins waits one frame so hub open does not paint the map twice.
 	 */
-	private deferPaintedOrder(map: HTMLElement): void {
+	private deferPaintedOrder(_map: HTMLElement): void {
 		const paths = this.renderedPaths;
 		if (!paths || !this.hubMapApi) return;
-		const painted = map.querySelector('.rv-map-tile.is-ready, .rv-map-stage') != null;
-		const run = (): void => { this.hubMapApi?.applyRenderedOrder(paths); };
-		if (!painted) {
-			run();
-			return;
-		}
-		const view = map.ownerDocument.defaultView;
-		if (view?.requestAnimationFrame) view.requestAnimationFrame(run);
-		else run();
+		this.publishPinOrder(paths);
 	}
 
 	/** The leaf that owns this hub or bases view hides its Obsidian header buttons. */
@@ -305,8 +305,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 			return;
 		}
 		super.renderBody();
-		if (this.totalRows() === 0) this.publishPinOrder([]);
+		if (this.totalRows() === 0 && this.glanceCards().length === 0) this.publishPinOrder([]);
 		this.sizeEmbedFrame();
+	}
+
+	/** Cards are in the live scroller. Measuring and pin rings wait for the next frame. */
+	protected override afterListSwap(): void {
+		this.watchLayout();
+		this.scheduleGlanceFrame();
+		this.landArrival();
 	}
 
 	/**
@@ -319,10 +326,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const rows = groups.flatMap((group) => group.rows);
 		const labeled = groups.some((group) => group.label);
 		const cards = this.glanceCards();
+		if (rows.length === 0 && cards.length > 0 && !this.glanceDataSeen) return;
 		if (labeled || rows.length === 0 || cards.length === 0) {
 			super.fillScroll();
-			this.landArrival();
-			this.strokeHubRings();
 			return;
 		}
 		if (this.cardsMatch(cards, rows)) {
@@ -330,10 +336,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
 			rememberGlanceGroups(this.groups, this.columns);
 			this.applyDensity();
-			this.applyColumnSnap();
 			this.publishPinOrder(rows.map((row) => row.path));
-			this.landArrival();
-			this.strokeHubRings();
+			this.afterListSwap();
 			return;
 		}
 		const atTop = this.directHubOpensAtTop();
@@ -344,14 +348,25 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
 		rememberGlanceGroups(this.groups, this.columns);
 		this.applyDensity();
-		this.applyColumnSnap();
-		this.snapCardFrames();
 		this.publishPinOrder(rows.map((row) => row.path));
 		if (atTop || this.directHubOpensAtTop()) this.scrollEl.scrollTop = 0;
 		else if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
 		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
-		this.landArrival();
-		this.strokeHubRings();
+		this.afterListSwap();
+	}
+
+	/** Column snap and badge rings read layout. They run after the card frame, not inside it. */
+	private scheduleGlanceFrame(): void {
+		const frame = ++this.glanceFrame;
+		const run = (): void => {
+			if (frame !== this.glanceFrame || !this.scrollEl?.isConnected) return;
+			this.applyColumnSnap();
+			this.snapCardFrames();
+			this.strokeHubRings();
+		};
+		const view = this.root.ownerDocument?.defaultView;
+		if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(run);
+		else run();
 	}
 
 	/** Cards are in the document. A stroke measured in the fragment is not kept. */
@@ -430,15 +445,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 		});
 		this.publishPinOrder(paths);
-		this.applyColumnSnap();
-		this.snapCardFrames();
-		this.watchLayout();
 	}
 
 	/** Rank on the map follows this exact card order, after sort, filters, and search. */
 	private publishPinOrder(paths: readonly string[]): void {
 		this.renderedPaths = paths;
-		this.hubMapApi?.applyRenderedOrder(paths);
+		if (!this.hubMapApi) return;
+		this.plugin.deferMapPinScan = true;
+		this.hubMapApi.applyRenderedOrder(paths);
 	}
 
 	/**
@@ -996,7 +1010,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const band = this.plugin.sharedMapBand(mapPanePx(pane instanceof HTMLElement ? pane : this.root, side));
 		copyShellBand(this.root, band);
 		const stage = this.stageEl ?? this.root;
-		const spacer = stage.querySelector(':scope > .rv-map-spacer');
+		const fullscreen = this.root.classList.contains('is-map-fullscreen');
+		const spacerHost = !side && !fullscreen ? this.root : stage;
+		const spacer = spacerHost.querySelector(':scope > .rv-map-spacer');
 		if (spacer instanceof HTMLElement) sizeMapSpacer(spacer, band, side, this.root.classList.contains('is-map-fullscreen'));
 		const shellRoot = this.plugin.mapShellRoot();
 		if (shellRoot) markShellSide(shellRoot, side);

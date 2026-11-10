@@ -238,6 +238,16 @@ describe('RV-B3 hub click blank', () => {
 		window.document.body.append(parent);
 		rememberGlanceGroups([{ label: null, rows: [sampleRow()] }]);
 		const started = performance.now();
+		const swaps: { before: number; next: number }[] = [];
+		const proto = window.HTMLElement.prototype;
+		const origReplace = proto.replaceChildren;
+		proto.replaceChildren = function replaceChildren(this: HTMLElement, ...nodes: Node[]) {
+			if (this.classList.contains('rv-locator-scroll')) {
+				const next = nodes.reduce((count, node) => count + (node instanceof window.HTMLElement ? node.querySelectorAll('.rv-locator-card').length : 0), 0);
+				swaps.push({ before: this.querySelectorAll('.rv-locator-card').length, next });
+			}
+			return origReplace.apply(this, nodes);
+		};
 		new NearbyGlancableView({} as QueryController, parent, glancePlugin(bucket));
 		const heldMs = performance.now() - started;
 		const card = parent.querySelector('.rv-locator-card');
@@ -247,6 +257,8 @@ describe('RV-B3 hub click blank', () => {
 		assert.ok(heldMs < 150, `held cards painted in ${heldMs.toFixed(2)}ms`);
 		console.log(`RV-B3-MEASURE held-click-to-cards ${heldMs.toFixed(2)}ms`);
 		bucket.refresh?.();
+		proto.replaceChildren = origReplace;
+		assert.equal(swaps.some((swap) => swap.before > 0 && swap.next === 0), false);
 		assert.equal(parent.querySelectorAll('.rv-locator-card').length, 1);
 		assert.equal(parent.querySelector('.rv-locator-empty'), null);
 

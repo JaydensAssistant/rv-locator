@@ -19,6 +19,9 @@ export interface MapHost {
 	/** Set just before the map opens. Null centers on the current location. */
 	mapFocusPath: string | null;
 	listMapPins(): MapPin[];
+	/** Hub open. When this returns true, scan between frames instead of inside the card paint. */
+	takeDeferredPinScan?(): boolean;
+	scanMapPins?(done: (pins: MapPin[]) => void): () => void;
 	openMapNote(path: string): void;
 	openRoute(path: string): Promise<void>;
 	currentMapFix(): { lat: number; lon: number } | null;
@@ -99,6 +102,7 @@ export class RvMapView extends ItemView {
 	private fullscreenScope: 'hub' | 'split' = 'split';
 	/** Card order for this hub. Null until the view publishes the rendered list. */
 	private renderedPaths: readonly string[] | null = null;
+	private cancelPinScan: (() => void) | null = null;
 	private scaleEl: HTMLElement | null = null;
 	private scaleBarEl: HTMLElement | null = null;
 
@@ -237,6 +241,8 @@ export class RvMapView extends ItemView {
 		this.detachPress = null;
 		this.detachMap?.();
 		this.detachMap = null;
+		this.cancelPinScan?.();
+		this.cancelPinScan = null;
 		this.stageObserver?.disconnect();
 		this.stageObserver = null;
 	}
@@ -265,6 +271,15 @@ export class RvMapView extends ItemView {
 	/** Card list order for this hub. Rank is the index in that array. */
 	applyRenderedOrder(paths: readonly string[]): void {
 		this.renderedPaths = paths;
+		if (this.host.takeDeferredPinScan?.() && this.host.scanMapPins) {
+			this.cancelPinScan?.();
+			this.cancelPinScan = this.host.scanMapPins((pins) => {
+				this.cancelPinScan = null;
+				this.pins = rankPinsFromRenderedList(pins, this.renderedPaths ?? paths);
+				this.paint();
+			});
+			return;
+		}
 		this.pins = this.pinsInRenderedOrder();
 		this.paint();
 	}
