@@ -149,6 +149,33 @@ export function seatMapGrip(stage: HTMLElement, before: Element | null): HTMLEle
 	return grip;
 }
 
+/**
+ * Write the pixel lock from the band on screen. Call this before the view
+ * that owns the map is replaced. A later measure of 0 keeps this height.
+ */
+export function holdMapHeight(map: HTMLElement): void {
+	const stage = map.querySelector('.rv-map-stage');
+	const laid = stage instanceof HTMLElement && typeof stage.getBoundingClientRect === 'function'
+		? stage.getBoundingClientRect().height
+		: 0;
+	lockHandedMapBand(map, laid);
+}
+
+/**
+ * The next view has no pixel band yet. Keep the locked stage height on that
+ * view until its own pane lays out. A band that is already pixels stays.
+ */
+export function pinHeldMapBand(host: HTMLElement, map: HTMLElement): void {
+	const stage = map.querySelector('.rv-map-stage');
+	if (!(stage instanceof HTMLElement)) return;
+	const px = stage.style.getPropertyValue('height').trim();
+	if (!/^\d+(\.\d+)?px$/.test(px)) return;
+	const current = host.style.getPropertyValue('--rv-map-size').trim();
+	if (/px$/.test(current)) return;
+	host.style.setProperty('--rv-map-size', px);
+	host.style.setProperty('--rv-note-map', px);
+}
+
 /** The hub's own grip. A handed map keeps the grip it already had. */
 export function ensureHubMapHandle(stage: HTMLElement): HTMLElement {
 	const map = stage.querySelector(':scope > .rv-hub-map, :scope > .rv-note-map');
@@ -164,10 +191,10 @@ export function lockHandedMapBand(map: HTMLElement, heightPx: number): void {
 	if (!(stage instanceof HTMLElement)) return;
 	const measured = Math.round(heightPx);
 	const existing = Number.parseFloat(stage.style.getPropertyValue('height'));
-	// A light-theme reflow reports 0 for one frame on the way onto a note
-	// (hub → note, and again base → note) before the grid row has a height.
-	// The previous pixel lock, or a 120px floor, has to be in place in that
-	// same turn. Waiting for a later frame is the paint that samples 0.
+	// A reflow reports 0 for a few frames before the next view has a height.
+	// That is hub → note, base → note, and hub → base. The previous pixel
+	// lock, or a 120px floor, has to be in place in that same turn.
+	// Waiting for a later frame is the paint that samples 0.
 	const height = measured >= 2 ? measured : (Number.isFinite(existing) && existing >= 2 ? Math.round(existing) : 120);
 	const px = `${height}px`;
 	stage.style.setProperty('display', 'block', 'important');

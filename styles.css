@@ -10500,6 +10500,12 @@ body.rv-hub-swapping .mobile-navbar {
 	pointer-events: none !important;
 }
 
+/* The live list under the cover is a second paint of every card. Hide it
+   until the cover drops. Opacity keeps those cards in the hit path. */
+.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover) {
+	opacity: 0 !important;
+}
+
 .workspace-leaf > .rv-hub-swap-cover > .view-header {
 	position: relative !important;
 	top: auto !important;

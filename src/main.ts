@@ -31,7 +31,7 @@ import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, liftMapGrip, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, placeHandedMap, retireEmptyMapPark, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
+import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, holdMapHeight, liftMapGrip, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, pinHeldMapBand, placeHandedMap, retireEmptyMapPark, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -2028,10 +2028,10 @@ export default class RVLocatorPlugin extends Plugin {
 		};
 	}
 
-	/** Note to hub: the hub map is the one that stays on, and the hub earth lights. */
+	/** Note to hub, and hub to a bases file: the painted map stays on, and the hub earth lights. */
 	private retainMapForHub(): void {
 		if (!this.noteMapOpen && !this.hubMapOpen) return;
-		if (this.noteMapOpen) this.parkOpenMap();
+		this.parkOpenMap();
 		this.hubMapOpen = true;
 		this.noteMapOpen = false;
 		this.applyLayoutClasses();
@@ -2045,6 +2045,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const el = visibleMapNode(document);
 		if (!(el instanceof HTMLElement)) return this.parkedHandle != null;
 		if (el.closest('.rv-map-park')) return true;
+		holdMapHeight(el);
 		parkMapNode(el);
 		this.parkedHandle = this.noteMapHandle ?? this.lastMapHandle;
 		if (this.noteMapHandle) this.noteMapHandle = null;
@@ -2092,6 +2093,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (hub instanceof HTMLElement) {
 			const leaf = hub.closest('.workspace-leaf-content') ?? hub.closest('.workspace-leaf') ?? hub;
 			writeMapBand(hub, mapPanePx(leaf instanceof HTMLElement ? leaf : hub, hub.classList.contains('is-side-map')), this.settings.mapSplitRatio, '--rv-map-size');
+			pinHeldMapBand(hub, map);
 		}
 		const spacers = document.querySelectorAll('.rv-map-spacer');
 		for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();

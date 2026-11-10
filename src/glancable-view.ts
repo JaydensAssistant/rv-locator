@@ -12,7 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
-import { liftMapGrip, lockHandedMapBand, retireEmptyMapPark, seatMapGrip } from './map-handoff';
+import { liftMapGrip, lockHandedMapBand, pinHeldMapBand, retireEmptyMapPark, seatMapGrip } from './map-handoff';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -348,6 +348,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (!(stage instanceof HTMLElement)) return;
 		const height = stage.getBoundingClientRect().height;
 		lockHandedMapBand(map, height);
+		const root = map.closest('.rv-locator-view, .rv-locator-glancable');
+		if (root instanceof HTMLElement) pinHeldMapBand(root, map);
 		const parent = map.parentElement;
 		if (parent instanceof HTMLElement) seatMapGrip(parent, map);
 		if (height >= 2 || left <= 0) return;

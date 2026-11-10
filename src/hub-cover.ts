@@ -6,6 +6,7 @@ export const HUB_SWAP_HOLD_MS = 800;
 
 const COVER_CLASS = 'rv-hub-swap-cover';
 const SWAP_CLASS = 'rv-hub-swapping';
+const COVER_HELD = 'is-rv-cover-held';
 
 /**
  * A direct `.base` open, or the hub note (`cssclass` `rv-locator-full-base`).
@@ -293,6 +294,8 @@ export function releaseHubSwapCover(doc: Document, keepNav = false): void {
 	if (!body) return;
 	const covers = doc.querySelectorAll(`.${COVER_CLASS}`);
 	for (let index = covers.length - 1; index >= 0; index -= 1) covers[index]?.remove();
+	const held = doc.querySelectorAll(`.${COVER_HELD}`);
+	for (let index = held.length - 1; index >= 0; index -= 1) held[index]?.classList.remove(COVER_HELD);
 	const swapping = body.classList.contains(SWAP_CLASS);
 	body.classList.remove(SWAP_CLASS);
 	if (!keepNav && swapping && body.dataset.rvHubNavHeld !== '1') body.classList.remove('rv-hide-mobile-nav');
@@ -426,10 +429,19 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 		const next = doc.querySelector('.workspace-leaf.mod-active');
 		return isElement(next) ? next : null;
 	};
+	const markHeld = (current: HTMLElement): void => {
+		const leaves = doc.querySelectorAll(`.${COVER_HELD}`);
+		for (let index = 0; index < leaves.length; index += 1) {
+			const leaf = leaves[index];
+			if (leaf !== current) leaf?.classList.remove(COVER_HELD);
+		}
+		current.classList.add(COVER_HELD);
+	};
 	const park = (): void => {
 		const current = host();
-		if (!current || cover.parentElement === current) return;
-		current.prepend(cover);
+		if (!current) return;
+		if (cover.parentElement !== current) current.prepend(cover);
+		markHeld(current);
 	};
 	const stop = (keepNav: boolean): void => {
 		if (stopped) return;
@@ -511,12 +523,12 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 		if (decision === 'hold') {
 			park();
 			try { alignHubCover(doc); } catch { /* The live list is not laid out yet. */ }
-			view?.requestAnimationFrame(tick);
+			if (typeof view?.requestAnimationFrame === 'function') view.requestAnimationFrame(tick);
 			return;
 		}
 		stop(decision === 'ready');
 	};
-	if (view?.requestAnimationFrame) view.requestAnimationFrame(tick);
+	if (typeof view?.requestAnimationFrame === 'function') view.requestAnimationFrame(tick);
 	else tick();
 }
 
