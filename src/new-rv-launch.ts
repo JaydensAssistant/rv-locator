@@ -1,3 +1,4 @@
+import { TFile } from 'obsidian';
 import {
 	DEFAULT_NEW_RV_TEMPLATE_FILE,
 	DEFAULT_TEMPLATES_FOLDER,
@@ -35,6 +36,15 @@ export function newRvTemplateCandidates(templatesFolder: unknown, templateFileNa
 		}
 	}
 	return paths;
+}
+
+/** Templater writes the note. A non-file result is a missed Create. */
+export async function createdNewRvFile(
+	create: (template: TFile) => Promise<unknown>,
+	template: TFile,
+): Promise<TFile | null> {
+	const created = await create(template);
+	return created instanceof TFile ? created : null;
 }
 
 /** Null when the tap can call Templater. Otherwise the toast text. */

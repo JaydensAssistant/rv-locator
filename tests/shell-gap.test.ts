@@ -335,6 +335,9 @@ describe('dark phone layout', () => {
 		const pad = usedPx(styleOf, modal, 'padding-bottom');
 		assert.equal(barH, 52);
 		assert.equal(pad, 52);
+		const footer = doc.getElementById('footer');
+		assert.ok(footer);
+		assert.equal(usedPx(styleOf, footer, 'padding-bottom'), 6);
 		const barBox = box(798 - 52, 0, 381, 52);
 		const footerBottom = 798 - (pad ?? 0);
 		assert.equal(footerBottom > barBox.top + 1, false);

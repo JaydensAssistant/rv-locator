@@ -189,7 +189,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 		} else {
 			this.paint();
-			if (this.mode === 'glancable') rememberGlanceGroups(this.groups, this.columns);
+			if (this.mode === 'glancable') rememberGlanceGroups(this.groups, this.columns, this.glanceMemoryKey());
 			this.root.removeClass('is-glance-pending');
 		}
 		this.paintListTail();
@@ -201,21 +201,48 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	/** Glancable retags the Bases toolbar after each paint. */
 	protected afterRender(): void {}
 
+	/** Sort bar and scroller, once, before the first cards. */
+	protected openChrome(): void {
+		if (!this.chromeReady) this.ensureChrome();
+		this.paintSortPresets();
+	}
+
+	/** The file whose list this view may replay. Empty in tests that share one slot. */
+	protected glanceMemoryKey(): string {
+		return '';
+	}
+
 	/**
-	 * Paint cards before the first browser frame. A warm hub replays the last
-	 * list. A cold hub paints the vault cache. Bases reconciles later.
+	 * This view's own cached rows. A keyed base does not borrow the hub's list.
+	 * The caller paints. This does not build cards.
 	 */
-	protected adoptHeldGlance(): void {
-		if (this.mode !== 'glancable') return;
-		const held = heldGlanceGroups();
+	protected loadCachedModel(key = this.glanceMemoryKey()): boolean {
+		const held = heldGlanceGroups(key);
 		if (held) {
 			this.glanceFromCache = false;
 			this.groups = held;
-			this.columns = heldGlanceColumns() ?? hubCacheColumns(this.plugin.settings.locationProperty);
+			this.columns = heldGlanceColumns(key) ?? hubCacheColumns(this.plugin.settings.locationProperty);
+			return true;
+		}
+		if (key.toLowerCase().endsWith('.base')) return false;
+		const cached = this.readHubCache();
+		if (!cached) return false;
+		this.columns = cached.columns;
+		this.groups = cached.groups;
+		this.glanceFromCache = true;
+		return true;
+	}
+
+	/**
+	 * Paint cards before the first browser frame. A warm hub replays its own
+	 * last list. A cold hub paints the vault cache. Bases reconciles later.
+	 */
+	protected adoptHeldGlance(): void {
+		if (this.mode !== 'glancable') return;
+		if (this.loadCachedModel(this.glanceMemoryKey())) {
 			this.renderBody();
 			return;
 		}
-		if (this.paintFromHubCache()) return;
 		if (!this.glanceDataSeen) this.root.addClass('is-glance-pending');
 	}
 
@@ -232,16 +259,6 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (!cached) return;
 		this.columns = cached.columns;
 		this.groups = cached.groups;
-	}
-
-	private paintFromHubCache(): boolean {
-		const cached = this.readHubCache();
-		if (!cached) return false;
-		this.columns = cached.columns;
-		this.groups = cached.groups;
-		this.glanceFromCache = true;
-		this.renderBody();
-		return true;
 	}
 
 	private readHubCache(): { columns: ColumnModel[]; groups: GroupModel[] } | null {
@@ -454,22 +471,6 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
 		}
 		this.afterChrome();
-	}
-
-	/**
-	 * The open path already built chrome around an empty scroller. The parked
-	 * list takes that scroller's place so the first frame is the old cards.
-	 */
-	protected useOpenScroll(scroll: HTMLElement): void {
-		this.ensureChrome();
-		if (!this.scrollEl || this.scrollEl === scroll) {
-			this.scrollEl = scroll;
-			if (scroll.parentElement !== this.root) this.root.appendChild(scroll);
-			return;
-		}
-		if (typeof this.scrollEl.replaceWith === 'function') this.scrollEl.replaceWith(scroll);
-		else this.root.appendChild(scroll);
-		this.scrollEl = scroll;
 	}
 
 	/** Phone hub inserts the map stack once the scroll column exists. */

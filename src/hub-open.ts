@@ -44,10 +44,13 @@ export interface HubOpenFrame {
 	emptyResult: boolean;
 }
 
+/** Visible cards painted in the open turn. The rest follow in idle slices. */
+export const HUB_FIRST_PAINT = 8;
+
 /**
  * What a hub-link click shows. Desktop may reveal a leaf that already has
- * cards. Phone replaces the note, so the first frame is the vault-cache
- * paint. A cache miss is the only blank, and it is not the path we ship.
+ * cards. Phone replaces the note, so the first frame is the visible slice of
+ * this view's own cache. A cache miss is the only blank, and it is not the path we ship.
  */
 export function hubClickFrames(input: {
 	existingLeaf: boolean;
@@ -72,7 +75,7 @@ export function hubClickFrames(input: {
 			revealedExisting: false,
 			viewsToolbarVisible: false,
 			blankBodyVisible: false,
-			cards: ready,
+			cards: Math.min(HUB_FIRST_PAINT, ready),
 			emptyResult: false,
 		}];
 	}

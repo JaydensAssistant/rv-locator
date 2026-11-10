@@ -6745,6 +6745,13 @@ body.rv-center-visit-notes .rv-older-heading {
 	box-sizing: border-box;
 }
 
+/* Log visit and Create sit in this row. 6px is the 2px they crossed the bar plus a 4px gap. */
+.modal.rv-locator-modal .rv-modal-actions,
+.modal.rv-locator-modal .modal-button-container {
+	padding-bottom: 6px;
+	box-sizing: border-box;
+}
+
 .rv-bar-shell.is-note {
 	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
 	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));

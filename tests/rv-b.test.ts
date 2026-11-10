@@ -3,8 +3,9 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
-import { parkVisibleCardList, releaseParkedCardList, seedCardList, watchCardHold } from '../src/card-hold';
 import { clearGlanceHold, rememberGlanceGroups } from '../src/glance-hold';
+import { createdNewRvFile } from '../src/new-rv-launch';
+import { NewRvIdentityModal, type NewRvIdentity } from '../src/new-rv-modal';
 import { NearbyGlancableView } from '../src/glancable-view';
 import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
 import { holdLeafForHubPaint, hubFrameReady, hubSwapDecision, isHubSwapFile, releaseHubSwapCover } from '../src/hub-cover';
@@ -19,7 +20,7 @@ import type { RowModel } from '../src/model';
 import { fitEndEllipsis, mountFittedTitle } from '../src/title-fit';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { fillItemStrip } from '../src/visit-controls';
-import type { QueryController } from 'obsidian';
+import { TFile, type QueryController } from 'obsidian';
 import type RVLocatorPlugin from '../src/main';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
@@ -311,7 +312,7 @@ describe('RV-B3 hub click blank', () => {
 		const frames = hubClickFrames({ existingLeaf: false, existingCards: 0, heldCards: 0, cacheCards: 15 });
 		assert.deepEqual(frames.map((frame) => frame.phase), ['cards']);
 		assert.equal(frames.some((frame) => frame.viewsToolbarVisible || frame.blankBodyVisible), false);
-		assert.equal(frames[0]?.cards, 15);
+		assert.equal(frames[0]?.cards, 8);
 		const revealed = hubClickFrames({ existingLeaf: true, existingCards: 15, heldCards: 0 });
 		assert.equal(revealed.length, 1);
 		assert.equal(revealed[0]?.revealedExisting, true);
@@ -321,88 +322,148 @@ describe('RV-B3 hub click blank', () => {
 		console.log(`RV-B9-FRAMES ${JSON.stringify(frames)}`);
 	});
 
-	it('never paints 0 cards between hub activation and settle', async () => {
+	it('paints this view\'s own visible cards before the first yield', async () => {
 		clearGlanceHold();
 		const doc = window.document;
-		const leaf = doc.createElement('div');
-		leaf.className = 'workspace-leaf mod-active';
-		const content = doc.createElement('div');
-		content.className = 'view-content';
-		leaf.append(content);
-		doc.body.append(leaf);
-		const rows = Array.from({ length: 7 }, (_, index) => ({
+		const slices: number[] = [];
+		(globalThis as { __rvOpenSlice?: (ms: number) => void }).__rvOpenSlice = (ms) => { slices.push(ms); };
+		const rows = Array.from({ length: 20 }, (_, index) => ({
 			...sampleRow(),
 			path: `People/Lane ${index}.md`,
 			name: `Lane ${index}`,
 		}));
+		const baseRows = Array.from({ length: 7 }, (_, index) => ({
+			...sampleRow(),
+			path: `Bases/Smoke ${index}.md`,
+			name: `Smoke ${index} Dark`,
+		}));
 		rememberGlanceGroups([{ label: null, rows }]);
-		let armed = true;
-		let stopWatch = (): void => {};
-		stopWatch = watchCardHold(doc, () => armed, () => {
-			armed = false;
-			stopWatch();
-			releaseParkedCardList();
-		});
 		const plugin = glancePlugin({ refresh: null });
-		const warmup = doc.createElement('div');
-		doc.body.append(warmup);
-		const cold = new NearbyGlancableView({} as QueryController, warmup, plugin);
+		const warmupHost = doc.createElement('div');
+		doc.body.append(warmupHost);
+		const coldStart = performance.now();
+		const cold = new NearbyGlancableView({} as QueryController, warmupHost, plugin);
+		const coldMs = performance.now() - coldStart;
+		const coldCard = warmupHost.querySelector('.rv-locator-card');
+		assert.ok(coldCard instanceof window.HTMLElement);
+		const firstNodes = coldCard.querySelectorAll('*').length;
+		assert.equal(warmupHost.querySelectorAll('.rv-locator-card').length, 8);
+		assert.equal(coldCard.querySelector('.rv-locator-file-link')?.textContent, 'Lane 0');
+		assert.ok(coldCard.style.getPropertyValue('--rv-urgency-accent').length > 0);
+		assert.ok(coldCard.querySelector('.rv-locator-card-foot')?.textContent);
+		assert.equal(coldCard.querySelector('.rv-locator-card-actions'), null);
 		cold.onunload();
-		warmup.remove();
-		clearGlanceHold();
-		rememberGlanceGroups([{ label: null, rows }]);
-		const rebuildStart = performance.now();
-		const first = new NearbyGlancableView({} as QueryController, content, plugin);
-		const rebuildMs = performance.now() - rebuildStart;
-		assert.equal(content.querySelectorAll('.rv-locator-card').length, 7);
+		warmupHost.remove();
 
-		const counts: number[] = [];
-		const sample = (): void => {
-			counts.push(content.querySelectorAll('.rv-locator-card').length);
-		};
-		const seedStart = performance.now();
-		parkVisibleCardList(doc);
-		content.replaceChildren();
-		seedCardList(content);
-		const seedMs = performance.now() - seedStart;
-		sample();
+		const warmHost = doc.createElement('div');
+		doc.body.append(warmHost);
+		const warmStart = performance.now();
+		const warm = new NearbyGlancableView({} as QueryController, warmHost, plugin);
+		const warmMs = performance.now() - warmStart;
+		assert.equal(warmHost.querySelectorAll('.rv-locator-card').length, 8);
+		assert.ok(warmMs < 80, `warm first paint ${warmMs.toFixed(2)}ms`);
+		const paths = [...warmHost.querySelectorAll('.rv-locator-card')].map((card) => card.getAttribute('data-rv-path'));
+		assert.deepEqual(paths, rows.slice(0, 8).map((row) => row.path));
+		await settleOwnCards(warmHost, 20);
+		assert.equal(warmHost.querySelector('.is-stub'), null);
+		assert.equal(warmHost.querySelectorAll('.rv-locator-card').length, 20);
+		assert.ok(slices.length > 1);
+		const later = slices.slice(1);
+		console.log(`HUB-OPEN cold ${coldMs.toFixed(2)}ms warm ${warmMs.toFixed(2)}ms first-paint 8 cards ${firstNodes} nodes title+color+foot first-slice ${slices[0]?.toFixed(2)}ms later-max ${Math.max(...later).toFixed(2)}ms`);
+		assert.ok((slices[0] ?? 0) < 80, `first decoration ${slices[0]?.toFixed(2)}ms`);
+		assert.ok(Math.max(...later) < 16, `later slice ${Math.max(...later).toFixed(2)}ms`);
 
-		content.replaceChildren();
-		await new Promise<void>((resolve) => {
-			window.requestAnimationFrame(() => resolve());
-		});
-		sample();
+		rememberGlanceGroups([{ label: null, rows: baseRows }], [], 'Ministry/One.base');
+		const baseHost = doc.createElement('div');
+		doc.body.append(baseHost);
+		const base = new NearbyGlancableView({} as QueryController, baseHost, glancePlugin({ refresh: null }, {
+			glanceSurfacePath: () => 'Ministry/One.base',
+		}));
+		const baseNames = [...baseHost.querySelectorAll('.rv-locator-file-link')].map((card) => card.textContent);
+		assert.equal(baseNames.length, 7);
+		assert.equal(baseNames[0], 'Smoke 0 Dark');
+		assert.equal(baseNames.some((name) => name?.startsWith('Lane')), false);
 
-		const adoptStart = performance.now();
-		const next = new NearbyGlancableView({} as QueryController, content, plugin);
-		const adoptMs = performance.now() - adoptStart;
-		sample();
-		await new Promise<void>((resolve) => {
-			window.requestAnimationFrame(() => resolve());
-		});
-		sample();
-
-		assert.equal(counts.every((count) => count > 0), true, `card counts ${counts.join(',')}`);
-		assert.ok(adoptMs < 50, `open long task ${adoptMs.toFixed(2)}ms`);
-		console.log(`HUB-OPEN rebuild ${rebuildMs.toFixed(2)}ms seed ${seedMs.toFixed(2)}ms adopt ${adoptMs.toFixed(2)}ms counts ${counts.join(',')}`);
+		const emptyHost = doc.createElement('div');
+		doc.body.append(emptyHost);
+		const empty = new NearbyGlancableView({} as QueryController, emptyHost, glancePlugin({ refresh: null }, {
+			glanceSurfacePath: () => 'Ministry/Other.base',
+		}));
+		assert.equal(emptyHost.querySelector('.rv-locator-card'), null);
+		assert.equal(emptyHost.querySelector('.rv-locator-glancable')?.classList.contains('is-glance-pending'), true);
 
 		const main = source('src/main.ts');
-		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
-		assert.ok(hook.indexOf('holdCardsFor(file)') < hook.indexOf('openFile.call'));
-		assert.ok(hook.indexOf('openFile.call') < hook.indexOf('seedOpenLeaf(this)'));
 		const glance = source('src/glancable-view.ts');
+		assert.doesNotMatch(main, /card-hold|holdCardsFor|seedOpenLeaf/);
+		assert.doesNotMatch(glance, /parkCardList|claimCardList/);
 		const opened = glance.slice(glance.indexOf('onOpen(): void'), glance.indexOf('override onunload'));
 		assert.match(opened, /adoptHeldGlance\(\)/);
 		assert.doesNotMatch(opened, /\bawait\b/);
-		assert.match(glance, /parkCardList\(this\.scrollEl\)/);
 
-		first.onunload();
-		next.onunload();
-		stopWatch();
-		leaf.remove();
+		warm.onunload();
+		base.onunload();
+		empty.onunload();
+		warmHost.remove();
+		baseHost.remove();
+		emptyHost.remove();
+		delete (globalThis as { __rvOpenSlice?: (ms: number) => void }).__rvOpenSlice;
 		clearGlanceHold();
 	});
+
+	it('writes the New RV file when Create is tapped', async () => {
+		const notices: string[] = [];
+		(globalThis as { __rvNotice?: (message: string) => void }).__rvNotice = (message) => { notices.push(message); };
+		const content = window.document.createElement('div');
+		window.document.body.append(content);
+		let identity: NewRvIdentity | null = null;
+		const modal = new NewRvIdentityModal({} as never, {
+			defaultPriority: 4,
+			companions: [],
+			publications: [],
+			media: [],
+			lessons: [],
+		}, (value) => { identity = value; });
+		const live = modal as unknown as { contentEl: HTMLElement };
+		live.contentEl = content;
+		modal.open();
+		const name = content.querySelector<HTMLInputElement>('input[placeholder="Optional (e.g. Maria)"]');
+		const address = content.querySelector<HTMLInputElement>('input[placeholder="Required (e.g. 123 Oak St)"]');
+		const woman = content.querySelector<HTMLButtonElement>('[data-gender="Woman"]');
+		const create = [...content.querySelectorAll('button')].find((button) => button.textContent?.includes('Create'));
+		assert.ok(name && address && woman && create);
+		name.value = 'Smoke Eleven';
+		name.dispatchEvent(new window.Event('input', { bubbles: true }));
+		address.value = '11 Dark St';
+		address.dispatchEvent(new window.Event('input', { bubbles: true }));
+		woman.click();
+		create.click();
+		assert.equal(identity?.name, 'Smoke Eleven');
+		assert.equal(identity?.address, '11 Dark St');
+		assert.equal(notices.length, 0);
+		const files = new Map<string, string>();
+		const template = Object.assign(new TFile(), { path: 'Templates/99 New RV.md' });
+		const written = await createdNewRvFile(async () => {
+			const path = 'People/Smoke Eleven.md';
+			files.set(path, identity?.name ?? '');
+			return Object.assign(new TFile(), { path, basename: 'Smoke Eleven' });
+		}, template);
+		assert.ok(written instanceof TFile);
+		assert.equal(written.path, 'People/Smoke Eleven.md');
+		assert.equal(files.get('People/Smoke Eleven.md'), 'Smoke Eleven');
+		assert.match(source('src/main.ts'), /createdNewRvFile\(/);
+		content.remove();
+		delete (globalThis as { __rvNotice?: (message: string) => void }).__rvNotice;
+	});
 });
+
+async function settleOwnCards(root: ParentNode, count: number): Promise<void> {
+	for (let turn = 0; turn < 40; turn += 1) {
+		const cards = root.querySelectorAll('.rv-locator-card');
+		if (cards.length >= count && !root.querySelector('.is-stub')) return;
+		await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+	}
+	throw new Error(`cards stayed at ${root.querySelectorAll('.rv-locator-card').length}`);
+}
 
 function daleFile(address = '1800 N Orange Ave, Orlando, FL', lastSpoke = '2026-11-01'): HubCacheFile {
 	return {
@@ -487,7 +548,7 @@ describe('RV-184 fresh hub paint', () => {
 });
 
 describe('RV-B9 cache first paint', () => {
-	it('paints vault-cache cards before Bases and patches one changed card', () => {
+	it('paints vault-cache cards before Bases and patches one changed card', async () => {
 		clearGlanceHold();
 		let address = '1800 N Orange Ave, Orlando, FL';
 		const bucket = { refresh: null as (() => void) | null };
@@ -497,6 +558,7 @@ describe('RV-B9 cache first paint', () => {
 			hubCacheModel: () => daleCache(address),
 		});
 		new NearbyGlancableView({} as QueryController, parent, plugin);
+		await settleOwnCards(parent, 1);
 		const card = parent.querySelector('.rv-locator-card');
 		assert.ok(card instanceof window.HTMLElement);
 		assert.equal(card.getAttribute('data-rv-path'), 'People/Dale.md');

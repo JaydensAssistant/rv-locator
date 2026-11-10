@@ -30,7 +30,6 @@ import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
-import { parkVisibleCardList, releaseParkedCardList, seedCardList, watchCardHold } from './card-hold';
 import { clearGlanceHold } from './glance-hold';
 import { hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { shownHubStage } from './map-handoff';
@@ -70,7 +69,7 @@ import { isRvDashboardNote, isRvHubNote, isRvLocatorSurface, refreshStampAgeLabe
 import { dismissNoteTitleModal, installRenameSwallow } from './rename-guard';
 import { applyHeadPin, storeFrontmatter } from './visit-paint-guard';
 import { clearBadgeStrokeCache, NearbyGlancableView } from './glancable-view';
-import { TEMPLATER_PLUGIN_ID, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
+import { TEMPLATER_PLUGIN_ID, createdNewRvFile, newRvLaunchError, newRvTemplateCandidates } from './new-rv-launch';
 import { BulkGeocodeModal, CompanionSuggestModal, GeocodeSuggestModal, SuccessfulVisitsModal, VisitConfirmModal, collectNotes, coveragePronoun, type BulkGeocodeChoice, type CoverageDecision } from './modals';
 import { PriorityNudgeModal, UrgencySnoozeModal } from './score-modals';
 import { fillToastText, watchBottomToast } from './chrome-inset';
@@ -184,9 +183,6 @@ export default class RVLocatorPlugin extends Plugin {
 	private hubLinkOpen = false;
 	/** A direct hub open starts the list at the top. A return leaves this false. */
 	private hubListAtTop = false;
-	/** True from the hub or base open until that view's own list is on screen. */
-	private cardHoldArmed = false;
-	private cardHoldStop: (() => void) | null = null;
 	private snoozeRollTimer: number | null = null;
 	private newRvCoverRelease: (() => void) | null = null;
 	private homeBiasKey = '';
@@ -935,6 +931,27 @@ export default class RVLocatorPlugin extends Plugin {
 		releaseClosedVisitNotes(open);
 	}
 
+	/** The file this list belongs to. A hub and a base keep separate card models. */
+	glanceSurfacePath(surface: HTMLElement): string {
+		const markdown = surface ? this.pathForSurface(surface) : '';
+		if (markdown) return markdown;
+		const workspace = this.app.workspace as {
+			iterateAllLeaves?: (visit: (leaf: WorkspaceLeaf) => void) => void;
+			getActiveFile?: () => TFile | null;
+		};
+		let found = '';
+		workspace.iterateAllLeaves?.((leaf) => {
+			if (found) return;
+			const view = leaf.view as { containerEl?: HTMLElement; file?: TFile | null };
+			const root = view?.containerEl;
+			if (root && typeof root.contains === 'function' && surface && root.contains(surface) && view.file?.path) {
+				found = view.file.path;
+			}
+		});
+		if (found) return found;
+		return workspace.getActiveFile?.()?.path ?? '';
+	}
+
 	private pathForSurface(surface: HTMLElement): string {
 		for (const leaf of this.app.workspace.getLeavesOfType('markdown')) {
 			const view = leaf.view;
@@ -1090,7 +1107,6 @@ export default class RVLocatorPlugin extends Plugin {
 		const plugin = this;
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
 			if (!plugin.unloaded) plugin.beginBarNav(file);
-			if (!plugin.unloaded) plugin.holdCardsFor(file);
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
 				if (plugin.hubLinkOpen) plugin.hubLinkOpen = false;
 				else plugin.noteDirectHubOpen();
@@ -1101,25 +1117,17 @@ export default class RVLocatorPlugin extends Plugin {
 				plugin.carryMapToOpenedFile(file);
 			}
 			const result = openFile.call(this, file, plugin.previewStateFor(file, openState));
-			if (!plugin.unloaded) plugin.seedOpenLeaf(this);
 			if (result instanceof Promise) {
-				return result.then((value) => {
-					if (!plugin.unloaded) plugin.seedOpenLeaf(this);
-					return value;
-				}).finally(() => {
+				return result.finally(() => {
 					if (plugin.holdBarFor === file.path) plugin.holdBarFor = null;
 				});
 			}
 			return result;
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
-			const opening = plugin.unloaded ? null : plugin.fileForViewState(viewState);
-			if (opening) plugin.holdCardsFor(opening);
 			const result = setViewState.call(this, plugin.previewViewState(this, viewState), eState);
-			if (opening) plugin.seedOpenLeaf(this);
 			const after = (): void => {
 				if (plugin.unloaded) return;
-				if (opening) plugin.seedOpenLeaf(this);
 				const view = this.view;
 				if (view instanceof MarkdownView && view.file && view.getMode() === 'preview') {
 					plugin.scheduleReadingDecorate(view.file);
@@ -1134,55 +1142,6 @@ export default class RVLocatorPlugin extends Plugin {
 			proto.openFile = openFile;
 			proto.setViewState = setViewState;
 		});
-	}
-
-	/**
-	 * Park the painted list before Obsidian empties the leaf. A hub or base
-	 * open keeps seeding that list until the new view's own cards are showing.
-	 */
-	private holdCardsFor(file: TFile): void {
-		if (this.unloaded) return;
-		const active = this.app.workspace.getActiveFile();
-		if (active instanceof TFile && active.path === file.path) return;
-		parkVisibleCardList(document);
-		if (!this.coversHubOpen(file)) {
-			this.releaseCardHold();
-			return;
-		}
-		this.cardHoldArmed = true;
-		if (this.cardHoldStop) return;
-		this.cardHoldStop = watchCardHold(document, () => this.cardHoldArmed, () => { this.releaseCardHold(); });
-	}
-
-	/** The file a view-state change is opening, when the state names one. */
-	private fileForViewState(viewState: ViewState): TFile | null {
-		const path = viewState.state && typeof viewState.state.file === 'string' ? viewState.state.file : '';
-		if (!path) return null;
-		const file = this.app.vault.getFileByPath(path);
-		return file instanceof TFile ? file : null;
-	}
-
-	/** Put the parked list into the leaf that is active now, before the next paint. */
-	private seedOpenLeaf(leaf: WorkspaceLeaf): void {
-		if (!this.cardHoldArmed || this.unloaded) return;
-		const view = leaf.view as { containerEl?: HTMLElement } | undefined;
-		const root = view?.containerEl;
-		if (!root || typeof root.querySelectorAll !== 'function') return;
-		const contents = root.querySelectorAll('.view-content');
-		for (let index = 0; index < contents.length; index += 1) {
-			const content = contents[index];
-			if (!(content instanceof HTMLElement) || hostIsHidden(content)) continue;
-			if (content.querySelector('.rv-locator-card')) return;
-			if (seedCardList(content)) return;
-		}
-	}
-
-	/** The destination view painted its own list. Stop putting the parked one back. */
-	releaseCardHold(): void {
-		this.cardHoldArmed = false;
-		this.cardHoldStop?.();
-		this.cardHoldStop = null;
-		releaseParkedCardList();
 	}
 
 	private previewStateFor(file: TFile, openState?: OpenViewState): OpenViewState | undefined {
@@ -1422,12 +1381,12 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 			const sourcePath = this.housemateSourcePath;
 			const draft = this.newRvDraft;
-			const created = await create.call(templater.templater, template);
+			const created = await createdNewRvFile(async (file) => await create.call(templater.templater, file), template);
 			if (!created) {
 				this.quietCreateGeocode = false;
 				new Notice('Templater did not create the New RV note.');
 			}
-			else if (created instanceof TFile) {
+			else {
 				try {
 					await this.suffixCollidingName(created);
 					if (draft) await this.writeNewRvShare(created, draft);
@@ -1440,7 +1399,7 @@ export default class RVLocatorPlugin extends Plugin {
 				}
 				this.pendingNewRvPath = created.path;
 				await this.activateNewRvNote(created);
-			} else this.quietCreateGeocode = false;
+			}
 		} catch (error) {
 			this.quietCreateGeocode = false;
 			const reason = error instanceof Error && error.message ? error.message : 'Templater could not create the note.';
