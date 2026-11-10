@@ -1,3 +1,4 @@
+import { dropParkedCardList } from './card-hold';
 import type { ColumnModel, GroupModel, RowModel } from './model';
 
 let held: GroupModel[] | null = null;
@@ -38,4 +39,5 @@ export function heldGlanceGroups(): GroupModel[] | null {
 export function clearGlanceHold(): void {
 	held = null;
 	heldColumns = null;
+	dropParkedCardList();
 }

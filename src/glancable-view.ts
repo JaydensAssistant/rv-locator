@@ -10,10 +10,11 @@ import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePie
 import type { CellModel, ColumnModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
-import { rememberGlanceGroups } from './glance-hold';
+import { claimCardList, parkCardList } from './card-hold';
+import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
 import { copyShellBand, ensureMapSpacer, markShellSide, sizeMapSpacer } from './map-shell';
-import { cardPaintKey } from './hub-cache';
+import { cardPaintKey, hubCacheColumns } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
 import { badgeLineOpticalKey, urgencyOpticalKey } from './badge-glyph';
@@ -49,6 +50,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private renderedPaths: readonly string[] | null = null;
 	private stackedLayout = false;
 	private glanceFrame = 0;
+	private openReconcile = 0;
 	private searchOpen = false;
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
@@ -94,11 +96,26 @@ export class NearbyGlancableView extends NearbyBasesView {
 		// A markdown file builds both reading and live-preview modes. The hidden
 		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
 		// delays the real hub. Paint when that mode is actually shown.
-		if (hostIsHidden(this.root)) this.deferUntilShown();
-		else this.adoptHeldGlance();
+		// Cards are appended here, before this constructor returns and before
+		// any await. A parked list is moved in. Otherwise the cache is painted.
+		this.onOpen();
+	}
+
+	/**
+	 * Synchronous open. The held list is in this view before the call returns.
+	 * Nothing here awaits or yields.
+	 */
+	onOpen(): void {
+		if (hostIsHidden(this.root)) {
+			this.deferUntilShown();
+			return;
+		}
+		if (this.scrollEl?.querySelector('.rv-locator-card')) return;
+		this.adoptHeldGlance();
 	}
 
 	override onunload(): void {
+		if (this.scrollEl && this.root?.contains(this.scrollEl)) parkCardList(this.scrollEl);
 		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.root.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.hubMapEl = null;
@@ -139,7 +156,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.syncBasesChrome();
 		this.ensureSearchField();
 		this.syncHubMapMount();
-		this.snapCardFrames();
 		if (!this.root.closest('.rv-hub-swap-cover') && !hostIsHidden(this.root) && this.plugin.takeHubSearch?.()) {
 			this.openGlanceSearch();
 		}
@@ -306,7 +322,55 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		super.renderBody();
 		if (this.totalRows() === 0 && this.glanceCards().length === 0) this.publishPinOrder([]);
-		this.sizeEmbedFrame();
+	}
+
+	/**
+	 * A list parked across the view swap is already the cards. Move it in and
+	 * reconcile on the next frame. Building that list again is the long task.
+	 */
+	protected override adoptHeldGlance(): void {
+		if (hostIsHidden(this.root)) {
+			this.deferUntilShown();
+			return;
+		}
+		const scroll = claimCardList(this.root.ownerDocument);
+		if (scroll) {
+			this.adoptClaimedScroll(scroll);
+			return;
+		}
+		super.adoptHeldGlance();
+		this.releaseHoldIfShown();
+	}
+
+	private adoptClaimedScroll(scroll: HTMLElement): void {
+		const held = heldGlanceGroups();
+		if (held) {
+			this.groups = held;
+			this.columns = heldGlanceColumns() ?? hubCacheColumns(this.plugin.settings.locationProperty);
+		}
+		this.useOpenScroll(scroll);
+		this.root.removeClass('is-glance-pending');
+		this.scheduleOpenReconcile();
+		this.releaseHoldIfShown();
+	}
+
+	/** Bases data, density, and the embed size follow the frame that already has cards. */
+	private scheduleOpenReconcile(): void {
+		const token = ++this.openReconcile;
+		const run = (): void => {
+			if (token !== this.openReconcile || !this.root?.isConnected) return;
+			this.renderBody();
+			this.sizeEmbedFrame();
+		};
+		const view = this.root.ownerDocument?.defaultView;
+		if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(run);
+		else run();
+	}
+
+	private releaseHoldIfShown(): void {
+		if (!this.root?.isConnected || hostIsHidden(this.root)) return;
+		if (!this.scrollEl?.querySelector('.rv-locator-card')) return;
+		this.plugin.releaseCardHold?.();
 	}
 
 	/** Cards are in the live scroller. Measuring and pin rings wait for the next frame. */
@@ -363,6 +427,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.applyColumnSnap();
 			this.snapCardFrames();
 			this.strokeHubRings();
+			this.sizeEmbedFrame();
 		};
 		const view = this.root.ownerDocument?.defaultView;
 		if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(run);

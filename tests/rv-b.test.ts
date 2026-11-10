@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
+import { parkVisibleCardList, releaseParkedCardList, seedCardList, watchCardHold } from '../src/card-hold';
 import { clearGlanceHold, rememberGlanceGroups } from '../src/glance-hold';
 import { NearbyGlancableView } from '../src/glancable-view';
 import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
@@ -318,6 +319,88 @@ describe('RV-B3 hub click blank', () => {
 		const missed = hubClickFrames({ existingLeaf: false, existingCards: 0, heldCards: 0, cacheCards: 0 });
 		assert.equal(missed[0]?.blankBodyVisible, true);
 		console.log(`RV-B9-FRAMES ${JSON.stringify(frames)}`);
+	});
+
+	it('never paints 0 cards between hub activation and settle', async () => {
+		clearGlanceHold();
+		const doc = window.document;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf mod-active';
+		const content = doc.createElement('div');
+		content.className = 'view-content';
+		leaf.append(content);
+		doc.body.append(leaf);
+		const rows = Array.from({ length: 7 }, (_, index) => ({
+			...sampleRow(),
+			path: `People/Lane ${index}.md`,
+			name: `Lane ${index}`,
+		}));
+		rememberGlanceGroups([{ label: null, rows }]);
+		let armed = true;
+		let stopWatch = (): void => {};
+		stopWatch = watchCardHold(doc, () => armed, () => {
+			armed = false;
+			stopWatch();
+			releaseParkedCardList();
+		});
+		const plugin = glancePlugin({ refresh: null });
+		const warmup = doc.createElement('div');
+		doc.body.append(warmup);
+		const cold = new NearbyGlancableView({} as QueryController, warmup, plugin);
+		cold.onunload();
+		warmup.remove();
+		clearGlanceHold();
+		rememberGlanceGroups([{ label: null, rows }]);
+		const rebuildStart = performance.now();
+		const first = new NearbyGlancableView({} as QueryController, content, plugin);
+		const rebuildMs = performance.now() - rebuildStart;
+		assert.equal(content.querySelectorAll('.rv-locator-card').length, 7);
+
+		const counts: number[] = [];
+		const sample = (): void => {
+			counts.push(content.querySelectorAll('.rv-locator-card').length);
+		};
+		const seedStart = performance.now();
+		parkVisibleCardList(doc);
+		content.replaceChildren();
+		seedCardList(content);
+		const seedMs = performance.now() - seedStart;
+		sample();
+
+		content.replaceChildren();
+		await new Promise<void>((resolve) => {
+			window.requestAnimationFrame(() => resolve());
+		});
+		sample();
+
+		const adoptStart = performance.now();
+		const next = new NearbyGlancableView({} as QueryController, content, plugin);
+		const adoptMs = performance.now() - adoptStart;
+		sample();
+		await new Promise<void>((resolve) => {
+			window.requestAnimationFrame(() => resolve());
+		});
+		sample();
+
+		assert.equal(counts.every((count) => count > 0), true, `card counts ${counts.join(',')}`);
+		assert.ok(adoptMs < 50, `open long task ${adoptMs.toFixed(2)}ms`);
+		console.log(`HUB-OPEN rebuild ${rebuildMs.toFixed(2)}ms seed ${seedMs.toFixed(2)}ms adopt ${adoptMs.toFixed(2)}ms counts ${counts.join(',')}`);
+
+		const main = source('src/main.ts');
+		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
+		assert.ok(hook.indexOf('holdCardsFor(file)') < hook.indexOf('openFile.call'));
+		assert.ok(hook.indexOf('openFile.call') < hook.indexOf('seedOpenLeaf(this)'));
+		const glance = source('src/glancable-view.ts');
+		const opened = glance.slice(glance.indexOf('onOpen(): void'), glance.indexOf('override onunload'));
+		assert.match(opened, /adoptHeldGlance\(\)/);
+		assert.doesNotMatch(opened, /\bawait\b/);
+		assert.match(glance, /parkCardList\(this\.scrollEl\)/);
+
+		first.onunload();
+		next.onunload();
+		stopWatch();
+		leaf.remove();
+		clearGlanceHold();
 	});
 });
 

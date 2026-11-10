@@ -88,9 +88,14 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			else this.renderBody();
 		});
 		this.register(() => this.unsubSettings?.());
-		this.plugin.nudgeIncompleteSetup();
+		const deferOpenBookkeeping = (): void => {
+			if (!this.root?.isConnected) return;
+			this.plugin.nudgeIncompleteSetup();
+			if (this.mode === 'glancable') this.plugin.resetHubFilters();
+		};
+		if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(deferOpenBookkeeping);
+		else deferOpenBookkeeping();
 		if (this.mode === 'glancable') {
-			this.plugin.resetHubFilters();
 			const stopSort = this.plugin.registerHubSortOpener?.(() => {
 				const root = this.root;
 				if (!root?.isConnected || root.ownerDocument == null) return false;
@@ -449,6 +454,22 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
 		}
 		this.afterChrome();
+	}
+
+	/**
+	 * The open path already built chrome around an empty scroller. The parked
+	 * list takes that scroller's place so the first frame is the old cards.
+	 */
+	protected useOpenScroll(scroll: HTMLElement): void {
+		this.ensureChrome();
+		if (!this.scrollEl || this.scrollEl === scroll) {
+			this.scrollEl = scroll;
+			if (scroll.parentElement !== this.root) this.root.appendChild(scroll);
+			return;
+		}
+		if (typeof this.scrollEl.replaceWith === 'function') this.scrollEl.replaceWith(scroll);
+		else this.root.appendChild(scroll);
+		this.scrollEl = scroll;
 	}
 
 	/** Phone hub inserts the map stack once the scroll column exists. */
