@@ -320,7 +320,7 @@ export interface HubCoverPaint {
 
 function snapshotReady(host: HTMLElement): boolean {
 	return host.querySelector('.rv-locator-card') != null
-		&& host.querySelector('.rv-locator-toolbar-actions button, .rv-app-slot') != null;
+		&& host.querySelector('.rv-locator-toolbar-actions button, .rv-app-slot, .rv-bar-spacer') != null;
 }
 
 const COVER_CRUMB = '.view-header-title-parent, .view-header-breadcrumb, .view-header-breadcrumb-container';
@@ -515,18 +515,18 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 	}
 	if (!painted) cover.appendChild(noteClone);
 	cover.addEventListener('click', (event) => {
-		const target = event.target;
-		if (!(target instanceof Element)) return;
-		const card = target.closest('.rv-locator-card');
-		if (!(card instanceof HTMLElement) || !cover.contains(card)) return;
-		const link = card.querySelector('a.rv-locator-file-link');
-		const path = card.getAttribute('data-rv-path')
-			|| (link instanceof HTMLElement ? link.getAttribute('href') : '')
-			|| '';
-		if (!path) return;
 		event.preventDefault();
 		event.stopPropagation();
-		options?.openCard?.(path);
+		const target = event.target;
+		let card = target instanceof Element ? target.closest('.rv-locator-card') : null;
+		if (!(card instanceof HTMLElement) || !cover.contains(card)) {
+			const point = event as MouseEvent;
+			const hit = typeof doc.elementFromPoint === 'function' ? doc.elementFromPoint(point.clientX, point.clientY) : null;
+			card = hit instanceof Element ? hit.closest('.rv-locator-card') : null;
+		}
+		if (!(card instanceof HTMLElement) || !cover.contains(card)) return;
+		const path = card.getAttribute('data-rv-path') || '';
+		if (path) options?.openCard?.(path);
 	}, true);
 	observer.observe(doc.body, { childList: true, subtree: true });
 	const tick = (): void => {

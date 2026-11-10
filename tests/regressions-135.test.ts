@@ -689,7 +689,8 @@ describe('hub pin scroll and narrow stack', () => {
 		assert.match(glance, /hubUsesStackedMap\(/);
 		assert.doesNotMatch(glance, /splitMapWidth/);
 		assert.doesNotMatch(glance, /splitMapLeafAction/);
-		assert.match(glance, /stage\.appendChild\(map\)/);
+		assert.match(glance, /ensureMapSpacer\(stage\)/);
+		assert.doesNotMatch(glance, /stage\.appendChild\(map\)/);
 		assert.doesNotMatch(glance, /insertBefore\(map, this\.scrollEl\)/);
 		assert.match(glance, /hubMapIsFullscreen\(\)/);
 		assert.match(main, /hubMapOpen = !this\.hubMapOpen/);

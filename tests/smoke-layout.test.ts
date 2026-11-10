@@ -371,6 +371,48 @@ describe('smoke layout', () => {
 		assert.equal(paragraph?.querySelectorAll('a.rv-map-button').length, 0);
 	});
 
+	it('gives the address copy button the same squircle as the hub plus above it', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		const style = window.document.createElement('style');
+		style.textContent = css;
+		window.document.head.appendChild(style);
+		const root = window.document.createElement('div');
+		root.className = 'rv-dashboard';
+		root.innerHTML = `<div class="callout" data-callout="quote"><div class="callout-content"><p><strong>Hub:</strong> <strong>Address:</strong> 10 Oak Hammock Ln</p></div></div>`;
+		window.document.body.appendChild(root);
+		const data = {
+			cssclasses: ['rv-dashboard'],
+			Hub: ['[[Return Visits Hub]]'],
+			Address: '10 Oak Hammock Ln',
+			Status: 'Active',
+			Priority: 1,
+		};
+		decorateNoteChrome(root, 'RVs/Long Titles.md', chromeHost(data, { count: 0 }));
+		const plus = root.querySelector('.rv-hub-add');
+		const copy = root.querySelector('button.rv-copy-address');
+		assert.ok(plus instanceof window.HTMLElement);
+		assert.ok(copy instanceof window.HTMLElement);
+		assert.equal(plus.classList.contains('rv-note-slot'), true);
+		assert.equal(copy.classList.contains('rv-note-slot'), true);
+		const box = (node: HTMLElement): string[] => {
+			const computed = window.getComputedStyle(node);
+			return [computed.width, computed.height, computed.borderRadius, computed.backgroundColor, computed.borderTopWidth, computed.borderTopStyle, computed.borderTopColor, computed.borderRightWidth, computed.borderBottomWidth, computed.borderLeftWidth];
+		};
+		const paint = (theme: string): void => {
+			window.document.documentElement.className = theme;
+			assert.deepEqual(box(plus), box(copy), theme || 'default');
+		};
+		paint('');
+		paint('theme-light');
+		paint('theme-dark');
+		assert.match(css, /\.rv-dashboard p\.rv-hub-owned \.rv-note-slot \{[^}]*border-radius:\s*4px !important/);
+		assert.match(css, /\.rv-dashboard \.rv-note-slot \{[^}]*corner-shape:\s*squircle/);
+		assert.match(css, /\.rv-note-slot:hover,\s*\n\.rv-note-slot:focus,\s*\n\.rv-note-slot:focus-visible,\s*\n\.rv-note-slot:active \{/);
+		root.remove();
+		style.remove();
+		window.document.documentElement.className = '';
+	});
+
 	it('hoists note sections that render before the heading, including a list, and again after a scroll re-render', () => {
 		const preview = window.document.createElement('div');
 		preview.className = 'markdown-preview-view';

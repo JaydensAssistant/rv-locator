@@ -1243,7 +1243,7 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 		let add = line.querySelector(':scope > .rv-hub-add');
 		if (!(add instanceof HTMLElement)) {
 			const button = paragraph.ownerDocument.createElement('button');
-			button.className = 'rv-hub-add';
+			button.className = 'rv-hub-add rv-note-slot';
 			button.setAttribute('type', 'button');
 			button.setAttribute('aria-label', 'Add hub');
 			setIcon(button, 'plus');
@@ -1253,7 +1253,9 @@ function decorateHubRow(root: HTMLElement, path: string, data: Record<string, un
 				host.addHub(path);
 			});
 			line.appendChild(button);
+			add = button;
 		}
+		if (add instanceof HTMLElement) add.classList.add('rv-note-slot');
 		decorateAddress(paragraph, path, data, host);
 	}
 }
@@ -1410,7 +1412,7 @@ function ensureCopyButton(paragraph: HTMLElement, path: string): void {
 	if (!(button instanceof HTMLElement) || button.tagName !== 'BUTTON') {
 		const copy = paragraph.ownerDocument.createElement('button');
 		copy.type = 'button';
-		copy.className = 'rv-copy-address';
+		copy.className = 'rv-copy-address rv-note-slot';
 		copy.setAttribute('aria-label', 'Copy address');
 		setIcon(copy, 'copy');
 		copy.addEventListener('click', (event) => {
@@ -1427,6 +1429,7 @@ function ensureCopyButton(paragraph: HTMLElement, path: string): void {
 		button = copy;
 	}
 	if (!(button instanceof HTMLElement) || button.tagName !== 'BUTTON') return;
+	button.classList.add('rv-note-slot');
 	button.dataset.rvPath = path;
 }
 

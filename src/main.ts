@@ -13,7 +13,7 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { countyNameKey, decideGeocodePick, homeCountyHits, mergeHomeFirst, placeFilterParam, preferHomeRegion } from './home-base';
-import { HUB_STACK_BELOW_PX, applyNoteMapFrame, leafHoldsHub, mapPanePx, writeMapBand } from './hub-layout';
+import { HUB_STACK_BELOW_PX, applyNoteMapFrame, leafHoldsHub, mapPanePx } from './hub-layout';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
@@ -24,14 +24,16 @@ import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
-import { dismissOpenMenus, keepMenuOnScreen } from './app-bar';
+import { dismissOpenMenus, keepMenuOnScreen, type BarSurface } from './app-bar';
+import { barTabId, createBarShell, dispatchBarTab, paintBarEarth, paintBarLead, placeBarOver, visibleBarSpacer, type BarTabHost } from './bar-shell';
 import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, liftMapGrip, liveMapWithStage, lockHandedMapBand, mapAncestorHidden, markHandedMapHost, pinHeldMapBand, relayMap, retireEmptyMapPark, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
+import { shownHubStage } from './map-handoff';
+import { copyShellBand, createMapShell, destroyMapShell, ensureMapSpacer, holdShellSize, markShellSide, placeShellOver, removeMapSpacers, shellBandPx, showMapShell, sizeMapSpacer, visibleMapSpacer, writeShellBand } from './map-shell';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -562,10 +564,12 @@ export default class RVLocatorPlugin extends Plugin {
 			const show = Boolean(file && isRvDashboardNote(record) && !isRvHubNote(record));
 			if (!show || !file) {
 				clearNoteHubBar(content);
+				if (host !== content) clearNoteHubBar(host);
 				continue;
 			}
 			content.classList.add('is-rv-note');
-			mountNoteHubBar(content, file.path, {
+			host.classList.add('is-rv-note');
+			mountNoteHubBar(host, file.path, {
 				noteMapLit: (path) => earthIsOn('note', this.earthFlags(), path),
 				toggleMap: (path) => { void this.openMapSoon(path); },
 				createNewRv: () => { void this.createNewRv(); },
@@ -574,6 +578,7 @@ export default class RVLocatorPlugin extends Plugin {
 				openHub: (path) => { this.openNoteHub(path); },
 			});
 		}
+		this.syncAppBarFromActive();
 	}
 
 	/** Search stays in the note. It does not open the hub. */
@@ -1080,6 +1085,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const setViewState = proto.setViewState;
 		const plugin = this;
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
+			if (!plugin.unloaded) plugin.beginBarNav(file);
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
 				if (plugin.hubLinkOpen) plugin.hubLinkOpen = false;
 				else plugin.noteDirectHubOpen();
@@ -1090,7 +1096,13 @@ export default class RVLocatorPlugin extends Plugin {
 			} else if (!plugin.unloaded) {
 				plugin.carryMapToOpenedFile(file);
 			}
-			return openFile.call(this, file, plugin.previewStateFor(file, openState));
+			const result = openFile.call(this, file, plugin.previewStateFor(file, openState));
+			if (result instanceof Promise) {
+				return result.finally(() => {
+					if (plugin.holdBarFor === file.path) plugin.holdBarFor = null;
+				});
+			}
+			return result;
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
 			const result = setViewState.call(this, plugin.previewViewState(this, viewState), eState);
@@ -1471,6 +1483,8 @@ export default class RVLocatorPlugin extends Plugin {
 		this.stopVisitFocus = null;
 		this.noteMapResize?.disconnect();
 		this.noteMapResize = null;
+		this.releaseMapShell();
+		this.releaseAppBar();
 		this.applyLayoutClasses();
 		this.bulkAborted = true;
 	}
@@ -2049,27 +2063,21 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	/**
-	 * Move the live map onto the workspace leaf before its view is destroyed.
-	 * The leaf stays in the document. The stage is not parked on the body.
+	 * The map already lives in the shell. Opening the next view does not move it.
 	 */
 	parkOpenMap(): boolean {
-		const el = visibleMapNode(document) ?? liveMapWithStage(document);
-		if (!(el instanceof HTMLElement)) return this.parkedHandle != null;
-		const leaf = el.closest('.workspace-leaf');
-		relayMap(el, leaf instanceof HTMLElement ? leaf : null, el.classList.contains('rv-note-map') ? 'rv-note-map' : 'rv-hub-map');
-		this.parkedHandle = this.noteMapHandle ?? this.lastMapHandle;
-		if (this.noteMapHandle) this.noteMapHandle = null;
-		return el.isConnected && el.querySelector('.rv-map-stage') != null;
+		if (!this.hubMapOpen && !this.noteMapOpen && !this.mapShell) return false;
+		const shell = this.ensureMapShell();
+		this.parkedHandle = shell.handle;
+		this.followMapShell();
+		return shell.root.isConnected && shell.map.querySelector('.rv-map-stage') != null;
 	}
 
-	/** The earth turned the map off. A parked node must not stay on screen. */
+	/** The earth turned the map off. The shell goes with it. */
 	private dropParkedMap(): void {
-		const handle = this.parkedHandle;
 		this.parkedHandle = null;
-		if (handle && this.lastMapHandle === handle) this.lastMapHandle = null;
-		handle?.destroy();
-		const holders = document.querySelectorAll('.rv-map-park');
-		for (let index = 0; index < holders.length; index += 1) holders[index]?.remove();
+		if (this.hubMapOpen || this.noteMapOpen) return;
+		this.releaseMapShell();
 	}
 
 	/** The hub view is still here. Let it claim the map it still owns. */
@@ -2083,36 +2091,13 @@ export default class RVLocatorPlugin extends Plugin {
 		return this.returnParkedMap;
 	}
 
-	/** Cover drop. The same map moves into the live hub. A hidden stage keeps it on the leaf. */
+	/** Cover drop. The shell stays. The live hub only points at it. */
 	private handHubMapToLive(): void {
 		if (this.coverOpeningNote) return;
-		const map = liveMapWithStage(document);
-		if (!(map instanceof HTMLElement)) return;
-		const stage = shownHubStage(document);
-		const api = this.parkedHandle ?? this.lastMapHandle;
-		const host = stage instanceof HTMLElement && !mapAncestorHidden(stage) ? stage : map.closest('.workspace-leaf');
-		relayMap(map, host instanceof HTMLElement ? host : null, 'rv-hub-map');
-		if (!(stage instanceof HTMLElement) || map.parentElement !== stage) {
-			this.parkedHandle = api;
-			return;
-		}
-		ensureHubMapHandle(stage);
-		markHandedMapHost(stage);
-		const hub = stage.closest('.rv-locator-view');
-		if (hub instanceof HTMLElement) {
-			const leaf = hub.closest('.workspace-leaf-content') ?? hub.closest('.workspace-leaf') ?? hub;
-			writeMapBand(hub, mapPanePx(leaf instanceof HTMLElement ? leaf : hub, hub.classList.contains('is-side-map')), this.settings.mapSplitRatio, '--rv-map-size');
-			pinHeldMapBand(hub, map);
-		}
-		const spacers = document.querySelectorAll('.rv-map-spacer');
-		for (let index = 0; index < spacers.length; index += 1) spacers[index]?.remove();
-		const holders = document.querySelectorAll('.rv-map-park');
-		for (let index = 0; index < holders.length; index += 1) {
-			const holder = holders[index];
-			if (holder && !holder.querySelector('.rv-hub-map, .rv-note-map')) holder.remove();
-		}
-		this.parkedHandle = null;
-		this.liveHubAdopter?.(map, api);
+		if (!this.hubMapOpen && !this.noteMapOpen) return;
+		const shell = this.ensureMapShell();
+		this.followMapShell();
+		shell.handle.invalidateSize();
 	}
 
 	/**
@@ -2123,7 +2108,7 @@ export default class RVLocatorPlugin extends Plugin {
 		if (this.unloaded) return;
 		const file = this.leafFile(leaf);
 		if (!(file instanceof TFile) || !this.coversHubOpen(file)) return;
-		const parked = document.querySelector('.rv-map-park .rv-hub-map, .rv-map-park .rv-note-map, .rv-map-park .rv-map-stage');
+		const parked = this.mapShell?.map.querySelector('.rv-map-stage');
 		if (!this.hubMapOpen && !this.noteMapOpen && !(parked instanceof Element)) return;
 		if (this.noteMapOpen) {
 			this.parkOpenMap();
@@ -2142,17 +2127,20 @@ export default class RVLocatorPlugin extends Plugin {
 		return file instanceof TFile ? file : null;
 	}
 
-	/** Put a parked map in the hub stage once that stage exists. The park stays up until then. */
+	/** Point the shell at the hub spacer once that spacer has a box. */
 	private settleParkedHubMap(attempt: number): void {
 		if (this.unloaded || !this.hubMapOpen) return;
-		const map = liveMapWithStage(document);
-		if (!(map instanceof HTMLElement)) return;
+		const shell = this.mapShell;
+		if (!shell?.map.querySelector('.rv-map-stage')) return;
 		const stage = shownHubStage(document);
-		if (!(stage instanceof HTMLElement) || mapAncestorHidden(stage)) {
+		const spacer = stage instanceof HTMLElement ? stage.querySelector(':scope > .rv-map-spacer') : null;
+		const box = spacer instanceof HTMLElement ? spacer.getBoundingClientRect() : null;
+		if (!box || box.height < 2) {
 			if (attempt < 30) requestAnimationFrame(() => this.settleParkedHubMap(attempt + 1));
 			return;
 		}
-		if (map.parentElement !== stage) this.handHubMapToLive();
+		this.followMapShell();
+		shell.handle.invalidateSize();
 	}
 
 	/** Quick Switcher and every other direct hub open. Not a hub link, and not history back. */
@@ -2609,15 +2597,15 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		this.noteMapOpen = true;
+		this.hubMapOpen = false;
 		this.syncNoteMap();
-		const placed = document.querySelector('.rv-note-map');
-		const stillParked = placed instanceof HTMLElement && placed.closest('.rv-map-park') != null;
-		if ((!placed || stillParked) && attempt < 90) {
-			this.noteMapOpen = false;
+		const host = this.shownNoteLeaf(path);
+		const spacer = host?.querySelector(':scope > .rv-map-spacer');
+		const ready = spacer instanceof HTMLElement && spacer.getBoundingClientRect().height >= 2;
+		if (!ready && attempt < 90) {
 			window.requestAnimationFrame(() => this.settleNoteMap(path, attempt + 1));
 			return;
 		}
-		this.hubMapOpen = false;
 		this.coverOpeningNote = false;
 		this.paintEarthStates();
 		for (const callback of this.viewRefreshers) callback();
@@ -2714,82 +2702,43 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.mapSplitWatchers.delete(watch); };
 	}
 
-	/** The grip is a grid track beside the map, so both move as one size. */
-	private bindNoteMapHandle(content: HTMLElement, handle: HTMLElement): void {
-		if (handle.dataset.rvBound === '1') return;
-		handle.dataset.rvBound = '1';
-		const paint = (): void => {
-			this.paintNoteMapBand(content);
-		};
-		paint();
-		handle.addEventListener('pointerdown', (event) => {
-			if (event.button !== 0) return;
-			event.preventDefault();
-			const startX = event.clientX;
-			const startY = event.clientY;
-			const start = clampMapSplit(this.settings.mapSplitRatio, 'note');
-			const box = content.getBoundingClientRect();
-			const side = content.classList.contains('is-note-map-side');
-			const span = Math.max(1, side ? box.width : box.height);
-			const move = (ev: PointerEvent): void => {
-				const delta = side ? (startX - ev.clientX) / span : (startY - ev.clientY) / span;
-				this.rememberMapSplit(start + delta, 'note');
-				paint();
-			};
-			const stop = (): void => {
-				handle.ownerDocument.removeEventListener('pointermove', move);
-				handle.ownerDocument.removeEventListener('pointerup', stop);
-				this.commitMapSplit();
-			};
-			handle.ownerDocument.addEventListener('pointermove', move);
-			handle.ownerDocument.addEventListener('pointerup', stop);
-		});
-	}
-
-	/**
-	 * Map beside the open note, in that note's leaf. The leaf's own width
-	 * chooses side-by-side (~60/40) or stacked (note above, map below).
-	 * Switching to another note closes the panel.
-	 */
-	/** Same pixel band the hub writes, from the leaf under its header. */
+	/** Copy the shell's one pixel onto the note grid. Do not measure the map. */
 	private paintNoteMapBand(content: HTMLElement): void {
 		const side = content.classList.contains('is-note-map-side');
-		writeMapBand(content, mapPanePx(content, side), clampMapSplit(this.settings.mapSplitRatio, 'note'), '--rv-note-map');
+		if (!this.mapShell) this.ensureMapShell();
+		const band = this.sharedMapBand(mapPanePx(content, side));
+		copyShellBand(content, band);
+		const root = this.mapShellRoot();
+		if (root) markShellSide(root, side);
+		const spacer = content.querySelector(':scope > .rv-map-spacer');
+		if (spacer instanceof HTMLElement) sizeMapSpacer(spacer, band, side);
+		this.followMapShell();
 	}
 
 	private syncNoteMap(): void {
 		this.syncNoteHubBar();
 		const content = this.noteMapHost();
 		if (!this.noteMapOpen || !content || leafHoldsHub(content)) {
-			if (this.noteMapHandle && this.noteMapHandle !== this.parkedHandle) this.noteMapHandle.destroy();
 			this.noteMapHandle = null;
 			this.noteMapResize?.disconnect();
 			this.noteMapResize = null;
 			this.clearNoteMap(content);
+			if (!this.hubMapOpen && !this.noteMapOpen) this.releaseMapShell();
+			else this.followMapShell();
 			return;
 		}
 		content.classList.add('is-note-map');
 		this.watchNoteMapBox(content);
-		let map = content.querySelector(':scope > .rv-note-map');
-		const carried = liveMapWithStage(document);
-		if (carried instanceof HTMLElement && map !== carried) {
-			relayMap(carried, content, 'rv-note-map');
-			retireEmptyMapPark(content.ownerDocument);
-			map = carried;
-			const adopted = this.takeParkedHandle() ?? this.currentMapHandle();
-			if (adopted) this.noteMapHandle = adopted;
-		} else if (!(map instanceof HTMLElement) || !map.isConnected) {
-			this.noteMapHandle?.destroy();
-			this.noteMapHandle = null;
-			map = content.createDiv('rv-note-map');
-		}
-		if (!(map instanceof HTMLElement)) return;
-		const band = map.querySelector('.rv-map-stage');
-		const laid = band instanceof HTMLElement ? band.getBoundingClientRect().height : 0;
-		lockHandedMapBand(map, laid);
-		const grip = seatMapGrip(content, map);
-		this.bindNoteMapHandle(content, grip);
-		if (!this.noteMapHandle && !map.querySelector('.rv-map-stage')) this.noteMapHandle = this.mountHubMap(map, 'split');
+		const shell = this.ensureMapShell();
+		const side = content.classList.contains('is-note-map-side');
+		const band = this.sharedMapBand(mapPanePx(content, side));
+		const spacer = ensureMapSpacer(content);
+		sizeMapSpacer(spacer, band, side);
+		copyShellBand(content, band);
+		markShellSide(shell.root, side);
+		shell.map.classList.add('rv-note-map');
+		this.noteMapHandle = shell.handle;
+		this.followMapShell();
 		for (const delay of [0, 250]) {
 			window.setTimeout(() => {
 				if (this.unloaded || !this.noteMapOpen) return;
@@ -2943,20 +2892,9 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		for (const host of hosts) {
 			host.classList.remove('is-note-map', 'is-note-map-side');
-			const grip = host.querySelector(':scope > .rv-note-map-handle, :scope > .rv-map-grip');
-			const moving = this.hubMapOpen || this.noteMapOpen;
-			if (grip instanceof HTMLElement) {
-				if (moving) liftMapGrip(grip);
-				else if (!grip.classList.contains('is-pinned')) grip.remove();
-			}
-			const map = host.querySelector(':scope > .rv-note-map');
-			if (map instanceof HTMLElement && moving) {
-				const leaf = host.closest('.workspace-leaf');
-				relayMap(map, leaf instanceof HTMLElement ? leaf : null, 'rv-note-map');
-			} else {
-				map?.remove();
-			}
+			host.querySelectorAll(':scope > .rv-map-spacer, :scope > .rv-note-map, :scope > .rv-note-map-handle, :scope > .rv-map-grip').forEach((node) => node.remove());
 		}
+		this.mapShell?.map.classList.remove('rv-note-map');
 		this.syncNoteMapStatus(null);
 	}
 
@@ -3069,6 +3007,392 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.mapCanvases.delete(canvas); };
 	}
 
+	private mapShell: {
+		root: HTMLElement;
+		map: HTMLElement;
+		grip: HTMLElement;
+		handle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void };
+	} | null = null;
+	private shellRaf = 0;
+	private shellObserver: ResizeObserver | null = null;
+	private shellWatch: HTMLElement | null = null;
+	private lastShellBox = '';
+	private appBar: HTMLElement | null = null;
+	private barRaf = 0;
+	private barObserver: ResizeObserver | null = null;
+	private barWatch: HTMLElement | null = null;
+	private barSurfaceNow: BarSurface = 'hub';
+	private barNotePath = '';
+	/** Set while a file open has not landed, so a stale leaf cannot rewrite the label. */
+	private holdBarFor: string | null = null;
+	private barPainters = new Set<() => void>();
+
+	private shellContainer(): HTMLElement {
+		const workspace = this.app.workspace as { containerEl?: HTMLElement };
+		const el = workspace.containerEl;
+		if (el instanceof HTMLElement) return el;
+		return document.body;
+	}
+
+	/** One map, on the workspace, until the user turns it off. */
+	ensureMapShell(): {
+		root: HTMLElement;
+		map: HTMLElement;
+		grip: HTMLElement;
+		handle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void };
+	} {
+		if (this.mapShell?.root.isConnected) {
+			showMapShell(this.mapShell.root);
+			return this.mapShell;
+		}
+		const created = createMapShell(this.shellContainer());
+		const handle = created.map.querySelector('.rv-map-stage') && this.lastMapHandle
+			? this.lastMapHandle
+			: this.mountHubMap(created.map);
+		this.mapShell = { root: created.root, map: created.map, grip: created.grip, handle };
+		this.bindShellGrip(created.grip);
+		this.followMapShell();
+		return this.mapShell;
+	}
+
+	mapShellRoot(): HTMLElement | null {
+		return this.mapShell?.root ?? null;
+	}
+
+	/** The saved ratio, written once. Drag passes force. A pane of 0 does not change it. */
+	sharedMapBand(panePx: number, force = false): number {
+		const shell = this.mapShell?.root;
+		if (!shell) return 0;
+		return writeShellBand(shell, panePx, this.settings.mapSplitRatio, force);
+	}
+
+	/** Keep the shell on the spacer. A spacer without a box leaves the last rect. */
+	followMapShell(): void {
+		const shell = this.mapShell?.root;
+		if (!shell || this.unloaded) return;
+		showMapShell(shell);
+		this.placeShellNow();
+		if (this.shellRaf) return;
+		const view = shell.ownerDocument.defaultView;
+		if (!view?.requestAnimationFrame) return;
+		const tick = (): void => {
+			this.shellRaf = 0;
+			if (!this.mapShell || this.unloaded || (!this.hubMapOpen && !this.noteMapOpen)) return;
+			this.placeShellNow();
+			if (this.hubMapOpen || this.noteMapOpen) this.shellRaf = view.requestAnimationFrame(tick);
+		};
+		this.shellRaf = view.requestAnimationFrame(tick);
+	}
+
+	private placeShellNow(): void {
+		const shell = this.mapShell?.root;
+		if (!shell) return;
+		const band = shellBandPx(shell);
+		if (band >= 2) holdShellSize(shell, band, shell.classList.contains('is-side'));
+		const spacer = visibleMapSpacer(shell.ownerDocument);
+		const placed = placeShellOver(shell, spacer);
+		if (spacer) this.watchShellSpacer(spacer);
+		if (!placed) return;
+		const box = `${shell.style.left}|${shell.style.top}|${shell.style.width}|${shell.style.height}`;
+		if (box === this.lastShellBox) return;
+		this.lastShellBox = box;
+		this.mapShell?.handle.invalidateSize();
+	}
+
+	private watchShellSpacer(spacer: HTMLElement): void {
+		if (typeof ResizeObserver === 'undefined' || this.shellWatch === spacer) return;
+		if (!this.shellObserver) {
+			this.shellObserver = new ResizeObserver(() => { this.placeShellNow(); });
+		}
+		this.shellObserver.disconnect();
+		this.shellWatch = spacer;
+		this.shellObserver.observe(spacer);
+	}
+
+	/** The file we are opening paints its label before the old view is detached. */
+	beginBarNav(file: TFile): void {
+		this.holdBarFor = file.path;
+		this.syncAppBarForFile(file);
+	}
+
+	barIsHeld(): boolean {
+		return this.holdBarFor != null;
+	}
+
+	barSurface(): BarSurface {
+		return this.barSurfaceNow;
+	}
+
+	/** Hub, base, or note. A `.base` file is a base even when the map treats it as a hub swap. */
+	private surfaceForFile(file: TFile): BarSurface | null {
+		if ((file.extension ?? '').toLowerCase() === 'base') return 'base';
+		const data = this.noteFrontmatter(file.path);
+		if (isRvHubNote(data)) return 'hub';
+		if (isRvDashboardNote(data)) return 'note';
+		return null;
+	}
+
+	syncAppBarForFile(file: TFile): void {
+		const surface = this.surfaceForFile(file);
+		if (!surface) {
+			this.hideAppBar();
+			return;
+		}
+		this.syncAppBar(surface, surface === 'note' ? file.path : '');
+	}
+
+	/** Follow the active file. A null file, or a file we have not landed on, leaves the label alone. */
+	syncAppBarFromActive(): void {
+		const file = this.app.workspace.getActiveFile();
+		if (!(file instanceof TFile)) {
+			this.followAppBar();
+			return;
+		}
+		if (this.holdBarFor && file.path !== this.holdBarFor) {
+			this.followAppBar();
+			return;
+		}
+		if (this.holdBarFor === file.path) this.holdBarFor = null;
+		this.syncAppBarForFile(file);
+	}
+
+	/** One bar. Later calls update the first tab and the map light, and keep the same node. */
+	syncAppBar(surface: BarSurface, notePath: string): void {
+		const bar = this.ensureAppBar();
+		const changed = this.barSurfaceNow !== surface;
+		this.barSurfaceNow = surface;
+		this.barNotePath = notePath;
+		paintBarLead(bar, surface);
+		const on = surface === 'note'
+			? earthIsOn('note', this.earthFlags(), notePath)
+			: earthIsOn('hub', this.earthFlags());
+		paintBarEarth(bar, surface, on, notePath);
+		if (changed && surface !== 'hub') this.closeBarSort();
+		if (changed) this.closeBarSearch();
+		this.followAppBar();
+	}
+
+	private ensureAppBar(): HTMLElement {
+		if (this.appBar?.isConnected) {
+			this.appBar.classList.remove('is-away');
+			return this.appBar;
+		}
+		const bar = createBarShell(this.shellContainer());
+		bar.classList.remove('is-away');
+		this.appBar = bar;
+		this.bindAppBar(bar);
+		return bar;
+	}
+
+	private hideAppBar(): void {
+		const bar = this.appBar;
+		if (!bar) return;
+		bar.classList.add('is-away');
+		if (this.barRaf) {
+			bar.ownerDocument.defaultView?.cancelAnimationFrame(this.barRaf);
+			this.barRaf = 0;
+		}
+	}
+
+	registerBarPainter(paint: () => void): () => void {
+		this.barPainters.add(paint);
+		return () => { this.barPainters.delete(paint); };
+	}
+
+	private openBarSort(): void {
+		if (this.barSurfaceNow !== 'hub') return;
+		for (const paint of this.barPainters) paint();
+	}
+
+	/** The sort row lives in the shell. The five tabs stay underneath it. */
+	sortBarHost(): HTMLElement {
+		const bar = this.ensureAppBar();
+		const found = bar.querySelector(':scope > .rv-bar-sort');
+		if (found instanceof HTMLElement) {
+			bar.classList.add('is-sort-open');
+			return found;
+		}
+		const sort = bar.ownerDocument.createElement('div');
+		sort.className = 'rv-bar-sort rv-app-bar is-scroll';
+		bar.appendChild(sort);
+		bar.classList.add('is-sort-open');
+		return sort;
+	}
+
+	closeBarSort(): void {
+		const bar = this.appBar;
+		if (!bar) return;
+		bar.classList.remove('is-sort-open');
+		bar.querySelector(':scope > .rv-bar-sort')?.remove();
+	}
+
+	showBarSearch(slot: HTMLElement): void {
+		const bar = this.ensureAppBar();
+		this.closeBarSort();
+		bar.classList.add('is-search-open');
+		if (slot.parentElement !== bar) bar.appendChild(slot);
+	}
+
+	closeBarSearch(): void {
+		const bar = this.appBar;
+		if (!bar) return;
+		bar.classList.remove('is-search-open');
+		bar.querySelector(':scope > .rv-locator-search-slot')?.remove();
+	}
+
+	followAppBar(): void {
+		const bar = this.appBar;
+		if (!bar || this.unloaded || bar.classList.contains('is-away')) return;
+		this.placeBarNow();
+		if (this.barRaf) return;
+		const view = bar.ownerDocument.defaultView;
+		if (!view?.requestAnimationFrame) return;
+		const tick = (): void => {
+			this.barRaf = 0;
+			if (!this.appBar || this.unloaded || this.appBar.classList.contains('is-away')) return;
+			this.placeBarNow();
+			this.barRaf = view.requestAnimationFrame(tick);
+		};
+		this.barRaf = view.requestAnimationFrame(tick);
+	}
+
+	private placeBarNow(): void {
+		const bar = this.appBar;
+		if (!bar || bar.classList.contains('is-away')) return;
+		const spacer = visibleBarSpacer(bar.ownerDocument);
+		placeBarOver(bar, spacer);
+		if (spacer) this.watchBarSpacer(spacer);
+	}
+
+	private watchBarSpacer(spacer: HTMLElement): void {
+		if (typeof ResizeObserver === 'undefined' || this.barWatch === spacer) return;
+		if (!this.barObserver) this.barObserver = new ResizeObserver(() => { this.placeBarNow(); });
+		this.barObserver.disconnect();
+		this.barWatch = spacer;
+		this.barObserver.observe(spacer);
+	}
+
+	private bindAppBar(bar: HTMLElement): void {
+		if (bar.dataset.rvBound === '1') return;
+		bar.dataset.rvBound = '1';
+		bar.addEventListener('click', (event) => {
+			const target = event.target;
+			if (!(target instanceof Element) || target.closest('.rv-bar-sort, .rv-locator-search-slot')) return;
+			const slot = target.closest('.rv-app-slot');
+			if (!(slot instanceof HTMLElement) || !bar.contains(slot)) return;
+			const id = barTabId(slot);
+			if (!id) return;
+			event.preventDefault();
+			this.onAppTab(id);
+		});
+	}
+
+	private onAppTab(id: string): void {
+		const surface = this.barSurfaceNow;
+		const path = this.barNotePath;
+		const host: BarTabHost = {
+			openHub: (note) => { this.openNoteHub(note || path); },
+			openSearch: (note) => { this.openNoteFindFor(note || path); },
+			openHubSearch: () => { this.askHubSearch(); },
+			openCampaign: () => { this.openCampaignModal(); },
+			toggleMap: (note) => { void this.openMapSoon(surface === 'note' ? (note || path) : undefined); },
+			createNew: () => { void this.createNewRv(); },
+			openSort: () => { this.openBarSort(); },
+		};
+		dispatchBarTab(id, surface, path, host);
+	}
+
+	/** Plugin unload. A hub, base, or note move does not call this. */
+	private releaseAppBar(): void {
+		const bar = this.appBar;
+		if (this.barRaf) {
+			bar?.ownerDocument.defaultView?.cancelAnimationFrame(this.barRaf);
+			this.barRaf = 0;
+		}
+		this.barObserver?.disconnect();
+		this.barObserver = null;
+		this.barWatch = null;
+		this.holdBarFor = null;
+		this.barPainters.clear();
+		bar?.remove();
+		this.appBar = null;
+		document.querySelectorAll('.rv-bar-spacer').forEach((node) => node.remove());
+	}
+
+	/** Map off. The shell and every spacer go away. */
+	releaseMapShell(): void {
+		const shell = this.mapShell;
+		if (this.shellRaf) {
+			shell?.root.ownerDocument.defaultView?.cancelAnimationFrame(this.shellRaf);
+			this.shellRaf = 0;
+		}
+		this.shellObserver?.disconnect();
+		this.shellObserver = null;
+		this.shellWatch = null;
+		this.lastShellBox = '';
+		const handle = shell?.handle ?? null;
+		this.mapShell = null;
+		this.noteMapHandle = null;
+		this.parkedHandle = null;
+		if (handle && this.lastMapHandle === handle) this.lastMapHandle = null;
+		handle?.destroy();
+		destroyMapShell(shell?.root ?? null);
+		removeMapSpacers(document);
+	}
+
+	private bindShellGrip(grip: HTMLElement): void {
+		if (grip.dataset.rvBound === '1') return;
+		grip.dataset.rvBound = '1';
+		grip.addEventListener('pointerdown', (event) => {
+			if (event.button !== 0) return;
+			event.preventDefault();
+			const startX = event.clientX;
+			const startY = event.clientY;
+			const side = this.mapShell?.root.classList.contains('is-side') === true;
+			const surface = this.noteMapOpen && !this.hubMapOpen ? 'note' : 'hub';
+			const start = clampMapSplit(this.settings.mapSplitRatio, surface);
+			const spacer = visibleMapSpacer(grip.ownerDocument);
+			const pane = spacer?.parentElement ?? spacer;
+			const box = pane instanceof HTMLElement ? pane.getBoundingClientRect() : { width: 1, height: 1 };
+			const span = Math.max(1, side ? box.width : box.height);
+			const move = (ev: PointerEvent): void => {
+				const delta = side ? (startX - ev.clientX) / span : (startY - ev.clientY) / span;
+				if (surface === 'note') this.rememberMapSplit(start + delta, 'note');
+				else this.rememberMapSplit(start + delta, 'hub');
+				this.sharedMapBand(span, true);
+				this.syncShellSlots();
+			};
+			const stop = (): void => {
+				grip.ownerDocument.removeEventListener('pointermove', move);
+				grip.ownerDocument.removeEventListener('pointerup', stop);
+				if (surface === 'hub' && this.settings.mapSplitRatio < 0.08) {
+					this.rememberMapSplit(0.42, 'hub');
+					this.commitMapSplit();
+					this.hideSplitMap();
+					return;
+				}
+				this.commitMapSplit();
+			};
+			grip.ownerDocument.addEventListener('pointermove', move);
+			grip.ownerDocument.addEventListener('pointerup', stop);
+		});
+	}
+
+	private syncShellSlots(): void {
+		const shell = this.mapShell;
+		if (!shell) return;
+		const band = shellBandPx(shell.root);
+		const side = shell.root.classList.contains('is-side');
+		const nodes = document.querySelectorAll('.rv-map-spacer, .is-note-map, .is-hub-map');
+		for (let index = 0; index < nodes.length; index += 1) {
+			const node = nodes[index];
+			if (!(node instanceof HTMLElement)) continue;
+			if (node.classList.contains('rv-map-spacer')) sizeMapSpacer(node, band, side);
+			else copyShellBand(node, band);
+		}
+		this.followMapShell();
+	}
+
 	mountHubMap(parent: HTMLElement, scope: 'hub' | 'split' = 'hub'): { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } {
 		const handle = mountEmbeddedMap(parent, this, scope);
 		const wrapped = {
@@ -3086,8 +3410,8 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { if (this.liveHubAdopter === adopt) this.liveHubAdopter = null; };
 	}
 
-	claimParkedMap(className: 'rv-hub-map' | 'rv-note-map'): HTMLElement | null {
-		return takeParkedMapNode(document, className);
+	claimParkedMap(_className: 'rv-hub-map' | 'rv-note-map'): HTMLElement | null {
+		return this.mapShell?.map ?? null;
 	}
 
 	takeParkedHandle(): { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null {

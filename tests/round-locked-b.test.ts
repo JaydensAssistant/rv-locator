@@ -4,13 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { APP_TABS, appBarSlotPx, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from '../src/app-bar';
+import { APP_TABS, appBarSlotPx, dismissOpenMenus, keepMenuOnScreen, leadTab } from '../src/app-bar';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
 import { applyNoteMapFrame, hubUsesStackedMap, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
 import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
 import { buildAutocompleteUrl, buildCountySuggestUrl, countyGeocodeText, countyPlaceCacheKey, readCountyPlaceId } from '../src/address';
 import { placeFilterParam } from '../src/home-base';
-import { claimParkedMap, holdMapHeight, lockHandedMapBand, mapFrameOk, parkMapNode, pinHeldMapBand, relayMap, seatMapGrip } from '../src/map-handoff';
+import { holdMapHeight, pinHeldMapBand, seatMapGrip } from '../src/map-handoff';
+import { createMapShell, ensureMapSpacer, placeShellOver, shellBandPx, sizeMapSpacer, writeShellBand } from '../src/map-shell';
+import { BAR_MIN_PX, createBarShell, dispatchBarTab, ensureBarSpacer, paintBarEarth, paintBarLead, placeBarOver, type BarTabHost } from '../src/bar-shell';
 import { alignHubCover, holdLeafForHubPaint, releaseHubSwapCover } from '../src/hub-cover';
 import { applyVisitChangeFrontmatter, editVisit, listVisits, removeVisit, visitFacts, visitWhenFrom } from '../src/visit-editor';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from '../src/visit-log';
@@ -213,7 +215,9 @@ describe('RV-B62 the note map stays on the note, at the hub\'s pixel height', ()
 		assert.match(main, /this\.noteMapHost\(\) !== content/);
 		assert.match(main, /paintNoteMapBand\(content\)/);
 		assert.match(glanceSrc, /querySelector\('\.rv-hub-swap-cover'\)/);
-		assert.match(glanceSrc, /writeMapBand\(this\.root/);
+		assert.match(glanceSrc, /copyShellBand\(this\.root/);
+		assert.match(source('src/map-shell.ts'), /setProperty\('--rv-map-size', value\)/);
+		assert.match(source('src/map-shell.ts'), /setProperty\('--rv-note-map', value\)/);
 		assert.doesNotMatch(map, /applyNoteMapFrame/);
 	});
 });
@@ -291,15 +295,26 @@ describe('RV-B66 the note shows the hub bar', () => {
 		const dom = new JSDOM('<!doctype html><body></body>');
 		globalThis.HTMLElement = dom.window.HTMLElement;
 		globalThis.Element = dom.window.Element;
-		const leaf = dom.window.document.createElement('div');
+		const doc = dom.window.document;
+		const leaf = doc.createElement('div');
 		const calls: string[] = [];
-		const bar = mountNoteHubBar(leaf, 'People/Ada.md', {
-			noteMapLit: () => true,
-			toggleMap: (path) => calls.push(`map:${path}`),
-			createNewRv: () => calls.push('new'),
-			openCampaign: () => calls.push('flag'),
-			openSearch: (path) => calls.push(`search:${path}`),
+		const host: BarTabHost = {
 			openHub: (path) => calls.push(`hub:${path}`),
+			openSearch: (path) => calls.push(`search:${path}`),
+			openHubSearch: () => calls.push('hub-search'),
+			openCampaign: () => calls.push('flag'),
+			toggleMap: (path) => calls.push(`map:${path}`),
+			createNew: () => calls.push('new'),
+			openSort: () => calls.push('sort'),
+		};
+		const bar = createBarShell(doc.body);
+		paintBarLead(bar, 'note');
+		paintBarEarth(bar, 'note', true, 'People/Ada.md');
+		bar.addEventListener('click', (event) => {
+			const slot = event.target instanceof doc.defaultView!.Element ? event.target.closest('.rv-app-slot') : null;
+			if (!(slot instanceof doc.defaultView!.HTMLElement)) return;
+			const id = [...slot.classList].find((name) => name.startsWith('rv-bar-tab-'))?.slice('rv-bar-tab-'.length) ?? '';
+			dispatchBarTab(id, 'note', 'People/Ada.md', host);
 		});
 		const labels = [...bar.querySelectorAll('.rv-app-slot')].map((button) => button.getAttribute('aria-label'));
 		assert.deepEqual(labels, ['Hub', 'Search', 'Campaign', 'Map', 'New']);
@@ -310,6 +325,16 @@ describe('RV-B66 the note shows the hub bar', () => {
 		(bar.querySelector('[aria-label="New"]') as HTMLButtonElement).click();
 		assert.deepEqual(calls, ['hub:People/Ada.md', 'search:People/Ada.md', 'map:People/Ada.md', 'flag', 'new']);
 		assert.equal(bar.querySelector('.rv-note-bar-earth')?.classList.contains('is-on'), true);
+		const spacer = mountNoteHubBar(leaf, 'People/Ada.md', {
+			noteMapLit: () => true,
+			toggleMap: () => {},
+			createNewRv: () => {},
+			openCampaign: () => {},
+			openSearch: () => {},
+			openHub: () => {},
+		});
+		assert.equal(spacer.classList.contains('rv-bar-spacer'), true);
+		assert.equal(spacer.querySelector('.rv-app-slot'), null);
 		const css = source('styles.css');
 		assert.match(css, /var\(--rv-note-map, minmax\(120px, 42%\)\)/);
 		assert.match(css, /\.is-note-map > \.rv-note-hub-bar \{[^}]*grid-row:\s*5;/);
@@ -481,29 +506,21 @@ describe('the hub, bases, and note bars share one geometry', () => {
 		const dom = new JSDOM('<!doctype html><body></body>');
 		globalThis.HTMLElement = dom.window.HTMLElement;
 		globalThis.Element = dom.window.Element;
-		const leaf = dom.window.document.createElement('div');
-		const note = mountNoteHubBar(leaf, 'People/Ada.md', {
-			noteMapLit: () => false,
-			toggleMap: () => {},
-			createNewRv: () => {},
-			openCampaign: () => {},
-			openSearch: () => {},
-			openHub: () => {},
-		});
-		const hub = dom.window.document.createElement('div');
-		hub.className = 'rv-locator-sortbar rv-app-bar';
-		for (const tab of APP_TABS) appendAppSlot(hub, tab.label, tab.icon, { extra: tab.id === 'map' ? 'rv-hub-earth' : '' });
-		const noteSlots = Array.from(note.querySelectorAll('.rv-app-slot'));
-		const hubSlots = Array.from(hub.querySelectorAll('.rv-app-slot'));
-		assert.equal(noteSlots.length, hubSlots.length);
-		noteSlots.forEach((slot, index) => {
-			const other = hubSlots[index];
-			assert.ok(other instanceof dom.window.HTMLElement);
-			assert.equal(slot.querySelector('.rv-app-label')?.textContent, other.querySelector('.rv-app-label')?.textContent);
-			assert.equal(slot.getAttribute('aria-label'), other.getAttribute('aria-label'));
-			assert.equal(slot.classList.contains('rv-app-slot'), true);
-		});
-		assert.match(source('src/nearby-view.ts'), /for \(const tab of APP_TABS\)/);
+		const bar = createBarShell(dom.window.document.body);
+		paintBarLead(bar, 'note');
+		const noteLabels = [...bar.querySelectorAll('.rv-app-label')].map((node) => node.textContent);
+		assert.deepEqual(noteLabels, ['Hub', 'Search', 'Campaign', 'Map', 'New']);
+		paintBarLead(bar, 'base');
+		assert.equal(bar.querySelector('.rv-bar-tab-hub')?.getAttribute('aria-label'), 'Hub');
+		paintBarLead(bar, 'hub');
+		assert.equal(leadTab('hub').label, 'Sort');
+		assert.equal(leadTab('hub').icon, 'arrow-up-down');
+		assert.equal(bar.querySelector('.rv-bar-tab-hub .rv-app-label')?.textContent, 'Sort');
+		assert.equal(bar.querySelector('.rv-bar-tab-hub')?.getAttribute('aria-label'), 'Sort');
+		const rest = [...bar.querySelectorAll('.rv-app-slot')].slice(1).map((slot) => slot.getAttribute('aria-label'));
+		assert.deepEqual(rest, ['Search', 'Campaign', 'Map', 'New']);
+		assert.equal(createBarShell(dom.window.document.body), bar);
+		assert.match(source('src/bar-shell.ts'), /for \(const tab of APP_TABS\)/);
 		assert.match(css, /html\.theme-light \.workspace-leaf-content\.is-rv-app > \.view-header :is\(/);
 		assert.match(css, /\.is-rv-app > \.view-header :is\([\s\S]*button/);
 		assert.equal(hubUsesStackedMap(false, 0, false, 390), true);
@@ -521,28 +538,28 @@ describe('the hub, bases, and note bars share one geometry', () => {
 });
 
 describe('phone smoke after 0db3626', () => {
-	it('keeps the map in the sized park and does not clear the pixel lock on a timer', () => {
+	it('keeps the one shell when a view is detached and does not measure a new height', () => {
 		const dom = new JSDOM('<!doctype html><body></body>');
 		globalThis.HTMLElement = dom.window.HTMLElement;
 		globalThis.Element = dom.window.Element;
 		const doc = dom.window.document;
-		const map = doc.createElement('div');
-		map.className = 'rv-hub-map';
+		const workspace = doc.createElement('div');
+		workspace.className = 'workspace';
+		doc.body.appendChild(workspace);
+		const shell = createMapShell(workspace);
 		const stage = doc.createElement('div');
 		stage.className = 'rv-map-stage';
-		stage.style.height = '320px';
-		map.appendChild(stage);
-		doc.body.appendChild(map);
-		const holder = parkMapNode(map);
-		const claimed = claimParkedMap(doc, 'rv-note-map');
-		assert.equal(claimed, map);
-		assert.equal(map.parentElement, holder);
-		assert.equal(holder.classList.contains('rv-map-park'), true);
+		shell.map.appendChild(stage);
+		writeShellBand(shell.root, 752, 0.42);
+		assert.equal(shellBandPx(shell.root), 316);
+		assert.equal(writeShellBand(shell.root, 797, 1), 316);
 		const glance = source('src/glancable-view.ts');
-		const laid = glance.slice(glance.indexOf('private releaseHandedBandWhenLaidOut'), glance.indexOf('private releaseHubGrip'));
-		assert.match(laid, /lockHandedMapBand\(map, height\)/);
-		assert.doesNotMatch(laid, /releaseHandedBandLock\(\)/);
-		assert.match(glance, /retireEmptyMapPark/);
+		const main = source('src/main.ts');
+		assert.match(glance, /ensureMapSpacer/);
+		assert.doesNotMatch(glance, /relayMap\(/);
+		assert.doesNotMatch(glance, /parkMapNode\(/);
+		assert.doesNotMatch(main, /lockHandedMapBand\(/);
+		assert.doesNotMatch(main, /relayMap\(/);
 	});
 
 	it('gives Visit options a real box and lets the menu stay on screen', () => {
@@ -597,22 +614,18 @@ describe('phone smoke after d0b76ff', () => {
 		globalThis.HTMLElement = dom.window.HTMLElement;
 		globalThis.Element = dom.window.Element;
 		const doc = dom.window.document;
-		const map = doc.createElement('div');
-		map.className = 'rv-note-map';
-		const stage = doc.createElement('div');
-		stage.className = 'rv-map-stage';
-		map.appendChild(stage);
-		doc.body.appendChild(map);
-		lockHandedMapBand(map, 0);
-		assert.equal(stage.style.getPropertyValue('height'), '120px');
-		assert.equal(stage.style.getPropertyValue('min-height'), '120px');
-		assert.equal(map.style.getPropertyValue('display'), 'flex');
+		const shell = createMapShell(doc.body);
+		writeShellBand(shell.root, 0, 0.42);
+		assert.equal(shellBandPx(shell.root), 0);
+		writeShellBand(shell.root, 752, 0.42);
+		assert.equal(shell.root.style.getPropertyValue('--rv-map-size'), '316px');
+		assert.equal(shell.root.style.getPropertyValue('--rv-note-map'), '316px');
+		writeShellBand(shell.root, 0, 0.42);
+		assert.equal(shellBandPx(shell.root), 316);
 		const css = source('styles.css');
 		assert.match(css, /\.rv-hub-map > \.rv-map-stage,\s*\n\.rv-note-map > \.rv-map-stage,\s*\n\.rv-map-park \.rv-map-stage \{[^}]*min-height:\s*120px !important/);
-		const glance = source('src/glancable-view.ts');
-		const laid = glance.slice(glance.indexOf('private releaseHandedBandWhenLaidOut'), glance.indexOf('private releaseHubGrip'));
-		assert.match(laid, /lockHandedMapBand\(map, height\)/);
-		assert.match(source('src/main.ts'), /lockHandedMapBand\(map, laid\)/);
+		assert.match(source('src/main.ts'), /writeShellBand\(/);
+		assert.doesNotMatch(source('src/main.ts'), /lockHandedMapBand\(/);
 	});
 
 	it('rewrites the stamp line from the controls Save is showing', () => {
@@ -673,7 +686,7 @@ describe('phone smoke after d0b76ff', () => {
 		alignHubCover(doc);
 		assert.equal(body.style.transform, 'translateY(12px)');
 		const css = source('styles.css');
-		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*none !important/);
+		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*auto !important/);
 	});
 
 	it('puts Return Suggestions bullets on the 12px content edge', () => {
@@ -856,11 +869,11 @@ describe('phone smoke of f78cc45', () => {
 		assert.match(retain, /this\.parkOpenMap\(\)/);
 		assert.doesNotMatch(retain, /if \(this\.noteMapOpen\) this\.parkOpenMap\(\)/);
 		const park = main.slice(main.indexOf('parkOpenMap(): boolean'), main.indexOf('private dropParkedMap'));
-		assert.match(park, /relayMap\(/);
+		assert.match(park, /ensureMapShell\(/);
+		assert.doesNotMatch(park, /relayMap\(/);
 		assert.doesNotMatch(park, /parkMapNode\(/);
-		const relay = source('src/map-handoff.ts').slice(source('src/map-handoff.ts').indexOf('export function relayMap'), source('src/map-handoff.ts').indexOf('export function parkMapNode'));
-		assert.ok(relay.indexOf('holdMapHeight(map)') < relay.indexOf('appendChild'));
-		assert.match(source('src/glancable-view.ts'), /pinHeldMapBand\(root, map\)/);
+		assert.doesNotMatch(source('src/glancable-view.ts'), /pinHeldMapBand\(/);
+		assert.match(source('src/map-shell.ts'), /function writeShellBand/);
 	});
 
 	it('hides the live list while the hub cover is up and still lets a card take the tap', () => {
@@ -879,80 +892,174 @@ describe('phone smoke of f78cc45', () => {
 		const card = doc.createElement('button');
 		card.className = 'rv-locator-card';
 		card.textContent = 'Red Lane';
-		let taps = 0;
-		card.addEventListener('click', () => { taps += 1; });
+		card.setAttribute('data-rv-path', 'People/Red Lane.md');
 		live.appendChild(card);
 		leaf.appendChild(live);
 		doc.body.appendChild(leaf);
 		holdLeafForHubPaint(leaf);
 		assert.equal(leaf.classList.contains('is-rv-cover-held'), true);
 		assert.ok(leaf.querySelector(':scope > .rv-hub-swap-cover'));
-		card.dispatchEvent(new win.Event('click', { bubbles: true }));
-		assert.equal(taps, 1);
 		releaseHubSwapCover(doc);
 		assert.equal(leaf.classList.contains('is-rv-cover-held'), false);
 		assert.equal(leaf.querySelector('.rv-hub-swap-cover'), null);
 		const css = source('styles.css');
-		const selector = '.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover):not(.rv-hub-map):not(.rv-note-map)';
+		const selector = '.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover)';
 		const rule = css.slice(css.indexOf(selector), css.indexOf('}', css.indexOf(selector)));
 		assert.match(rule, /opacity:\s*0 !important/);
-		assert.doesNotMatch(rule, /pointer-events/);
-		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*none !important/);
-		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover \.rv-locator-card \* \{[^}]*pointer-events:\s*auto !important/);
+		assert.match(rule, /pointer-events:\s*none !important/);
+		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*auto !important/);
+		assert.doesNotMatch(css, /\.workspace-leaf > \.rv-hub-swap-cover \.rv-locator-card \* \{[^}]*pointer-events:\s*auto !important/);
 	});
 
-	it('keeps one connected stage through hub, base, and note', async () => {
+	it('keeps one stage in the shell when Obsidian detaches the leaf', () => {
 		const dom = new JSDOM('<!doctype html><body></body>');
 		const win = dom.window;
 		globalThis.HTMLElement = win.HTMLElement;
 		globalThis.Element = win.Element;
-		globalThis.MutationObserver = win.MutationObserver;
 		const doc = win.document;
+		const workspace = doc.createElement('div');
+		workspace.className = 'workspace';
 		const leaf = doc.createElement('div');
 		leaf.className = 'workspace-leaf';
+		let content = doc.createElement('div');
+		content.className = 'workspace-leaf-content';
+		let view = doc.createElement('div');
+		view.className = 'view-content';
 		const hub = doc.createElement('div');
 		hub.className = 'rv-locator-stage';
-		const base = doc.createElement('div');
-		base.className = 'rv-locator-stage';
-		const note = doc.createElement('div');
-		note.className = 'markdown-preview-view';
-		const map = doc.createElement('div');
-		map.className = 'rv-hub-map';
+		view.appendChild(hub);
+		content.appendChild(view);
+		leaf.appendChild(content);
+		workspace.appendChild(leaf);
+		doc.body.appendChild(workspace);
+		const shell = createMapShell(workspace);
 		const stage = doc.createElement('div');
 		stage.className = 'rv-map-stage';
-		stage.getBoundingClientRect = () => ({ top: 0, bottom: 316, left: 0, right: 390, width: 390, height: 316, x: 0, y: 0, toJSON() { return {}; } });
-		map.appendChild(stage);
-		hub.appendChild(map);
-		leaf.append(hub, base, note);
-		doc.body.appendChild(leaf);
-		const frames: boolean[] = [];
-		const sample = (): void => { frames.push(mapFrameOk(doc)); };
-		const observer = new win.MutationObserver(() => sample());
-		observer.observe(doc.body, { childList: true, subtree: true, attributes: true });
-		const hops: Array<[HTMLElement, 'rv-hub-map' | 'rv-note-map']> = [
-			[base, 'rv-hub-map'],
-			[hub, 'rv-hub-map'],
-			[note, 'rv-note-map'],
-			[hub, 'rv-hub-map'],
-			[base, 'rv-hub-map'],
-		];
-		for (const [host, className] of hops) {
-			relayMap(map, host, className);
-			sample();
-			assert.equal(map.parentElement, host);
+		shell.map.appendChild(stage);
+		const band = writeShellBand(shell.root, 752, 0.42);
+		assert.equal(band, 316);
+		const box = (top: number) => () => ({ top, bottom: top + band + 3, left: 0, right: 390, width: 390, height: band + 3, x: 0, y: top, toJSON() { return {}; } });
+		const spacer = ensureMapSpacer(hub);
+		sizeMapSpacer(spacer, band, false);
+		spacer.getBoundingClientRect = box(480);
+		assert.equal(placeShellOver(shell.root, spacer), true);
+		const height = shell.root.style.height;
+		const hops = ['base', 'note', 'hub'];
+		for (const name of hops) {
+			content.remove();
+			view.replaceChildren();
 			assert.equal(doc.querySelectorAll('.rv-map-stage').length, 1);
-			await Promise.resolve();
+			assert.equal(doc.querySelector('.rv-map-stage'), stage);
+			assert.equal(shell.root.style.height, height);
+			assert.equal(shell.grip.parentElement, shell.root);
+			assert.equal(shell.root.parentElement, workspace);
+			assert.equal(shell.root.closest('.workspace-leaf'), null);
+			assert.equal(doc.querySelector('.rv-map-park'), null);
+			content = doc.createElement('div');
+			content.className = 'workspace-leaf-content';
+			view = doc.createElement('div');
+			view.className = 'view-content';
+			const slot = doc.createElement('div');
+			slot.className = name === 'note' ? 'markdown-preview-view' : 'rv-locator-stage';
+			const nextSpacer = ensureMapSpacer(slot);
+			sizeMapSpacer(nextSpacer, band, false);
+			nextSpacer.getBoundingClientRect = box(name === 'note' ? 200 : 480);
+			view.appendChild(slot);
+			content.appendChild(view);
+			leaf.appendChild(content);
+			assert.equal(placeShellOver(shell.root, nextSpacer), true);
+			assert.equal(writeShellBand(shell.root, 797, 1), 316);
+			assert.equal(doc.querySelectorAll('.rv-map-stage').length, 1);
+			assert.equal(doc.querySelector('.rv-map-stage'), stage);
 		}
-		hub.style.opacity = '0';
-		relayMap(map, hub, 'rv-hub-map');
-		sample();
-		await Promise.resolve();
-		assert.equal(map.parentElement, leaf);
-		assert.notEqual(map.parentElement, doc.body);
-		assert.equal(map.closest('.rv-map-park'), null);
-		assert.ok(frames.length > 0);
-		assert.ok(frames.every((ok) => ok));
-		observer.disconnect();
+	});
+
+	it('keeps one tab bar through hub, base, and note teardowns', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		globalThis.Element = win.Element;
+		const doc = win.document;
+		const workspace = doc.createElement('div');
+		workspace.className = 'workspace';
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf';
+		let content = doc.createElement('div');
+		content.className = 'workspace-leaf-content';
+		let view = doc.createElement('div');
+		view.className = 'view-content';
+		content.appendChild(view);
+		leaf.appendChild(content);
+		workspace.appendChild(leaf);
+		doc.body.appendChild(workspace);
+		const bar = createBarShell(workspace);
+		const again = createBarShell(workspace);
+		assert.equal(again, bar);
+		assert.equal(bar.parentElement, workspace);
+		assert.equal(bar.closest('.workspace-leaf'), null);
+		const box = () => ({ top: 740, bottom: 792, left: 0, right: 390, width: 390, height: BAR_MIN_PX, x: 0, y: 740, toJSON() { return {}; } });
+		const hops: { from: 'hub' | 'base' | 'note'; to: 'hub' | 'base' | 'note'; label: string }[] = [
+			{ from: 'hub', to: 'base', label: 'Hub' },
+			{ from: 'base', to: 'hub', label: 'Sort' },
+			{ from: 'hub', to: 'note', label: 'Hub' },
+			{ from: 'note', to: 'hub', label: 'Sort' },
+			{ from: 'base', to: 'note', label: 'Hub' },
+			{ from: 'note', to: 'base', label: 'Hub' },
+		];
+		for (const hop of hops) {
+			paintBarLead(bar, hop.from);
+			const spacer = ensureBarSpacer(view);
+			spacer.getBoundingClientRect = box;
+			assert.equal(placeBarOver(bar, spacer), true);
+			const minHeight = bar.style.minHeight;
+			const height = bar.style.height;
+			content.remove();
+			view.replaceChildren();
+			assert.equal(doc.querySelectorAll('.rv-bar-shell').length, 1);
+			assert.equal(doc.querySelector('.rv-bar-shell'), bar);
+			assert.equal(bar.isConnected, true);
+			assert.equal(bar.style.minHeight, minHeight);
+			assert.equal(bar.style.minHeight, `${BAR_MIN_PX}px`);
+			assert.equal(bar.style.height, height);
+			assert.notEqual(bar.style.display, 'none');
+			assert.equal(bar.classList.contains('is-away'), false);
+			assert.equal(Number.parseFloat(bar.style.minHeight) >= BAR_MIN_PX, true);
+			paintBarLead(bar, hop.to);
+			assert.equal(bar.querySelector('.rv-bar-tab-hub .rv-app-label')?.textContent, hop.label);
+			assert.equal(bar.querySelectorAll('.rv-app-slot').length, 5);
+			content = doc.createElement('div');
+			content.className = 'workspace-leaf-content';
+			view = doc.createElement('div');
+			view.className = 'view-content';
+			content.appendChild(view);
+			leaf.appendChild(content);
+			const next = ensureBarSpacer(view);
+			next.getBoundingClientRect = box;
+			assert.equal(placeBarOver(bar, next), true);
+			assert.equal(doc.querySelector('.rv-bar-shell'), bar);
+			assert.equal(bar.style.minHeight, `${BAR_MIN_PX}px`);
+			assert.notEqual(bar.style.display, 'none');
+		}
+		const calls: string[] = [];
+		const host: BarTabHost = {
+			openHub: () => calls.push('hub'),
+			openSearch: () => calls.push('search'),
+			openHubSearch: () => calls.push('hub-search'),
+			openCampaign: () => calls.push('flag'),
+			toggleMap: () => calls.push('map'),
+			createNew: () => calls.push('new'),
+			openSort: () => calls.push('sort'),
+		};
+		dispatchBarTab('hub', 'hub', '', host);
+		dispatchBarTab('hub', 'base', 'People/Ada.md', host);
+		dispatchBarTab('hub', 'note', 'People/Ada.md', host);
+		assert.deepEqual(calls, ['sort', 'hub', 'hub']);
+		const main = source('src/main.ts');
+		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
+		assert.ok(hook.indexOf('beginBarNav(file)') < hook.indexOf('openFile.call'));
+		assert.match(source('src/bar-shell.ts'), /bar\.style\.left/);
+		assert.doesNotMatch(source('src/bar-shell.ts').slice(source('src/bar-shell.ts').indexOf('export function placeBarOver')), /style\.height/);
+		assert.match(source('src/nearby-view.ts'), /ensureBarSpacer\(this\.sortEl\)/);
 	});
 
 	it('opens a cover card when the live list has no file link yet', () => {
@@ -975,23 +1082,36 @@ describe('phone smoke of f78cc45', () => {
 				const actions = doc.createElement('div');
 				actions.className = 'rv-locator-toolbar-actions';
 				actions.appendChild(doc.createElement('button'));
-				const card = doc.createElement('div');
-				card.className = 'rv-locator-card';
-				card.setAttribute('data-rv-path', 'People/Red Lane.md');
-				card.textContent = 'Red Lane';
-				host.append(actions, card);
+				const yellow = doc.createElement('div');
+				yellow.className = 'rv-locator-card';
+				yellow.setAttribute('data-rv-path', 'People/Yellow Lane.md');
+				yellow.textContent = 'Yellow Lane';
+				const red = doc.createElement('div');
+				red.className = 'rv-locator-card';
+				red.setAttribute('data-rv-path', 'People/Red Lane.md');
+				red.textContent = 'Red Lane';
+				host.append(actions, yellow, red);
 				return () => {};
 			},
 			openCard: (path) => { opened = path; },
 		});
+		const liveCard = doc.createElement('div');
+		liveCard.className = 'rv-locator-card';
+		liveCard.setAttribute('data-rv-path', 'People/Red Lane.md');
+		leaf.appendChild(liveCard);
 		const cover = leaf.querySelector(':scope > .rv-hub-swap-cover');
 		assert.ok(cover);
 		assert.equal(doc.querySelectorAll('a.rv-locator-file-link').length, 0);
-		const card = cover?.querySelector('.rv-locator-card');
-		assert.ok(card);
-		card?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
-		assert.equal(opened, 'People/Red Lane.md');
+		const yellow = cover?.querySelector('[data-rv-path="People/Yellow Lane.md"]');
+		assert.ok(yellow);
+		yellow?.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 40, clientY: 160 }));
+		assert.equal(opened, 'People/Yellow Lane.md');
 		assert.equal(under, 0);
+		opened = '';
+		cover?.dispatchEvent(new win.MouseEvent('click', { bubbles: true, clientX: 12, clientY: 12 }));
+		assert.equal(opened, '');
+		liveCard.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+		assert.equal(opened, '');
 	});
 });
 

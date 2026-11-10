@@ -16,6 +16,7 @@ import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './gla
 import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
 import { APP_TABS, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from './app-bar';
+import { ensureBarSpacer } from './bar-shell';
 import { armHoverTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
@@ -88,7 +89,17 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		});
 		this.register(() => this.unsubSettings?.());
 		this.plugin.nudgeIncompleteSetup();
-		if (this.mode === 'glancable') this.plugin.resetHubFilters();
+		if (this.mode === 'glancable') {
+			this.plugin.resetHubFilters();
+			const stopSort = this.plugin.registerBarPainter?.(() => {
+				if (!this.root?.isConnected) return;
+				if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) return;
+				this.sortMenuOpen = true;
+				this.sortPaintStampSeen = '';
+				this.paintSortPresets();
+			});
+			if (stopSort) this.register(stopSort);
+		}
 	}
 
 	override onunload(): void {
@@ -542,16 +553,17 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 
 	private paintSortPresets(): void {
 		const stamp = this.sortPaintStamp();
-		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll, .rv-app-bar')) return;
+		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll, .rv-app-bar, .rv-bar-spacer')) return;
 		this.sortPaintStampSeen = stamp;
 		this.releaseSortSize();
 		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
 		const search = this.searchSlot;
+		const searchHosted = search?.closest('.rv-bar-shell') instanceof HTMLElement;
 		const glancable = this.mode === 'glancable';
-		refillKeepingFocus(this.sortEl, search, () => {
+		refillKeepingFocus(this.sortEl, searchHosted ? null : search, () => {
 		if (glancable) {
 			this.paintGlancableTabs();
-			if (search && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
+			if (search && !searchHosted && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
 			return;
 		}
 		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
@@ -586,7 +598,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		equalizeSortPills(pillHost);
 		if (search && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
 		});
-		this.sortButtonsEl.scrollLeft = savedScroll;
+		if (this.sortButtonsEl) this.sortButtonsEl.scrollLeft = savedScroll;
 		if (glancable && this.sortMenuOpen) {
 			this.bindSortWheel(this.sortButtonsEl);
 			this.watchSortPillSize();
@@ -623,11 +635,19 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		// Ideality planner was removed in 1.2.6. It may return later.
 	}
 
-	/** Edge-to-edge tab bar. Hub opens the sort and filter row. */
+	/** The shared bar stays outside this view. Sort options fill its one row. */
 	private paintGlancableTabs(): void {
-		const bar = this.sortEl.createDiv({ cls: `rv-app-bar${this.sortMenuOpen ? ' is-scroll' : ''}` });
-		this.sortButtonsEl = bar;
-		if (this.sortMenuOpen) {
+		ensureBarSpacer(this.sortEl);
+		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) return;
+		const file = this.plugin.app.workspace.getActiveFile?.();
+		if (file) this.plugin.syncAppBarFromActive();
+		else if (this.plugin.barIsHeld()) this.plugin.followAppBar();
+		else this.plugin.syncAppBar('hub', '');
+		const surface = this.plugin.barSurface();
+		if (this.sortMenuOpen && surface === 'hub') {
+			const bar = this.plugin.sortBarHost();
+			bar.replaceChildren();
+			this.sortButtonsEl = bar;
 			this.barSlot(bar, 'Close', 'x', false, () => {
 				this.sortMenuOpen = false;
 				this.paintSortPresets();
@@ -652,18 +672,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			this.barSlot(bar, 'Campaign', 'flag', settings.campaignListFilter !== 'all', (event) => this.openCampaignFilterMenu(event), settings.campaignListFilter !== 'all');
 			return;
 		}
-		for (const tab of APP_TABS) {
-			const on = tab.id === 'map' && this.plugin.hubMapOpen;
-			this.barSlot(bar, tab.label, tab.icon, on, () => {
-				if (tab.id === 'hub') {
-					this.sortMenuOpen = true;
-					this.paintSortPresets();
-				} else if (tab.id === 'search') this.openGlanceSearch();
-				else if (tab.id === 'campaign') this.plugin.openCampaignModal();
-				else if (tab.id === 'map') void this.plugin.openMapSoon();
-				else void this.plugin.createNewRv();
-			}, false, tab.id === 'map' ? 'rv-hub-earth' : '');
-		}
+		if (this.sortMenuOpen && surface !== 'hub') this.sortMenuOpen = false;
+		this.plugin.closeBarSort();
 	}
 
 	private barSlot(

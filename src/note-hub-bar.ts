@@ -1,5 +1,6 @@
 import { setIcon } from 'obsidian';
-import { APP_TABS, appendAppSlot } from './app-bar';
+import { APP_TABS } from './app-bar';
+import { ensureBarSpacer } from './bar-shell';
 
 /** The hub bottom bar, mounted on an RV note so the map does not jump. */
 export interface NoteHubBarHost {
@@ -13,46 +14,23 @@ export interface NoteHubBarHost {
 	openHub(path: string): void;
 }
 
-/** Same five slots as the hub and bases. */
-export function mountNoteHubBar(leaf: HTMLElement, path: string, host: NoteHubBarHost): HTMLElement {
-	const found = leaf.querySelector(':scope > .rv-note-hub-bar');
-	let bar: HTMLElement;
-	if (found instanceof HTMLElement && found.querySelector('.rv-app-slot')) {
-		bar = found;
-	} else {
-		found?.remove();
-		const doc = leaf.ownerDocument;
-		bar = doc.createElement('div');
-		bar.className = 'rv-locator-sortbar rv-note-hub-bar rv-app-bar';
-		const current = (): string => bar.dataset.rvPath ?? '';
-		for (const tab of APP_TABS) {
-			const button = appendAppSlot(bar, tab.label, tab.icon, { extra: `rv-note-tab-${tab.id}` });
-			if (tab.id === 'map') button.classList.add('rv-note-bar-earth');
-			button.addEventListener('click', () => {
-				const note = current();
-				if (tab.id === 'hub') host.openHub(note);
-				else if (tab.id === 'search') host.openSearch(note);
-				else if (tab.id === 'campaign') host.openCampaign();
-				else if (tab.id === 'map') host.toggleMap(note);
-				else host.createNewRv();
-			});
-		}
-		leaf.appendChild(bar);
-	}
-	bar.dataset.rvPath = path;
-	const map = bar.querySelector('.rv-note-bar-earth');
-	if (map instanceof HTMLElement) {
-		map.dataset.rvPath = path;
-		const on = host.noteMapLit(path);
-		map.classList.toggle('is-on', on);
-		map.setAttribute('aria-pressed', on ? 'true' : 'false');
-	}
-	return bar;
+/**
+ * Reserve the shared bar's height on this note. The five slots (APP_TABS)
+ * live on the plugin shell, so a view swap cannot detach them.
+ */
+export function mountNoteHubBar(leaf: HTMLElement, path: string, _host: NoteHubBarHost): HTMLElement {
+	leaf.classList.add('is-rv-note');
+	leaf.querySelector(':scope > .rv-note-hub-bar')?.remove();
+	const spacer = ensureBarSpacer(leaf);
+	spacer.dataset.rvPath = path;
+	spacer.dataset.rvTabs = String(APP_TABS.length);
+	return spacer;
 }
 
 export function clearNoteHubBar(leaf: HTMLElement): void {
 	leaf.querySelector(':scope > .rv-note-find')?.remove();
 	leaf.querySelector(':scope > .rv-note-hub-bar')?.remove();
+	leaf.querySelector(':scope > .rv-bar-spacer')?.remove();
 	leaf.classList.remove('is-rv-note', 'is-finding');
 }
 

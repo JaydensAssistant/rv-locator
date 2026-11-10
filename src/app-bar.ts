@@ -9,6 +9,17 @@ export const APP_TABS: readonly { id: string; label: string; icon: IconName }[] 
 	{ id: 'new', label: 'New', icon: 'plus' },
 ];
 
+/** The icon the sort row uses when a preset has none of its own. */
+export const SORT_ICON: IconName = 'arrow-up-down';
+
+export type BarSurface = 'hub' | 'base' | 'note';
+
+/** RV-260. The hub's first tab is Sort. A base or a note still says Hub. */
+export function leadTab(surface: BarSurface): { id: string; label: string; icon: IconName } {
+	if (surface === 'hub') return { id: 'hub', label: 'Sort', icon: SORT_ICON };
+	return APP_TABS[0] ?? { id: 'hub', label: 'Hub', icon: 'house' };
+}
+
 /** Five equal slots across the bar. At a 390px phone that is 78px each. */
 export function appBarSlotPx(barPx: number, count = APP_TABS.length): number {
 	if (!(barPx > 0) || count <= 0) return 0;

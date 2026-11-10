@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap, writeMapBand } from './hub-layout';
+import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -12,7 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
-import { liftMapGrip, liveMapWithStage, lockHandedMapBand, mapAncestorHidden, pinHeldMapBand, relayMap, retireEmptyMapPark, seatMapGrip } from './map-handoff';
+import { copyShellBand, ensureMapSpacer, markShellSide, sizeMapSpacer } from './map-shell';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -98,15 +98,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	override onunload(): void {
-		const keep = this.plugin.hubMapOpen || this.plugin.noteMapOpen;
-		const el = this.hubMapEl ?? liveMapWithStage(this.root.ownerDocument);
-		if (keep && el instanceof HTMLElement && this.root.contains(el)) {
-			const grip = this.hubMapHandle;
-			if (grip instanceof HTMLElement) liftMapGrip(grip);
-			const leaf = this.root.closest('.workspace-leaf');
-			relayMap(el, leaf instanceof HTMLElement ? leaf : null, el.classList.contains('rv-note-map') ? 'rv-note-map' : 'rv-hub-map');
-			this.hubMapEl = null;
-		}
+		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
+		this.hubMapEl = null;
+		this.hubMapHandle = null;
 		this.root.ownerDocument.body.classList.remove('rv-hide-backlinks');
 		this.clearBasesChrome();
 		super.onunload();
@@ -213,66 +207,25 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private ensureHubMap(): void {
-		if (this.root.closest('.rv-hub-swap-cover')) return;
 		if (hostIsHidden(this.root)) return;
 		this.ensureHubFullscreenSync();
 		this.ensureStage();
 		const stage = this.stageEl ?? this.root;
-		const sitting = stage.querySelector(':scope > .rv-hub-map:not(.rv-map-spacer)');
-		if (sitting instanceof HTMLElement && mapAncestorHidden(sitting)) {
-			const leaf = this.root.closest('.workspace-leaf');
-			relayMap(sitting, leaf instanceof HTMLElement ? leaf : null, 'rv-hub-map');
-			this.hubMapEl = sitting;
-			return;
-		}
-		if (sitting instanceof HTMLElement) {
-			this.hubMapEl = sitting;
-			if (!this.hubMapApi) {
-				const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
-				if (api || sitting.querySelector('.rv-map-stage')) this.hubMapApi = api;
-				else this.hubMapApi = this.plugin.mountHubMap(sitting);
-			}
-			this.ensureHubHandle(stage);
-			this.deferPaintedOrder(sitting);
-			this.releaseHandedBandWhenLaidOut();
-			return;
-		}
-		if (this.hubMapEl?.isConnected && this.root.contains(this.hubMapEl) && !this.hubMapEl.closest('.rv-map-park')) return;
-		const doc = this.root.ownerDocument;
-		const existing = liveMapWithStage(doc);
-		if (existing) {
-			const coverUp = doc.querySelector('.rv-hub-swap-cover') != null;
-			const leaf = this.root.closest('.workspace-leaf');
-			const dest = !coverUp && !hostIsHidden(stage) && !mapAncestorHidden(stage)
-				? stage
-				: (leaf instanceof HTMLElement ? leaf : null);
-			relayMap(existing, dest, 'rv-hub-map');
-			retireEmptyMapPark(doc);
-			this.hubMapEl = existing;
-			const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
-			if (api || existing.querySelector('.rv-map-stage')) this.hubMapApi = api;
-			if (existing.parentElement === stage) {
-				this.ensureHubHandle(stage);
-				this.deferPaintedOrder(existing);
-				this.releaseHandedBandWhenLaidOut();
-			}
-			return;
-		}
-		// While the swap cover is up, do not build a second map under the hidden list.
-		if (doc.querySelector('.rv-hub-swap-cover')) {
-			stage.querySelector(':scope > .rv-map-spacer')?.remove();
-			if (this.hubMapEl?.classList.contains('rv-map-spacer')) this.hubMapEl = null;
-			return;
-		}
-		this.hubMapEl = null;
-		const map = stage.createDiv('rv-hub-map');
-		stage.appendChild(map);
-		const handle = seatMapGrip(stage, map);
-		this.hubMapEl = map;
-		this.hubMapHandle = handle;
-		this.hubMapApi = this.plugin.mountHubMap(map);
-		if (this.renderedPaths) this.hubMapApi.applyRenderedOrder(this.renderedPaths);
-		this.bindHubHandle(handle);
+		const shell = this.plugin.ensureMapShell();
+		const side = !this.stackedLayout && !this.plugin.hubMapIsFullscreen();
+		const pane = this.root.closest('.workspace-leaf-content')
+			?? this.root.closest('.workspace-leaf')
+			?? this.root;
+		const band = this.plugin.sharedMapBand(mapPanePx(pane instanceof HTMLElement ? pane : this.root, side));
+		const spacer = ensureMapSpacer(stage);
+		sizeMapSpacer(spacer, band, side, this.plugin.hubMapIsFullscreen());
+		copyShellBand(this.root, band);
+		markShellSide(shell.root, side);
+		this.hubMapEl = shell.map;
+		this.hubMapHandle = shell.grip;
+		this.hubMapApi = shell.handle;
+		this.deferPaintedOrder(shell.map);
+		this.plugin.followMapShell();
 	}
 
 	private ensureHubFullscreenSync(): void {
@@ -285,29 +238,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private removeHubMap(): void {
-		const el = this.hubMapEl;
-		const keep = this.plugin.hubMapOpen || this.plugin.noteMapOpen;
-		if (el instanceof HTMLElement && keep && !el.classList.contains('rv-map-spacer')) {
-			const leaf = this.root.closest('.workspace-leaf');
-			relayMap(el, leaf instanceof HTMLElement ? leaf : null, 'rv-hub-map');
-			this.hubMapEl = null;
-			this.releaseHubGrip();
-			return;
-		}
-		const ownedHere = el != null && el.isConnected && this.root.contains(el) && !el.classList.contains('rv-map-spacer');
-		if (!ownedHere) {
-			if (el?.classList.contains('rv-map-spacer')) el.remove();
-			this.hubMapEl = null;
-			this.hubMapApi = null;
-			this.releaseHubGrip();
-			return;
-		}
-		this.hubMapApi?.destroy();
-		this.hubMapApi = null;
-		this.hubMapEl?.remove();
-		this.releaseHubGrip();
+		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.hubMapEl = null;
 		this.hubMapHandle = null;
+		if (!this.plugin.hubMapOpen && !this.plugin.noteMapOpen) {
+			this.hubMapApi = null;
+			this.plugin.releaseMapShell();
+		}
 	}
 
 	/**
@@ -334,94 +271,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (leaf instanceof HTMLElement) leaf.classList.add('is-rv-app');
 	}
 
-	/**
-	 * A drag uses the ratio again. The handoff lock is only so the first frames
-	 * stay painted. If dropping it collapses the stage, put the lock back in
-	 * the same turn so a frame never paints at height 0.
-	 */
-	private releaseHandedBandLock(): void {
-		const map = this.hubMapEl;
-		if (!map) return;
-		const flex = map.style.flex;
-		const mapMin = map.style.minHeight;
-		map.style.removeProperty('flex');
-		map.style.removeProperty('min-height');
-		const stage = map.querySelector('.rv-map-stage');
-		if (!(stage instanceof HTMLElement)) return;
-		const height = stage.style.height;
-		const min = stage.style.minHeight;
-		stage.style.removeProperty('height');
-		stage.style.removeProperty('min-height');
-		const laid = stage.getBoundingClientRect().height;
-		if (laid >= 2) return;
-		if (flex) map.style.flex = flex;
-		if (mapMin) map.style.minHeight = mapMin;
-		if (height) stage.style.height = height;
-		if (min) stage.style.minHeight = min;
-	}
-
-	/**
-	 * Once the live stage has a box, keep that pixel height.
-	 * Clearing the lock and confirming on the next frame was the one paint
-	 * where `.rv-map-stage` was 0px and the grip was gone (hub → note → hub →
-	 * base → note). The lock stays. A drag writes a new pixel height in the
-	 * same turn.
-	 */
-	private releaseHandedBandWhenLaidOut(left = 12): void {
-		const map = this.hubMapEl;
-		if (!map) return;
-		const stage = map.querySelector('.rv-map-stage');
-		if (!(stage instanceof HTMLElement)) return;
-		const height = stage.getBoundingClientRect().height;
-		lockHandedMapBand(map, height);
-		const root = map.closest('.rv-locator-view, .rv-locator-glancable');
-		if (root instanceof HTMLElement) pinHeldMapBand(root, map);
-		const parent = map.parentElement;
-		if (parent instanceof HTMLElement) seatMapGrip(parent, map);
-		if (height >= 2 || left <= 0) return;
-		const view = map.ownerDocument.defaultView;
-		if (view?.requestAnimationFrame) view.requestAnimationFrame(() => this.releaseHandedBandWhenLaidOut(left - 1));
-	}
-
-	/** The map is moving. Keep the grip. Closing the map drops it. */
-	private releaseHubGrip(): void {
-		const grip = this.hubMapHandle;
-		this.hubMapHandle = null;
-		if (!(grip instanceof HTMLElement)) return;
-		if (this.plugin.hubMapOpen || this.plugin.noteMapOpen) {
-			liftMapGrip(grip);
-			return;
-		}
-		if (!grip.classList.contains('is-pinned')) grip.remove();
-	}
-
-	/** Bind the grip the handoff inserted. A fresh map already has one. */
-	private ensureHubHandle(stage: HTMLElement): void {
-		const handle = seatMapGrip(stage, this.hubMapEl);
-		this.hubMapHandle = handle;
-		this.bindHubHandle(handle);
-	}
-
 	/** The cover is handing this view the map it already painted. */
-	private adoptHubMap(el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null): void {
+	private adoptHubMap(_el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null): void {
 		if (hostIsHidden(this.root) || this.root.closest('.rv-hub-swap-cover')) return;
-		const stage = this.stageEl ?? this.root;
-		stage.querySelectorAll(':scope > .rv-map-spacer').forEach((node) => node.remove());
-		const leaf = this.root.closest('.workspace-leaf');
-		const dest = mapAncestorHidden(stage) ? (leaf instanceof HTMLElement ? leaf : null) : stage;
-		relayMap(el, dest, 'rv-hub-map');
-		this.hubMapEl = el;
-		if (el.parentElement !== stage) {
-			if (api) this.hubMapApi = api;
-			return;
-		}
-		const painted = el.querySelector('.rv-map-stage') != null;
+		const shell = this.plugin.ensureMapShell();
+		this.hubMapEl = shell.map;
+		this.hubMapHandle = shell.grip;
 		if (api) this.hubMapApi = api;
-		else if (!this.hubMapApi && !painted) this.hubMapApi = this.plugin.mountHubMap(el);
-		this.ensureHubHandle(stage);
-		this.deferPaintedOrder(el);
 		this.syncHubMap();
-		this.releaseHandedBandWhenLaidOut();
+		api?.invalidateSize();
 	}
 
 	protected override sortedGroups() {
@@ -590,7 +448,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private searchReplacesBar(open: boolean): void {
 		this.searchOpen = open;
 		this.root.toggleClass('is-search-open', open);
-		if (!open) this.clearSearch();
+		if (open) {
+			this.ensureSearchField();
+			if (this.searchSlot) this.plugin.showBarSearch(this.searchSlot);
+			return;
+		}
+		if (this.searchSlot && this.searchSlot.parentElement !== this.sortEl) this.sortEl.appendChild(this.searchSlot);
+		this.plugin.closeBarSearch();
+		this.clearSearch();
 	}
 
 	/** Search replaces the pills. The field is created once so typing keeps focus. */
@@ -1122,12 +987,19 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.root.toggleClass('is-hub-map', open);
 		this.root.toggleClass('is-side-map', open && !this.stackedLayout && !full);
 		this.root.toggleClass('is-map-fullscreen', full);
-		map?.toggleClass('is-fullscreen', full);
-		this.hubMapHandle?.setAttr('aria-orientation', this.stackedLayout ? 'horizontal' : 'vertical');
+		map?.classList.toggle('is-fullscreen', full);
+		this.hubMapHandle?.setAttribute('aria-orientation', this.stackedLayout ? 'horizontal' : 'vertical');
 		const pane = this.root.closest('.workspace-leaf-content')
 			?? this.root.closest('.workspace-leaf')
 			?? this.root;
-		writeMapBand(this.root, mapPanePx(pane instanceof HTMLElement ? pane : this.root, this.root.classList.contains('is-side-map')), this.plugin.mapSplitRatio(), '--rv-map-size');
+		const side = this.root.classList.contains('is-side-map');
+		const band = this.plugin.sharedMapBand(mapPanePx(pane instanceof HTMLElement ? pane : this.root, side));
+		copyShellBand(this.root, band);
+		const stage = this.stageEl ?? this.root;
+		const spacer = stage.querySelector(':scope > .rv-map-spacer');
+		if (spacer instanceof HTMLElement) sizeMapSpacer(spacer, band, side, this.root.classList.contains('is-map-fullscreen'));
+		const shellRoot = this.plugin.mapShellRoot();
+		if (shellRoot) markShellSide(shellRoot, side);
 		this.sizeEmbedFrame();
 		this.hubMapApi?.invalidateSize();
 		const view = this.root.ownerDocument.defaultView;
@@ -1201,13 +1073,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const move = (ev: PointerEvent): void => {
 				const delta = stacked ? (startY - ev.clientY) / height : (startX - ev.clientX) / width;
 				this.plugin.rememberMapSplit(start + delta, 'hub');
-				this.releaseHandedBandLock();
+				this.plugin.sharedMapBand(stacked ? height : width, true);
 				this.syncHubMap();
-				const band = this.hubMapEl?.querySelector('.rv-map-stage');
-				if (this.hubMapEl && band instanceof HTMLElement) {
-					const laid = band.getBoundingClientRect().height;
-					if (laid >= 2) lockHandedMapBand(this.hubMapEl, laid);
-				}
 			};
 			const stop = (): void => {
 				handle.ownerDocument.removeEventListener('pointermove', move);

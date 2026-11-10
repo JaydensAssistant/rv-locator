@@ -545,7 +545,7 @@ describe('RV-B9 swap cover', () => {
 			assert.match(cover.textContent ?? '', /Dale Red/);
 			assert.equal((cover.textContent ?? '').includes('Recent notes'), false);
 			assert.ok(cover.querySelector('.rv-locator-card'));
-			assert.ok(cover.querySelector('.rv-app-slot'));
+			assert.ok(cover.querySelector('.rv-app-slot, .rv-bar-spacer'));
 			assert.equal(hubFrameReady(leaf, true), false, 'cards inside the cover are not the real hub');
 			await stopCover();
 

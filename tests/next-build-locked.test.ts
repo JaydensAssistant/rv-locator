@@ -178,7 +178,10 @@ describe('locked next build', () => {
 	it('RV-173 restores the note-map classes when fullscreen returns', () => {
 		const main = source('src/main.ts');
 		const sync = main.slice(main.indexOf('private syncNoteMap'), main.indexOf('private watchNoteMapBox'));
-		assert.match(sync, /mountHubMap\(map, 'split'\)/);
+		assert.match(sync, /ensureMapShell\(\)/);
+		assert.match(sync, /ensureMapSpacer\(content\)/);
+		assert.match(sync, /shell\.handle/);
+		assert.doesNotMatch(sync, /mountHubMap\(/);
 		const opened = main.slice(main.indexOf('private onNoteOpened'), main.indexOf('private scheduleReadingDecorate'));
 		assert.match(opened, /this\.noteMapOpen && file && file\.path !== this\.mapFocusPath/);
 		const watch = main.slice(main.indexOf('private watchNoteMapBox'), main.indexOf('private armNewRvFocus'));

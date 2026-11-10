@@ -2385,13 +2385,23 @@ body.rv-wide-hubs .rv-hub-chip {
 	cursor: pointer;
 }
 
-.rv-hub-line > .rv-hub-add:hover {
-	color: var(--text-normal);
+.rv-note-slot:hover,
+.rv-note-slot:focus,
+.rv-note-slot:focus-visible,
+.rv-note-slot:active {
+	color: var(--rv-urgency-accent, var(--text-normal));
+	border-color: var(--rv-urgency-accent, var(--text-normal));
 }
 
-.rv-hub-line > .rv-hub-add svg {
+.rv-note-slot:focus-visible {
+	outline: 2px solid var(--rv-urgency-accent, var(--text-normal));
+	outline-offset: 1px;
+}
+
+.rv-note-slot svg {
 	width: var(--icon-s, 16px);
 	height: var(--icon-s, 16px);
+	color: inherit;
 }
 
 .rv-hub-row {
@@ -4123,6 +4133,116 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	display: none;
 }
 
+/* The one map. It is not a child of a leaf, and a view swap cannot detach it. */
+.rv-map-shell {
+	position: fixed;
+	z-index: 70;
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	margin: 0;
+	pointer-events: none;
+	overflow: visible;
+}
+
+.rv-map-shell.is-side {
+	flex-direction: row;
+}
+
+.rv-map-shell > .rv-hub-map-handle {
+	display: block !important;
+	position: relative;
+	z-index: 8;
+	flex: 0 0 3px;
+	width: 100%;
+	height: 3px;
+	margin: 0;
+	padding: 0;
+	overflow: visible;
+	cursor: ns-resize;
+	background: #000;
+	pointer-events: auto;
+}
+
+.rv-map-shell > .rv-hub-map-handle::before {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 40px;
+	height: 5px;
+	transform: translate(-50%, -50%);
+	border-radius: 999px;
+	background: #fff;
+	box-shadow: 0 0 0 1px #000;
+	pointer-events: none;
+}
+
+.rv-map-shell > .rv-hub-map-handle::after {
+	content: '';
+	position: absolute;
+	left: 50%;
+	top: 50%;
+	width: 44px;
+	height: 44px;
+	transform: translate(-50%, -50%);
+	background: transparent;
+}
+
+.rv-map-shell.is-side > .rv-hub-map-handle {
+	width: 3px;
+	height: auto;
+	cursor: ew-resize;
+}
+
+.rv-map-shell.is-side > .rv-hub-map-handle::before {
+	width: 5px;
+	height: 40px;
+}
+
+.rv-map-shell > .rv-hub-map {
+	display: flex !important;
+	flex: 1 1 auto;
+	flex-direction: column;
+	min-width: 0;
+	min-height: 0;
+	width: auto;
+	height: auto;
+	overflow: hidden;
+	pointer-events: auto;
+}
+
+.rv-map-shell > .rv-hub-map > .rv-map,
+.rv-map-shell > .rv-hub-map .rv-map-stage {
+	flex: 1 1 auto;
+	min-width: 0;
+	min-height: 0 !important;
+	width: 100%;
+	height: 100%;
+	max-height: 100%;
+}
+
+.rv-locator-stage > .rv-map-spacer,
+.workspace-leaf-content.is-note-map > .rv-map-spacer {
+	pointer-events: none;
+	box-sizing: border-box;
+	min-width: 0;
+	min-height: 0;
+}
+
+.workspace-leaf-content.is-note-map > .rv-map-spacer {
+	grid-column: 1;
+	grid-row: 3 / 5;
+	width: 100%;
+}
+
+.workspace-leaf-content.is-note-map.is-note-map-side > .rv-map-spacer {
+	grid-column: 2 / 4;
+	grid-row: 2;
+	width: auto;
+	height: auto;
+}
+
 /* The parked map stays visible for the frames between the hub stage and the note stage. */
 .rv-map-park {
 	position: fixed;
@@ -5011,6 +5131,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
 .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-map-button,
 .rv-dashboard .rv-hub-add,
+.rv-dashboard .rv-note-slot,
 .rv-dashboard a.rv-map-button {
 	grid-column: 3;
 	box-sizing: border-box;
@@ -5851,8 +5972,12 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 	box-shadow: none;
 }
 
+.theme-light .rv-dashboard .rv-hub-line > .rv-note-slot,
+.theme-dark .rv-dashboard .rv-note-slot,
 .theme-light .rv-dashboard .rv-hub-line > .rv-hub-add,
-.theme-light .rv-dashboard .rv-map-button {
+.theme-dark .rv-dashboard .rv-hub-line > .rv-hub-add,
+.theme-light .rv-dashboard .rv-map-button,
+.theme-dark .rv-dashboard .rv-map-button {
 	border-left: 1px solid var(--background-modifier-border);
 	border-radius: 0;
 }
@@ -6370,6 +6495,39 @@ body.rv-center-visit-notes .rv-older-heading {
 	grid-row: 3;
 }
 
+/* The shared bar is not a child of the note. These spacers reserve its row. */
+.workspace-leaf-content.is-rv-note:not(.is-note-map) > .rv-bar-spacer {
+	position: absolute;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	height: var(--rv-note-bar);
+	min-height: 52px;
+	pointer-events: none;
+}
+
+.workspace-leaf-content.is-rv-note.is-note-map > .rv-bar-spacer {
+	position: relative;
+	height: auto;
+	min-height: 52px;
+	grid-column: 1;
+	grid-row: 5;
+	pointer-events: none;
+}
+
+.workspace-leaf-content.is-rv-note.is-note-map.is-note-map-side > .rv-bar-spacer {
+	grid-column: 1 / -1;
+	grid-row: 3;
+}
+
+.rv-locator-sortbar > .rv-bar-spacer {
+	flex: 0 0 auto;
+	width: 100%;
+	height: calc(52px + env(safe-area-inset-bottom, 0px));
+	min-height: 52px;
+	pointer-events: none;
+}
+
 .rv-note-hub-bar .rv-locator-toolbar-actions {
 	display: flex;
 	width: 100%;
@@ -6409,6 +6567,49 @@ body.rv-center-visit-notes .rv-older-heading {
 	min-width: 0;
 	gap: 0;
 	overflow: visible;
+}
+
+/* One tab bar for the hub, bases, and notes. A view swap never detaches it. */
+.rv-bar-shell {
+	position: fixed;
+	z-index: 80;
+	display: flex;
+	flex-direction: column;
+	box-sizing: border-box;
+	min-height: 52px;
+	margin: 0;
+	padding: 2px 0 env(safe-area-inset-bottom, 0px);
+	background: var(--background-primary);
+	pointer-events: auto;
+}
+
+.rv-bar-shell.is-note {
+	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--text-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--text-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+}
+
+.rv-bar-shell.is-away {
+	display: none;
+}
+
+.rv-bar-shell > .rv-bar-row {
+	display: flex;
+	width: 100%;
+	min-height: 48px;
+}
+
+.rv-bar-shell.is-sort-open > .rv-bar-row,
+.rv-bar-shell.is-search-open > .rv-bar-row {
+	display: none;
+}
+
+.rv-bar-shell > .rv-bar-sort,
+.rv-bar-shell > .rv-locator-search-slot {
+	display: flex;
+	width: 100%;
+	min-height: 48px;
 }
 
 .rv-note-hub-bar.rv-app-bar,
@@ -6990,11 +7191,11 @@ p.rv-hub-owned a.rv-address-link {
 }
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
-.markdown-preview-view p.rv-hub-owned > .rv-address-line > a.rv-map-button,
+.markdown-preview-view p.rv-hub-owned > .rv-address-line > .rv-note-slot,
 .markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
-.markdown-rendered p.rv-hub-owned > .rv-address-line > a.rv-map-button,
+.markdown-rendered p.rv-hub-owned > .rv-address-line > .rv-note-slot,
 .rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
-.rv-dashboard p.rv-hub-owned > .rv-address-line > a.rv-map-button {
+.rv-dashboard p.rv-hub-owned > .rv-address-line > .rv-note-slot {
 	flex: 0 0 40px;
 	width: 40px;
 	min-width: 40px;
@@ -7410,11 +7611,15 @@ button.rv-study-toggle {
 
 .markdown-preview-view p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
 .markdown-rendered p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
-.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-add {
+.rv-dashboard p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.rv-dashboard p.rv-hub-owned .rv-note-slot {
 	grid-column: 3 !important;
 	width: 40px !important;
+	height: 40px !important;
 	min-width: 40px !important;
 	max-width: 40px !important;
+	min-height: 40px !important;
+	max-height: 40px !important;
 }
 
 .rv-hub-line .rv-hub-chip,
@@ -8466,12 +8671,12 @@ body.rv-center-visit-notes .rv-stamp-row > .rv-visit-more {
 
 .rv-dashboard p.rv-hub-owned .rv-hub-chip,
 .rv-dashboard p.rv-hub-owned .rv-address-field,
-.rv-dashboard p.rv-hub-owned .rv-hub-add,
-.rv-dashboard p.rv-hub-owned a.rv-map-button {
+.rv-dashboard p.rv-hub-owned .rv-note-slot {
 	box-sizing: border-box !important;
 	border: 1px solid var(--background-modifier-border) !important;
 	border-radius: 4px !important;
 	background: var(--background-primary) !important;
+	background-color: var(--background-primary) !important;
 	background-image: none !important;
 	box-shadow: none !important;
 }
@@ -8791,9 +8996,36 @@ button.rv-locator-map-pin > svg:not(.rv-urgency-glyph) {
 
 .rv-dashboard .rv-hub-add,
 .rv-dashboard .rv-hub-add svg,
+.rv-dashboard .rv-note-slot,
+.rv-dashboard .rv-note-slot svg,
 .rv-dashboard a.rv-map-button,
 .rv-dashboard a.rv-map-button svg {
 	color: var(--text-normal) !important;
+}
+
+/* Hub plus and the address copy button. One box, so the two slots cannot drift. */
+.rv-dashboard .rv-note-slot {
+	corner-shape: squircle;
+}
+
+.rv-dashboard .rv-note-slot svg {
+	width: var(--icon-s, 16px) !important;
+	height: var(--icon-s, 16px) !important;
+}
+
+.theme-light .rv-dashboard .rv-note-slot:is(:hover, :focus, :focus-visible, :active),
+.theme-dark .rv-dashboard .rv-note-slot:is(:hover, :focus, :focus-visible, :active),
+.rv-dashboard .rv-note-slot:is(:hover, :focus, :focus-visible, :active) {
+	color: var(--rv-urgency-accent, var(--text-normal)) !important;
+	border-color: var(--rv-urgency-accent, var(--text-normal)) !important;
+	background: var(--background-primary) !important;
+	background-color: var(--background-primary) !important;
+}
+
+.theme-light .rv-dashboard .rv-note-slot:is(:hover, :focus, :focus-visible, :active) svg,
+.theme-dark .rv-dashboard .rv-note-slot:is(:hover, :focus, :focus-visible, :active) svg,
+.rv-dashboard .rv-note-slot:is(:hover, :focus, :focus-visible, :active) svg {
+	color: var(--rv-urgency-accent, var(--text-normal)) !important;
 }
 
 .rv-dashboard .callout[data-callout="quote"] > .callout-title .rv-dash-status,
@@ -10493,35 +10725,18 @@ body.rv-hub-swapping .mobile-navbar {
 	background: var(--background-primary);
 }
 
-/* Descendants default to pointer-events: auto, which keeps the cover's card
-   from the live card under it. None on every node lets the live card take the tap. */
+/* The cover is what the user is looking at. It takes every tap, including a
+   gap, so the hidden live list cannot open a different card. */
 .workspace-leaf > .rv-hub-swap-cover,
 .workspace-leaf > .rv-hub-swap-cover * {
-	pointer-events: none !important;
-}
-
-/* The live list under the cover is a second paint of every card. Hide that
-   list only. The map is a direct child of the leaf, so no ancestor of the
-   stage is at opacity 0. */
-.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover):not(.rv-hub-map):not(.rv-note-map) {
-	opacity: 0 !important;
-}
-
-.workspace-leaf.is-rv-cover-held > .rv-hub-map,
-.workspace-leaf.is-rv-cover-held > .rv-note-map {
-	position: absolute !important;
-	left: 0 !important;
-	right: 0 !important;
-	bottom: 0 !important;
-	z-index: 60 !important;
-	opacity: 1 !important;
-}
-
-/* A cover card is the card the user can see. It takes the tap even when the
-   live list has no file link yet. */
-.workspace-leaf > .rv-hub-swap-cover .rv-locator-card,
-.workspace-leaf > .rv-hub-swap-cover .rv-locator-card * {
 	pointer-events: auto !important;
+}
+
+/* The live list under the cover is a second paint. Hide it and keep it out
+   of the hit path until the cover drops. */
+.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover) {
+	opacity: 0 !important;
+	pointer-events: none !important;
 }
 
 .workspace-leaf > .rv-hub-swap-cover > .view-header {

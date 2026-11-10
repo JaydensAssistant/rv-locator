@@ -1,0 +1,161 @@
+import { setIcon, type IconName } from 'obsidian';
+import { APP_TABS, leadTab, type BarSurface } from './app-bar';
+
+/** One tab bar, owned by the plugin, outside every view. */
+export const BAR_SHELL_CLASS = 'rv-bar-shell';
+export const BAR_SPACER_CLASS = 'rv-bar-spacer';
+export const BAR_MIN_PX = 52;
+
+const MIN_BOX = 2;
+
+export interface BarTabHost {
+	openHub(path: string): void;
+	openSearch(path: string): void;
+	openHubSearch(): void;
+	openCampaign(): void;
+	toggleMap(path: string): void;
+	createNew(): void;
+	openSort(): void;
+}
+
+/** The five slots, created once. A later call returns the same node. */
+export function createBarShell(container: HTMLElement): HTMLElement {
+	const found = container.querySelector(`:scope > .${BAR_SHELL_CLASS}`);
+	if (found instanceof HTMLElement) return found;
+	const doc = container.ownerDocument;
+	const bar = doc.createElement('div');
+	bar.className = BAR_SHELL_CLASS;
+	bar.style.minHeight = `${BAR_MIN_PX}px`;
+	const row = doc.createElement('div');
+	row.className = 'rv-bar-row rv-app-bar';
+	for (const tab of APP_TABS) {
+		const button = doc.createElement('button');
+		button.type = 'button';
+		button.className = `rv-app-slot rv-bar-tab-${tab.id}`;
+		button.setAttribute('aria-label', tab.label);
+		setIcon(button, tab.icon);
+		const text = doc.createElement('span');
+		text.className = 'rv-app-label';
+		text.textContent = tab.label;
+		button.appendChild(text);
+		row.appendChild(button);
+	}
+	bar.appendChild(row);
+	container.appendChild(bar);
+	return bar;
+}
+
+/** Change the first tab's icon and label without replacing the button. */
+export function paintBarLead(bar: HTMLElement, surface: BarSurface): void {
+	const lead = leadTab(surface);
+	const slot = bar.querySelector('.rv-bar-tab-hub');
+	if (slot instanceof HTMLElement) paintBarSlot(slot, lead.label, lead.icon);
+	bar.dataset.rvSurface = surface;
+	bar.classList.toggle('is-note', surface === 'note');
+	bar.classList.remove('is-away');
+}
+
+/** Map slot stays the same button. Only its lit state and accent class change. */
+export function paintBarEarth(bar: HTMLElement, surface: BarSurface, on: boolean, path = ''): void {
+	const map = bar.querySelector('.rv-bar-tab-map');
+	if (!(map instanceof HTMLElement)) return;
+	map.classList.toggle('rv-note-bar-earth', surface === 'note');
+	map.classList.toggle('rv-hub-earth', surface !== 'note');
+	map.classList.toggle('is-on', on);
+	map.setAttribute('aria-pressed', on ? 'true' : 'false');
+	if (surface === 'note' && path) map.dataset.rvPath = path;
+	else delete map.dataset.rvPath;
+}
+
+export function paintBarSlot(slot: HTMLElement, label: string, icon: IconName | string): void {
+	slot.setAttribute('aria-label', label);
+	slot.querySelectorAll('svg').forEach((node) => node.remove());
+	setIcon(slot, icon as IconName);
+	let text = slot.querySelector('.rv-app-label');
+	if (!(text instanceof HTMLElement)) {
+		text = slot.ownerDocument.createElement('span');
+		text.className = 'rv-app-label';
+		slot.appendChild(text);
+	}
+	text.textContent = label;
+}
+
+/** Same click on hub, base, and note. Only the first tab's meaning changes. */
+export function dispatchBarTab(id: string, surface: BarSurface, path: string, host: BarTabHost): void {
+	if (id === 'hub') {
+		if (surface === 'hub') host.openSort();
+		else host.openHub(path);
+		return;
+	}
+	if (id === 'search') {
+		if (surface === 'note') host.openSearch(path);
+		else host.openHubSearch();
+		return;
+	}
+	if (id === 'campaign') host.openCampaign();
+	else if (id === 'map') host.toggleMap(path);
+	else host.createNew();
+}
+
+export function barTabId(slot: Element): string {
+	for (const tab of APP_TABS) {
+		if (slot.classList.contains(`rv-bar-tab-${tab.id}`)) return tab.id;
+	}
+	return '';
+}
+
+/** The slot a view reserves. The bar is not a child of this node. */
+export function ensureBarSpacer(host: HTMLElement): HTMLElement {
+	const sitting = host.querySelector(':scope > .rv-bar-spacer');
+	if (sitting instanceof HTMLElement) return sitting;
+	const spacer = host.ownerDocument.createElement('div');
+	spacer.className = BAR_SPACER_CLASS;
+	spacer.setAttribute('aria-hidden', 'true');
+	host.appendChild(spacer);
+	return spacer;
+}
+
+function boxHidden(node: HTMLElement): boolean {
+	let current: HTMLElement | null = node;
+	while (current) {
+		if (current.style?.display === 'none') return true;
+		if (current.classList?.contains('is-hidden') === true) return true;
+		if (typeof current.hasAttribute === 'function' && current.hasAttribute('hidden')) return true;
+		const parent: HTMLElement | null = current.parentElement;
+		if (!parent || parent === current) break;
+		current = parent;
+	}
+	return false;
+}
+
+/** The spacer under the bar. A cover spacer is only a fallback. */
+export function visibleBarSpacer(doc: Document): HTMLElement | null {
+	const nodes = doc.querySelectorAll('.rv-bar-spacer');
+	let cover: HTMLElement | null = null;
+	for (let index = 0; index < nodes.length; index += 1) {
+		const node = nodes[index];
+		if (!(node instanceof HTMLElement) || !node.isConnected || boxHidden(node)) continue;
+		const rect = node.getBoundingClientRect();
+		if (rect.width < MIN_BOX || rect.height < MIN_BOX) continue;
+		if (node.closest('.rv-hub-swap-cover')) {
+			cover = node;
+			continue;
+		}
+		return node;
+	}
+	return cover;
+}
+
+/**
+ * Move the bar onto the spacer. A spacer without a box leaves the bar
+ * where it was, including its height.
+ */
+export function placeBarOver(bar: HTMLElement, spacer: HTMLElement | null): boolean {
+	if (!(spacer instanceof HTMLElement) || !spacer.isConnected) return false;
+	const rect = spacer.getBoundingClientRect();
+	if (rect.width < MIN_BOX || rect.height < MIN_BOX) return false;
+	bar.style.left = `${rect.left}px`;
+	bar.style.top = `${rect.top}px`;
+	bar.style.width = `${rect.width}px`;
+	return true;
+}
