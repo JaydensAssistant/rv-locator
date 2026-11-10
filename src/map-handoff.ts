@@ -216,6 +216,114 @@ export function markHandedMapHost(stage: HTMLElement): void {
 	if (phone || view.classList.contains('is-stacked')) view.classList.add('is-stacked');
 }
 
+/** True when an ancestor would hide the map: opacity 0, display none, or the cover hold. */
+export function mapAncestorHidden(node: HTMLElement): boolean {
+	const held = node.closest?.('.is-rv-cover-held');
+	if (held instanceof HTMLElement && held !== node && !node.closest('.rv-hub-swap-cover')) {
+		const map = node.classList.contains('rv-hub-map') || node.classList.contains('rv-note-map')
+			? node
+			: node.closest('.rv-hub-map, .rv-note-map');
+		const onLeaf = map instanceof HTMLElement && map.parentElement === held;
+		if (!onLeaf) return true;
+	}
+	if (node.style?.display === 'none' || node.style?.opacity === '0') return true;
+	if (node.classList?.contains('is-hidden') === true) return true;
+	if (typeof node.hasAttribute === 'function' && node.hasAttribute('hidden')) return true;
+	const view = node.ownerDocument?.defaultView;
+	if (view && typeof view.getComputedStyle === 'function') {
+		try {
+			const own = view.getComputedStyle(node);
+			if (own.display === 'none' || own.opacity === '0') return true;
+		} catch {
+			// A node mid-move has nothing to measure.
+		}
+	}
+	let current: HTMLElement | null = node.parentElement;
+	while (current && current !== node.ownerDocument.body && current !== node.ownerDocument.documentElement) {
+		if (current.style?.display === 'none' || current.style?.opacity === '0') return true;
+		if (current.classList?.contains('is-hidden') === true) return true;
+		if (typeof current.hasAttribute === 'function' && current.hasAttribute('hidden')) return true;
+		if (view && typeof view.getComputedStyle === 'function') {
+			try {
+				const style = view.getComputedStyle(current);
+				if (style.display === 'none' || style.opacity === '0') return true;
+			} catch {
+				// A node mid-move has nothing to measure.
+			}
+		}
+		current = current.parentElement;
+	}
+	return false;
+}
+
+/** The one stage. A second stage means the handoff built a new map. */
+export function soleMapStage(doc: Document): HTMLElement | null {
+	const stages = doc.querySelectorAll('.rv-map-stage');
+	let found: HTMLElement | null = null;
+	for (let index = 0; index < stages.length; index += 1) {
+		const stage = stages[index];
+		if (!(stage instanceof HTMLElement)) continue;
+		if (found) return found;
+		found = stage;
+	}
+	return found;
+}
+
+/** The map element that owns the stage. */
+export function liveMapWithStage(doc: Document): HTMLElement | null {
+	const stage = soleMapStage(doc);
+	if (!stage) return null;
+	const map = stage.closest('.rv-hub-map, .rv-note-map');
+	return map instanceof HTMLElement && !map.classList.contains('rv-map-spacer') ? map : null;
+}
+
+/**
+ * One connected stage, with a real height, and no ancestor hiding it.
+ * The stage is not a child of the body and not inside a park.
+ */
+export function mapFrameOk(doc: Document): boolean {
+	const stages = doc.querySelectorAll('.rv-map-stage');
+	if (stages.length !== 1) return false;
+	const stage = stages[0];
+	if (!(stage instanceof HTMLElement) || !stage.isConnected) return false;
+	const map = stage.closest('.rv-hub-map, .rv-note-map');
+	if (!(map instanceof HTMLElement)) return false;
+	if (map.parentElement === doc.body || stage.parentElement === doc.body) return false;
+	if (map.closest('.rv-map-park')) return false;
+	const styled = Number.parseFloat(stage.style.getPropertyValue('height'));
+	const height = styled > 0 ? styled : stage.getBoundingClientRect().height;
+	if (!(height > 0)) return false;
+	return !mapAncestorHidden(stage);
+}
+
+/**
+ * Move the one map into `host` in this turn. The height lock is written
+ * first. The node is appended, never removed, and never parked on the body.
+ * A hidden host is skipped for the workspace leaf, which survives the view swap.
+ */
+export function relayMap(map: HTMLElement, host: HTMLElement | null, className?: 'rv-hub-map' | 'rv-note-map'): void {
+	holdMapHeight(map);
+	if (className) {
+		map.classList.remove('rv-hub-map', 'rv-note-map', 'rv-map-spacer');
+		map.classList.add(className);
+	}
+	const doc = map.ownerDocument;
+	const leafOf = (node: HTMLElement | null): HTMLElement | null => {
+		const leaf = node?.closest('.workspace-leaf');
+		return leaf instanceof HTMLElement && leaf.isConnected && leaf !== doc.body ? leaf : null;
+	};
+	let target = host && host.isConnected && host !== doc.body && !mapAncestorHidden(host) ? host : null;
+	if (!target) target = leafOf(host) ?? leafOf(map);
+	if (!target) return;
+	if (map.parentElement !== target) target.appendChild(map);
+	if (mapAncestorHidden(map)) {
+		const leaf = leafOf(map);
+		if (leaf && map.parentElement !== leaf) leaf.appendChild(map);
+	}
+	const stage = map.querySelector('.rv-map-stage');
+	if (stage instanceof HTMLElement && map.parentElement instanceof HTMLElement) seatMapGrip(map.parentElement, map);
+}
+
 /** Lift a map out of the view that is about to be replaced. The node stays connected. */
 export function parkMapNode(el: HTMLElement): HTMLElement {
 	const doc = el.ownerDocument;

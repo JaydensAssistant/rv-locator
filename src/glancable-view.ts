@@ -12,7 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { hostIsHidden, markHubFill } from './hub-cover';
-import { liftMapGrip, lockHandedMapBand, pinHeldMapBand, retireEmptyMapPark, seatMapGrip } from './map-handoff';
+import { liftMapGrip, liveMapWithStage, lockHandedMapBand, mapAncestorHidden, pinHeldMapBand, relayMap, retireEmptyMapPark, seatMapGrip } from './map-handoff';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
 import { displayedUrgency, rowPriority, rowSpokeDays } from './row-score';
@@ -98,6 +98,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	override onunload(): void {
+		const keep = this.plugin.hubMapOpen || this.plugin.noteMapOpen;
+		const el = this.hubMapEl ?? liveMapWithStage(this.root.ownerDocument);
+		if (keep && el instanceof HTMLElement && this.root.contains(el)) {
+			const grip = this.hubMapHandle;
+			if (grip instanceof HTMLElement) liftMapGrip(grip);
+			const leaf = this.root.closest('.workspace-leaf');
+			relayMap(el, leaf instanceof HTMLElement ? leaf : null, el.classList.contains('rv-note-map') ? 'rv-note-map' : 'rv-hub-map');
+			this.hubMapEl = null;
+		}
 		this.root.ownerDocument.body.classList.remove('rv-hide-backlinks');
 		this.clearBasesChrome();
 		super.onunload();
@@ -204,11 +213,18 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	private ensureHubMap(): void {
+		if (this.root.closest('.rv-hub-swap-cover')) return;
 		if (hostIsHidden(this.root)) return;
 		this.ensureHubFullscreenSync();
 		this.ensureStage();
 		const stage = this.stageEl ?? this.root;
 		const sitting = stage.querySelector(':scope > .rv-hub-map:not(.rv-map-spacer)');
+		if (sitting instanceof HTMLElement && mapAncestorHidden(sitting)) {
+			const leaf = this.root.closest('.workspace-leaf');
+			relayMap(sitting, leaf instanceof HTMLElement ? leaf : null, 'rv-hub-map');
+			this.hubMapEl = sitting;
+			return;
+		}
 		if (sitting instanceof HTMLElement) {
 			this.hubMapEl = sitting;
 			if (!this.hubMapApi) {
@@ -221,32 +237,34 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.releaseHandedBandWhenLaidOut();
 			return;
 		}
-		if (this.hubMapEl?.closest('.rv-map-park') && !this.plugin.wantsParkedMapBack?.()) return;
-		if (this.hubMapEl?.isConnected && this.root.contains(this.hubMapEl)) return;
+		if (this.hubMapEl?.isConnected && this.root.contains(this.hubMapEl) && !this.hubMapEl.closest('.rv-map-park')) return;
 		const doc = this.root.ownerDocument;
-		// While the swap cover is up the painted map stays in the park, above the
-		// cover. Pulling it into this stage would hide the tiles under the cover.
-		// History back has no cover, so that path still claims the park.
+		const existing = liveMapWithStage(doc);
+		if (existing) {
+			const coverUp = doc.querySelector('.rv-hub-swap-cover') != null;
+			const leaf = this.root.closest('.workspace-leaf');
+			const dest = !coverUp && !hostIsHidden(stage) && !mapAncestorHidden(stage)
+				? stage
+				: (leaf instanceof HTMLElement ? leaf : null);
+			relayMap(existing, dest, 'rv-hub-map');
+			retireEmptyMapPark(doc);
+			this.hubMapEl = existing;
+			const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
+			if (api || existing.querySelector('.rv-map-stage')) this.hubMapApi = api;
+			if (existing.parentElement === stage) {
+				this.ensureHubHandle(stage);
+				this.deferPaintedOrder(existing);
+				this.releaseHandedBandWhenLaidOut();
+			}
+			return;
+		}
+		// While the swap cover is up, do not build a second map under the hidden list.
 		if (doc.querySelector('.rv-hub-swap-cover')) {
 			stage.querySelector(':scope > .rv-map-spacer')?.remove();
 			if (this.hubMapEl?.classList.contains('rv-map-spacer')) this.hubMapEl = null;
 			return;
 		}
 		this.hubMapEl = null;
-		const parked = this.plugin.claimParkedMap?.('rv-hub-map') ?? null;
-		if (parked) {
-			stage.appendChild(parked);
-			retireEmptyMapPark(parked.ownerDocument);
-			this.hubMapEl = parked;
-			const api = this.plugin.takeParkedHandle?.() ?? this.plugin.currentMapHandle?.() ?? null;
-			const painted = parked.querySelector('.rv-map-stage') != null;
-			if (api || painted) this.hubMapApi = api;
-			else this.hubMapApi = this.plugin.mountHubMap(parked);
-			this.ensureHubHandle(stage);
-			this.deferPaintedOrder(parked);
-			this.releaseHandedBandWhenLaidOut();
-			return;
-		}
 		const map = stage.createDiv('rv-hub-map');
 		stage.appendChild(map);
 		const handle = seatMapGrip(stage, map);
@@ -268,6 +286,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	private removeHubMap(): void {
 		const el = this.hubMapEl;
+		const keep = this.plugin.hubMapOpen || this.plugin.noteMapOpen;
+		if (el instanceof HTMLElement && keep && !el.classList.contains('rv-map-spacer')) {
+			const leaf = this.root.closest('.workspace-leaf');
+			relayMap(el, leaf instanceof HTMLElement ? leaf : null, 'rv-hub-map');
+			this.hubMapEl = null;
+			this.releaseHubGrip();
+			return;
+		}
 		const ownedHere = el != null && el.isConnected && this.root.contains(el) && !el.classList.contains('rv-map-spacer');
 		if (!ownedHere) {
 			if (el?.classList.contains('rv-map-spacer')) el.remove();
@@ -378,13 +404,17 @@ export class NearbyGlancableView extends NearbyBasesView {
 
 	/** The cover is handing this view the map it already painted. */
 	private adoptHubMap(el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null): void {
-		if (hostIsHidden(this.root)) return;
+		if (hostIsHidden(this.root) || this.root.closest('.rv-hub-swap-cover')) return;
 		const stage = this.stageEl ?? this.root;
-		el.classList.remove('rv-note-map', 'rv-map-spacer');
-		el.classList.add('rv-hub-map');
 		stage.querySelectorAll(':scope > .rv-map-spacer').forEach((node) => node.remove());
-		if (el.parentElement !== stage) stage.appendChild(el);
+		const leaf = this.root.closest('.workspace-leaf');
+		const dest = mapAncestorHidden(stage) ? (leaf instanceof HTMLElement ? leaf : null) : stage;
+		relayMap(el, dest, 'rv-hub-map');
 		this.hubMapEl = el;
+		if (el.parentElement !== stage) {
+			if (api) this.hubMapApi = api;
+			return;
+		}
 		const painted = el.querySelector('.rv-map-stage') != null;
 		if (api) this.hubMapApi = api;
 		else if (!this.hubMapApi && !painted) this.hubMapApi = this.plugin.mountHubMap(el);

@@ -242,8 +242,8 @@ describe('RV-B54 the map stays on screen', () => {
 		assert.match(branch, /coversHubOpen\(file\)/);
 		assert.match(branch, /this\.hubMapOpen = true/);
 		assert.ok(branch.indexOf('this.hubMapOpen = false') < branch.indexOf('this.applyLayoutClasses()'));
-		assert.match(source('src/glancable-view.ts'), /claimParkedMap\?\.\('rv-hub-map'\)/);
-		assert.match(main, /claimParkedMap\('rv-note-map'\)/);
+		assert.match(source('src/glancable-view.ts'), /relayMap\(/);
+		assert.match(main, /relayMap\(/);
 		assert.match(main, /handHubMapToLive/);
 		assert.match(source('src/hub-cover.ts'), /beforeRelease\?\.\(\)/);
 		const stop = source('src/hub-cover.ts');
@@ -354,8 +354,12 @@ describe('RV-B54 the map stays on screen', () => {
 		assert.equal(liveStage.querySelector('.rv-map-tile.is-ready') != null, true);
 		const main = source('src/main.ts');
 		const hand = main.slice(main.indexOf('private handHubMapToLive'), main.indexOf('private noteDirectHubOpen'));
-		assert.match(hand, /lockHandedMapBand\(map, band\)/);
+		assert.match(hand, /relayMap\(/);
 		assert.doesNotMatch(hand, /invalidateSize\(\)/);
+		const relay = source('src/map-handoff.ts');
+		const move = relay.slice(relay.indexOf('export function relayMap'), relay.indexOf('export function parkMapNode'));
+		assert.ok(move.indexOf('holdMapHeight(map)') < move.indexOf('appendChild'));
+		assert.match(relay.slice(relay.indexOf('export function holdMapHeight'), relay.indexOf('export function pinHeldMapBand')), /lockHandedMapBand\(map, laid\)/);
 		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
 		assert.match(hook, /noteDirectHubOpen\(\)/);
 		assert.match(hook, /pinDirectHubScroll\(\)/);

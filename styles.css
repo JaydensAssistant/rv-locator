@@ -10500,10 +10500,28 @@ body.rv-hub-swapping .mobile-navbar {
 	pointer-events: none !important;
 }
 
-/* The live list under the cover is a second paint of every card. Hide it
-   until the cover drops. Opacity keeps those cards in the hit path. */
-.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover) {
+/* The live list under the cover is a second paint of every card. Hide that
+   list only. The map is a direct child of the leaf, so no ancestor of the
+   stage is at opacity 0. */
+.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover):not(.rv-hub-map):not(.rv-note-map) {
 	opacity: 0 !important;
+}
+
+.workspace-leaf.is-rv-cover-held > .rv-hub-map,
+.workspace-leaf.is-rv-cover-held > .rv-note-map {
+	position: absolute !important;
+	left: 0 !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	z-index: 60 !important;
+	opacity: 1 !important;
+}
+
+/* A cover card is the card the user can see. It takes the tap even when the
+   live list has no file link yet. */
+.workspace-leaf > .rv-hub-swap-cover .rv-locator-card,
+.workspace-leaf > .rv-hub-swap-cover .rv-locator-card * {
+	pointer-events: auto !important;
 }
 
 .workspace-leaf > .rv-hub-swap-cover > .view-header {

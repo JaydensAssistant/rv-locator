@@ -31,7 +31,7 @@ import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
-import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, holdMapHeight, liftMapGrip, lockHandedMapBand, markHandedMapHost, paintedHandoffMap, parkMapNode, pinHeldMapBand, placeHandedMap, retireEmptyMapPark, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
+import { claimParkedMap as takeParkedMapNode, ensureHubMapHandle, liftMapGrip, liveMapWithStage, lockHandedMapBand, mapAncestorHidden, markHandedMapHost, pinHeldMapBand, relayMap, retireEmptyMapPark, seatMapGrip, shownHubStage, visibleMapNode } from './map-handoff';
 import { paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
@@ -2025,6 +2025,14 @@ export default class RVLocatorPlugin extends Plugin {
 				if (this.hubArrivalPath === path) this.hubArrivalPath = null;
 			},
 			beforeRelease: () => { this.handHubMapToLive(); },
+			openCard: (path) => {
+				this.coverOpeningNote = true;
+				if (this.hubMapOpen || this.noteMapOpen) this.keepMapWithNote(path);
+				else {
+					this.coverOpeningNote = false;
+					void this.app.workspace.openLinkText(path, '', false);
+				}
+			},
 		};
 	}
 
@@ -2040,16 +2048,18 @@ export default class RVLocatorPlugin extends Plugin {
 		this.paintEarthStates();
 	}
 
-	/** Move the live map onto a fixed holder before its view is destroyed. */
+	/**
+	 * Move the live map onto the workspace leaf before its view is destroyed.
+	 * The leaf stays in the document. The stage is not parked on the body.
+	 */
 	parkOpenMap(): boolean {
-		const el = visibleMapNode(document);
+		const el = visibleMapNode(document) ?? liveMapWithStage(document);
 		if (!(el instanceof HTMLElement)) return this.parkedHandle != null;
-		if (el.closest('.rv-map-park')) return true;
-		holdMapHeight(el);
-		parkMapNode(el);
+		const leaf = el.closest('.workspace-leaf');
+		relayMap(el, leaf instanceof HTMLElement ? leaf : null, el.classList.contains('rv-note-map') ? 'rv-note-map' : 'rv-hub-map');
 		this.parkedHandle = this.noteMapHandle ?? this.lastMapHandle;
 		if (this.noteMapHandle) this.noteMapHandle = null;
-		return true;
+		return el.isConnected && el.querySelector('.rv-map-stage') != null;
 	}
 
 	/** The earth turned the map off. A parked node must not stay on screen. */
@@ -2073,21 +2083,20 @@ export default class RVLocatorPlugin extends Plugin {
 		return this.returnParkedMap;
 	}
 
-	/** Cover drop. The same painted map is in the live hub, at the cover's height, before the cover leaves. */
+	/** Cover drop. The same map moves into the live hub. A hidden stage keeps it on the leaf. */
 	private handHubMapToLive(): void {
-		const map = paintedHandoffMap(document);
+		if (this.coverOpeningNote) return;
+		const map = liveMapWithStage(document);
 		if (!(map instanceof HTMLElement)) return;
 		const stage = shownHubStage(document);
 		const api = this.parkedHandle ?? this.lastMapHandle;
-		const band = map.getBoundingClientRect().height;
-		if (!(stage instanceof HTMLElement)) {
-			if (!map.closest('.rv-map-park')) parkMapNode(map);
+		const host = stage instanceof HTMLElement && !mapAncestorHidden(stage) ? stage : map.closest('.workspace-leaf');
+		relayMap(map, host instanceof HTMLElement ? host : null, 'rv-hub-map');
+		if (!(stage instanceof HTMLElement) || map.parentElement !== stage) {
 			this.parkedHandle = api;
 			return;
 		}
-		placeHandedMap(map, stage);
 		ensureHubMapHandle(stage);
-		lockHandedMapBand(map, band);
 		markHandedMapHost(stage);
 		const hub = stage.closest('.rv-locator-view');
 		if (hub instanceof HTMLElement) {
@@ -2136,13 +2145,14 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Put a parked map in the hub stage once that stage exists. The park stays up until then. */
 	private settleParkedHubMap(attempt: number): void {
 		if (this.unloaded || !this.hubMapOpen) return;
-		const parked = document.querySelector('.rv-map-park .rv-hub-map, .rv-map-park .rv-note-map');
-		if (!(parked instanceof HTMLElement)) return;
-		if (!(shownHubStage(document) instanceof HTMLElement)) {
+		const map = liveMapWithStage(document);
+		if (!(map instanceof HTMLElement)) return;
+		const stage = shownHubStage(document);
+		if (!(stage instanceof HTMLElement) || mapAncestorHidden(stage)) {
 			if (attempt < 30) requestAnimationFrame(() => this.settleParkedHubMap(attempt + 1));
 			return;
 		}
-		this.handHubMapToLive();
+		if (map.parentElement !== stage) this.handHubMapToLive();
 	}
 
 	/** Quick Switcher and every other direct hub open. Not a hub link, and not history back. */
@@ -2483,6 +2493,8 @@ export default class RVLocatorPlugin extends Plugin {
 	private mapCanvases = new Set<{ refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
 	/** Leaflet handle for the map node that is parked between two views. */
 	private parkedHandle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
+	/** A cover card opened a note. The hub must not take the map back. */
+	private coverOpeningNote = false;
 	/** Last map this plugin mounted. The handoff reuses it instead of constructing a second one. */
 	private lastMapHandle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
 	private liveHubAdopter: ((el: HTMLElement, api: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null) => void) | null = null;
@@ -2542,7 +2554,10 @@ export default class RVLocatorPlugin extends Plugin {
 	keepMapWithNote(path: string): void {
 		this.mapFocusPath = path;
 		const file = this.app.vault.getFileByPath(path);
-		if (!(file instanceof TFile)) return;
+		if (!(file instanceof TFile)) {
+			this.coverOpeningNote = false;
+			return;
+		}
 		this.noteMapHandoff = true;
 		this.parkOpenMap();
 		const active = this.app.workspace.getActiveFile();
@@ -2585,6 +2600,7 @@ export default class RVLocatorPlugin extends Plugin {
 	/** Move the parked map into the note once that note's leaf is actually showing. */
 	private settleNoteMap(path: string, attempt: number): void {
 		if (this.unloaded || this.mapFocusPath !== path) {
+			this.coverOpeningNote = false;
 			this.restoreParkedToHub();
 			return;
 		}
@@ -2602,6 +2618,7 @@ export default class RVLocatorPlugin extends Plugin {
 			return;
 		}
 		this.hubMapOpen = false;
+		this.coverOpeningNote = false;
 		this.paintEarthStates();
 		for (const callback of this.viewRefreshers) callback();
 		this.focusMapPin(path, true);
@@ -2754,19 +2771,17 @@ export default class RVLocatorPlugin extends Plugin {
 		content.classList.add('is-note-map');
 		this.watchNoteMapBox(content);
 		let map = content.querySelector(':scope > .rv-note-map');
-		if (!(map instanceof HTMLElement) || !map.isConnected) {
-			const parked = this.claimParkedMap('rv-note-map');
-			if (parked) {
-				content.appendChild(parked);
-				retireEmptyMapPark(content.ownerDocument);
-				map = parked;
-				const adopted = this.takeParkedHandle();
-				if (adopted) this.noteMapHandle = adopted;
-			} else {
-				this.noteMapHandle?.destroy();
-				this.noteMapHandle = null;
-				map = content.createDiv('rv-note-map');
-			}
+		const carried = liveMapWithStage(document);
+		if (carried instanceof HTMLElement && map !== carried) {
+			relayMap(carried, content, 'rv-note-map');
+			retireEmptyMapPark(content.ownerDocument);
+			map = carried;
+			const adopted = this.takeParkedHandle() ?? this.currentMapHandle();
+			if (adopted) this.noteMapHandle = adopted;
+		} else if (!(map instanceof HTMLElement) || !map.isConnected) {
+			this.noteMapHandle?.destroy();
+			this.noteMapHandle = null;
+			map = content.createDiv('rv-note-map');
 		}
 		if (!(map instanceof HTMLElement)) return;
 		const band = map.querySelector('.rv-map-stage');
@@ -2774,7 +2789,7 @@ export default class RVLocatorPlugin extends Plugin {
 		lockHandedMapBand(map, laid);
 		const grip = seatMapGrip(content, map);
 		this.bindNoteMapHandle(content, grip);
-		if (!this.noteMapHandle) this.noteMapHandle = this.mountHubMap(map, 'split');
+		if (!this.noteMapHandle && !map.querySelector('.rv-map-stage')) this.noteMapHandle = this.mountHubMap(map, 'split');
 		for (const delay of [0, 250]) {
 			window.setTimeout(() => {
 				if (this.unloaded || !this.noteMapOpen) return;
@@ -2929,12 +2944,18 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const host of hosts) {
 			host.classList.remove('is-note-map', 'is-note-map-side');
 			const grip = host.querySelector(':scope > .rv-note-map-handle, :scope > .rv-map-grip');
+			const moving = this.hubMapOpen || this.noteMapOpen;
 			if (grip instanceof HTMLElement) {
-				const moving = host.ownerDocument.querySelector('.rv-map-park') != null || this.hubMapOpen || this.noteMapOpen;
 				if (moving) liftMapGrip(grip);
 				else if (!grip.classList.contains('is-pinned')) grip.remove();
 			}
-			host.querySelector(':scope > .rv-note-map')?.remove();
+			const map = host.querySelector(':scope > .rv-note-map');
+			if (map instanceof HTMLElement && moving) {
+				const leaf = host.closest('.workspace-leaf');
+				relayMap(map, leaf instanceof HTMLElement ? leaf : null, 'rv-note-map');
+			} else {
+				map?.remove();
+			}
 		}
 		this.syncNoteMapStatus(null);
 	}

@@ -10,7 +10,7 @@ import { applyNoteMapFrame, hubUsesStackedMap, mapBandPx, mapPanePx, revealHubCa
 import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
 import { buildAutocompleteUrl, buildCountySuggestUrl, countyGeocodeText, countyPlaceCacheKey, readCountyPlaceId } from '../src/address';
 import { placeFilterParam } from '../src/home-base';
-import { claimParkedMap, holdMapHeight, lockHandedMapBand, parkMapNode, pinHeldMapBand, seatMapGrip } from '../src/map-handoff';
+import { claimParkedMap, holdMapHeight, lockHandedMapBand, mapFrameOk, parkMapNode, pinHeldMapBand, relayMap, seatMapGrip } from '../src/map-handoff';
 import { alignHubCover, holdLeafForHubPaint, releaseHubSwapCover } from '../src/hub-cover';
 import { applyVisitChangeFrontmatter, editVisit, listVisits, removeVisit, visitFacts, visitWhenFrom } from '../src/visit-editor';
 import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from '../src/visit-log';
@@ -856,7 +856,10 @@ describe('phone smoke of f78cc45', () => {
 		assert.match(retain, /this\.parkOpenMap\(\)/);
 		assert.doesNotMatch(retain, /if \(this\.noteMapOpen\) this\.parkOpenMap\(\)/);
 		const park = main.slice(main.indexOf('parkOpenMap(): boolean'), main.indexOf('private dropParkedMap'));
-		assert.ok(park.indexOf('holdMapHeight') < park.indexOf('parkMapNode'));
+		assert.match(park, /relayMap\(/);
+		assert.doesNotMatch(park, /parkMapNode\(/);
+		const relay = source('src/map-handoff.ts').slice(source('src/map-handoff.ts').indexOf('export function relayMap'), source('src/map-handoff.ts').indexOf('export function parkMapNode'));
+		assert.ok(relay.indexOf('holdMapHeight(map)') < relay.indexOf('appendChild'));
 		assert.match(source('src/glancable-view.ts'), /pinHeldMapBand\(root, map\)/);
 	});
 
@@ -890,10 +893,105 @@ describe('phone smoke of f78cc45', () => {
 		assert.equal(leaf.classList.contains('is-rv-cover-held'), false);
 		assert.equal(leaf.querySelector('.rv-hub-swap-cover'), null);
 		const css = source('styles.css');
-		const rule = css.slice(css.indexOf('.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover) {'), css.indexOf('}', css.indexOf('.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover) {')));
+		const selector = '.workspace-leaf.is-rv-cover-held > :not(.rv-hub-swap-cover):not(.rv-hub-map):not(.rv-note-map)';
+		const rule = css.slice(css.indexOf(selector), css.indexOf('}', css.indexOf(selector)));
 		assert.match(rule, /opacity:\s*0 !important/);
 		assert.doesNotMatch(rule, /pointer-events/);
 		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*none !important/);
+		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover \.rv-locator-card \* \{[^}]*pointer-events:\s*auto !important/);
+	});
+
+	it('keeps one connected stage through hub, base, and note', async () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		globalThis.Element = win.Element;
+		globalThis.MutationObserver = win.MutationObserver;
+		const doc = win.document;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf';
+		const hub = doc.createElement('div');
+		hub.className = 'rv-locator-stage';
+		const base = doc.createElement('div');
+		base.className = 'rv-locator-stage';
+		const note = doc.createElement('div');
+		note.className = 'markdown-preview-view';
+		const map = doc.createElement('div');
+		map.className = 'rv-hub-map';
+		const stage = doc.createElement('div');
+		stage.className = 'rv-map-stage';
+		stage.getBoundingClientRect = () => ({ top: 0, bottom: 316, left: 0, right: 390, width: 390, height: 316, x: 0, y: 0, toJSON() { return {}; } });
+		map.appendChild(stage);
+		hub.appendChild(map);
+		leaf.append(hub, base, note);
+		doc.body.appendChild(leaf);
+		const frames: boolean[] = [];
+		const sample = (): void => { frames.push(mapFrameOk(doc)); };
+		const observer = new win.MutationObserver(() => sample());
+		observer.observe(doc.body, { childList: true, subtree: true, attributes: true });
+		const hops: Array<[HTMLElement, 'rv-hub-map' | 'rv-note-map']> = [
+			[base, 'rv-hub-map'],
+			[hub, 'rv-hub-map'],
+			[note, 'rv-note-map'],
+			[hub, 'rv-hub-map'],
+			[base, 'rv-hub-map'],
+		];
+		for (const [host, className] of hops) {
+			relayMap(map, host, className);
+			sample();
+			assert.equal(map.parentElement, host);
+			assert.equal(doc.querySelectorAll('.rv-map-stage').length, 1);
+			await Promise.resolve();
+		}
+		hub.style.opacity = '0';
+		relayMap(map, hub, 'rv-hub-map');
+		sample();
+		await Promise.resolve();
+		assert.equal(map.parentElement, leaf);
+		assert.notEqual(map.parentElement, doc.body);
+		assert.equal(map.closest('.rv-map-park'), null);
+		assert.ok(frames.length > 0);
+		assert.ok(frames.every((ok) => ok));
+		observer.disconnect();
+	});
+
+	it('opens a cover card when the live list has no file link yet', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		globalThis.Element = win.Element;
+		globalThis.MutationObserver = win.MutationObserver;
+		const doc = win.document;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf';
+		leaf.textContent = 'Return Visits Hub';
+		leaf.getBoundingClientRect = () => ({ top: 0, bottom: 797, left: 0, right: 390, width: 390, height: 797, x: 0, y: 0, toJSON() { return {}; } });
+		let under = 0;
+		leaf.addEventListener('click', () => { under += 1; });
+		doc.body.appendChild(leaf);
+		let opened = '';
+		holdLeafForHubPaint(leaf, {
+			mount: (host) => {
+				const actions = doc.createElement('div');
+				actions.className = 'rv-locator-toolbar-actions';
+				actions.appendChild(doc.createElement('button'));
+				const card = doc.createElement('div');
+				card.className = 'rv-locator-card';
+				card.setAttribute('data-rv-path', 'People/Red Lane.md');
+				card.textContent = 'Red Lane';
+				host.append(actions, card);
+				return () => {};
+			},
+			openCard: (path) => { opened = path; },
+		});
+		const cover = leaf.querySelector(':scope > .rv-hub-swap-cover');
+		assert.ok(cover);
+		assert.equal(doc.querySelectorAll('a.rv-locator-file-link').length, 0);
+		const card = cover?.querySelector('.rv-locator-card');
+		assert.ok(card);
+		card?.dispatchEvent(new win.MouseEvent('click', { bubbles: true }));
+		assert.equal(opened, 'People/Red Lane.md');
+		assert.equal(under, 0);
 	});
 });
 

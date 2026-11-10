@@ -314,6 +314,8 @@ export interface HubCoverPaint {
 	onLand?: (path: string) => void;
 	/** Move a map out of the cover before the cover node is removed. */
 	beforeRelease?: () => void;
+	/** A card on the cover. The live list may not have links yet. */
+	openCard?: (path: string) => void;
 }
 
 function snapshotReady(host: HTMLElement): boolean {
@@ -453,17 +455,19 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 			// A missing live card still has to drop the cover.
 		}
 		try {
-			options?.beforeRelease?.();
-		} catch {
-			// The cover still has to drop if the map handoff throws.
-		}
-		try {
 			dispose?.();
 		} catch {
 			// The snapshot view is leaving with the cover.
 		}
 		dispose = undefined;
+		// Drop the hold before the map moves. The live stage is then visible
+		// in this same turn, so the stage never sits under opacity 0.
 		releaseHubSwapCover(doc, keepNav);
+		try {
+			options?.beforeRelease?.();
+		} catch {
+			// The cover is already gone if the map handoff throws.
+		}
 	};
 	const observer = new MutationObserver(() => {
 		if (stopped) return;
@@ -510,6 +514,20 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 		}
 	}
 	if (!painted) cover.appendChild(noteClone);
+	cover.addEventListener('click', (event) => {
+		const target = event.target;
+		if (!(target instanceof Element)) return;
+		const card = target.closest('.rv-locator-card');
+		if (!(card instanceof HTMLElement) || !cover.contains(card)) return;
+		const link = card.querySelector('a.rv-locator-file-link');
+		const path = card.getAttribute('data-rv-path')
+			|| (link instanceof HTMLElement ? link.getAttribute('href') : '')
+			|| '';
+		if (!path) return;
+		event.preventDefault();
+		event.stopPropagation();
+		options?.openCard?.(path);
+	}, true);
 	observer.observe(doc.body, { childList: true, subtree: true });
 	const tick = (): void => {
 		if (stopped) return;
