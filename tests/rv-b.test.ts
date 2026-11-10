@@ -10,11 +10,11 @@ import { sortRowsBy } from '../src/sort';
 import { clearGlanceHold, heldGlanceGroups, rememberGlanceGroups } from '../src/glance-hold';
 import { createdNewRvFile } from '../src/new-rv-launch';
 import { NewRvIdentityModal, type NewRvIdentity } from '../src/new-rv-modal';
-import { NearbyGlancableView } from '../src/glancable-view';
+import { clearBadgeStrokeCache, NearbyGlancableView, pinBadgeStroke } from '../src/glancable-view';
 import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
-import { concealHubList, holdLeafForHubPaint, hubFrameReady, hubSwapDecision, isHubSwapFile, releaseHubSwapCover } from '../src/hub-cover';
-import { hubClickFrames, paintedHubLeaf } from '../src/hub-open';
-import { embedCapCss, hubEmbedCapPx, viewportHeightPx, writeViewportHeight } from '../src/hub-layout';
+import { alignHubCover, concealHubList, handoffCoverLanding, holdLeafForHubPaint, hubFrameReady, hubSwapDecision, isHubSwapFile, releaseHubSwapCover } from '../src/hub-cover';
+import { hubClickFrames, hubReturnChoice, paintedHubLeaf } from '../src/hub-open';
+import { embedCapCss, hubEmbedCapPx, landingScrollExact, viewportHeightPx, writeViewportHeight } from '../src/hub-layout';
 import { createBarShell, paintSurfaceAccent, placeBarOver } from '../src/bar-shell';
 import { defaultUrgencyColors, hubAccentColor, URGENCY_PALETTES } from '../src/urgency-palette';
 import { shouldHideMobileNav } from '../src/status-bar';
@@ -1578,6 +1578,159 @@ describe('RV-B85 a return shades the card in the open turn', () => {
 		const main = source('src/main.ts');
 		assert.doesNotMatch(main, /setTimeout\(\(\) => \{ this\.hubLinkOpen = false/);
 		assert.match(main, /peekHubArrival\(\)/);
+	});
+});
+
+describe('RV-B87 the return cover lands once', () => {
+	it('does not chase a deep card, and history back keeps that card', () => {
+		const choice = hubReturnChoice({ linkOpen: false, arrival: null, fromNotePath: 'People/Yellow Lane.md' });
+		assert.deepEqual(choice, { arrival: 'People/Yellow Lane.md', listAtTop: false });
+		assert.deepEqual(hubReturnChoice({ linkOpen: true, arrival: 'People/Yellow Lane.md', fromNotePath: 'People/Yellow Lane.md' }), {
+			arrival: 'People/Yellow Lane.md',
+			listAtTop: false,
+		});
+		assert.deepEqual(hubReturnChoice({ linkOpen: false, arrival: null, fromNotePath: null }), { arrival: null, listAtTop: true });
+		const main = source('src/main.ts');
+		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
+		assert.ok(hook.indexOf('hubReturnChoice') < hook.indexOf('noteDirectHubOpen()'));
+		const historyAt = main.indexOf('proto.setViewState = function');
+		const history = main.slice(historyAt, main.indexOf('this.register(() => {', historyAt));
+		assert.match(history, /hubReturnChoice/);
+
+		const cover = window.document.createElement('div');
+		cover.className = 'rv-hub-swap-cover';
+		const body = window.document.createElement('div');
+		body.className = 'rv-hub-snapshot-body';
+		const coverCard = window.document.createElement('div');
+		coverCard.className = 'rv-locator-card rv-card-land';
+		coverCard.setAttribute('data-rv-path', 'People/Yellow Lane.md');
+		coverCard.getBoundingClientRect = () => ({ top: 389, bottom: 470, left: 0, right: 379, width: 379, height: 81, x: 0, y: 389, toJSON() { return {}; } });
+		body.append(coverCard);
+		cover.append(body);
+		const live = window.document.createElement('div');
+		live.className = 'rv-locator-card';
+		live.setAttribute('data-rv-path', 'People/Yellow Lane.md');
+		live.getBoundingClientRect = () => ({ top: 2807, bottom: 2888, left: 0, right: 379, width: 379, height: 81, x: 0, y: 2807, toJSON() { return {}; } });
+		window.document.body.append(cover, live);
+		alignHubCover(window.document);
+		assert.equal(body.style.transform, '');
+		cover.remove();
+		live.remove();
+
+		const scroll = window.document.createElement('div');
+		scroll.className = 'rv-locator-scroll';
+		let scrollTop = 0;
+		const card = window.document.createElement('div');
+		card.className = 'rv-locator-card';
+		card.setAttribute('data-rv-path', 'People/Yellow Lane.md');
+		scroll.append(card);
+		scroll.getBoundingClientRect = () => ({ top: 48, bottom: 700, left: 0, right: 379, width: 379, height: 652, x: 0, y: 48, toJSON() { return {}; } });
+		card.getBoundingClientRect = () => ({ top: 48 + 2400 - scrollTop, bottom: 48 + 2481 - scrollTop, left: 0, right: 379, width: 379, height: 81, x: 0, y: 0, toJSON() { return {}; } });
+		Object.defineProperty(scroll, 'clientHeight', { configurable: true, get: () => 652 });
+		Object.defineProperty(scroll, 'scrollHeight', { configurable: true, get: () => 652 });
+		Object.defineProperty(scroll, 'scrollTop', { configurable: true, get: () => scrollTop, set: (value: number) => { scrollTop = value; } });
+		const blocked = landingScrollExact(scroll, card, 389);
+		assert.equal(blocked.reaches, false);
+		assert.equal(blocked.scroll, 0);
+		Object.defineProperty(scroll, 'scrollHeight', { configurable: true, get: () => 3200 });
+		const open = landingScrollExact(scroll, card, 389);
+		assert.equal(open.reaches, true);
+		scroll.scrollTop = open.scroll;
+		assert.ok(Math.abs(card.getBoundingClientRect().top - 389) <= 2);
+		scroll.remove();
+	});
+
+	it('treats the window bar as the dock and waits until the live card can land', () => {
+		window.document.querySelectorAll('.rv-bar-shell').forEach((node) => node.remove());
+		const leaf = hubLeaf('Return Visits');
+		paintHub(leaf, true);
+		placeDock(leaf, 40);
+		window.document.body.append(leaf);
+		const bar = window.document.createElement('div');
+		bar.className = 'rv-bar-shell';
+		try {
+		assert.equal(hubFrameReady(leaf, true), false);
+		bar.getBoundingClientRect = () => ({ top: 742, bottom: 794, left: 0, right: 379, width: 379, height: 52, x: 0, y: 742, toJSON() { return {}; } });
+		window.document.body.append(bar);
+		assert.equal(hubFrameReady(leaf, true), true, 'the window bar is the dock');
+		const cover = window.document.createElement('div');
+		cover.className = 'rv-hub-swap-cover';
+		const coverCard = window.document.createElement('div');
+		coverCard.className = 'rv-locator-card rv-card-land';
+		coverCard.setAttribute('data-rv-path', 'People/Yellow Lane.md');
+		coverCard.getBoundingClientRect = () => ({ top: 389, bottom: 470, left: 0, right: 379, width: 379, height: 81, x: 0, y: 389, toJSON() { return {}; } });
+		cover.append(coverCard);
+		leaf.append(cover);
+		assert.equal(hubFrameReady(leaf, true), false, 'the target card is not in the live list yet');
+		const scroll = window.document.createElement('div');
+		scroll.className = 'rv-locator-scroll';
+		const live = window.document.createElement('div');
+		live.className = 'rv-locator-card';
+		live.setAttribute('data-rv-path', 'People/Yellow Lane.md');
+		scroll.append(live);
+		leaf.append(scroll);
+		let scrollTop = 0;
+		scroll.getBoundingClientRect = () => ({ top: 48, bottom: 700, left: 0, right: 379, width: 379, height: 652, x: 0, y: 48, toJSON() { return {}; } });
+		live.getBoundingClientRect = () => ({ top: 48 + 2400 - scrollTop, bottom: 129, left: 0, right: 379, width: 379, height: 81, x: 0, y: 0, toJSON() { return {}; } });
+		Object.defineProperty(scroll, 'clientHeight', { configurable: true, get: () => 652 });
+		Object.defineProperty(scroll, 'scrollHeight', { configurable: true, get: () => 652 });
+		Object.defineProperty(scroll, 'scrollTop', { configurable: true, get: () => scrollTop, set: (value: number) => { scrollTop = value; } });
+		assert.equal(hubFrameReady(leaf, true), false, 'a clamped scroll is not a landing');
+		Object.defineProperty(scroll, 'scrollHeight', { configurable: true, get: () => 3200 });
+		assert.equal(hubFrameReady(leaf, true), true);
+		coverCard.classList.add('rv-card-land');
+		let landed = '';
+		assert.equal(handoffCoverLanding(window.document, (path) => { landed = path; }), true);
+		assert.equal(landed, 'People/Yellow Lane.md');
+		assert.ok(Math.abs(live.getBoundingClientRect().top - 389) <= 2);
+		assert.equal(live.classList.contains('rv-card-land'), true);
+		} finally {
+			bar.remove();
+			leaf.remove();
+		}
+	});
+});
+
+describe('RV-B88 the open does not measure every badge', () => {
+	it('strokes the rings from the document cache and shows the snapshot before the cover', () => {
+		clearBadgeStrokeCache();
+		const first = window.document.createElement('button');
+		first.className = 'rv-locator-urgency';
+		const ring = window.document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+		first.append(ring);
+		window.document.body.append(first);
+		pinBadgeStroke(first);
+		const real = window.getComputedStyle.bind(window);
+		let reads = 0;
+		const added: HTMLElement[] = [];
+		window.getComputedStyle = ((elt: Element) => {
+			reads += 1;
+			return real(elt);
+		}) as typeof window.getComputedStyle;
+		try {
+			for (let index = 0; index < 8; index += 1) {
+				const badge = window.document.createElement('button');
+				badge.className = 'rv-locator-urgency';
+				const mark = window.document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+				badge.append(mark);
+				window.document.body.append(badge);
+				added.push(badge);
+				pinBadgeStroke(badge);
+			}
+			assert.equal(reads, 0);
+		} finally {
+			window.getComputedStyle = real;
+			clearBadgeStrokeCache();
+			first.remove();
+			for (const badge of added) badge.remove();
+		}
+		const glance = source('src/glancable-view.ts');
+		const stroke = glance.slice(glance.indexOf('function paintRingStroke'), glance.indexOf('export type BadgeIconName'));
+		assert.doesNotMatch(stroke, /getComputedStyle/);
+		const coverSource = source('src/hub-cover.ts');
+		const build = coverSource.slice(coverSource.indexOf('const noteClone'), coverSource.indexOf('cover.addEventListener'));
+		assert.ok(build.indexOf('cover.appendChild(noteClone)') < build.indexOf('park()'));
+		assert.ok(build.indexOf('park()') < build.indexOf('options.mount'));
 	});
 });
 

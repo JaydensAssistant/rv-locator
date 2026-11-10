@@ -35,6 +35,21 @@ export function paintedHubLeaf<T extends HubOpenLeaf>(leaves: readonly T[], hubP
 	return open;
 }
 
+/**
+ * Hub chip and the hub button already carry the note they left.
+ * History back, and any other open of the hub while a note is showing,
+ * uses that note. A direct open has neither, and the list starts at the top.
+ */
+export function hubReturnChoice(input: {
+	linkOpen: boolean;
+	arrival: string | null;
+	fromNotePath: string | null;
+}): { arrival: string | null; listAtTop: boolean } {
+	const arrival = input.arrival || input.fromNotePath;
+	if (input.linkOpen || arrival) return { arrival, listAtTop: false };
+	return { arrival: null, listAtTop: true };
+}
+
 export interface HubOpenFrame {
 	phase: 'reveal' | 'pending' | 'cards' | 'empty';
 	revealedExisting: boolean;

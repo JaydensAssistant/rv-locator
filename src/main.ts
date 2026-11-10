@@ -34,7 +34,7 @@ import { clearGlanceHold } from './glance-hold';
 import { concealHubList, holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { shownHubStage } from './map-handoff';
 import { copyShellBand, createMapShell, destroyMapShell, ensureMapSpacer, holdShellSize, markShellSide, placeShellOver, removeMapSpacers, shellBandPx, showMapShell, sizeMapSpacer, visibleMapSpacer, writeShellBand } from './map-shell';
-import { paintedHubLeaf } from './hub-open';
+import { hubReturnChoice, paintedHubLeaf } from './hub-open';
 import { householdLinkNames, hubLabel, hubRefs, mergeHouseholdHubs, moveHubLeft, resolveReturnHub } from './hub-row';
 import { HubFileSuggestModal } from './hub-suggester';
 import { SlotOverrideModal } from './override-modal';
@@ -1181,8 +1181,22 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!plugin.unloaded) plugin.beginBarNav(file);
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
 				plugin.quiesceHubWork();
-				if (plugin.hubLinkOpen || plugin.peekHubArrival()) plugin.hubLinkOpen = false;
-				else plugin.noteDirectHubOpen();
+				const leaving = (this.view as { file?: TFile } | undefined)?.file;
+				const leavingData = leaving instanceof TFile ? plugin.noteFrontmatter(leaving.path) : null;
+				const fromNote = leaving instanceof TFile && isRvDashboardNote(leavingData) && !isRvHubNote(leavingData)
+					? leaving.path
+					: null;
+				const choice = hubReturnChoice({
+					linkOpen: plugin.hubLinkOpen,
+					arrival: plugin.peekHubArrival(),
+					fromNotePath: fromNote,
+				});
+				if (choice.listAtTop) plugin.noteDirectHubOpen();
+				else {
+					if (choice.arrival) plugin.keepHubArrival(choice.arrival);
+					plugin.hubLinkOpen = false;
+					plugin.hubListAtTop = false;
+				}
 				plugin.retainMapForHub();
 				const leafEl = (this.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
 				holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(file.basename));
@@ -1207,7 +1221,26 @@ export default class RVLocatorPlugin extends Plugin {
 				if (nextPath && nextPath !== currentPath) {
 					const next = plugin.app.vault.getFileByPath(nextPath);
 					if (next instanceof TFile && !plugin.coversHubOpen(next)) plugin.leaveHubForNote(this);
-					else if (next instanceof TFile) plugin.quiesceHubWork();
+					else if (next instanceof TFile) {
+						const currentFile = currentPath ? plugin.app.vault.getFileByPath(currentPath) : null;
+						const currentData = currentFile instanceof TFile ? plugin.noteFrontmatter(currentFile.path) : null;
+						const fromNote = currentFile instanceof TFile && isRvDashboardNote(currentData) && !isRvHubNote(currentData)
+							? currentFile.path
+							: null;
+						const choice = hubReturnChoice({
+							linkOpen: plugin.hubLinkOpen,
+							arrival: plugin.peekHubArrival(),
+							fromNotePath: fromNote,
+						});
+						if (!choice.listAtTop) {
+							if (choice.arrival) plugin.keepHubArrival(choice.arrival);
+							plugin.hubLinkOpen = false;
+							plugin.hubListAtTop = false;
+							const leafEl = (this.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
+							holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(next.basename));
+						}
+						plugin.quiesceHubWork();
+					}
 				}
 			}
 			const result = setViewState.call(this, plugin.previewViewState(this, viewState), eState);

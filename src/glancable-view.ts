@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { embedCapCss, hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap, viewportHeightPx } from './hub-layout';
+import { embedCapCss, hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollExact, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap, viewportHeightPx } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -730,7 +730,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 	/** Cards are in the document. A stroke measured in the fragment is not kept. */
 	private strokeHubRings(): void {
 		this.dropDuplicateCards();
-		if (this.scrollEl) pinBadgeRings(this.scrollEl);
+		if (!this.scrollEl) return;
+		rememberPaintedStroke(this.scrollEl);
+		pinBadgeRings(this.scrollEl);
 	}
 
 	/**
@@ -782,10 +784,26 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (!inCover && swap instanceof HTMLElement) {
 			const coverCard = swap.querySelector(`[data-rv-path="${escaped}"]`);
 			if (coverCard instanceof HTMLElement) {
-				scroller.scrollTop = landingScrollFor(scroller, card, coverCard.getBoundingClientRect().top);
+				const desired = coverCard.getBoundingClientRect().top;
+				const plan = landingScrollExact(scroller, card, desired);
+				if (!plan.reaches) {
+					shadeHubCard(card);
+					return;
+				}
+				scroller.scrollTop = plan.scroll;
 			} else {
 				revealHubCard(this.scrollEl, card);
 			}
+		} else if (!inCover) {
+			const max = Math.max(0, (scroller.scrollHeight || 0) - (scroller.clientHeight || 0));
+			const cardRect = card.getBoundingClientRect();
+			const box = scroller.getBoundingClientRect();
+			const outside = cardRect.height > 0 && (cardRect.top < box.top - 2 || cardRect.bottom > box.bottom + 2);
+			if (outside && max <= 0.5) {
+				shadeHubCard(card);
+				return;
+			}
+			revealHubCard(this.scrollEl, card);
 		} else {
 			revealHubCard(this.scrollEl, card);
 		}
@@ -1861,12 +1879,15 @@ export function pinBadgeStroke(host: HTMLElement): void {
 	const ghost = host.classList.contains('is-ghost');
 	const style = ghost ? 'dashed' : 'solid';
 	const cached = host.dataset.rvStrokePx;
+	const ring = paintedStrokePx(host) ?? wanted;
 	if (
 		cached === wanted
+		&& host.dataset.rvRingStroke === ring
 		&& host.style.getPropertyValue('border-width') === wanted
 		&& host.style.getPropertyValue('border-style') === style
 	) return;
 	host.dataset.rvStrokePx = wanted;
+	host.dataset.rvRingStroke = ring;
 	applyBadgeStroke(host, wanted);
 }
 
@@ -1885,16 +1906,36 @@ function applyBadgeStroke(host: HTMLElement, px: string): void {
 	paintRingStroke(host, px);
 }
 
+const paintedStrokeByDocument = new WeakMap<Document, { generation: number; px: string }>();
+
+function paintedStrokePx(host: HTMLElement): string | null {
+	const doc = host.ownerDocument;
+	const cached = doc ? paintedStrokeByDocument.get(doc) : undefined;
+	if (cached && cached.generation === strokeGeneration) return cached.px;
+	return null;
+}
+
+/** One painted-border read for the whole list. Not one read per badge. */
+function rememberPaintedStroke(root: ParentNode): void {
+	if (typeof root.querySelector !== 'function') return;
+	const sample = root.querySelector(RING_BADGES);
+	if (!(sample instanceof HTMLElement)) return;
+	const doc = sample.ownerDocument;
+	const view = doc?.defaultView;
+	if (!doc || !view || typeof view.getComputedStyle !== 'function') return;
+	if (paintedStrokePx(sample)) return;
+	if (!sample.style.getPropertyValue('border-width')) return;
+	const used = Number.parseFloat(view.getComputedStyle(sample).borderTopWidth);
+	if (!Number.isFinite(used) || used < 1) return;
+	paintedStrokeByDocument.set(doc, { generation: strokeGeneration, px: strokeLabel(used) });
+}
+
 function paintRingStroke(host: HTMLElement, px: string): void {
-	// The hub ring reports the specified width (3.938px). The note urgency
-	// control reports the painted border (3.048px). Use the painted border so
-	// every ring is the same thickness.
-	let stroke = px;
-	const view = host.ownerDocument.defaultView;
-	if (host.style.getPropertyValue('border-width') && view && typeof view.getComputedStyle === 'function') {
-		const used = Number.parseFloat(view.getComputedStyle(host).borderTopWidth);
-		if (Number.isFinite(used) && used >= 1) stroke = strokeLabel(used);
-	}
+	// The open path uses the once-per-document specified width. Reading each
+	// badge's border flushes layout while the map is mounted. strokeHubRings
+	// records the painted width once, after the first frame, and the next
+	// pass writes that onto every ring.
+	const stroke = paintedStrokePx(host) ?? px;
 	host.querySelectorAll('line, circle').forEach((node) => {
 		if (!(node instanceof Element) || !('style' in node)) return;
 		const mark = node as Element & { style: CSSStyleDeclaration };

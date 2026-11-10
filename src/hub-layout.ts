@@ -257,6 +257,26 @@ export function landingScrollFor(scrollEl: HTMLElement, card: HTMLElement, desir
 	return Math.max(0, Math.min(max, next));
 }
 
+/**
+ * Scroll that puts `card` at `desiredTop`. No "keep the card fully inside"
+ * clamp: that clamp is what snaps a return to the bottom after the cover
+ * has already shown it centered. `reaches` is false when the scroller's
+ * max is still too small, including a write that would clamp to 0.
+ */
+export function landingScrollExact(scrollEl: HTMLElement, card: HTMLElement, desiredTop: number): { scroll: number; reaches: boolean } {
+	const scrollRect = scrollEl.getBoundingClientRect();
+	const cardRect = card.getBoundingClientRect();
+	const current = scrollEl.scrollTop || 0;
+	const viewHeight = scrollEl.clientHeight || scrollRect.height || 0;
+	if (viewHeight <= 1) return { scroll: current, reaches: false };
+	const cardOffset = current + (cardRect.top - scrollRect.top);
+	const max = Math.max(0, (scrollEl.scrollHeight || 0) - viewHeight);
+	const next = cardOffset - (desiredTop - scrollRect.top);
+	if (!Number.isFinite(next)) return { scroll: current, reaches: false };
+	const reaches = next >= -1 && next <= max + 1;
+	return { scroll: Math.max(0, Math.min(max, next)), reaches };
+}
+
 /** The card is fully inside the scroller, so the landing scroll has taken. */
 export function hubLandingReady(scrollEl: HTMLElement, card: HTMLElement): boolean {
 	if ((scrollEl.clientHeight || 0) <= 1) return false;

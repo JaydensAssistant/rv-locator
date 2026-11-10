@@ -1,4 +1,4 @@
-import { landingScrollFor } from './hub-layout';
+import { landingScrollExact } from './hub-layout';
 import { isRvHubNote } from './rv-note-view';
 
 /** How long the previous leaf may cover a hub swap before we give up. */
@@ -7,6 +7,8 @@ export const HUB_SWAP_HOLD_MS = 800;
 const COVER_CLASS = 'rv-hub-swap-cover';
 const SWAP_CLASS = 'rv-hub-swapping';
 const COVER_HELD = 'is-rv-cover-held';
+/** A 12px header miss is a correction. A deep card's 2400px gap is not. */
+const COVER_NUDGE_PX = 16;
 
 /**
  * A direct `.base` open, or the hub note (`cssclass` `rv-locator-full-base`).
@@ -152,8 +154,50 @@ function embedPaints(node: HTMLElement): boolean {
  * is no longer the empty "No file" bases frame. On a phone the toolbar has
  * to sit on the bottom of the leaf, which is where `is-stacked` puts it.
  */
+function windowBarShell(leaf: HTMLElement): HTMLElement | null {
+	const doc = leaf.ownerDocument;
+	if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+	const bars = doc.querySelectorAll('.rv-bar-shell');
+	for (let index = 0; index < bars.length; index += 1) {
+		const bar = bars[index];
+		if (!isElement(bar) || bar.closest(`.${COVER_CLASS}`)) continue;
+		if (layoutHeight(bar) < 8) continue;
+		return bar;
+	}
+	return null;
+}
+
+function coverLandTarget(leaf: HTMLElement): HTMLElement | null {
+	const cards = leaf.querySelectorAll(`.${COVER_CLASS} .rv-locator-card.rv-card-land`);
+	for (let index = 0; index < cards.length; index += 1) {
+		const card = cards[index];
+		if (isElement(card) && card.getAttribute('data-rv-path')) return card;
+	}
+	return null;
+}
+
+function liveCardFor(leaf: HTMLElement, path: string): HTMLElement | null {
+	const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '\\"');
+	const cards = leaf.querySelectorAll(`[data-rv-path="${escaped}"]`);
+	for (let index = 0; index < cards.length; index += 1) {
+		const node = cards[index];
+		if (!isElement(node) || node.closest(`.${COVER_CLASS}`)) continue;
+		if (!embedPaints(node)) continue;
+		return node;
+	}
+	return null;
+}
+
 export function hubFrameReady(leaf: HTMLElement, phone: boolean): boolean {
 	if (/^no file$/i.test(headerTitle(leaf))) return false;
+	const land = coverLandTarget(leaf);
+	if (land) {
+		const live = liveCardFor(leaf, land.getAttribute('data-rv-path') ?? '');
+		if (!live || live.classList.contains('is-stub')) return false;
+		const scrolled = live.closest('.rv-locator-scroll');
+		if (!isElement(scrolled)) return false;
+		if (!landingScrollExact(scrolled, live, land.getBoundingClientRect().top).reaches) return false;
+	}
 	const cards = leaf.querySelectorAll('.rv-locator-card');
 	let card: HTMLElement | null = null;
 	for (let index = 0; index < cards.length; index += 1) {
@@ -173,8 +217,10 @@ export function hubFrameReady(leaf: HTMLElement, phone: boolean): boolean {
 		toolbar = node;
 		break;
 	}
-	if (!card || !toolbar) return false;
+	const shell = windowBarShell(leaf);
+	if (!card || (!toolbar && !shell)) return false;
 	if (!phone) return true;
+	if (shell) return true;
 	const glances = leaf.querySelectorAll('.rv-locator-glancable');
 	let glance: HTMLElement | null = null;
 	for (let index = 0; index < glances.length; index += 1) {
@@ -184,7 +230,7 @@ export function hubFrameReady(leaf: HTMLElement, phone: boolean): boolean {
 		glance = node;
 		break;
 	}
-	if (!glance || !glance.classList.contains('is-stacked')) return false;
+	if (!glance || !glance.classList.contains('is-stacked') || !toolbar) return false;
 	const sortbar = toolbar.closest('.rv-locator-sortbar');
 	const dock = isElement(sortbar) ? sortbar : toolbar;
 	const bar = dock.getBoundingClientRect();
@@ -223,9 +269,11 @@ export function handoffCoverLanding(doc: Document, onLand?: (path: string) => vo
 	}
 	if (!live) return false;
 	const scrolled = live.closest('.rv-locator-scroll');
-	if (!isElement(scrolled) || scrolled.clientHeight <= 1) return false;
+	if (!isElement(scrolled)) return false;
 	const desired = coverCard.getBoundingClientRect().top;
-	scrolled.scrollTop = landingScrollFor(scrolled, live, desired);
+	const plan = landingScrollExact(scrolled, live, desired);
+	if (!plan.reaches) return false;
+	scrolled.scrollTop = plan.scroll;
 	if (!live.classList.contains('rv-card-land')) {
 		const started = Number(coverCard.dataset.rvLandAt);
 		const elapsed = Number.isFinite(started) ? Math.max(0, Date.now() - started) : 0;
@@ -253,7 +301,8 @@ export function handoffCoverLanding(doc: Document, onLand?: (path: string) => vo
 export function alignHubCover(doc: Document): void {
 	const cover = doc.querySelector(`.${COVER_CLASS}`);
 	if (!isElement(cover)) return;
-	const coverCard = cover.querySelector('.rv-locator-card');
+	const marked = cover.querySelector('.rv-locator-card.rv-card-land');
+	const coverCard = isElement(marked) ? marked : cover.querySelector('.rv-locator-card');
 	if (!isElement(coverCard) || typeof coverCard.getBoundingClientRect !== 'function') return;
 	const path = coverCard.getAttribute('data-rv-path') ?? '';
 	const escaped = path && typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
@@ -272,7 +321,7 @@ export function alignHubCover(doc: Document): void {
 	}
 	if (!live || typeof live.getBoundingClientRect !== 'function') return;
 	const delta = live.getBoundingClientRect().top - coverCard.getBoundingClientRect().top;
-	if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) return;
+	if (!Number.isFinite(delta) || Math.abs(delta) < 0.5 || Math.abs(delta) > COVER_NUDGE_PX) return;
 	const body = cover.querySelector('.rv-hub-snapshot-body');
 	if (!isElement(body)) return;
 	const current = Number.parseFloat(body.style.transform.replace(/[^-0-9.]/g, '')) || 0;
@@ -505,6 +554,7 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 	noteClone.style.margin = '0';
 	noteClone.style.pointerEvents = 'none';
 	copyScroll(leaf, noteClone);
+	cover.appendChild(noteClone);
 	park();
 	let painted = false;
 	if (options?.mount) {
@@ -525,10 +575,10 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 				// A failed snapshot must not leave a half-built view behind the note.
 			}
 			dispose = undefined;
-			cover.replaceChildren();
-		}
+			header.remove();
+			snapshot.remove();
+		} else noteClone.remove();
 	}
-	if (!painted) cover.appendChild(noteClone);
 	cover.addEventListener('click', (event) => {
 		event.preventDefault();
 		event.stopPropagation();

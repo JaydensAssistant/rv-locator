@@ -170,7 +170,7 @@ describe('RV-B52 hub landing', () => {
 		const early = land.indexOf('clientHeight <= 1');
 		const take = land.indexOf('if (!cover) this.plugin.takeHubArrival()');
 		assert.ok(early >= 0 && early < take);
-		assert.match(land, /landingScrollFor/);
+		assert.match(land, /landingScrollExact/);
 		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover > \.view-header \{[^}]*position:\s*relative !important/);
 		assert.match(css, /body\.is-phone \.workspace-leaf > \.rv-hub-swap-cover > \.view-header::after/);
 		assert.match(css, /animation-delay:\s*var\(--rv-land-delay, 0ms\)/);
