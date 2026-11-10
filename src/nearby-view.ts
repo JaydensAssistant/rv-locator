@@ -12,7 +12,7 @@ import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
 import { buildViewModel, iconForColumn, type CellModel, type ColumnModel, type GroupModel, type RowModel } from './model';
 import type RVLocatorPlugin from './main';
-import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
+import { heldGlanceColumns, heldGlanceGroups } from './glance-hold';
 import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
 import { APP_TABS, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from './app-bar';
@@ -189,7 +189,6 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 		} else {
 			this.paint();
-			if (this.mode === 'glancable') rememberGlanceGroups(this.groups, this.columns, this.glanceMemoryKey());
 			this.root.removeClass('is-glance-pending');
 		}
 		this.paintListTail();
@@ -275,7 +274,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	/** Glancable opens the search field in place of the pills. */
 	protected openGlanceSearch(): void {}
 
-	protected sortedGroups(): GroupModel[] {
+	/**
+	 * Full list in the current sort, including B53 snooze order. Search and
+	 * the snooze filter are applied later. The open turn reads the cached
+	 * result and does not call this.
+	 */
+	protected rankedGroups(): GroupModel[] {
 		const sorts = this.effectiveSorts();
 		const fix = this.positionFix();
 		const now = new Date();
@@ -292,6 +296,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				DISTANCE_COLUMN_ID,
 			),
 		}));
+	}
+
+	protected sortedGroups(): GroupModel[] {
+		return this.rankedGroups();
 	}
 
 	private withScores(row: RowModel, now: Date): RowModel {

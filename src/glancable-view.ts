@@ -7,7 +7,7 @@ import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
 import { domInstanceOf } from './dom';
 import { compactBadgePx, elementScrollbarGutterPx, fittedFontScale, glancableCardColumns, glancableCardWidthPx, type CompactLineKind } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
-import type { CellModel, ColumnModel, RowModel } from './model';
+import type { CellModel, ColumnModel, GroupModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
@@ -299,7 +299,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	protected override sortedGroups() {
-		const groups = super.sortedGroups();
+		return this.filterGlanceGroups(super.sortedGroups());
+	}
+
+	/** Current search and snooze filter, keeping the ranked order. */
+	private filterGlanceGroups(groups: readonly GroupModel[]): GroupModel[] {
 		const text = this.glanceQuery.trim();
 		if (text) this.loadSearchBodies();
 		const query = text ? this.queryFor(text) : null;
@@ -360,7 +364,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const first = rows.slice(0, HUB_FIRST_PAINT);
 		for (const row of first) this.paintStubCard(grid, row);
 		this.root.removeClass('is-glance-pending');
-		rememberGlanceGroups(this.groups, this.columns, this.glanceMemoryKey());
 		this.publishPinOrder(rows.map((row) => row.path));
 		this.syncHubMapMount();
 		if (this.directHubOpensAtTop() && this.scrollEl) this.scrollEl.scrollTop = 0;
@@ -368,7 +371,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.scheduleCardFill(rows);
 	}
 
-	/** This view's filter and search, in the cached order. Scoring waits for the full paint. */
+	/**
+	 * Cached rank order, then this view's search and snooze filter.
+	 * The sort itself is not run here.
+	 */
 	private openingRows(): RowModel[] {
 		const text = this.glanceQuery.trim();
 		const query = text ? this.queryFor(text) : null;
@@ -407,7 +413,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		foot.createSpan({ cls: 'rv-locator-return-bucket', text: bucket || daypart || 'Return' });
 	}
 
-	/** One slice stays under a frame. Stubs are replaced, then the remaining cards are appended. */
+	/** One slice stays under a frame. Stubs are replaced, then the rest append in the same sorted order. */
 	private scheduleCardFill(rows: readonly RowModel[]): void {
 		const token = ++this.fillToken;
 		const painted = new Set(rows.slice(0, HUB_FIRST_PAINT).map((row) => row.path));
@@ -478,7 +484,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 */
 	protected override fillScroll(): void {
 		this.refreshHubCacheGroups();
-		const groups = this.sortedGroups();
+		const ranked = this.rankedGroups();
+		rememberGlanceGroups(ranked, this.columns, this.glanceMemoryKey());
+		const groups = this.filterGlanceGroups(ranked);
 		const rows = groups.flatMap((group) => group.rows);
 		const labeled = groups.some((group) => group.label);
 		const cards = this.glanceCards();
@@ -490,7 +498,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (this.cardsMatch(cards, rows)) {
 			this.root.removeClass('is-glance-pending');
 			if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
-			rememberGlanceGroups(this.groups, this.columns, this.glanceMemoryKey());
 			this.applyDensity();
 			this.publishPinOrder(rows.map((row) => row.path));
 			this.afterListSwap();
@@ -502,7 +509,6 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.patchGlanceCards(rows);
 		this.root.removeClass('is-glance-pending');
 		if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
-		rememberGlanceGroups(this.groups, this.columns, this.glanceMemoryKey());
 		this.applyDensity();
 		this.publishPinOrder(rows.map((row) => row.path));
 		if (atTop || this.directHubOpensAtTop()) this.scrollEl.scrollTop = 0;
@@ -993,8 +999,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 			if (existing) {
 				pool.delete(row.path);
 				if (cursor === existing) cursor = existing.nextSibling;
-				existing.replaceWith(fresh);
-			} else grid.insertBefore(fresh, cursor);
+				existing.remove();
+			}
+			grid.insertBefore(fresh, cursor);
 		});
 		for (const leftover of pool.values()) leftover.remove();
 	}

@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
-import { clearGlanceHold, rememberGlanceGroups } from '../src/glance-hold';
+import { DISTANCE_COLUMN_ID, URGENCY_COLUMN_ID } from '../src/constants';
+import { annotateRowScores } from '../src/row-score';
+import { sortRowsBy } from '../src/sort';
+import { clearGlanceHold, heldGlanceGroups, rememberGlanceGroups } from '../src/glance-hold';
 import { createdNewRvFile } from '../src/new-rv-launch';
 import { NewRvIdentityModal, type NewRvIdentity } from '../src/new-rv-modal';
 import { NearbyGlancableView } from '../src/glancable-view';
@@ -407,6 +410,130 @@ describe('RV-B3 hub click blank', () => {
 		baseHost.remove();
 		emptyHost.remove();
 		delete (globalThis as { __rvOpenSlice?: (ms: number) => void }).__rvOpenSlice;
+		clearGlanceHold();
+	});
+
+	it('paints the first cards of the settled sort and never a misordered frame', async () => {
+		clearGlanceHold();
+		const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+		const people: Array<[string, number]> = [
+			['Eve Carter', 40],
+			['Green Lane', 20],
+			['Red Lane', 90],
+			['Smoke Dark', 10],
+			['Yellow Lane', 70],
+			['Blue Shore', 30],
+			['Cedar House', 50],
+			['Dawn Park', 15],
+			['Ivy Court', 55],
+			['Oak Street', 25],
+			['Pine Road', 35],
+			['Alpha Snooze', 200],
+		];
+		const rows = people.map(([name, days]) => ({
+			...sampleRow(),
+			path: `People/${name}.md`,
+			name,
+			cells: [
+				{ id: 'note.priority', text: '3', title: 'Priority', kind: 'text' as const, numeric: true },
+				{ id: 'note.last spoke', text: 'spoke', title: 'Last Spoke', kind: 'text' as const, numeric: false, daysSince: days },
+			],
+		}));
+		const settings = { ...DEFAULT_SETTINGS, distanceTest: true };
+		const expected = sortRowsBy(
+			rows.map((row) => annotateRowScores(
+				row,
+				null,
+				settings,
+				null,
+				new Date(),
+				row.path.endsWith('Alpha Snooze.md') ? later : null,
+			)),
+			[{ property: URGENCY_COLUMN_ID, direction: 'DESC' }],
+			null,
+			DISTANCE_COLUMN_ID,
+		).map((row) => row.path);
+		assert.equal(expected[0], 'People/Red Lane.md');
+		assert.equal(expected[expected.length - 1], 'People/Alpha Snooze.md');
+		assert.notDeepEqual(expected, rows.map((row) => row.path));
+
+		const plugin = glancePlugin({ refresh: null }, {
+			nearbySort: { property: URGENCY_COLUMN_ID, direction: 'DESC' },
+			settings,
+			snoozeUntilFor: (path: string) => path.endsWith('Alpha Snooze.md') ? later : null,
+			hubCacheModel: () => ({ columns: [], groups: [{ label: null, rows }] }),
+		});
+		const seedHost = window.document.createElement('div');
+		window.document.body.append(seedHost);
+		const seeded = new NearbyGlancableView({} as QueryController, seedHost, plugin);
+		(seeded as unknown as { renderBody(): void }).renderBody();
+		const cached = heldGlanceGroups()?.flatMap((group) => group.rows.map((row) => row.path)) ?? [];
+		assert.deepEqual(cached, expected);
+		const settled = [...seedHost.querySelectorAll('.rv-locator-card')].map((card) => card.getAttribute('data-rv-path'));
+		assert.deepEqual(settled, expected);
+		seeded.onunload();
+		seedHost.remove();
+
+		const host = window.document.createElement('div');
+		window.document.body.append(host);
+		const frames: string[][] = [];
+		const sample = (): void => {
+			frames.push([...host.querySelectorAll('.rv-locator-card')].map((card) => card.getAttribute('data-rv-path') ?? ''));
+		};
+		new NearbyGlancableView({} as QueryController, host, plugin);
+		sample();
+		assert.deepEqual(frames[0], expected.slice(0, 8));
+		for (let turn = 0; turn < 40; turn += 1) {
+			const cards = host.querySelectorAll('.rv-locator-card');
+			sample();
+			if (cards.length >= expected.length && !host.querySelector('.is-stub')) break;
+			await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+		}
+		for (const frame of frames) {
+			assert.deepEqual(frame, expected.slice(0, frame.length), frame.join(' > '));
+		}
+		assert.deepEqual(frames[frames.length - 1], expected);
+
+		const leaf = window.document.createElement('div');
+		leaf.className = 'workspace-leaf';
+		const leafContent = window.document.createElement('div');
+		leafContent.className = 'workspace-leaf-content';
+		const viewContent = window.document.createElement('div');
+		viewContent.className = 'view-content';
+		leafContent.append(viewContent);
+		leaf.append(leafContent);
+		const note = window.document.createElement('div');
+		note.className = 'workspace-leaf mod-active';
+		const shell = window.document.createElement('div');
+		shell.className = 'rv-map-shell';
+		const bar = window.document.createElement('div');
+		bar.className = 'rv-bar-shell';
+		window.document.body.append(leaf, note, shell, bar);
+		new NearbyGlancableView({} as QueryController, viewContent, plugin);
+		const card = viewContent.querySelector('.rv-locator-card');
+		assert.ok(card instanceof window.HTMLElement);
+		assert.equal(card.closest('.workspace-leaf'), leaf);
+		assert.equal(card.closest('.rv-map-shell'), null);
+		assert.equal(card.closest('.rv-bar-shell'), null);
+		assert.equal(note.querySelector('.rv-locator-card'), null);
+		assert.equal(shell.querySelector('.rv-locator-card'), null);
+		assert.equal(bar.querySelector('.rv-locator-card'), null);
+
+		const glance = source('src/glancable-view.ts');
+		const opening = glance.slice(glance.indexOf('private openingRows'), glance.indexOf('private paintStubCard'));
+		const firstPaint = glance.slice(glance.indexOf('private paintFirstCards'), glance.indexOf('private openingRows'));
+		assert.doesNotMatch(opening, /rankedGroups|sortedGroups/);
+		assert.doesNotMatch(firstPaint, /rankedGroups|sortedGroups/);
+		const css = source('styles.css');
+		assert.match(css, /\.rv-locator-modal \.rv-suggest-host \{[^}]*position:\s*relative/);
+		assert.match(css, /\.rv-suggest-panel \{[^}]*position:\s*absolute !important/);
+		assert.match(css, /z-index:\s*46/);
+
+		host.remove();
+		leaf.remove();
+		note.remove();
+		shell.remove();
+		bar.remove();
 		clearGlanceHold();
 	});
 
