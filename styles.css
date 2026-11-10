@@ -11486,3 +11486,26 @@ body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type {
 	list-style-position: inside !important;
 	text-indent: 0 !important;
 }
+
+/* Keep that bullet on the content edge. The text, including a wrapped line,
+   starts a clear gap to its right. */
+.callout.rv-locator-return-suggestions li,
+.callout.rv-locator-return-suggestions .callout li {
+	position: relative;
+	list-style: none !important;
+	padding-left: calc(0.55em + max(0.55em, 8px)) !important;
+	padding-inline-start: calc(0.55em + max(0.55em, 8px)) !important;
+	text-indent: 0 !important;
+}
+
+.callout.rv-locator-return-suggestions li::before,
+.callout.rv-locator-return-suggestions .callout li::before {
+	content: '•';
+	position: absolute;
+	left: 0;
+	top: 0;
+	width: 0.55em;
+	line-height: inherit;
+	text-align: start;
+	color: inherit;
+}

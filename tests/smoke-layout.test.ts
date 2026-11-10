@@ -16,6 +16,7 @@ import { clearVisitNoteCaches, installVisitNoteRelease, mountVisitNotesInSection
 import { SUGGEST_MATCH_LIMIT, mountAlwaysChevron, suggestionListenerCount } from '../src/suggest-field';
 import { expandCallout } from '../src/callout-fold';
 import { emptyShare } from '../src/catalog';
+import { mountSlotChoice } from '../src/override-modal';
 import { LiteraturePromptModal } from '../src/visit-modals';
 import { armVisitNoteFocus, blurNoteTitle, layoutVisitNotes, placeVisitNoteFocus } from '../src/visit-display';
 import { correctedStrokePx, pinBadgeStroke } from '../src/glancable-view';
@@ -27,7 +28,10 @@ import { contentBottom, fillToastText, placeBottomToast, toastBottomOffset, toas
 import { coveredCampaignFor } from '../src/schedule';
 import { maskStampText, maskTitleElement, rvDisplayTitle } from '../src/stamp-mask';
 import { tileKey } from '../src/tile-index';
-import { readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 const dom = new JSDOM('<!DOCTYPE html><html><body></body></html>', { pretendToBeVisual: true });
 const { window } = dom;
@@ -410,6 +414,144 @@ describe('smoke layout', () => {
 		assert.match(css, /\.rv-note-slot:hover,\s*\n\.rv-note-slot:focus,\s*\n\.rv-note-slot:focus-visible,\s*\n\.rv-note-slot:active \{/);
 		root.remove();
 		style.remove();
+		window.document.documentElement.className = '';
+	});
+
+	it('hangs Return Suggestions text past a bullet that stays on the content edge', async () => {
+		const css = readFileSync('styles.css', 'utf8');
+		assert.match(css, /\.callout\.rv-locator-return-suggestions li::before[\s\S]*?left:\s*0;/);
+		assert.match(css, /padding-inline-start:\s*calc\(0\.55em \+ max\(0\.55em, 8px\)\) !important/);
+		const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${path.join(process.cwd(), 'styles.css')}"><style>body{width:360px;margin:0;font-size:16px}.callout-content{width:220px}</style></head><body class="is-phone"><div class="callout rv-locator-return-suggestions"><div class="callout-content"><ul><li id="try">Try: Wednesday morning (1/1) and the wrapped continuation starts with the first word of the text</li><li id="untried">Untried: Thursday evening (1/1) also wraps onto a second line under the words</li></ul></div></div><pre id="out"></pre><script>
+function measure(id, theme) {
+  const li = document.getElementById(id);
+  const box = getComputedStyle(li);
+  const before = getComputedStyle(li, '::before');
+  const liRect = li.getBoundingClientRect();
+  const bulletLeft = liRect.left + (parseFloat(before.left) || 0);
+  const bulletWidth = parseFloat(before.width) || 0;
+  const range = document.createRange();
+  range.selectNodeContents(li);
+  const rects = Array.from(range.getClientRects());
+  const textStart = rects[0] ? rects[0].left : -1;
+  const continuation = rects.length > 1 ? rects[rects.length - 1].left : -1;
+  return { theme, id, gap: textStart - (bulletLeft + bulletWidth), textStart, continuation, lines: rects.length, bulletLeft, liLeft: liRect.left, bulletTop: liRect.top + (parseFloat(before.top) || 0), lineTop: rects[0] ? rects[0].top : -1, beforePos: before.position };
+}
+function all(theme) {
+  document.documentElement.className = theme;
+  document.body.className = 'is-phone ' + theme;
+  return ['try', 'untried'].map((id) => measure(id, theme));
+}
+document.getElementById('out').textContent = JSON.stringify(all('theme-dark').concat(all('theme-light')));
+</script></body></html>`;
+		const file = path.join(tmpdir(), 'rv-suggestion-bullets.html');
+		writeFileSync(file, html);
+		const chromeOut = await new Promise<string>((resolve, reject) => {
+			const child = spawn('google-chrome', ['--headless=new', '--disable-gpu', '--no-sandbox', '--no-first-run', `--user-data-dir=${path.join(tmpdir(), 'rv-bullet-chrome')}`, '--dump-dom', file], { stdio: ['ignore', 'pipe', 'pipe'] });
+			let out = '';
+			let err = '';
+			const timer = setTimeout(() => {
+				child.kill('SIGKILL');
+				reject(new Error(err.slice(-400) || 'chrome produced no measurement'));
+			}, 12000);
+			child.stdout?.on('data', (chunk: Buffer) => {
+				out += chunk.toString();
+				if (!out.includes('</pre>')) return;
+				clearTimeout(timer);
+				child.kill('SIGKILL');
+				resolve(out);
+			});
+			child.stderr?.on('data', (chunk: Buffer) => { err += chunk.toString(); });
+			child.on('exit', () => {
+				if (!out.includes('</pre>')) return;
+				clearTimeout(timer);
+				resolve(out);
+			});
+		});
+		const match = chromeOut.match(/<pre id="out">([\s\S]*?)<\/pre>/);
+		assert.ok(match, 'chrome produced no measurement');
+		const rows = JSON.parse(match[1].replace(/&quot;/g, '"')) as Array<{ theme: string; id: string; gap: number; textStart: number; continuation: number; lines: number; bulletLeft: number; liLeft: number; bulletTop: number; lineTop: number; beforePos: string }>;
+		assert.equal(rows.length, 4);
+		for (const row of rows) {
+			assert.ok(row.gap >= 6, `${row.theme} ${row.id} gap ${row.gap}`);
+			assert.ok(row.lines >= 2, `${row.theme} ${row.id} lines`);
+			assert.ok(Math.abs(row.continuation - row.textStart) < 0.6, `${row.theme} ${row.id} hang`);
+			assert.ok(Math.abs(row.bulletLeft - row.liLeft) < 0.6, `${row.theme} ${row.id} bullet edge`);
+			assert.ok(Math.abs(row.bulletTop - row.lineTop) < 2, `${row.theme} ${row.id} bullet top`);
+			assert.equal(row.beforePos, 'absolute');
+		}
+	});
+
+	it('opens the override day and daypart list with the Lit picker', () => {
+		const css = readFileSync('styles.css', 'utf8');
+		const style = window.document.createElement('style');
+		style.textContent = css;
+		window.document.head.appendChild(style);
+		const source = readFileSync('src/override-modal.ts', 'utf8');
+		assert.match(source, /mountAlwaysChevron/);
+		assert.doesNotMatch(source, /addDropdown/);
+		const modal = window.document.createElement('div');
+		modal.className = 'modal rv-locator-modal';
+		modal.style.width = '360px';
+		const litHost = window.document.createElement('div');
+		litHost.className = 'setting-item-control';
+		const litInput = window.document.createElement('input');
+		litHost.appendChild(litInput);
+		const dayHost = window.document.createElement('div');
+		dayHost.className = 'rv-slot-when';
+		modal.append(litHost, dayHost);
+		window.document.body.className = 'is-phone';
+		window.document.body.appendChild(modal);
+		mountAlwaysChevron(litInput, () => ['Tract', 'Bible'], () => {}, undefined, undefined, { picked: () => ['Tract'] });
+		let day = 'Sun';
+		let part = 'Evening (After 4:30pm)';
+		mountSlotChoice(dayHost, 'Day', () => day, ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], (value) => { day = value; });
+		mountSlotChoice(dayHost, 'Daypart', () => part, ['Morning (Before 12pm)', 'Afternoon (12pm–4:29pm)', 'Evening (After 4:30pm)'], (value) => { part = value; });
+		const open = (host: HTMLElement): HTMLElement => {
+			const chevron = host.querySelector('button.rv-suggest-chevron');
+			assert.ok(chevron instanceof window.HTMLButtonElement);
+			chevron.click();
+			const panel = host.querySelector('.rv-suggest-panel');
+			assert.ok(panel instanceof window.HTMLElement);
+			return panel;
+		};
+		const snapshot = (panel: HTMLElement): string[] => {
+			const row = panel.querySelector('.rv-suggest-option');
+			const checked = panel.querySelector('.rv-suggest-option.is-checked');
+			assert.ok(row instanceof window.HTMLElement);
+			assert.ok(checked instanceof window.HTMLElement);
+			const panelStyle = window.getComputedStyle(panel);
+			const rowStyle = window.getComputedStyle(row);
+			const checkedStyle = window.getComputedStyle(checked);
+			return [panel.classList.contains('rv-suggest-panel') ? 'rv-suggest-panel' : '', panelStyle.borderTopLeftRadius, panelStyle.borderTopRightRadius, panelStyle.backgroundColor, rowStyle.height, checkedStyle.backgroundColor, checkedStyle.color];
+		};
+		const dayControl = dayHost.querySelector('.setting-item-control');
+		const partControl = dayHost.querySelectorAll('.setting-item-control')[1];
+		assert.ok(dayControl instanceof window.HTMLElement);
+		assert.ok(partControl instanceof window.HTMLElement);
+		const hosts = [litHost, dayControl, partControl];
+		const close = (host: HTMLElement): void => {
+			const chevron = host.querySelector('button.rv-suggest-chevron');
+			assert.ok(chevron instanceof window.HTMLButtonElement);
+			chevron.click();
+		};
+		for (const theme of ['', 'theme-light', 'theme-dark']) {
+			window.document.documentElement.className = theme;
+			const shots = hosts.map((host) => {
+				const shot = snapshot(open(host));
+				close(host);
+				return shot;
+			});
+			assert.deepEqual(shots[1], shots[0], theme || 'default');
+			assert.deepEqual(shots[2], shots[0], theme || 'default');
+		}
+		const dayPanel = open(dayControl);
+		const tuesday = Array.from(dayPanel.querySelectorAll('.rv-suggest-option')).find((node) => node.textContent === 'Tue');
+		assert.ok(tuesday instanceof window.HTMLElement);
+		tuesday.click();
+		assert.equal(day, 'Tue');
+		modal.remove();
+		style.remove();
+		window.document.body.className = '';
 		window.document.documentElement.className = '';
 	});
 

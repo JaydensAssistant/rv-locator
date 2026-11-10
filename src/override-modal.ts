@@ -1,6 +1,7 @@
 import { Modal, Notice, Setting, type App } from 'obsidian';
 import { iconizeModal, markModalTone } from './modal-chrome';
 import { DAYPARTS, daypartSettingLabel, type Daypart } from './schedule';
+import { mountAlwaysChevron, releaseSuggestionFields, suggestEscapeShouldHold } from './suggest-field';
 import {
 	formatSlotOverride,
 	removeSlotOverride,
@@ -9,6 +10,52 @@ import {
 } from './slot-override';
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+/**
+ * Day or daypart field for the Return Suggestions override.
+ * The open list is the same suggestion panel Lit, Media, and Lessons use.
+ */
+export function mountSlotChoice(
+	parent: HTMLElement,
+	name: string,
+	current: () => string,
+	choices: readonly string[],
+	onPick: (value: string) => void,
+): void {
+	let query = '';
+	new Setting(parent).setName(name).addText((text) => {
+		const showCurrent = (): void => {
+			query = '';
+			text.setValue(current());
+		};
+		text.setValue(current());
+		text.onChange((value) => { query = value; });
+		mountAlwaysChevron(
+			text.inputEl,
+			() => {
+				const needle = query.trim().toLowerCase();
+				const chosen = current().trim().toLowerCase();
+				if (!needle || needle === chosen) return [...choices];
+				return choices.filter((label) => label.toLowerCase().includes(needle));
+			},
+			(picked) => {
+				onPick(picked);
+				showCurrent();
+			},
+			undefined,
+			undefined,
+			{ picked: () => [current()] },
+		);
+		text.inputEl.addEventListener('blur', () => {
+			const dataset = text.inputEl?.dataset;
+			if (dataset?.rvPicking === '1') {
+				delete dataset.rvPicking;
+				return;
+			}
+			showCurrent();
+		});
+	});
+}
 
 /** Mark one daypart Try or Avoid, whatever the Attempt Log computed. */
 export class SlotOverrideModal extends Modal {
@@ -28,6 +75,11 @@ export class SlotOverrideModal extends Modal {
 	}
 
 	onOpen(): void {
+		const rawClose = this.close.bind(this);
+		this.close = () => {
+			if (suggestEscapeShouldHold(this.contentEl)) return;
+			rawClose();
+		};
 		this.setTitle('Try or Avoid');
 		this.modalEl.addClass('rv-locator-modal');
 		markModalTone(this.modalEl, 'rv', this.buttonAccent);
@@ -35,6 +87,7 @@ export class SlotOverrideModal extends Modal {
 	}
 
 	onClose(): void {
+		releaseSuggestionFields(this.contentEl);
 		this.contentEl.empty();
 	}
 
@@ -46,20 +99,14 @@ export class SlotOverrideModal extends Modal {
 			text: 'Try or Avoid for this day and daypart.',
 		});
 		const when = contentEl.createDiv('rv-slot-when');
-		new Setting(when)
-			.setName('Day')
-			.addDropdown((dropdown) => {
-				WEEKDAYS.forEach((label, index) => dropdown.addOption(String(index), label));
-				dropdown.setValue(String(this.weekday));
-				dropdown.onChange((value) => { this.weekday = Number(value); });
-			});
-		new Setting(when)
-			.setName('Daypart')
-			.addDropdown((dropdown) => {
-				for (const daypart of DAYPARTS) dropdown.addOption(daypart, daypartSettingLabel(daypart));
-				dropdown.setValue(this.daypart);
-				dropdown.onChange((value) => { this.daypart = value === 'morning' || value === 'afternoon' ? value : 'evening'; });
-			});
+		mountSlotChoice(when, 'Day', () => WEEKDAYS[this.weekday] ?? 'Sun', WEEKDAYS, (label) => {
+			const index = (WEEKDAYS as readonly string[]).indexOf(label);
+			if (index >= 0) this.weekday = index;
+		});
+		mountSlotChoice(when, 'Daypart', () => daypartSettingLabel(this.daypart), DAYPARTS.map((part) => daypartSettingLabel(part)), (label) => {
+			const found = DAYPARTS.find((part) => daypartSettingLabel(part) === label);
+			if (found) this.daypart = found;
+		});
 		new Setting(contentEl)
 			.setName('Label')
 			.setDesc('Why this slot is Try or Avoid.')
