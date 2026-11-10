@@ -162,11 +162,19 @@ export function ensureHubMapHandle(stage: HTMLElement): HTMLElement {
 export function lockHandedMapBand(map: HTMLElement, heightPx: number): void {
 	const stage = map.querySelector('.rv-map-stage');
 	if (!(stage instanceof HTMLElement)) return;
-	const height = Math.round(heightPx);
-	if (height < 2) return;
+	const measured = Math.round(heightPx);
+	const existing = Number.parseFloat(stage.style.getPropertyValue('height'));
+	// A light-theme reflow reports 0 for one frame on the way onto a note
+	// (hub → note, and again base → note) before the grid row has a height.
+	// The previous pixel lock, or a 120px floor, has to be in place in that
+	// same turn. Waiting for a later frame is the paint that samples 0.
+	const height = measured >= 2 ? measured : (Number.isFinite(existing) && existing >= 2 ? Math.round(existing) : 120);
 	const px = `${height}px`;
+	stage.style.setProperty('display', 'block', 'important');
 	stage.style.setProperty('height', px, 'important');
 	stage.style.setProperty('min-height', px, 'important');
+	map.style.setProperty('display', 'flex', 'important');
+	map.style.setProperty('flex-direction', 'column', 'important');
 	map.style.setProperty('min-height', px, 'important');
 	map.style.setProperty('flex', `0 0 ${px}`, 'important');
 }

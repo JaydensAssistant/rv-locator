@@ -325,6 +325,13 @@ function daleFile(address = '1800 N Orange Ave, Orlando, FL', lastSpoke = '2026-
 	};
 }
 
+function isoDaysAgo(days: number): string {
+	const date = new Date();
+	date.setDate(date.getDate() - days);
+	const pad = (value: number) => String(value).padStart(2, '0');
+	return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function daleCache(address = '1800 N Orange Ave, Orlando, FL', lastSpoke = '2026-11-01') {
 	return hubGroupsFromCache([daleFile(address, lastSpoke)], {
 		returnScope: 'active',
@@ -345,7 +352,7 @@ describe('RV-184 fresh hub paint', () => {
 		const warmParent = window.document.createElement('div');
 		window.document.body.append(warmParent);
 		const warmBucket = { refresh: null as (() => void) | null };
-		const freshModel = () => daleCache('1800 N Orange Ave, Orlando, FL', '2026-11-03');
+		const freshModel = () => daleCache('1800 N Orange Ave, Orlando, FL', isoDaysAgo(1));
 		new NearbyGlancableView({} as QueryController, warmParent, glancePlugin(warmBucket, {
 			hubCacheModel: freshModel,
 		}));

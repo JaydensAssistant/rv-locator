@@ -24,7 +24,7 @@ import type { ShareFieldOptions } from './catalog-fields';
 import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
-import { keepMenuOnScreen } from './app-bar';
+import { dismissOpenMenus, keepMenuOnScreen } from './app-bar';
 import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -2767,6 +2767,9 @@ export default class RVLocatorPlugin extends Plugin {
 			}
 		}
 		if (!(map instanceof HTMLElement)) return;
+		const band = map.querySelector('.rv-map-stage');
+		const laid = band instanceof HTMLElement ? band.getBoundingClientRect().height : 0;
+		lockHandedMapBand(map, laid);
 		const grip = seatMapGrip(content, map);
 		this.bindNoteMapHandle(content, grip);
 		if (!this.noteMapHandle) this.noteMapHandle = this.mountHubMap(map, 'split');
@@ -3635,6 +3638,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const file = this.app.vault.getFileByPath(path);
 		if (!file) return;
 		const inactive = this.noteIsInactive(file);
+		dismissOpenMenus(event.view?.document ?? document);
 		const menu = new Menu();
 		menu.addItem((item) => item.setTitle('Home').setIcon('door-open').onClick(() => {
 			void this.writeVisit(file, 'home').catch((error: unknown) => new Notice(this.friendlyError(error)));

@@ -15,7 +15,7 @@ import type RVLocatorPlugin from './main';
 import { heldGlanceColumns, heldGlanceGroups, rememberGlanceGroups } from './glance-hold';
 import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
-import { APP_TABS, appendAppSlot, keepMenuOnScreen } from './app-bar';
+import { APP_TABS, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from './app-bar';
 import { armHoverTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
@@ -714,6 +714,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		current: T,
 		choose: (id: T) => void,
 	): void {
+		dismissOpenMenus(event.view?.document ?? this.root.ownerDocument);
 		const menu = new Menu();
 		for (const id of order) {
 			menu.addItem((item) => item

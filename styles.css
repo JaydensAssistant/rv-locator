@@ -6275,6 +6275,15 @@ body.rv-center-visit-notes .rv-older-heading {
 	overflow: visible;
 }
 
+/* Hub → note and base → note. Light theme lays the grid row out a frame
+   late, and the stage's height:100% of that row is 0. The floor is the
+   paint. A side-by-side rule above stays more specific. */
+.rv-hub-map > .rv-map-stage,
+.rv-note-map > .rv-map-stage,
+.rv-map-park .rv-map-stage {
+	min-height: 120px !important;
+}
+
 .workspace-leaf-content.is-note-map.is-note-map-side {
 	grid-template-columns: minmax(0, 1fr) 3px var(--rv-note-map, minmax(160px, 40%));
 	grid-template-rows: auto minmax(0, 1fr) auto;
@@ -10484,6 +10493,13 @@ body.rv-hub-swapping .mobile-navbar {
 	background: var(--background-primary);
 }
 
+/* Descendants default to pointer-events: auto, which keeps the cover's card
+   from the live card under it. None on every node lets the live card take the tap. */
+.workspace-leaf > .rv-hub-swap-cover,
+.workspace-leaf > .rv-hub-swap-cover * {
+	pointer-events: none !important;
+}
+
 .workspace-leaf > .rv-hub-swap-cover > .view-header {
 	position: relative !important;
 	top: auto !important;
@@ -11216,4 +11232,18 @@ body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) > .rv-item >
 body.is-phone .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type,
 body.is-mobile .markdown-preview-view .rv-item-strip:not(.is-ghost) .rv-type {
 	flex: 0 0 auto !important;
+}
+
+/* Return Suggestions bullets, including a list nested in the Log callout,
+   sit on the same 12px content edge as Attempt Log. Obsidian's list padding
+   is what left the marker 27px inside that edge. */
+.callout.rv-locator-return-suggestions :is(ul, ol, li),
+.callout.rv-locator-return-suggestions .callout :is(ul, ol, li),
+.callout.rv-locator-return-suggestions :is(.el-ul, .el-ol, .list-bullet) {
+	margin-left: 0 !important;
+	margin-inline-start: 0 !important;
+	padding-left: 0 !important;
+	padding-inline-start: 0 !important;
+	list-style-position: inside !important;
+	text-indent: 0 !important;
 }

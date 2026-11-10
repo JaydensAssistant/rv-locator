@@ -29,6 +29,35 @@ export interface VisitEditOptions {
 }
 
 /**
+ * The day and clock the sheet is showing. A date input often fires `change`
+ * and not the text callback, so Save reads the controls themselves.
+ */
+export function readVisitControls(
+	root: ParentNode,
+	current: { dateText: string; hour: number; minute: number },
+): { dateText: string; hour: number; minute: number } {
+	if (typeof root.querySelector !== 'function') return current;
+	const date = root.querySelector('input[type="date"]');
+	const hourEl = root.querySelector('select[aria-label="Hour"]');
+	const minuteEl = root.querySelector('select[aria-label="Minute"]');
+	const meridiemEl = root.querySelector('select[aria-label="AM or PM"]');
+	const dateValue = date instanceof HTMLElement ? (date as HTMLInputElement).value : '';
+	const dateText = typeof dateValue === 'string' && dateValue ? dateValue : current.dateText;
+	let hour = current.hour;
+	let minute = current.minute;
+	if (hourEl instanceof HTMLElement && meridiemEl instanceof HTMLElement) {
+		const face = Number((hourEl as HTMLSelectElement).value);
+		const meridiem = (meridiemEl as HTMLSelectElement).value === 'PM' ? 'PM' : 'AM';
+		if (Number.isInteger(face)) hour = hour24FromFace(face, meridiem);
+	}
+	if (minuteEl instanceof HTMLElement) {
+		const next = Number((minuteEl as HTMLSelectElement).value);
+		if ((minuteEl as HTMLSelectElement).value !== '' && Number.isInteger(next)) minute = next;
+	}
+	return { dateText, hour, minute };
+}
+
+/**
  * Home or Not home, the day, the approximate hour, and for a Home who was
  * taken. A time later than now is refused.
  */
@@ -116,6 +145,11 @@ export class VisitEditModal extends Modal {
 			text.setValue(this.dateText);
 			text.onChange((value) => {
 				this.dateText = value;
+				this.syncCompanion();
+			});
+			text.inputEl.addEventListener('change', () => {
+				const value = (text.inputEl as { value?: string }).value;
+				if (typeof value === 'string') this.dateText = value;
 				this.syncCompanion();
 			});
 		});
@@ -274,6 +308,14 @@ export class VisitEditModal extends Modal {
 	}
 
 	private save(): void {
+		const shown = readVisitControls(this.contentEl, {
+			dateText: this.dateText,
+			hour: this.hour,
+			minute: this.minute,
+		});
+		this.dateText = shown.dateText;
+		this.hour = shown.hour;
+		this.minute = shown.minute;
 		const when = visitWhenFrom(this.dateText, this.hour, this.minute);
 		if (!when) {
 			new Notice('Choose the day of the visit.');

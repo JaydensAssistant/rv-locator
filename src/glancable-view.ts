@@ -343,21 +343,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 */
 	private releaseHandedBandWhenLaidOut(left = 12): void {
 		const map = this.hubMapEl;
-		if (!map?.style.getPropertyValue('flex')) return;
+		if (!map) return;
 		const stage = map.querySelector('.rv-map-stage');
 		if (!(stage instanceof HTMLElement)) return;
+		const height = stage.getBoundingClientRect().height;
+		lockHandedMapBand(map, height);
+		const parent = map.parentElement;
+		if (parent instanceof HTMLElement) seatMapGrip(parent, map);
+		if (height >= 2 || left <= 0) return;
 		const view = map.ownerDocument.defaultView;
-		const step = (): void => {
-			if (this.hubMapEl !== map || !map.isConnected) return;
-			const height = stage.getBoundingClientRect().height;
-			if (height < 2) {
-				if (left > 0) view?.requestAnimationFrame(() => this.releaseHandedBandWhenLaidOut(left - 1));
-				return;
-			}
-			lockHandedMapBand(map, height);
-		};
-		if (view?.requestAnimationFrame) view.requestAnimationFrame(step);
-		else step();
+		if (view?.requestAnimationFrame) view.requestAnimationFrame(() => this.releaseHandedBandWhenLaidOut(left - 1));
 	}
 
 	/** The map is moving. Keep the grip. Closing the map drops it. */

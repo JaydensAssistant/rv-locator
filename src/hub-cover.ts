@@ -229,6 +229,40 @@ export function handoffCoverLanding(doc: Document, onLand?: (path: string) => vo
 	return true;
 }
 
+/**
+ * The cover card and the live card have to share a top. A 12px miss paints
+ * every card twice and sends a tap at the cover card into the gap above the
+ * live one. Shift the snapshot by whatever is left.
+ */
+export function alignHubCover(doc: Document): void {
+	const cover = doc.querySelector(`.${COVER_CLASS}`);
+	if (!isElement(cover)) return;
+	const coverCard = cover.querySelector('.rv-locator-card');
+	if (!isElement(coverCard) || typeof coverCard.getBoundingClientRect !== 'function') return;
+	const path = coverCard.getAttribute('data-rv-path') ?? '';
+	const escaped = path && typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+		? CSS.escape(path)
+		: path.replace(/"/g, '\\"');
+	const cards = path
+		? doc.querySelectorAll(`[data-rv-path="${escaped}"]`)
+		: doc.querySelectorAll('.rv-locator-card');
+	let live: HTMLElement | null = null;
+	for (let index = 0; index < cards.length; index += 1) {
+		const node = cards[index];
+		if (isElement(node) && !cover.contains(node)) {
+			live = node;
+			break;
+		}
+	}
+	if (!live || typeof live.getBoundingClientRect !== 'function') return;
+	const delta = live.getBoundingClientRect().top - coverCard.getBoundingClientRect().top;
+	if (!Number.isFinite(delta) || Math.abs(delta) < 0.5) return;
+	const body = cover.querySelector('.rv-hub-snapshot-body');
+	if (!isElement(body)) return;
+	const current = Number.parseFloat(body.style.transform.replace(/[^-0-9.]/g, '')) || 0;
+	body.style.transform = `translateY(${current + delta}px)`;
+}
+
 function copyScroll(from: Element, to: Element): void {
 	if (from.scrollTop || from.scrollLeft) {
 		to.scrollTop = from.scrollTop;
@@ -476,6 +510,7 @@ export function holdLeafForHubPaint(leafEl: HTMLElement | null | undefined, opti
 		const decision = current ? hubSwapDecision(current, phone, elapsed) : 'drop';
 		if (decision === 'hold') {
 			park();
+			try { alignHubCover(doc); } catch { /* The live list is not laid out yet. */ }
 			view?.requestAnimationFrame(tick);
 			return;
 		}

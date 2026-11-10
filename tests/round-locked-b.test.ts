@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { APP_TABS, appBarSlotPx, appendAppSlot, keepMenuOnScreen } from '../src/app-bar';
+import { APP_TABS, appBarSlotPx, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from '../src/app-bar';
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
 import { applyNoteMapFrame, hubUsesStackedMap, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
 import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
 import { buildCountySuggestUrl, countyGeocodeText } from '../src/address';
-import { claimParkedMap, parkMapNode, seatMapGrip } from '../src/map-handoff';
+import { claimParkedMap, lockHandedMapBand, parkMapNode, seatMapGrip } from '../src/map-handoff';
+import { alignHubCover } from '../src/hub-cover';
+import { editVisit, listVisits, visitWhenFrom } from '../src/visit-editor';
+import { readVisitControls } from '../src/visit-modals';
 import { hubAccentColor } from '../src/urgency-palette';
 import { clampMapSplit, mergeSettings } from '../src/types';
 
@@ -556,5 +559,144 @@ describe('phone smoke after 0db3626', () => {
 		assert.match(source('src/glancable-view.ts'), /borderTopWidth/);
 		assert.match(source('src/note-chrome.ts'), /:scope > \.rv-qf-row/);
 		assert.match(source('src/app-bar.ts'), /const margin = 12/);
+	});
+});
+
+describe('phone smoke after d0b76ff', () => {
+	it('floors a map stage that light theme measures at 0 on the way onto a note', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const doc = dom.window.document;
+		const map = doc.createElement('div');
+		map.className = 'rv-note-map';
+		const stage = doc.createElement('div');
+		stage.className = 'rv-map-stage';
+		map.appendChild(stage);
+		doc.body.appendChild(map);
+		lockHandedMapBand(map, 0);
+		assert.equal(stage.style.getPropertyValue('height'), '120px');
+		assert.equal(stage.style.getPropertyValue('min-height'), '120px');
+		assert.equal(map.style.getPropertyValue('display'), 'flex');
+		const css = source('styles.css');
+		assert.match(css, /\.rv-hub-map > \.rv-map-stage,\s*\n\.rv-note-map > \.rv-map-stage,\s*\n\.rv-map-park \.rv-map-stage \{[^}]*min-height:\s*120px !important/);
+		const glance = source('src/glancable-view.ts');
+		const laid = glance.slice(glance.indexOf('private releaseHandedBandWhenLaidOut'), glance.indexOf('private releaseHubGrip'));
+		assert.match(laid, /lockHandedMapBand\(map, height\)/);
+		assert.match(source('src/main.ts'), /lockHandedMapBand\(map, laid\)/);
+	});
+
+	it('rewrites the stamp line from the controls Save is showing', () => {
+		const dom = new JSDOM(`<!doctype html><body>
+			<input type="date" value="2026-09-20">
+			<select aria-label="Hour"><option value="2" selected>2</option></select>
+			<select aria-label="Minute"><option value="15" selected>15</option></select>
+			<select aria-label="AM or PM"><option value="PM" selected>PM</option></select>
+		</body>`);
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		const shown = readVisitControls(dom.window.document.body, { dateText: '2026-09-26', hour: 10, minute: 0 });
+		const when = visitWhenFrom(shown.dateText, shown.hour, shown.minute);
+		assert.ok(when);
+		assert.equal(when.getFullYear(), 2026);
+		assert.equal(when.getMonth(), 8);
+		assert.equal(when.getDate(), 20);
+		assert.equal(when.getHours(), 14);
+		assert.equal(when.getMinutes(), 15);
+		const note = [
+			'### Recent Notes:',
+			'##### Sat, 10am — Sep 26, 2026 <span class="rv-stamp-ago">3 days ago</span>',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'Kept note.',
+			'',
+			'> [!example] Return Suggestions',
+			'> > [!note]- Attempt Log',
+			'> >- Sat, 10am — Sep 26, 2026 — success',
+		].join('\n');
+		const entry = listVisits(note).find((visit) => visit.headingLine != null);
+		assert.ok(entry);
+		const next = editVisit(note, entry, { when, home: true, companion: '' }, new Date(2026, 8, 29, 12));
+		assert.match(next, /##### Sun, 2:15pm — Sep 20, 2026/);
+		assert.doesNotMatch(next, /##### Sat, 10am — Sep 26, 2026/);
+		assert.match(next, /Kept note\./);
+		assert.match(source('src/visit-modals.ts'), /readVisitControls\(this\.contentEl/);
+	});
+
+	it('lines the cover card up with the live card and lets the tap through', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		globalThis.HTMLElement = dom.window.HTMLElement;
+		globalThis.Element = dom.window.Element;
+		const doc = dom.window.document;
+		const cover = doc.createElement('div');
+		cover.className = 'rv-hub-swap-cover';
+		const body = doc.createElement('div');
+		body.className = 'rv-hub-snapshot-body';
+		const coverCard = doc.createElement('div');
+		coverCard.className = 'rv-locator-card';
+		coverCard.setAttribute('data-rv-path', 'Red Lane.md');
+		coverCard.getBoundingClientRect = () => ({ top: 105, bottom: 180, left: 0, right: 0, width: 0, height: 75, x: 0, y: 105, toJSON() { return {}; } });
+		body.appendChild(coverCard);
+		cover.appendChild(body);
+		const live = doc.createElement('div');
+		live.className = 'rv-locator-card';
+		live.setAttribute('data-rv-path', 'Red Lane.md');
+		live.getBoundingClientRect = () => ({ top: 117, bottom: 192, left: 0, right: 0, width: 0, height: 75, x: 0, y: 117, toJSON() { return {}; } });
+		doc.body.append(cover, live);
+		alignHubCover(doc);
+		assert.equal(body.style.transform, 'translateY(12px)');
+		const css = source('styles.css');
+		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*none !important/);
+	});
+
+	it('puts Return Suggestions bullets on the 12px content edge', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.callout\.rv-locator-return-suggestions :is\(ul, ol, li\),[\s\S]*?\.callout\.rv-locator-return-suggestions \.callout :is\(ul, ol, li\)[\s\S]*?\{[^}]*padding-inline-start:\s*0 !important[^}]*list-style-position:\s*inside !important/);
+		assert.match(css, /callout\.rv-locator-return-suggestions > \.callout-content > :is\(ul, ol\) \{[^}]*width:\s*100%/);
+	});
+
+	it('keeps the menu box 12px inside the viewport, and opens again after one is already there', () => {
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		Object.defineProperty(win, 'innerHeight', { value: 801, configurable: true });
+		Object.defineProperty(win, 'innerWidth', { value: 390, configurable: true });
+		const stale = win.document.createElement('div');
+		stale.className = 'menu';
+		win.document.body.appendChild(stale);
+		dismissOpenMenus(win.document);
+		assert.equal(win.document.querySelector('.menu'), null);
+		const anchor = win.document.createElement('button');
+		const menu = win.document.createElement('div');
+		menu.className = 'menu';
+		let height = 0;
+		const box = () => ({ top: 700, bottom: 700 + height, left: 8, right: 200, width: 192, height, x: 8, y: 700, toJSON: () => ({}) });
+		menu.getBoundingClientRect = () => box();
+		win.document.body.append(anchor, menu);
+		const queue: Array<() => void> = [];
+		win.requestAnimationFrame = (fn: () => void) => {
+			queue.push(fn);
+			return queue.length;
+		};
+		keepMenuOnScreen(anchor);
+		assert.equal(menu.style.maxHeight, '');
+		height = 101.5;
+		queue.shift()?.();
+		const top = Number.parseFloat(menu.style.top);
+		const maxHeight = Number.parseFloat(menu.style.maxHeight);
+		assert.equal(menu.style.bottom, 'auto');
+		assert.ok(top >= 12);
+		assert.ok(top + maxHeight <= 801 - 12);
+		assert.ok(Number.parseFloat(menu.style.left) >= 12);
+		const urgency = source('src/main.ts');
+		const fn = urgency.slice(urgency.indexOf('promptUrgencyMenu('), urgency.indexOf('private openSnoozeModal'));
+		assert.ok(fn.indexOf('dismissOpenMenus') >= 0);
+		assert.ok(fn.indexOf('dismissOpenMenus') < fn.indexOf('new Menu('));
+	});
+
+	it('leaves the body Last Attempted line to the template', () => {
+		const template = source('extras/templater-metabind/New RV.md');
+		assert.match(template, /\*\*Last Attempted\*\*/);
+		assert.match(template, /INPUT\[dateTime:\["Last Attempted"\]\]/);
+		const src = ['src/visit-log.ts', 'src/visit-editor.ts', 'src/main.ts', 'src/note-chrome.ts'].map((file) => source(file)).join('\n');
+		assert.doesNotMatch(src, /\*\*Last Attempted\*\*/);
 	});
 });

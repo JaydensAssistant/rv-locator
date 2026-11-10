@@ -39,26 +39,46 @@ export function appendAppSlot(
 }
 
 /**
+ * A menu left in the document swallows the next tap. Light theme lays the
+ * menu out a frame late, so the first open still covers the badge and the
+ * second snooze never reaches it. Drop what is already open before showing
+ * another.
+ */
+export function dismissOpenMenus(doc: Document | null | undefined): void {
+	if (!doc || typeof doc.querySelectorAll !== 'function') return;
+	const menus = doc.querySelectorAll('.menu');
+	for (let index = 0; index < menus.length; index += 1) menus[index]?.remove();
+}
+
+/**
  * Obsidian's menu opens downward from the click. A slot on the bottom bar
- * would paint the menu past the viewport. Slide it up so the whole menu
- * stays on screen, and callers scroll the slot into view first.
+ * would paint the menu past the viewport. Slide it up so the whole menu,
+ * including its empty padding, stays 12px inside every edge.
  */
 export function keepMenuOnScreen(anchor: EventTarget | null): void {
 	const node = anchor instanceof HTMLElement ? anchor : null;
-	const doc = node?.ownerDocument;
+	const doc = node?.ownerDocument ?? (typeof document !== 'undefined' ? document : null);
 	const view = doc?.defaultView;
 	if (!doc || !view || typeof doc.querySelectorAll !== 'function') return;
 	const menus = doc.querySelectorAll('.menu');
 	const el = menus.length > 0 ? menus[menus.length - 1] : null;
 	if (!(el instanceof HTMLElement) || typeof el.getBoundingClientRect !== 'function') return;
 	const box = el.getBoundingClientRect();
-	if (!Number.isFinite(box.height) || box.height <= 0) return;
+	if (!Number.isFinite(box.height) || box.height <= 0) {
+		const tries = Number(el.dataset.rvMenuWait ?? '0');
+		if (tries < 8 && view.requestAnimationFrame) {
+			el.dataset.rvMenuWait = String(tries + 1);
+			view.requestAnimationFrame(() => keepMenuOnScreen(anchor));
+		}
+		return;
+	}
 	const margin = 12;
 	const visual = view.visualViewport?.height ?? 0;
 	const rawHeight = view.innerHeight > 0 ? view.innerHeight : box.bottom;
 	const height = visual > 0 ? Math.min(rawHeight, visual) : rawHeight;
 	const width = view.innerWidth > 0 ? view.innerWidth : box.right;
 	const limit = Math.floor(height) - margin;
+	const rightLimit = Math.floor(width) - margin;
 	let top = box.top;
 	let left = box.left;
 	if (box.bottom > limit) {
@@ -70,11 +90,19 @@ export function keepMenuOnScreen(anchor: EventTarget | null): void {
 	}
 	if (top < margin) top = margin;
 	if (top + box.height > limit) top = Math.max(margin, limit - box.height);
-	if (left + box.width > width - margin) left = Math.max(margin, width - box.width - margin);
+	if (left + box.width > rightLimit) left = Math.max(margin, rightLimit - box.width);
 	if (left < margin) left = margin;
-	el.style.top = `${Math.floor(top)}px`;
-	el.style.left = `${Math.floor(left)}px`;
-	if (el.dataset.rvMenuClamp === '1') return;
-	el.dataset.rvMenuClamp = '1';
+	const maxHeight = Math.max(0, Math.floor(limit - top));
+	const maxWidth = Math.max(0, Math.floor(rightLimit - left));
+	el.style.setProperty('box-sizing', 'border-box', 'important');
+	el.style.setProperty('bottom', 'auto', 'important');
+	el.style.setProperty('right', 'auto', 'important');
+	el.style.setProperty('max-height', `${maxHeight}px`, 'important');
+	el.style.setProperty('max-width', `${maxWidth}px`, 'important');
+	el.style.setProperty('top', `${Math.floor(top)}px`, 'important');
+	el.style.setProperty('left', `${Math.floor(left)}px`, 'important');
+	const pass = Number(el.dataset.rvMenuClamp ?? '0');
+	if (pass >= 4) return;
+	el.dataset.rvMenuClamp = String(pass + 1);
 	if (view.requestAnimationFrame) view.requestAnimationFrame(() => keepMenuOnScreen(anchor));
 }
