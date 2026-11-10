@@ -1,7 +1,7 @@
 import type { EditorView } from '@codemirror/view';
 import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type QueryController, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
-import { addressesMatchOneForOne, bindAddressDirections, buildAutocompleteUrl, buildCountySuggestUrl, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, readCountyPlaceId, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
+import { addressesMatchOneForOne, bindAddressDirections, buildAutocompleteUrl, buildCountySuggestUrl, countyPlaceCacheKey, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, readCountyPlaceId, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
 import { collapseAttemptLog, decorateAttemptLog, DIGEST_POLISH_VERSION, upsertAttemptDigest } from './attempt-digest';
 import { getCached, rememberResults, sanitizeCache } from './cache';
@@ -3156,11 +3156,10 @@ export default class RVLocatorPlugin extends Plugin {
 	private async countyPlaceIds(counties: readonly string[]): Promise<string[]> {
 		const lines = counties.map((line) => line.trim()).filter((line) => line.length > 0);
 		const ids = await Promise.all(lines.map(async (line) => {
-			const key = countyNameKey(line);
+			const key = countyPlaceCacheKey(line);
 			if (!key) return null;
 			const cached = this.countyPlaceCache.get(key);
 			if (cached) return cached;
-			this.countyPlaceCache.delete(key);
 			const id = await this.lookupCountyPlaceId(line);
 			if (id) this.countyPlaceCache.set(key, id);
 			return id;
@@ -3176,7 +3175,7 @@ export default class RVLocatorPlugin extends Plugin {
 			const url = buildCountySuggestUrl(county, apiKey, this.settings.geoapifyRegion);
 			const response = await fetch(url);
 			if (!response.ok) return null;
-			return readCountyPlaceId(await response.json(), name);
+			return readCountyPlaceId(await response.json(), county);
 		} catch {
 			return null;
 		}

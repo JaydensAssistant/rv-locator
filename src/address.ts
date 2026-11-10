@@ -107,9 +107,10 @@ export function buildAutocompleteUrl(
 	return url.toString();
 }
 
-/** Place id of the county result that matches `county`. Other results are ignored. */
+/** Place id of the county result that matches `county` and, when given, its state. */
 export function readCountyPlaceId(body: unknown, county: string): string | null {
 	const wanted = countyNameKey(county);
+	const state = stateCode(county);
 	if (!wanted || !body || typeof body !== 'object') return null;
 	const results = (body as { results?: unknown }).results;
 	if (!Array.isArray(results)) return null;
@@ -117,12 +118,66 @@ export function readCountyPlaceId(body: unknown, county: string): string | null 
 		if (!item || typeof item !== 'object') continue;
 		const row = item as Record<string, unknown>;
 		const id = typeof row.place_id === 'string' ? row.place_id.trim() : '';
-		if (!id) continue;
+		if (!id || !isCountyResult(row, wanted)) continue;
 		const fields = [row.county, row.name, row.formatted, row.address_line1];
 		const matched = fields.some((value) => typeof value === 'string' && countyNameKey(value) === wanted);
-		if (matched) return id;
+		if (!matched || (state && !resultStateMatches(row, state))) continue;
+		return id;
 	}
 	return null;
+}
+
+/** "Citrus County, Florida" and "Citrus County, FL" share one cache key. */
+export function countyPlaceCacheKey(line: string): string {
+	const name = countyNameKey(line);
+	if (!name) return '';
+	const state = stateCode(line);
+	return state ? `${name}|${state}` : name;
+}
+
+const US_STATE_CODE: Record<string, string> = {
+	al: 'al', alabama: 'al', ak: 'ak', alaska: 'ak', az: 'az', arizona: 'az', ar: 'ar', arkansas: 'ar',
+	ca: 'ca', california: 'ca', co: 'co', colorado: 'co', ct: 'ct', connecticut: 'ct', de: 'de', delaware: 'de',
+	dc: 'dc', 'district of columbia': 'dc', fl: 'fl', florida: 'fl', ga: 'ga', georgia: 'ga', hi: 'hi', hawaii: 'hi',
+	id: 'id', idaho: 'id', il: 'il', illinois: 'il', in: 'in', indiana: 'in', ia: 'ia', iowa: 'ia',
+	ks: 'ks', kansas: 'ks', ky: 'ky', kentucky: 'ky', la: 'la', louisiana: 'la', me: 'me', maine: 'me',
+	md: 'md', maryland: 'md', ma: 'ma', massachusetts: 'ma', mi: 'mi', michigan: 'mi', mn: 'mn', minnesota: 'mn',
+	ms: 'ms', mississippi: 'ms', mo: 'mo', missouri: 'mo', mt: 'mt', montana: 'mt', ne: 'ne', nebraska: 'ne',
+	nv: 'nv', nevada: 'nv', nh: 'nh', 'new hampshire': 'nh', nj: 'nj', 'new jersey': 'nj', nm: 'nm', 'new mexico': 'nm',
+	ny: 'ny', 'new york': 'ny', nc: 'nc', 'north carolina': 'nc', nd: 'nd', 'north dakota': 'nd', oh: 'oh', ohio: 'oh',
+	ok: 'ok', oklahoma: 'ok', or: 'or', oregon: 'or', pa: 'pa', pennsylvania: 'pa', ri: 'ri', 'rhode island': 'ri',
+	sc: 'sc', 'south carolina': 'sc', sd: 'sd', 'south dakota': 'sd', tn: 'tn', tennessee: 'tn', tx: 'tx', texas: 'tx',
+	ut: 'ut', utah: 'ut', vt: 'vt', vermont: 'vt', va: 'va', virginia: 'va', wa: 'wa', washington: 'wa',
+	wv: 'wv', 'west virginia': 'wv', wi: 'wi', wisconsin: 'wi', wy: 'wy', wyoming: 'wy',
+};
+
+function stateCode(line: string): string {
+	const comma = line.indexOf(',');
+	if (comma < 0) return '';
+	const token = (line.slice(comma + 1).split(',')[0] ?? '').trim().toLowerCase().replace(/\./g, '');
+	return US_STATE_CODE[token] ?? '';
+}
+
+function isCountyResult(row: Record<string, unknown>, wanted: string): boolean {
+	const type = typeof row.result_type === 'string' ? row.result_type.trim().toLowerCase() : '';
+	if (type === 'county') return true;
+	if (type) return false;
+	return typeof row.county === 'string' && countyNameKey(row.county) === wanted;
+}
+
+function resultStateMatches(row: Record<string, unknown>, wanted: string): boolean {
+	const fields = [row.state, row.state_code, row.formatted];
+	for (const value of fields) {
+		if (typeof value !== 'string') continue;
+		for (const part of value.split(',')) {
+			const token = part.trim().toLowerCase().replace(/\./g, '');
+			if (!token) continue;
+			if (US_STATE_CODE[token] === wanted) return true;
+			const words = token.split(/\s+/);
+			if (words.some((word) => word.length <= 3 && US_STATE_CODE[word] === wanted)) return true;
+		}
+	}
+	return false;
 }
 
 /**
@@ -141,7 +196,8 @@ export function countyGeocodeText(line: string): string {
 }
 
 /**
- * County place ids come from geocode search. Autocomplete rejects `type=county`.
+ * County place ids come from geocode search. `type=county` is not a Geoapify
+ * search type, so the county is chosen from the results.
  */
 export function buildCountySuggestUrl(text: string, apiKey: string, region: GeoapifyRegion = 'global'): string {
 	const query = countyGeocodeText(text);
@@ -149,7 +205,6 @@ export function buildCountySuggestUrl(text: string, apiKey: string, region: Geoa
 	if (!apiKey.trim()) throw new Error('API key is empty.');
 	const url = new URL(geocodeEndpoint(region));
 	url.searchParams.set('text', query);
-	url.searchParams.set('type', 'county');
 	url.searchParams.set('format', 'json');
 	url.searchParams.set('limit', '5');
 	url.searchParams.set('apiKey', apiKey.trim());

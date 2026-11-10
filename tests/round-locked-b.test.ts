@@ -8,7 +8,8 @@ import { APP_TABS, appBarSlotPx, appendAppSlot, dismissOpenMenus, keepMenuOnScre
 import { appendBadge, clearBadgeStrokeCache, pinBadgeRings } from '../src/glancable-view';
 import { applyNoteMapFrame, hubUsesStackedMap, mapBandPx, mapPanePx, revealHubCard, STACKED_HANDLE_PX, writeMapBand } from '../src/hub-layout';
 import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
-import { buildCountySuggestUrl, countyGeocodeText } from '../src/address';
+import { buildAutocompleteUrl, buildCountySuggestUrl, countyGeocodeText, countyPlaceCacheKey, readCountyPlaceId } from '../src/address';
+import { placeFilterParam } from '../src/home-base';
 import { claimParkedMap, lockHandedMapBand, parkMapNode, seatMapGrip } from '../src/map-handoff';
 import { alignHubCover } from '../src/hub-cover';
 import { applyVisitChangeFrontmatter, editVisit, listVisits, removeVisit, visitFacts, visitWhenFrom } from '../src/visit-editor';
@@ -407,14 +408,39 @@ describe('RV-B74 county search', () => {
 		assert.equal(countyGeocodeText('Citrus'), 'Citrus County');
 		const url = new URL(buildCountySuggestUrl('Citrus County, Florida', 'test-key'));
 		assert.match(url.pathname, /\/v1\/geocode\/search$/);
-		assert.equal(url.searchParams.get('type'), 'county');
+		assert.equal(url.searchParams.get('type'), null);
 		assert.equal(url.searchParams.get('text'), 'Citrus County, Florida');
 		assert.doesNotMatch(url.pathname, /autocomplete/);
+		const body = {
+			results: [
+				{ place_id: 'street-id', result_type: 'building', county: 'Citrus County', state: 'Florida', formatted: '64 South Harrison Street, Beverly Hills, FL 34465' },
+				{ place_id: 'citrus-ia', result_type: 'county', county: 'Citrus County', state: 'Iowa', state_code: 'IA' },
+				{ place_id: 'citrus-id', result_type: 'county', county: 'Citrus County', state: 'Florida', state_code: 'FL', formatted: 'Citrus County, FL, United States of America' },
+				{ place_id: 'marion-id', result_type: 'county', name: 'Marion County', state: 'Florida', state_code: 'FL' },
+			],
+		};
+		const citrus = readCountyPlaceId(body, 'Citrus County, Florida');
+		const marion = readCountyPlaceId(body, 'Marion County, FL');
+		assert.equal(citrus, 'citrus-id');
+		assert.equal(marion, 'marion-id');
+		assert.equal(countyPlaceCacheKey('Citrus County, Florida'), countyPlaceCacheKey('Citrus County, FL'));
+		assert.notEqual(countyPlaceCacheKey('Marion County, Florida'), countyPlaceCacheKey('Marion County, Iowa'));
+		const place = placeFilterParam([citrus ?? '', marion ?? '']);
+		const filtered = new URL(buildAutocompleteUrl('64 South Harrison', 'test-key', 'global', { placeFilter: place }));
+		assert.equal(filtered.searchParams.get('filter'), 'place:citrus-id|place:marion-id');
+		assert.equal(filtered.searchParams.get('type'), null);
 		const main = source('src/main.ts');
+		const home = main.slice(main.indexOf('async suggestAddressHome'), main.indexOf('private vaultAddressHits'));
+		assert.ok(home.indexOf('countyPlaceIds') < home.indexOf('placeFilterParam'));
+		assert.match(home, /autocompleteAddress\(query, bias, false, false, place, 10\)/);
+		assert.match(main, /countyPlaceCache\.set\(key, id\)/);
+		assert.match(main, /text\.length < 3/);
+		assert.match(main, /needle\.length < 3/);
 		assert.match(main, /planned\.hits\.length === 0\) return \{ hits: \[\], allowBroad: true/);
 		assert.match(main, /return await this\.homeProximity\(\)/);
 		assert.doesNotMatch(main, /suggestBias\(\): Promise<GeocodeBias \| null> \{\s*return this\.currentMapFix\(\)/);
 		assert.match(source('src/address-suggest.ts'), /hits\.length === 0\) \{\s*this\.cache\.delete\(key\)/);
+		assert.doesNotMatch(source('src/address.ts'), /searchParams\.set\('type', 'county'\)/);
 	});
 });
 
