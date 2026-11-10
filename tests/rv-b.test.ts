@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
-import { applyLiveUrgency, type NoteChromeHost } from '../src/note-chrome';
+import { applyLiveUrgency, urgencyStyleHosts, type NoteChromeHost } from '../src/note-chrome';
 import { nextPresetSort, SORT_PRESETS } from '../src/active-layout';
 import { DISTANCE_COLUMN_ID, URGENCY_COLUMN_ID } from '../src/constants';
 import { annotateRowScores } from '../src/row-score';
@@ -14,7 +14,9 @@ import { NearbyGlancableView } from '../src/glancable-view';
 import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
 import { concealHubList, holdLeafForHubPaint, hubFrameReady, hubSwapDecision, isHubSwapFile, releaseHubSwapCover } from '../src/hub-cover';
 import { hubClickFrames, paintedHubLeaf } from '../src/hub-open';
-import { hubEmbedCapPx } from '../src/hub-layout';
+import { embedCapCss, hubEmbedCapPx, viewportHeightPx, writeViewportHeight } from '../src/hub-layout';
+import { createBarShell, paintSurfaceAccent, placeBarOver } from '../src/bar-shell';
+import { defaultUrgencyColors, hubAccentColor, URGENCY_PALETTES } from '../src/urgency-palette';
 import { shouldHideMobileNav } from '../src/status-bar';
 import { LESSONS, emptyShare, studyPrefill, type VisitShare } from '../src/catalog';
 import { mountShareFields, type ShareFieldOptions } from '../src/catalog-fields';
@@ -873,7 +875,8 @@ describe('RV-B9 swap cover', () => {
 		parent.remove();
 
 		const main = source('src/main.ts');
-		assert.doesNotMatch(main, /holdLeafForHubPaint\(/);
+		const openHook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
+		assert.ok(openHook.indexOf('holdLeafForHubPaint') >= 0 && openHook.indexOf('holdLeafForHubPaint') < openHook.indexOf('openFile.call'));
 		assert.match(main, /coversHubOpen\(file\)/);
 		assert.match(main, /releaseHubSwapCover\(document, true\)/);
 		const glance = source('src/glancable-view.ts');
@@ -1083,8 +1086,8 @@ describe('RV-B8 standalone base nav', () => {
 describe('RV-B4 age outline', () => {
 	it('gives the age symbol the same inset outline without a chevron', () => {
 		const css = source('styles.css');
-		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--rv-menu-ink, #1f8a4c\) !important;/);
-		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{[^}]*color:\s*var\(--rv-menu-ink, #1f8a4c\) !important;/);
+		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{[^}]*box-shadow:\s*inset 0 0 0 1px var\(--rv-menu-ink\) !important;/);
+		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{[^}]*color:\s*var\(--rv-menu-ink\) !important;/);
 		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{[^}]*background:\s*transparent !important;/);
 		assert.doesNotMatch(css, /:not\(\.rv-age-choice\)/);
 		assert.match(css, /\.rv-locator-modal button\.rv-age-symbol \{\s*height: 40px;/);
@@ -1343,8 +1346,8 @@ describe('RV-B14 lesson pills and ticks', () => {
 describe('RV-181 study slider thumb', () => {
 	it('uses the menu ink and keeps the chosen stop after max grows from 0', () => {
 		const css = source('styles.css');
-		assert.match(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*background:\s*var\(--rv-menu-ink, #1f8a4c\);/);
-		assert.match(css, /input\.rv-study-slider\[type="range"\]::-moz-range-thumb \{[^}]*background:\s*var\(--rv-menu-ink, #1f8a4c\);/);
+		assert.match(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*background:\s*var\(--rv-menu-ink\);/);
+		assert.match(css, /input\.rv-study-slider\[type="range"\]::-moz-range-thumb \{[^}]*background:\s*var\(--rv-menu-ink\);/);
 		assert.doesNotMatch(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*var\(--interactive-accent\)/);
 		assert.doesNotMatch(css, /input\.rv-study-slider\[type="range"\]::-moz-range-thumb \{[^}]*var\(--interactive-accent\)/);
 		assert.match(css, /\.rv-study-tick:first-child:not\(:last-child\)::before \{[^}]*transform:\s*translateX\(-0\.5px\);/);
@@ -1430,6 +1433,151 @@ describe('RV-181 study slider thumb', () => {
 		assert.equal(next.max, '6');
 		assert.equal(next.value, '0');
 		modal.remove();
+	});
+});
+
+describe('RV-B83 the bar follows the window', () => {
+	it('rewrites the viewport height on resize and does not keep a pixel embed height', () => {
+		const frame = source('src/glancable-view.ts');
+		const embed = frame.slice(frame.indexOf('private sizeEmbedFrame'), frame.indexOf('private bindHubHandle'));
+		assert.match(embed, /embedCapCss\(\)/);
+		assert.match(embed, /removeProperty\('height'\)/);
+		assert.match(embed, /removeProperty\('max-height'\)/);
+		assert.doesNotMatch(embed, /setProperty\('height'/);
+		const main = source('src/main.ts');
+		const band = main.slice(main.indexOf('private bindViewportBand'), main.indexOf('registerEmbedRefit'));
+		assert.match(band, /addEventListener\('resize', apply\)/);
+		assert.match(band, /visualViewport\?\.addEventListener\('resize', apply\)/);
+		assert.match(band, /visualViewport\?\.addEventListener\('scroll', apply\)/);
+		assert.match(source('styles.css'), /\.is-embed-capped \{[^}]*height:\s*var\(--rv-embed-cap\) !important/);
+		const doc = window.document;
+		writeViewportHeight(doc, 520);
+		assert.equal(doc.documentElement.style.getPropertyValue('--rv-vvh'), '520px');
+		writeViewportHeight(doc, 794);
+		assert.equal(doc.documentElement.style.getPropertyValue('--rv-vvh'), '794px');
+		assert.equal(embedCapCss(), 'calc(var(--rv-vvh, 100dvh) - var(--rv-embed-top, 0px))');
+		assert.equal(viewportHeightPx({ innerHeight: 794, visualViewport: { height: 520 } }), 520);
+		assert.equal(viewportHeightPx({ innerHeight: 794, visualViewport: { height: 0 } }), 794);
+		const bar = window.document.createElement('div');
+		const spacer = window.document.createElement('div');
+		window.document.body.append(bar, spacer);
+		const place = (inner: number): void => {
+			const embedTop = 48;
+			const barPx = 52;
+			const cap = inner - embedTop;
+			spacer.getBoundingClientRect = () => ({
+				top: embedTop + cap - barPx,
+				left: 0,
+				width: 379,
+				height: barPx,
+				bottom: inner,
+				right: 379,
+				x: 0,
+				y: embedTop + cap - barPx,
+				toJSON() { return {}; },
+			}) as DOMRect;
+			placeBarOver(bar, spacer);
+			assert.equal(Math.round(parseFloat(bar.style.top) + barPx), inner);
+		};
+		place(520);
+		place(794);
+		place(379);
+	});
+});
+
+describe('RV-B84 hub chrome uses the lowest urgency', () => {
+	it('paints the hub map tab with the active palette band 0 and keeps urgency hexes in the palette', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-bar-shell:not\(\.is-note\)[\s\S]*?--interactive-accent:\s*var\(--rv-hub-accent\);/);
+		assert.doesNotMatch(css, /var\(--rv-hub-accent,\s*#/);
+		assert.doesNotMatch(css, /var\(--rv-urgency-accent,\s*#/);
+		const hexes = new Set<string>();
+		for (const palette of URGENCY_PALETTES) {
+			for (const color of palette.colors) {
+				if (color.startsWith('#')) hexes.add(color.toLowerCase());
+			}
+		}
+		for (const color of defaultUrgencyColors()) hexes.add(color.toLowerCase());
+		const files = readdirSync('src').filter((name) => name.endsWith('.ts') && name !== 'urgency-palette.ts');
+		for (const name of files) {
+			const text = readFileSync(`src/${name}`, 'utf8').toLowerCase();
+			for (const hex of hexes) assert.equal(text.includes(hex), false, `${name} ${hex}`);
+		}
+		const sheet = css.toLowerCase();
+		for (const hex of hexes) assert.equal(sheet.includes(hex), false, `styles.css ${hex}`);
+		const paint = window.document.createElement('style');
+		paint.textContent = '.rv-bar-shell:not(.is-note){--interactive-accent:var(--rv-hub-accent)}.rv-app-bar>.rv-app-slot.is-on{color:var(--interactive-accent)}';
+		window.document.head.append(paint);
+		const bar = createBarShell(window.document.body);
+		bar.classList.remove('is-note');
+		const map = bar.querySelector('.rv-bar-tab-map');
+		assert.ok(map instanceof window.HTMLElement);
+		map.classList.add('is-on');
+		const cotton = hubAccentColor('cotton-candy', ['#111111', '#222222', '#333333', '#444444']);
+		paintSurfaceAccent(bar, 'hub', cotton);
+		const color = window.getComputedStyle(map).color.replace(/\s/g, '');
+		assert.ok(color === 'rgb(20,172,135)' || color === '#14ac87', color);
+		const traffic = hubAccentColor('default', ['#111111', '#222222', '#333333', '#444444']);
+		paintSurfaceAccent(bar, 'hub', traffic);
+		const next = window.getComputedStyle(map).color.replace(/\s/g, '');
+		assert.ok(next === 'rgb(31,138,76)' || next === '#1f8a4c', next);
+		paintSurfaceAccent(bar, 'note', '#d63c3c');
+		assert.equal(window.getComputedStyle(map).color.replace(/\s/g, ''), 'rgb(214,60,60)');
+		paintSurfaceAccent(bar, 'hub', traffic);
+		assert.ok(window.getComputedStyle(map).color.replace(/\s/g, '') !== 'rgb(214,60,60)');
+		assert.equal(bar.style.getPropertyValue('--rv-urgency-accent'), '');
+		const note = window.document.createElement('div');
+		const leaf = window.document.createElement('div');
+		leaf.className = 'workspace-leaf-content';
+		const workspace = window.document.createElement('div');
+		workspace.className = 'workspace';
+		leaf.append(note);
+		workspace.append(leaf);
+		window.document.body.append(workspace);
+		const hosts = urgencyStyleHosts(note);
+		assert.ok(hosts.includes(note));
+		assert.ok(hosts.includes(leaf));
+		assert.equal(hosts.includes(workspace), false);
+		assert.equal(hosts.includes(window.document.body), false);
+		assert.equal(hosts.includes(window.document.documentElement), false);
+		paint.remove();
+	});
+});
+
+describe('RV-B85 a return shades the card in the open turn', () => {
+	it('paints through the target and keeps the shade when the card is replaced', () => {
+		clearGlanceHold();
+		const rows = Array.from({ length: 12 }, (_, index) => ({
+			...sampleRow(),
+			path: `People/Lane ${index}.md`,
+			name: `Lane ${index}`,
+		}));
+		rememberGlanceGroups([{ label: null, rows }]);
+		const parent = window.document.createElement('div');
+		window.document.body.append(parent);
+		const bucket = { refresh: null as (() => void) | null };
+		const target = 'People/Lane 11.md';
+		try {
+			new NearbyGlancableView({} as QueryController, parent, glancePlugin(bucket, {
+				peekHubArrival: () => target,
+				takeHubArrival: () => target,
+			}));
+			const cards = parent.querySelectorAll('.rv-locator-card');
+			assert.equal(cards.length, 12);
+			const last = parent.querySelector('[data-rv-path="People/Lane 11.md"]');
+			assert.ok(last instanceof window.HTMLElement);
+			assert.equal(last.classList.contains('rv-card-land'), true);
+			assert.equal(last.classList.contains('is-stub'), false);
+		} finally {
+			parent.remove();
+			clearGlanceHold();
+		}
+		const glance = source('src/glancable-view.ts');
+		const stub = glance.slice(glance.indexOf('private replaceStub'), glance.indexOf('private arrivalPaintCount'));
+		assert.match(stub, /carryCardLand\(stub, fresh\)/);
+		const main = source('src/main.ts');
+		assert.doesNotMatch(main, /setTimeout\(\(\) => \{ this\.hubLinkOpen = false/);
+		assert.match(main, /peekHubArrival\(\)/);
 	});
 });
 

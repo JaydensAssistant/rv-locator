@@ -101,7 +101,7 @@ describe('RV-239 RV-240 RV-242 RV-243', () => {
 		assert.match(css, /\.rv-map-bar button \{[^}]*backdrop-filter:\s*none;/);
 		assert.match(css, /body\.is-mobile\.is-floating-nav \.modal\.rv-locator-modal \.modal-title/);
 		assert.doesNotMatch(css, /\.rv-closed-title \{[^}]*padding-inline:\s*8px/);
-		assert.match(css, /\.modal\.rv-modal-general button\.mod-cta[\s\S]*?background-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(css, /\.modal\.rv-modal-general button\.mod-cta[\s\S]*?background-color:\s*var\(--rv-modal-accent\) !important;/);
 	});
 
 	it('copies the input font and text inset onto the closed title', () => {
@@ -142,8 +142,8 @@ describe('RV-B44 general modal band', () => {
 		assert.doesNotMatch(tone, /--rv-modal-accent', '#1f8a4c'/);
 		const css = source('styles.css');
 		const general = css.slice(css.indexOf('.modal.rv-modal-general,'), css.indexOf('.modal.rv-modal-rv,'));
-		assert.match(general, /--interactive-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
-		assert.match(general, /--text-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
+		assert.match(general, /--interactive-accent:\s*var\(--rv-modal-accent\)/);
+		assert.match(general, /--text-accent:\s*var\(--rv-modal-accent\)/);
 		assert.equal(general.includes('--rv-modal-accent: #1f8a4c'), false);
 		for (const file of ['src/modals.ts', 'src/main.ts', 'src/settings-tab.ts']) {
 			assert.match(source(file), /generalModalAccent\(/);

@@ -113,10 +113,10 @@ describe('map band stays in the flow', () => {
 		assert.equal(edited.minute, 50);
 	});
 
-	it('opens the live hub sort row and a hub pin, and does not mount the swap cover', () => {
+	it('opens the live hub sort row and a hub pin, and covers the leaf until the hub has cards', () => {
 		const main = source('src/main.ts');
 		const hook = main.slice(main.indexOf('proto.openFile = function'), main.indexOf('proto.setViewState = function'));
-		assert.doesNotMatch(hook, /holdLeafForHubPaint/);
+		assert.ok(hook.indexOf('holdLeafForHubPaint') < hook.indexOf('openFile.call'));
 		assert.match(main, /registerHubSortOpener/);
 		assert.match(source('src/nearby-view.ts'), /registerHubSortOpener/);
 		assert.match(source('src/map-view.ts'), /this\.host\.openMapNote\(path\)/);

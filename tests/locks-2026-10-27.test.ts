@@ -109,7 +109,7 @@ describe('next build locks', () => {
 		assert.equal(urgencyInk('#d6a100'), '#111111');
 		assert.equal(urgencyInk('#d63c3c'), '#ffffff');
 		assert.match(source('src/modal-chrome.ts'), /function markModalTone/);
-		assert.match(css, /background-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important/);
+		assert.match(css, /background-color:\s*var\(--rv-modal-accent\) !important/);
 		assert.match(css, /background-color:\s*var\(--rv-modal-accent\) !important/);
 		assert.match(source('src/campaign-modal.ts'), /markModalTone\(this\.modalEl, 'general', this\.accent\)/);
 		assert.match(source('src/score-modals.ts'), /markModalTone\(this\.modalEl, 'rv', this\.buttonAccent\)/);

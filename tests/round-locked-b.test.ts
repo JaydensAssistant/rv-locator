@@ -282,9 +282,9 @@ describe('RV-B67 the hub accent is band 0', () => {
 		assert.match(mixed, /#14ac87/);
 		assert.doesNotMatch(mixed, /var\(--interactive-accent\)/);
 		const css = source('styles.css');
-		assert.match(css, /--interactive-accent:\s*var\(--rv-hub-accent, #1f8a4c\);/);
-		assert.match(css, /\.rv-may-cell\.is-may \{[^}]*var\(--rv-hub-accent, #1f8a4c\)/);
-		assert.match(css, /--rv-modal-accent, #1f8a4c/);
+		assert.match(css, /--interactive-accent:\s*var\(--rv-hub-accent\);/);
+		assert.match(css, /\.rv-may-cell\.is-may \{[^}]*var\(--rv-hub-accent\)/);
+		assert.match(css, /--rv-modal-accent/);
 		assert.match(source('src/main.ts'), /paintHubAccent\(/);
 		assert.match(source('src/map-pins.ts'), /status === 'Active' && colors\[0\]/);
 	});
@@ -474,8 +474,8 @@ describe('RV-B72 selection and the address copy button', () => {
 		const css = source('styles.css');
 		assert.match(css, /\.theme-light \.workspace-leaf-content\.is-rv-note ::selection/);
 		assert.match(css, /\.theme-light \.rv-locator-view ::selection/);
-		assert.match(css, /var\(--rv-urgency-accent, #1f8a4c\) 45%, transparent\) !important/);
-		assert.match(css, /var\(--rv-hub-accent, #1f8a4c\) 45%, transparent\) !important/);
+		assert.match(css, /var\(--rv-urgency-accent\) 45%, transparent\) !important/);
+		assert.match(css, /var\(--rv-hub-accent\) 45%, transparent\) !important/);
 		assert.match(source('src/note-chrome.ts'), /Address copied/);
 		assert.match(source('src/note-chrome.ts'), /setIcon\(copy, 'copy'\)/);
 		assert.match(css, /\.rv-closed-title \.rv-type \{\s*color:\s*var\(--text-faint\)/);

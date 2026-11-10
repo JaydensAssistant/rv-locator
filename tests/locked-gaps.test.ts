@@ -57,7 +57,7 @@ describe('locked gaps past 678111b', () => {
 		assert.match(css, /\.modal\.rv-locator-modal \.modal-header \{\s*border-bottom: 1px solid/);
 		assert.match(css, /padding-bottom: 16px !important/);
 		assert.match(css, /button:not\(\.mod-cta\):not\(\.rv-suggest-chevron\)/);
-		assert.match(css, /\.setting-item-control > button\.rv-suggest-chevron \{\s*border:\s*1px solid var\(--rv-modal-accent, #1f8a4c\) !important;\s*box-shadow:\s*none !important;/);
+		assert.match(css, /\.setting-item-control > button\.rv-suggest-chevron \{\s*border:\s*1px solid var\(--rv-modal-accent\) !important;\s*box-shadow:\s*none !important;/);
 		assert.match(css, /\.modal\.rv-locator-modal \.modal-content \{\s*display:\s*flex;\s*flex-direction:\s*column;/);
 		assert.match(css, /\.modal\.rv-locator-modal \.setting-item\.rv-modal-actions,\s*\.modal\.rv-locator-modal \.modal-content > \.rv-modal-actions,\s*\.rv-study-change-modal > \.rv-modal-actions \{\s*margin-top:\s*auto !important;/);
 	});

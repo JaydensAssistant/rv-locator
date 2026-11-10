@@ -279,11 +279,14 @@ export function readingUrgencyScope(start: HTMLElement): HTMLElement {
  * Custom properties inherit, so the leaf is enough for chrome that mounts later.
  */
 export function urgencyStyleHosts(start: HTMLElement): HTMLElement[] {
-	const hosts: HTMLElement[] = [start];
-	let node = start.parentElement;
+	const hosts: HTMLElement[] = [];
+	const doc = start.ownerDocument;
+	let node: HTMLElement | null = start;
 	while (node) {
+		if (node === doc.body || node === doc.documentElement) break;
+		if (node.classList.contains('workspace') || node.classList.contains('app-container')) break;
 		hosts.push(node);
-		if (node.classList.contains('workspace-leaf-content')) break;
+		if (node.classList.contains('workspace-leaf-content') || node.classList.contains('workspace-leaf')) break;
 		node = node.parentElement;
 	}
 	return hosts;
@@ -324,6 +327,11 @@ export function applyLiveUrgency(start: HTMLElement, path: string, host: NoteChr
 	// Home leaves the address and the badge in a cached section, so the scope
 	// is the preview, not only the section that just re-rendered.
 	paintUrgencySurfaces(scope, accent, ink, snoozed);
+	const shell = start.ownerDocument.querySelector('.rv-bar-shell.is-note');
+	if (shell instanceof HTMLElement) {
+		setPaint(shell, '--rv-urgency-accent', accent);
+		setPaint(shell, '--interactive-accent', accent);
+	}
 	scope.querySelectorAll('.rv-locator-return-suggestions').forEach((node) => {
 		if (!(node instanceof HTMLElement) || !noteChromeOwnsUrgency(node)) return;
 		setPaint(node, '--rv-urgency-accent', accent);

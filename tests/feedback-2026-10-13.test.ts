@@ -307,8 +307,8 @@ describe('location picker and return times', () => {
 		assert.match(css, /\.prompt\.rv-modal-general button\.mod-cta/);
 		assert.match(css, /\.prompt\.rv-modal-rv button\.mod-cta/);
 		assert.match(css, /\.prompt\.rv-modal-general,\s*\.prompt\.rv-modal-rv \.suggestion-highlight|\.prompt\.rv-modal-rv \.suggestion-highlight/);
-		assert.match(css, /--interactive-accent:\s*var\(--rv-hub-accent, #1f8a4c\)/);
-		assert.match(css, /--interactive-accent:\s*var\(--rv-modal-accent, #1f8a4c\)/);
+		assert.match(css, /--interactive-accent:\s*var\(--rv-hub-accent\)/);
+		assert.match(css, /--interactive-accent:\s*var\(--rv-modal-accent\)/);
 	});
 
 	it('removes the Return times screen and keeps the digest, Try and Avoid, and the card bucket', () => {
@@ -350,10 +350,10 @@ describe('location picker and return times', () => {
 		const rule = css.slice(css.indexOf('.setting-item.rv-priority-nudge'));
 		assert.match(rule, /\.setting-item\.rv-priority-nudge \.setting-item-control \{[^}]*gap:\s*8px !important;/);
 		assert.match(rule, /button \{[^}]*flex:\s*1 1 0 !important;[^}]*min-width:\s*0 !important;[^}]*height:\s*40px !important;[^}]*border-radius:\s*4px !important;[^}]*background:\s*transparent !important;/);
-		assert.match(rule, /button\.rv-nudge-lower[^}]*color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;[^}]*border-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(rule, /button\.rv-nudge-lower[^}]*color:\s*var\(--rv-modal-accent\) !important;[^}]*border-color:\s*var\(--rv-modal-accent\) !important;/);
 		assert.match(rule, /\.theme-dark[^}]*button\.rv-nudge-stay[^}]*color:\s*#8a8a8a !important;/);
 		assert.match(rule, /\.theme-light[^}]*button\.rv-nudge-stay[^}]*color:\s*#8f8f8f !important;/);
-		assert.match(rule, /button\.rv-nudge-raise[^}]*color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;[^}]*border-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(rule, /button\.rv-nudge-raise[^}]*color:\s*var\(--rv-modal-accent\) !important;[^}]*border-color:\s*var\(--rv-modal-accent\) !important;/);
 		assert.equal(rule.includes('var(--rv-menu-ink'), false);
 		assert.match(css, /\.rv-modal-actions:not\(\.rv-priority-nudge\) button:not\(\.mod-cta\)/);
 	});

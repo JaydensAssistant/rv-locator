@@ -68,6 +68,35 @@ export function paintBarLead(bar: HTMLElement, surface: BarSurface): void {
 	bar.classList.remove('is-away');
 }
 
+/**
+ * Hub and base highlights use band 0. A note uses that note's urgency.
+ * The lit slots get the color directly so it does not fall through to the vault accent.
+ */
+export function paintSurfaceAccent(bar: HTMLElement, surface: BarSurface, color: string): void {
+	const paint = color.trim();
+	if (surface === 'note') {
+		bar.style.removeProperty('--rv-hub-accent');
+		if (paint) {
+			bar.style.setProperty('--rv-urgency-accent', paint);
+			bar.style.setProperty('--interactive-accent', paint);
+		} else {
+			bar.style.removeProperty('--rv-urgency-accent');
+			bar.style.removeProperty('--interactive-accent');
+		}
+	} else {
+		bar.style.removeProperty('--rv-urgency-accent');
+		if (paint) {
+			bar.style.setProperty('--rv-hub-accent', paint);
+			bar.style.setProperty('--interactive-accent', paint);
+		}
+	}
+	bar.querySelectorAll('.rv-app-slot').forEach((node) => {
+		if (!(node instanceof HTMLElement)) return;
+		if (paint && (node.classList.contains('is-on') || node.classList.contains('has-dot'))) node.style.color = paint;
+		else node.style.removeProperty('color');
+	});
+}
+
 /** Map slot stays the same button. Only its lit state and accent class change. */
 export function paintBarEarth(bar: HTMLElement, surface: BarSurface, on: boolean, path = ''): void {
 	const map = bar.querySelector('.rv-bar-tab-map');

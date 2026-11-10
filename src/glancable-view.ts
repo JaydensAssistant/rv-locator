@@ -1,6 +1,6 @@
 import { Platform, setIcon, TFile, type QueryController } from 'obsidian';
 import { armIconTooltip } from './title-fit';
-import { hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap } from './hub-layout';
+import { embedCapCss, hubEmbedCapPx, hubLandingReady, hubUsesStackedMap, landingScrollFor, mapPanePx, placeGlanceStage, revealHubCard, shadeHubCard, stackedEmbedCap, viewportHeightPx } from './hub-layout';
 import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
@@ -11,7 +11,7 @@ import type { CellModel, ColumnModel, GroupModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
-import { HUB_FIRST_PAINT } from './hub-open';
+import { HUB_ARRIVAL_CHEAP, HUB_FIRST_PAINT } from './hub-open';
 import { hostIsHidden, isHubSwapFile, markHubFill } from './hub-cover';
 import { copyShellBand, ensureMapSpacer, markShellSide, sizeMapSpacer } from './map-shell';
 import { cardPaintKey } from './hub-cache';
@@ -102,6 +102,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (typeof pause === 'function') this.register(pause);
 		const leave = this.plugin.registerHubLeave?.(() => this.leaveSurface());
 		if (typeof leave === 'function') this.register(leave);
+		const refit = this.plugin.registerEmbedRefit?.(() => this.sizeEmbedFrame());
+		if (typeof refit === 'function') this.register(refit);
 		// A markdown file builds both reading and live-preview modes. The hidden
 		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
 		// delays the real hub. Paint when that mode is actually shown.
@@ -445,8 +447,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 			return;
 		}
 		const grid = this.ensureCardGrid();
-		const first = rows.slice(0, HUB_FIRST_PAINT);
-		for (const row of first) this.paintStubCard(grid, row);
+		const count = this.arrivalPaintCount(rows);
+		const opening = rows.slice(0, count);
+		if (this.plugin.peekHubArrival?.()) {
+			for (const row of opening) this.paintCard(grid, row, `open:${row.path}`);
+		} else {
+			for (const row of opening) this.paintStubCard(grid, row);
+		}
 		this.root.removeClass('is-glance-pending');
 		this.publishPinOrder(rows.map((row) => row.path));
 		this.syncHubMapMount();
@@ -533,6 +540,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const elapsed = performance.now() - start;
 			const sink = (globalThis as { __rvOpenSlice?: (ms: number) => void }).__rvOpenSlice;
 			sink?.(elapsed);
+			if (this.plugin.peekHubArrival?.()) this.landArrival();
 			if (pending) {
 				this.scheduleSlice(step);
 				return;
@@ -588,8 +596,30 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const holder = stub.ownerDocument.createElement('div');
 		this.paintCard(holder, row, `0:${row.path}`);
 		const fresh = holder.firstElementChild;
-		if (fresh) stub.replaceWith(fresh);
-		else stub.classList.remove('is-stub');
+		if (fresh instanceof HTMLElement) {
+			this.carryCardLand(stub, fresh);
+			stub.replaceWith(fresh);
+		} else stub.classList.remove('is-stub');
+	}
+
+	/** How many cards an open paints before the first yield. An arrival includes its card. */
+	private arrivalPaintCount(rows: readonly RowModel[]): number {
+		const path = this.plugin.peekHubArrival?.() ?? '';
+		if (!path) return HUB_FIRST_PAINT;
+		const index = rows.findIndex((row) => row.path === path);
+		if (index < 0) return HUB_FIRST_PAINT;
+		if (rows.length <= HUB_ARRIVAL_CHEAP) return rows.length;
+		return Math.max(HUB_FIRST_PAINT, index + 1);
+	}
+
+	/** The shade is on the card, not on one DOM node. A stub swap keeps it. */
+	private carryCardLand(from: HTMLElement, to: HTMLElement): void {
+		if (!from.classList.contains('rv-card-land')) return;
+		to.classList.add('rv-card-land');
+		if (from.dataset.rvLandAt) to.dataset.rvLandAt = from.dataset.rvLandAt;
+		const delay = from.style.getPropertyValue('--rv-land-delay');
+		if (delay) to.style.setProperty('--rv-land-delay', delay);
+		shadeHubCard(to);
 	}
 
 	private scheduleSlice(run: () => void): void {
@@ -657,12 +687,15 @@ export class NearbyGlancableView extends NearbyBasesView {
 		if (cards.length === 0 || this.staleCardCount(cards, rows) > HUB_FIRST_PAINT) {
 			this.dropCardsOutside(rows);
 			this.orderExistingCards(rows);
-			if (this.glanceCards().length === 0) this.patchGlanceCards(rows.slice(0, HUB_FIRST_PAINT), false);
+			const count = this.arrivalPaintCount(rows);
+			if (this.glanceCards().length === 0) this.patchGlanceCards(rows.slice(0, count), false);
 			this.root.removeClass('is-glance-pending');
 			if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
 			this.applyDensity();
 			this.publishPinOrder(rows.map((row) => row.path));
-			this.scheduleCardFill(rows);
+			if (this.plugin.peekHubArrival?.()) this.landArrival();
+			if (count < rows.length) this.scheduleCardFill(rows);
+			else this.afterListSwap();
 			return;
 		}
 		const atTop = this.directHubOpensAtTop();
@@ -732,11 +765,18 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const path = this.plugin.peekHubArrival();
 		if (!path || !this.scrollEl) return;
 		const escaped = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(path) : path.replace(/"/g, '');
-		const card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
+		let card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
+		if (!(card instanceof HTMLElement)) {
+			this.paintThroughArrival(path);
+			card = this.scrollEl.querySelector(`[data-rv-path="${escaped}"]`);
+		}
 		if (!(card instanceof HTMLElement)) return;
 		const scrolled = card.closest('.rv-locator-scroll');
 		const scroller = scrolled instanceof HTMLElement ? scrolled : this.scrollEl;
-		if (scroller.clientHeight <= 1) return;
+		if (scroller.clientHeight <= 1) {
+			shadeHubCard(card);
+			return;
+		}
 		const swap = this.root.ownerDocument.querySelector('.rv-hub-swap-cover');
 		const inCover = Boolean(this.root.closest('.rv-hub-swap-cover'));
 		if (!inCover && swap instanceof HTMLElement) {
@@ -751,8 +791,25 @@ export class NearbyGlancableView extends NearbyBasesView {
 		}
 		shadeHubCard(card);
 		const cover = this.root.closest('.rv-hub-swap-cover');
+		if (card.classList.contains('is-stub')) return;
 		if (!cover && !hubLandingReady(scroller, card)) return;
 		if (!cover) this.plugin.takeHubArrival();
+	}
+
+	/** Cards up to the return target, in this turn, so the shade does not wait on idle slices. */
+	private paintThroughArrival(path: string): void {
+		const rows = this.openingRows();
+		const index = rows.findIndex((row) => row.path === path);
+		if (index < 0) return;
+		const host = this.ensureCardGrid();
+		const through = rows.slice(0, this.arrivalPaintCount(rows));
+		for (const row of through) {
+			const selector = `[data-rv-path="${row.path.replace(/"/g, '')}"]`;
+			const existing = host.querySelector(selector);
+			if (existing instanceof HTMLElement && !existing.classList.contains('is-stub')) continue;
+			if (existing instanceof HTMLElement) this.replaceStub(existing, row);
+			else this.placeCard(host, row, rows);
+		}
 	}
 
 	protected paint(): void {
@@ -1194,6 +1251,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const fresh = holder.firstElementChild;
 			if (!(fresh instanceof HTMLElement)) return;
 			if (existing) {
+				this.carryCardLand(existing, fresh);
 				pool.delete(row.path);
 				if (cursor === existing) cursor = existing.nextSibling;
 				existing.remove();
@@ -1412,7 +1470,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			return;
 		}
 		const view = this.root.ownerDocument.defaultView;
-		const viewport = view?.visualViewport?.height ?? view?.innerHeight ?? 0;
+		const viewport = viewportHeightPx(view);
 		const chrome = embedChromePx(this.root.ownerDocument);
 		const rect = typeof embed.getBoundingClientRect === 'function' ? embed.getBoundingClientRect() : null;
 		const top = rect ? rect.top : 0;
@@ -1420,6 +1478,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const cap = top > 1 || full
 			? hubEmbedCapPx(viewport, top, pad)
 			: Math.max(160, stackedEmbedCap(viewport, chrome));
+		const occupied = top > 1 ? top : (full ? pad : chrome);
 		embed.style.setProperty('width', '100%', 'important');
 		embed.style.setProperty('transform', 'none', 'important');
 		embed.style.setProperty('scrollbar-gutter', 'auto', 'important');
@@ -1431,9 +1490,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 			view?.requestAnimationFrame?.(() => { this.sizeEmbedFrame(); });
 		}
 		embed.classList.add('is-embed-capped');
-		embed.style.setProperty('--rv-embed-cap', `${cap}px`);
-		embed.style.setProperty('height', `${cap}px`, 'important');
-		embed.style.setProperty('max-height', `${cap}px`, 'important');
+		embed.style.setProperty('--rv-embed-top', `${Math.max(0, Math.round(occupied))}px`);
+		embed.style.setProperty('--rv-embed-cap', viewport > 0 ? embedCapCss() : `${cap}px`);
+		embed.style.removeProperty('height');
+		embed.style.removeProperty('max-height');
 	}
 
 	private bindHubHandle(handle: HTMLElement): void {

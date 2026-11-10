@@ -47,6 +47,9 @@ export interface HubOpenFrame {
 /** Visible cards painted in the open turn. The rest follow in idle slices. */
 export const HUB_FIRST_PAINT = 8;
 
+/** A return list this small is painted in one turn, through the last card. */
+export const HUB_ARRIVAL_CHEAP = 40;
+
 /**
  * What a hub-link click shows. Desktop may reveal a leaf that already has
  * cards. Phone replaces the note, so the first frame is the visible slice of

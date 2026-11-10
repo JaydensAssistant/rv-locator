@@ -1,5 +1,5 @@
 import { Platform, setIcon, type Setting } from 'obsidian';
-import { urgencyColorsFor, urgencyInk, type UrgencyColors, type UrgencyPaletteId } from './urgency-palette';
+import { defaultUrgencyColors, urgencyColorsFor, urgencyInk, type UrgencyColors, type UrgencyPaletteId } from './urgency-palette';
 import { RESTROOM_MAN, RESTROOM_WOMAN } from './person-meta';
 
 const PROMPT_ICONS: Array<[RegExp, string]> = [
@@ -239,7 +239,7 @@ function paintIcon(node: Element, icon: string): void {
 
 /** Band 0 of the palette the user has selected, including a custom palette. */
 export function generalModalAccent(settings: { urgencyPalette: UrgencyPaletteId; urgencyCustomColors: UrgencyColors }): string {
-	return urgencyColorsFor(settings.urgencyPalette, settings.urgencyCustomColors)[0] ?? '#1f8a4c';
+	return urgencyColorsFor(settings.urgencyPalette, settings.urgencyCustomColors)[0] ?? defaultUrgencyColors()[0];
 }
 
 /** Primary buttons. RV notes use that note's urgency. General modals use band 0. */
@@ -249,7 +249,7 @@ export function markModalTone(modalEl: HTMLElement, tone: 'general' | 'rv', acce
 	if (typeof modalEl.removeClass === 'function') modalEl.removeClass(drop);
 	else modalEl.classList.remove(drop);
 	if (typeof modalEl.style?.setProperty !== 'function') return;
-	const color = accent.trim() || '#1f8a4c';
+	const color = accent.trim() || defaultUrgencyColors()[0];
 	modalEl.style.setProperty('--rv-modal-accent', color);
 	modalEl.style.setProperty('--rv-modal-ink', urgencyInk(color));
 	modalEl.style.setProperty('--rv-menu-ink', color);

@@ -91,10 +91,10 @@ describe('RV-229 and RV-B42 modal chrome', () => {
 		assert.match(css, /body\.is-phone \.modal\.rv-locator-modal \.modal-title,\s*body\.is-phone \.prompt\.rv-locator-modal \.modal-title[\s\S]*?max-width:\s*none !important;/);
 		assert.match(css, /body\.is-mobile\.is-floating-nav \.modal\.rv-locator-modal \.modal-header-button\.mod-raised[\s\S]*?backdrop-filter:\s*none !important;\s*-webkit-backdrop-filter:\s*none !important;/);
 		assert.match(css, /\.modal-header-button:focus-visible,[\s\S]*?outline:\s*none !important;/);
-		assert.match(css, /input\[type="range"\]:not\(\.rv-study-slider\) \{[^}]*background-image: linear-gradient\(to right, var\(--rv-modal-accent, #1f8a4c\)/);
-		assert.match(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*background:\s*var\(--rv-menu-ink, #1f8a4c\)/);
+		assert.match(css, /input\[type="range"\]:not\(\.rv-study-slider\) \{[^}]*background-image: linear-gradient\(to right, var\(--rv-modal-accent\)/);
+		assert.match(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-thumb \{[^}]*background:\s*var\(--rv-menu-ink\)/);
 		assert.match(css, /input\.rv-study-slider\[type="range"\]::-webkit-slider-runnable-track \{[^}]*background:\s*var\(--background-modifier-border\)/);
-		assert.match(css, /\.checkbox-container\.is-enabled\s*\{[^}]*background-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(css, /\.checkbox-container\.is-enabled\s*\{[^}]*background-color:\s*var\(--rv-modal-accent\) !important;/);
 		assert.match(css, /\.rv-visit-tab \{[^}]*flex:\s*1 1 0;/);
 		assert.match(css, /\.modal-close-button \{[^}]*background:\s*transparent !important;/);
 	});
@@ -152,7 +152,7 @@ describe('RV-246 closed catalog field', () => {
 		assert.equal(overlay?.textContent?.includes('Will Suffering Ever End? +1'), false);
 		const css = source('styles.css');
 		assert.match(css, /\.rv-closed-title \.rv-type,[\s\S]*?flex:\s*0 0 auto;[\s\S]*?overflow:\s*visible;/);
-		assert.match(css, /\.rv-closed-title \.rv-count-pill \{[^}]*color:\s*var\(--rv-modal-accent, #1f8a4c\);/);
+		assert.match(css, /\.rv-closed-title \.rv-count-pill \{[^}]*color:\s*var\(--rv-modal-accent\);/);
 		host.remove();
 	});
 });

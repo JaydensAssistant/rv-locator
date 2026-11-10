@@ -67,6 +67,9 @@ export const URGENCY_PALETTES: readonly UrgencyPalette[] = [
 
 export const URGENCY_LEVEL_LABELS: readonly string[] = ['Below 1', '1 to 2', '2 to 3', '3 and up'];
 
+/** Study status pin. The same blue as the pastel-blue high band, defined with the palette. */
+export const STUDY_STATUS_COLOR = '#4c7dcc';
+
 const HEX = /^#[0-9a-f]{6}$/i;
 
 /** Traffic-light seed. Custom pickers and the default palette both start here. */
@@ -116,7 +119,7 @@ export function urgencyColorsFor(palette: UrgencyPaletteId, custom: UrgencyColor
  * so a concrete theme color is substituted before that variable is overwritten.
  */
 export function hubAccentColor(palette: UrgencyPaletteId, custom: UrgencyColors, themeAccent = ''): string {
-	const color = urgencyColorsFor(palette, custom)[0] || '#1f8a4c';
+	const color = urgencyColorsFor(palette, custom)[0] || defaultUrgencyColors()[0];
 	if (!color.includes('var(--interactive-accent)')) return color;
 	const theme = themeAccent.trim();
 	if (theme && !theme.includes('var(')) return color.replaceAll('var(--interactive-accent)', theme);

@@ -1063,8 +1063,8 @@
 }
 
 .rv-may-cell.is-may {
-	border-color: var(--rv-hub-accent, #1f8a4c);
-	background: var(--rv-hub-accent, #1f8a4c);
+	border-color: var(--rv-hub-accent);
+	background: var(--rv-hub-accent);
 	color: #fff;
 }
 
@@ -5750,7 +5750,7 @@ body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip {
 
 .rv-closed-title .rv-count-pill {
 	margin-left: 6px;
-	color: var(--rv-modal-accent, #1f8a4c);
+	color: var(--rv-modal-accent);
 	font-weight: 650;
 }
 
@@ -6646,10 +6646,10 @@ body.rv-center-visit-notes .rv-older-heading {
 	border: 0;
 	padding: 2px 0 env(safe-area-inset-bottom, 0px);
 	background: var(--background-primary);
-	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
-	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
-	--text-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
-	--text-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent));
+	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent));
+	--text-accent: var(--rv-urgency-accent, var(--rv-hub-accent));
+	--text-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent));
 }
 
 .workspace-leaf-content.is-rv-note.is-note-map > .rv-note-hub-bar {
@@ -6775,11 +6775,22 @@ body.rv-center-visit-notes .rv-older-heading {
 	box-sizing: border-box;
 }
 
+.rv-bar-shell:not(.is-note),
+.rv-map-shell,
+body.rv-hub-chrome > .menu,
+body.rv-hub-chrome > .suggestion-container,
+body.rv-hub-chrome > .popover {
+	--interactive-accent: var(--rv-hub-accent);
+	--interactive-accent-hover: var(--rv-hub-accent);
+	--text-accent: var(--rv-hub-accent);
+	--text-accent-hover: var(--rv-hub-accent);
+}
+
 .rv-bar-shell.is-note {
-	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
-	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
-	--text-accent: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
-	--text-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent, #1f8a4c));
+	--interactive-accent: var(--rv-urgency-accent, var(--rv-hub-accent));
+	--interactive-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent));
+	--text-accent: var(--rv-urgency-accent, var(--rv-hub-accent));
+	--text-accent-hover: var(--rv-urgency-accent, var(--rv-hub-accent));
 }
 
 .rv-bar-shell.is-away {
@@ -6950,8 +6961,8 @@ body > .rv-map-grip.is-pinned::before {
 .theme-dark .workspace-leaf-content.is-rv-note ::selection,
 .workspace-leaf-content.is-rv-note ::selection,
 .rv-dashboard ::selection {
-	background-color: color-mix(in srgb, var(--rv-urgency-accent, #1f8a4c) 45%, transparent) !important;
-	background: color-mix(in srgb, var(--rv-urgency-accent, #1f8a4c) 45%, transparent) !important;
+	background-color: color-mix(in srgb, var(--rv-urgency-accent) 45%, transparent) !important;
+	background: color-mix(in srgb, var(--rv-urgency-accent) 45%, transparent) !important;
 	color: var(--text-normal);
 }
 
@@ -6959,8 +6970,8 @@ body > .rv-map-grip.is-pinned::before {
 .theme-dark .workspace-leaf-content.is-rv-note ::-moz-selection,
 .workspace-leaf-content.is-rv-note ::-moz-selection,
 .rv-dashboard ::-moz-selection {
-	background-color: color-mix(in srgb, var(--rv-urgency-accent, #1f8a4c) 45%, transparent) !important;
-	background: color-mix(in srgb, var(--rv-urgency-accent, #1f8a4c) 45%, transparent) !important;
+	background-color: color-mix(in srgb, var(--rv-urgency-accent) 45%, transparent) !important;
+	background: color-mix(in srgb, var(--rv-urgency-accent) 45%, transparent) !important;
 	color: var(--text-normal);
 }
 
@@ -6973,8 +6984,8 @@ body > .rv-map-grip.is-pinned::before {
 .rv-locator-glancable ::selection,
 .rv-locator-view ::selection,
 .bases-embed ::selection {
-	background-color: color-mix(in srgb, var(--rv-hub-accent, #1f8a4c) 45%, transparent) !important;
-	background: color-mix(in srgb, var(--rv-hub-accent, #1f8a4c) 45%, transparent) !important;
+	background-color: color-mix(in srgb, var(--rv-hub-accent) 45%, transparent) !important;
+	background: color-mix(in srgb, var(--rv-hub-accent) 45%, transparent) !important;
 	color: var(--text-normal);
 }
 
@@ -6987,8 +6998,8 @@ body > .rv-map-grip.is-pinned::before {
 .rv-locator-glancable ::-moz-selection,
 .rv-locator-view ::-moz-selection,
 .bases-embed ::-moz-selection {
-	background-color: color-mix(in srgb, var(--rv-hub-accent, #1f8a4c) 45%, transparent) !important;
-	background: color-mix(in srgb, var(--rv-hub-accent, #1f8a4c) 45%, transparent) !important;
+	background-color: color-mix(in srgb, var(--rv-hub-accent) 45%, transparent) !important;
+	background: color-mix(in srgb, var(--rv-hub-accent) 45%, transparent) !important;
 	color: var(--text-normal);
 }
 
@@ -7048,10 +7059,10 @@ html.theme-dark .workspace-leaf-content.is-rv-app > .view-header :is(
 .internal-embed:has(.rv-locator-glancable),
 .markdown-embed:has(.rv-locator-glancable),
 .bases-embed.is-embed-capped {
-	--interactive-accent: var(--rv-hub-accent, #1f8a4c);
-	--interactive-accent-hover: var(--rv-hub-accent, #1f8a4c);
-	--text-accent: var(--rv-hub-accent, #1f8a4c);
-	--text-accent-hover: var(--rv-hub-accent, #1f8a4c);
+	--interactive-accent: var(--rv-hub-accent);
+	--interactive-accent-hover: var(--rv-hub-accent);
+	--text-accent: var(--rv-hub-accent);
+	--text-accent-hover: var(--rv-hub-accent);
 }
 
 .rv-locator-glancable,
@@ -8263,7 +8274,7 @@ input.rv-study-slider[type="range"]::-webkit-slider-thumb {
 	margin-top: -6px;
 	border: 0;
 	border-radius: 999px;
-	background: var(--rv-menu-ink, #1f8a4c);
+	background: var(--rv-menu-ink);
 }
 
 input.rv-study-slider[type="range"]::-moz-range-track {
@@ -8278,7 +8289,7 @@ input.rv-study-slider[type="range"]::-moz-range-thumb {
 	height: var(--rv-thumb);
 	border: 0;
 	border-radius: 999px;
-	background: var(--rv-menu-ink, #1f8a4c);
+	background: var(--rv-menu-ink);
 }
 
 .rv-study-ticks {
@@ -9335,8 +9346,8 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
 .modal.rv-locator-modal .rv-modal-actions button.rv-btn-outline {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
-	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
+	color: var(--rv-menu-ink, var(--rv-modal-accent)) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent)) !important;
 }
 
 /*
@@ -9978,30 +9989,30 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 /* SuggestModal / FuzzySuggestModal render as .prompt, so a .modal rule never reaches them. */
 .modal.rv-modal-general,
 .prompt.rv-modal-general {
-	--interactive-accent: var(--rv-modal-accent, #1f8a4c);
-	--interactive-accent-hover: var(--rv-modal-accent, #1f8a4c);
-	--text-accent: var(--rv-modal-accent, #1f8a4c);
-	--text-accent-hover: var(--rv-modal-accent, #1f8a4c);
+	--interactive-accent: var(--rv-modal-accent);
+	--interactive-accent-hover: var(--rv-modal-accent);
+	--text-accent: var(--rv-modal-accent);
+	--text-accent-hover: var(--rv-modal-accent);
 	--text-on-accent: var(--rv-modal-ink, #ffffff);
 }
 
 .modal.rv-modal-rv,
 .prompt.rv-modal-rv {
-	--interactive-accent: var(--rv-modal-accent, #1f8a4c);
-	--interactive-accent-hover: var(--rv-modal-accent, #1f8a4c);
-	--text-accent: var(--rv-modal-accent, #1f8a4c);
-	--text-accent-hover: var(--rv-modal-accent, #1f8a4c);
+	--interactive-accent: var(--rv-modal-accent);
+	--interactive-accent-hover: var(--rv-modal-accent);
+	--text-accent: var(--rv-modal-accent);
+	--text-accent-hover: var(--rv-modal-accent);
 	--text-on-accent: var(--rv-modal-ink, #ffffff);
 }
 
 .modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-thumb,
 .modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-thumb {
-	background: var(--rv-modal-accent, #1f8a4c);
+	background: var(--rv-modal-accent);
 }
 
 .modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-moz-range-thumb,
 .modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-moz-range-thumb {
-	background: var(--rv-modal-accent, #1f8a4c);
+	background: var(--rv-modal-accent);
 }
 
 .modal.rv-modal-rv,
@@ -10009,50 +10020,50 @@ body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions 
 .prompt.rv-modal-rv,
 .prompt.rv-modal-general,
 .rv-study-change-modal {
-	accent-color: var(--rv-modal-accent, #1f8a4c);
-	--color-accent: var(--rv-modal-accent, #1f8a4c);
-	--color-accent-1: var(--rv-modal-accent, #1f8a4c);
-	--color-accent-2: var(--rv-modal-accent, #1f8a4c);
+	accent-color: var(--rv-modal-accent);
+	--color-accent: var(--rv-modal-accent);
+	--color-accent-1: var(--rv-modal-accent);
+	--color-accent-2: var(--rv-modal-accent);
 	/* Body already computed these from the theme accent, so remapping --interactive-accent does not repaint them. */
-	--slider-fill-background: var(--rv-modal-accent, #1f8a4c);
+	--slider-fill-background: var(--rv-modal-accent);
 	--slider-track-background: var(--background-modifier-border, #3f3f3f);
-	--link-color: var(--rv-modal-accent, #1f8a4c);
-	--link-color-hover: var(--rv-modal-accent, #1f8a4c);
-	--link-external-color: var(--rv-modal-accent, #1f8a4c);
-	--checkbox-color: var(--rv-modal-accent, #1f8a4c);
-	--caret-color: var(--rv-modal-accent, #1f8a4c);
-	caret-color: var(--rv-modal-accent, #1f8a4c);
+	--link-color: var(--rv-modal-accent);
+	--link-color-hover: var(--rv-modal-accent);
+	--link-external-color: var(--rv-modal-accent);
+	--checkbox-color: var(--rv-modal-accent);
+	--caret-color: var(--rv-modal-accent);
+	caret-color: var(--rv-modal-accent);
 }
 
 .modal.rv-modal-rv input[type="range"]:not(.rv-study-slider),
 .modal.rv-modal-general input[type="range"]:not(.rv-study-slider),
 .prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider),
 .prompt.rv-modal-general input[type="range"]:not(.rv-study-slider) {
-	accent-color: var(--rv-modal-accent, #1f8a4c);
-	--slider-fill-background: var(--rv-modal-accent, #1f8a4c);
+	accent-color: var(--rv-modal-accent);
+	--slider-fill-background: var(--rv-modal-accent);
 	--slider-track-background: var(--background-modifier-border, #3f3f3f);
-	background-image: linear-gradient(to right, var(--rv-modal-accent, #1f8a4c) 0%, var(--rv-modal-accent, #1f8a4c) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) 100%) !important;
+	background-image: linear-gradient(to right, var(--rv-modal-accent) 0%, var(--rv-modal-accent) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) 100%) !important;
 }
 
 .modal.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
 .modal.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
 .prompt.rv-modal-rv input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track,
 .prompt.rv-modal-general input[type="range"]:not(.rv-study-slider)::-webkit-slider-runnable-track {
-	background: linear-gradient(to right, var(--rv-modal-accent, #1f8a4c) 0%, var(--rv-modal-accent, #1f8a4c) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) 100%) !important;
+	background: linear-gradient(to right, var(--rv-modal-accent) 0%, var(--rv-modal-accent) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) var(--slider-progress, 50%), var(--background-modifier-border, #3f3f3f) 100%) !important;
 }
 
 .modal.rv-modal-general .checkbox-container.is-enabled,
 .prompt.rv-modal-general .checkbox-container.is-enabled,
 .modal.rv-modal-rv .checkbox-container.is-enabled,
 .prompt.rv-modal-rv .checkbox-container.is-enabled {
-	background-color: var(--rv-modal-accent, #1f8a4c) !important;
+	background-color: var(--rv-modal-accent) !important;
 }
 
 .modal.rv-modal-general a,
 .prompt.rv-modal-general a,
 .modal.rv-modal-rv a,
 .prompt.rv-modal-rv a {
-	color: var(--rv-modal-accent, #1f8a4c);
+	color: var(--rv-modal-accent);
 }
 
 .modal.rv-locator-modal .modal-header-button,
@@ -10193,7 +10204,7 @@ body.is-mobile:not(.is-phone) .rv-map-bar button {
 }
 
 .modal.rv-locator-visit-editor .rv-visit-tab.is-active {
-	color: var(--rv-modal-accent, #1f8a4c);
+	color: var(--rv-modal-accent);
 }
 
 .modal.rv-locator-visit-editor .rv-visit-tab.is-active::after {
@@ -10203,7 +10214,7 @@ body.is-mobile:not(.is-phone) .rv-map-bar button {
 	right: 0;
 	bottom: 0;
 	height: 2px;
-	background: var(--rv-modal-accent, #1f8a4c);
+	background: var(--rv-modal-accent);
 }
 
 .rv-visit-delete-copy {
@@ -10222,13 +10233,13 @@ body.is-mobile:not(.is-phone) .rv-map-bar button {
 .rv-suggest-check {
 	flex: 0 0 auto;
 	margin-left: auto;
-	color: var(--rv-modal-accent, var(--text-accent, #1f8a4c));
+	color: var(--rv-modal-accent, var(--text-accent));
 	font-weight: 700;
 }
 
 .modal.rv-modal-general button.mod-cta,
 .prompt.rv-modal-general button.mod-cta {
-	background-color: var(--rv-modal-accent, #1f8a4c) !important;
+	background-color: var(--rv-modal-accent) !important;
 	color: var(--rv-modal-ink, #ffffff) !important;
 	box-shadow: none !important;
 }
@@ -10242,7 +10253,7 @@ body.is-mobile:not(.is-phone) .rv-map-bar button {
 
 .prompt.rv-modal-general .suggestion-highlight,
 .prompt.rv-modal-rv .suggestion-highlight {
-	color: var(--rv-modal-accent, #1f8a4c) !important;
+	color: var(--rv-modal-accent) !important;
 }
 
 .modal.rv-campaign .rv-date-line {
@@ -10613,30 +10624,30 @@ h5.rv-visit-stamp + .rv-item-strip {
 .rv-locator-setup-actions button:not(.mod-cta) {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--rv-menu-ink, #1f8a4c) !important;
+	color: var(--rv-menu-ink) !important;
 	border-color: transparent !important;
-	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink) !important;
 }
 
 .modal.rv-locator-modal button.rv-age-symbol {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--rv-menu-ink, #1f8a4c) !important;
+	color: var(--rv-menu-ink) !important;
 	border-color: transparent !important;
-	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink) !important;
 }
 
 .rv-study-change-modal .rv-modal-actions button:not(.mod-cta) {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--rv-menu-ink, #1f8a4c) !important;
+	color: var(--rv-menu-ink) !important;
 	border-color: transparent !important;
-	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink) !important;
 }
 
 .rv-study-change-modal .rv-modal-actions button.mod-cta {
 	order: 2;
-	background-color: var(--rv-modal-accent, var(--rv-menu-ink, #1f8a4c)) !important;
+	background-color: var(--rv-modal-accent, var(--rv-menu-ink)) !important;
 	color: var(--rv-modal-ink, #ffffff) !important;
 	box-shadow: none !important;
 }
@@ -10644,9 +10655,9 @@ h5.rv-visit-stamp + .rv-item-strip {
 .rv-study-change-modal .rv-study-change-list > button.is-selected {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--rv-menu-ink, #1f8a4c) !important;
+	color: var(--rv-menu-ink) !important;
 	border-color: transparent !important;
-	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, #1f8a4c) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink) !important;
 }
 
 .modal.rv-locator-modal button.is-selected,
@@ -10658,9 +10669,9 @@ h5.rv-visit-stamp + .rv-item-strip {
 .modal.rv-edit-attributes .rv-age-choice button.is-selected {
 	background: transparent !important;
 	background-color: transparent !important;
-	color: var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
+	color: var(--rv-menu-ink, var(--rv-modal-accent)) !important;
 	border-color: transparent !important;
-	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent, #1f8a4c)) !important;
+	box-shadow: inset 0 0 0 1px var(--rv-menu-ink, var(--rv-modal-accent)) !important;
 }
 
 /* Priority nudge is the one menu with no filled button. Fixed outlines, not urgency ink. */
@@ -10714,8 +10725,8 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-lower,
 .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-lower:disabled {
-	color: var(--rv-modal-accent, #1f8a4c) !important;
-	border-color: var(--rv-modal-accent, #1f8a4c) !important;
+	color: var(--rv-modal-accent) !important;
+	border-color: var(--rv-modal-accent) !important;
 }
 
 .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-stay,
@@ -10734,8 +10745,8 @@ h5.rv-visit-stamp + .rv-item-strip {
 
 .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-raise,
 .modal.rv-locator-modal .setting-item.rv-priority-nudge button.rv-nudge-raise:disabled {
-	color: var(--rv-modal-accent, #1f8a4c) !important;
-	border-color: var(--rv-modal-accent, #1f8a4c) !important;
+	color: var(--rv-modal-accent) !important;
+	border-color: var(--rv-modal-accent) !important;
 }
 
 /* New RV: label above Woman | Man, 4px between the equal buttons. */
@@ -10781,8 +10792,8 @@ h5.rv-visit-stamp + .rv-item-strip {
 }
 
 .rv-priority-seg {
-	--rv-visit-btn-bg: var(--rv-priority-accent, #1f8a4c);
-	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
+	--rv-visit-btn-bg: var(--rv-priority-accent);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
 	flex: 1 1 0;
 	height: 40px;
 	min-height: 40px;
@@ -10795,23 +10806,23 @@ h5.rv-visit-stamp + .rv-item-strip {
 }
 
 .rv-priority-seg:nth-child(1) {
-	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent) clamp(0.46, l, 0.80) clamp(0.05, c, 0.16) h);
 }
 
 .rv-priority-seg:nth-child(2) {
-	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.42, calc(l - 0.06), 0.74) clamp(0.05, c, 0.16) h);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent) clamp(0.42, calc(l - 0.06), 0.74) clamp(0.05, c, 0.16) h);
 }
 
 .rv-priority-seg:nth-child(3) {
-	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.38, calc(l - 0.12), 0.68) clamp(0.05, c, 0.16) h);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent) clamp(0.38, calc(l - 0.12), 0.68) clamp(0.05, c, 0.16) h);
 }
 
 .rv-priority-seg:nth-child(4) {
-	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.36, calc(l - 0.18), 0.62) clamp(0.05, c, 0.16) h);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent) clamp(0.36, calc(l - 0.18), 0.62) clamp(0.05, c, 0.16) h);
 }
 
 .rv-priority-seg:nth-child(5) {
-	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent, #1f8a4c) clamp(0.34, calc(l - 0.24), 0.56) clamp(0.05, c, 0.16) h);
+	--rv-visit-btn-bg: oklch(from var(--rv-priority-accent) clamp(0.34, calc(l - 0.24), 0.56) clamp(0.05, c, 0.16) h);
 }
 
 .rv-priority-seg.is-selected {
@@ -10819,7 +10830,7 @@ h5.rv-visit-stamp + .rv-item-strip {
 }
 
 .theme-light .rv-priority-seg.is-selected {
-	box-shadow: 0 0 0 2px #fff, 0 0 0 4px oklch(from var(--rv-priority-accent, #1f8a4c) 0.22 0.03 h);
+	box-shadow: 0 0 0 2px #fff, 0 0 0 4px oklch(from var(--rv-priority-accent) 0.22 0.03 h);
 }
 
 .modal.rv-locator-modal button.rv-priority-seg,
@@ -10835,7 +10846,7 @@ h5.rv-visit-stamp + .rv-item-strip {
 }
 
 .theme-light .modal.rv-locator-modal button.rv-priority-seg.is-selected {
-	box-shadow: 0 0 0 2px #fff, 0 0 0 4px oklch(from var(--rv-priority-accent, #1f8a4c) 0.22 0.03 h) !important;
+	box-shadow: 0 0 0 2px #fff, 0 0 0 4px oklch(from var(--rv-priority-accent) 0.22 0.03 h) !important;
 }
 
 .rv-visit-share.rv-modal-section {
@@ -11060,11 +11071,11 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 }
 
 .rv-suggest-host > button.rv-suggest-chevron {
-	border: 1px solid var(--interactive-accent, #1f8a4c);
+	border: 1px solid var(--interactive-accent);
 	border-radius: 0 6px 6px 0;
 	box-shadow: none;
 	background: var(--background-primary);
-	color: var(--interactive-accent, #1f8a4c);
+	color: var(--interactive-accent);
 	height: 40px;
 	min-height: 40px;
 	max-height: 40px;
@@ -11166,7 +11177,7 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 
 .rv-locator-modal .rv-modal-icon,
 .rv-study-change-modal .rv-modal-icon {
-	color: var(--rv-modal-accent, var(--text-accent, #1f8a4c));
+	color: var(--rv-modal-accent, var(--text-accent));
 }
 
 .rv-study-change-list {
@@ -11297,36 +11308,36 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 }
 
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron {
-	border-color: var(--rv-modal-accent, #1f8a4c);
-	color: var(--rv-modal-accent, #1f8a4c);
+	border-color: var(--rv-modal-accent);
+	color: var(--rv-modal-accent);
 	background: #2a2a2a;
 }
 
 .rv-suggest-host > button.rv-suggest-chevron,
 .modal.rv-locator-modal button.rv-age-symbol {
-	border: 1px solid var(--interactive-accent, #1f8a4c) !important;
+	border: 1px solid var(--interactive-accent) !important;
 	border-radius: 0 6px 6px 0 !important;
 	box-shadow: none !important;
 	background: var(--background-primary) !important;
-	color: var(--interactive-accent, #1f8a4c) !important;
+	color: var(--interactive-accent) !important;
 }
 
 .modal.rv-locator-modal .setting-item-control > button.rv-suggest-chevron {
-	border: 1px solid var(--rv-modal-accent, #1f8a4c) !important;
+	border: 1px solid var(--rv-modal-accent) !important;
 	box-shadow: none !important;
-	color: var(--rv-modal-accent, #1f8a4c) !important;
+	color: var(--rv-modal-accent) !important;
 }
 
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron,
 .theme-dark .modal.rv-locator-modal button.rv-age-symbol {
-	border-color: var(--rv-modal-accent, #1f8a4c) !important;
-	color: var(--rv-modal-accent, #1f8a4c) !important;
+	border-color: var(--rv-modal-accent) !important;
+	color: var(--rv-modal-accent) !important;
 	background: #2a2a2a !important;
 }
 
 .theme-dark .rv-locator-modal .rv-modal-icon,
 .theme-dark .rv-study-change-modal .rv-modal-icon {
-	color: var(--rv-modal-accent, #1f8a4c);
+	color: var(--rv-modal-accent);
 }
 
 .theme-dark .rv-locator-modal .modal-content,

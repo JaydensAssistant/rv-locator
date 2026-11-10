@@ -180,7 +180,7 @@ const MS_PER_DAY = 86_400_000;
 /**
  * Obsidian's metadata cache returns Last Spoke / Last Attempted as a string,
  * a Date, or a moment-like object. A missed parse used to fall through to
- * band 0, so the note stayed #1f8a4c after a visit.
+ * band 0, so the note stayed on the lowest urgency color after a visit.
  */
 export function dateTextFromUnknown(value: unknown): string {
 	if (value == null) return '';

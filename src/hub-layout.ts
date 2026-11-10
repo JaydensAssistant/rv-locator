@@ -35,6 +35,26 @@ export const DEFAULT_MAP_RATIO = 0.42;
  */
 export const MOBILE_CHROME_FALLBACK_PX = 110;
 
+/**
+ * The embed height follows the window. `--rv-vvh` is rewritten on resize and
+ * on visualViewport resize/scroll, so a pixel cap cannot outlive that change.
+ */
+export function embedCapCss(): string {
+	return 'calc(var(--rv-vvh, 100dvh) - var(--rv-embed-top, 0px))';
+}
+
+/** The current visual height. A keyboard uses visualViewport, not the layout viewport. */
+export function viewportHeightPx(view: { innerHeight?: number; visualViewport?: { height?: number } | null } | null | undefined): number {
+	const visual = view?.visualViewport?.height ?? 0;
+	const inner = view?.innerHeight ?? 0;
+	return visual > 0 ? visual : inner;
+}
+
+export function writeViewportHeight(doc: Document, heightPx: number): void {
+	if (!(heightPx > 0)) return;
+	doc.documentElement.style.setProperty('--rv-vvh', `${Math.round(heightPx)}px`);
+}
+
 /** Visible height for a stacked embed: the viewport minus header, nav, and safe area. */
 export function stackedEmbedCap(viewportPx: number, chromePx: number): number {
 	const chrome = chromePx > 0 ? chromePx : MOBILE_CHROME_FALLBACK_PX;

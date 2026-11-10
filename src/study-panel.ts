@@ -19,7 +19,7 @@ export interface StudyPanelOptions {
 type StudyMode = 'partway' | 'finished' | 'next';
 
 const STUDY_INK = '--rv-menu-ink';
-const STUDY_INK_FALLBACK = '#1f8a4c';
+const STUDY_INK_FALLBACK = 'var(--rv-hub-accent)';
 
 function inkStyle(node: unknown): { getPropertyValue: (name: string) => string } | null {
 	if (!node || typeof node !== 'object') return null;

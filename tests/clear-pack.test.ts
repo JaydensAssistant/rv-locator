@@ -335,15 +335,15 @@ describe('clear pack', () => {
 
 	it('RV-201 through RV-207 keep the dark sheet palette off the light theme', () => {
 		assert.match(css, /:is\(h3, h5\)\.rv-visit-stamp :is\(\.heading-collapse-indicator, \.collapse-indicator\)/);
-		assert.match(css, /\.rv-suggest-host > button\.rv-suggest-chevron \{\s*border:\s*1px solid var\(--interactive-accent, #1f8a4c\)/);
-		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{\s*border:\s*1px solid var\(--interactive-accent, #1f8a4c\) !important;\s*border-radius:\s*0 6px 6px 0 !important;\s*box-shadow:\s*none !important;/);
+		assert.match(css, /\.rv-suggest-host > button\.rv-suggest-chevron \{\s*border:\s*1px solid var\(--interactive-accent\)/);
+		assert.match(css, /\.modal\.rv-locator-modal button\.rv-age-symbol \{\s*border:\s*1px solid var\(--interactive-accent\) !important;\s*border-radius:\s*0 6px 6px 0 !important;\s*box-shadow:\s*none !important;/);
 		assert.match(css, /\.modal\.rv-locator-modal \{\s*width:\s*min\(640px, calc\(100vw - 16px\)\);\s*height:\s*calc\(100dvh - 16px\)/);
 		assert.match(css, /\.theme-dark \.modal\.rv-locator-modal,\s*\.theme-dark \.rv-study-change-modal \{\s*background:\s*#1e1e1e;\s*border-color:\s*#2f2f2f;/);
 		assert.match(css, /background:\s*#262626/);
 		assert.match(css, /background:\s*#222222/);
 		assert.match(css, /border-bottom:\s*1px solid #373737/);
 		assert.match(css, /background:\s*#2a2a2a;\s*border-color:\s*#262626/);
-		assert.match(css, /\.theme-dark \.rv-suggest-host > button\.rv-suggest-chevron,\s*\.theme-dark \.modal\.rv-locator-modal button\.rv-age-symbol \{\s*border-color:\s*var\(--rv-modal-accent, #1f8a4c\) !important;/);
+		assert.match(css, /\.theme-dark \.rv-suggest-host > button\.rv-suggest-chevron,\s*\.theme-dark \.modal\.rv-locator-modal button\.rv-age-symbol \{\s*border-color:\s*var\(--rv-modal-accent\) !important;/);
 		assert.match(css, /\.theme-dark \.modal\.rv-locator-modal \.modal-title \{\s*text-align:\s*left/);
 		assert.match(css, /\.rv-locator-modal \.rv-modal-actions button,\s*\.rv-study-change-modal \.rv-modal-actions button \{\s*display:\s*inline-flex;/);
 		assert.doesNotMatch(css, /\.modal\.rv-locator-modal \{\s*background:\s*#1e1e1e/);

@@ -1,6 +1,7 @@
 import { DISTANCE_COLUMN_ID, IDEALITY_COLUMN_ID, URGENCY_COLUMN_ID } from './constants';
 import { interpolatePalette, type MapShadeMode } from './map-shade';
 import { SNOOZE_SLATE } from './snooze';
+import { STUDY_STATUS_COLOR } from './urgency-palette';
 import { urgencyAccentColor, urgencyMark, urgencyScore, insidePriorityFloor } from './scoring';
 import { compareUrgencyPlacement, sortRowsBy, type Sortable } from './sort';
 import { statusIcon, type GenderFilter, type ReturnScope, type RvGender, type RvStatus } from './status';
@@ -126,8 +127,8 @@ export function priorityPinColor(priority: number, colors: readonly string[]): s
 }
 
 const STATUS_PIN_COLOR: Record<RvStatus, string> = {
-	Active: '#1f8a4c',
-	Study: '#4c7dcc',
+	Active: 'var(--rv-hub-accent)',
+	Study: STUDY_STATUS_COLOR,
 	Inactive: '#8b8b8b',
 };
 

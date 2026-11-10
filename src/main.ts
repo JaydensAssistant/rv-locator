@@ -13,7 +13,7 @@ import {
 import { GeocodeRequestError, geocodeAddress } from './geocode-client';
 import { applyGeocodeHit, assignProperty, ensureQuotedLocationList, fillCity, fillSuccessfulVisits, isLockedAddressName, locationPair, planGeocodeWork, readAddress, readProperty, removeProperty, type GeocodeWorkItem, type NoteSnapshot } from './frontmatter';
 import { countyNameKey, decideGeocodePick, homeCountyHits, mergeHomeFirst, placeFilterParam, preferHomeRegion } from './home-base';
-import { HUB_STACK_BELOW_PX, applyNoteMapFrame, leafHoldsHub, mapPanePx } from './hub-layout';
+import { HUB_STACK_BELOW_PX, applyNoteMapFrame, leafHoldsHub, mapPanePx, viewportHeightPx, writeViewportHeight } from './hub-layout';
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
@@ -25,13 +25,13 @@ import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
 import { dismissOpenMenus, keepMenuOnScreen, type BarSurface } from './app-bar';
-import { barTabId, createBarShell, dispatchBarTab, paintBarEarth, paintBarLead, placeBarOver, visibleBarSpacer, type BarTabHost } from './bar-shell';
+import { barTabId, createBarShell, dispatchBarTab, paintBarEarth, paintBarLead, paintSurfaceAccent, placeBarOver, visibleBarSpacer, type BarTabHost } from './bar-shell';
 import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { concealHubList, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
+import { concealHubList, holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { shownHubStage } from './map-handoff';
 import { copyShellBand, createMapShell, destroyMapShell, ensureMapSpacer, holdShellSize, markShellSide, placeShellOver, removeMapSpacers, shellBandPx, showMapShell, sizeMapSpacer, visibleMapSpacer, writeShellBand } from './map-shell';
 import { paintedHubLeaf } from './hub-open';
@@ -214,6 +214,7 @@ export default class RVLocatorPlugin extends Plugin {
 		registerRestroomIcons();
 		await this.loadPluginData();
 		this.installReadingModeOpen();
+		this.bindViewportBand();
 		this.scheduleSnoozeDayRoll();
 		this.register(() => {
 			if (this.snoozeRollTimer == null) return;
@@ -541,6 +542,77 @@ export default class RVLocatorPlugin extends Plugin {
 		}
 		const color = hubAccentColor(this.settings.urgencyPalette, this.settings.urgencyCustomColors, theme);
 		document.documentElement.style.setProperty('--rv-hub-accent', color);
+		document.body?.style.setProperty('--rv-hub-accent', color);
+		this.paintBarAccent();
+	}
+
+	/**
+	 * Hub and base chrome, including the bar and menus outside the view, use
+	 * band 0. A note bar uses that note's urgency, and leaving the note clears it.
+	 */
+	private paintBarAccent(): void {
+		const body = document.body;
+		const root = document.documentElement;
+		root.style.removeProperty('--rv-urgency-accent');
+		body?.style.removeProperty('--rv-urgency-accent');
+		const workspace = document.querySelector('.workspace');
+		if (workspace instanceof HTMLElement) workspace.style.removeProperty('--rv-urgency-accent');
+		const bar = this.appBar;
+		if (this.barSurfaceNow !== 'note') {
+			body?.classList.add('rv-hub-chrome');
+			body?.classList.remove('rv-note-chrome');
+			if (bar) paintSurfaceAccent(bar, 'hub', hubAccentColor(this.settings.urgencyPalette, this.settings.urgencyCustomColors, this.themeAccent()));
+			return;
+		}
+		body?.classList.remove('rv-hub-chrome');
+		body?.classList.add('rv-note-chrome');
+		if (!bar) return;
+		paintSurfaceAccent(bar, 'note', this.noteBarAccent(this.barNotePath));
+	}
+
+	private themeAccent(): string {
+		const view = document.defaultView;
+		if (!view || !document.body) return '';
+		try { return view.getComputedStyle(document.body).getPropertyValue('--interactive-accent'); } catch { return ''; }
+	}
+
+	private noteBarAccent(path: string): string {
+		const nodes = document.querySelectorAll('.workspace-leaf-content.is-rv-note, .is-rv-note');
+		for (let index = 0; index < nodes.length; index += 1) {
+			const node = nodes[index];
+			if (!(node instanceof HTMLElement)) continue;
+			const painted = node.style.getPropertyValue('--rv-urgency-accent').trim();
+			if (painted) return painted;
+		}
+		return '';
+	}
+
+	private embedRefitters = new Set<() => void>();
+
+	/** Window and keyboard changes rewrite the viewport height before the next paint. */
+	private bindViewportBand(): void {
+		const apply = (): void => {
+			if (this.unloaded) return;
+			writeViewportHeight(document, viewportHeightPx(window));
+			for (const refit of this.embedRefitters) {
+				try { refit(); } catch { /* A torn-down view must not block the bar. */ }
+			}
+			this.followAppBar();
+		};
+		window.addEventListener('resize', apply);
+		window.visualViewport?.addEventListener('resize', apply);
+		window.visualViewport?.addEventListener('scroll', apply);
+		this.register(() => {
+			window.removeEventListener('resize', apply);
+			window.visualViewport?.removeEventListener('resize', apply);
+			window.visualViewport?.removeEventListener('scroll', apply);
+		});
+		apply();
+	}
+
+	registerEmbedRefit(refit: () => void): () => void {
+		this.embedRefitters.add(refit);
+		return () => { this.embedRefitters.delete(refit); };
 	}
 
 	/** The hub bar on each open RV note. A hub leaf keeps its own bar. */
@@ -1109,9 +1181,11 @@ export default class RVLocatorPlugin extends Plugin {
 			if (!plugin.unloaded) plugin.beginBarNav(file);
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
 				plugin.quiesceHubWork();
-				if (plugin.hubLinkOpen) plugin.hubLinkOpen = false;
+				if (plugin.hubLinkOpen || plugin.peekHubArrival()) plugin.hubLinkOpen = false;
 				else plugin.noteDirectHubOpen();
 				plugin.retainMapForHub();
+				const leafEl = (this.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
+				holdLeafForHubPaint(leafEl, plugin.hubCoverOptions(file.basename));
 				plugin.paintEarthStates();
 				if (plugin.hubListAtTop) plugin.pinDirectHubScroll();
 			} else if (!plugin.unloaded) {
@@ -1977,9 +2051,10 @@ export default class RVLocatorPlugin extends Plugin {
 		this.hubLinkOpen = true;
 		this.hubListAtTop = false;
 		this.retainMapForHub();
+		const leafEl = (active?.view as { containerEl?: HTMLElement } | undefined)?.containerEl;
+		holdLeafForHubPaint(leafEl, this.hubCoverOptions(dest?.basename ?? target));
 		this.paintEarthStates();
 		void this.app.workspace.openLinkText(target, sourcePath);
-		window.setTimeout(() => { this.hubLinkOpen = false; }, 0);
 	}
 
 	/** Drop a queued card fill and pin scan before the next view is created. */
@@ -3038,6 +3113,7 @@ export default class RVLocatorPlugin extends Plugin {
 	takeHubArrival(): string | null {
 		const path = this.hubArrivalPath;
 		this.hubArrivalPath = null;
+		this.hubLinkOpen = false;
 		return path;
 	}
 
@@ -3261,6 +3337,7 @@ export default class RVLocatorPlugin extends Plugin {
 		paintBarEarth(bar, surface, on, notePath);
 		if (changed && surface !== 'hub') this.closeBarSort();
 		if (changed) this.closeBarSearch();
+		this.paintBarAccent();
 		this.followAppBar();
 	}
 
