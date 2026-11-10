@@ -109,6 +109,21 @@ export function hubFillBoundary(root: HTMLElement): HTMLElement | null {
 	return isElement(leaf) ? leaf : null;
 }
 
+/**
+ * The leaf is about to show a note. Strip the fill that forces a hidden
+ * markdown mode back on, and hide our list so the note's first frame cannot
+ * show hub cards. The nodes stay put until Obsidian detaches the view.
+ */
+export function concealHubList(root: ParentNode | null | undefined): void {
+	if (!root || typeof root.querySelectorAll !== 'function') return;
+	root.querySelectorAll('.rv-hub-fill').forEach((node) => {
+		if (node instanceof HTMLElement) node.classList.remove('rv-hub-fill');
+	});
+	root.querySelectorAll('.rv-locator-glancable').forEach((node) => {
+		if (node instanceof HTMLElement) node.setAttribute('hidden', '');
+	});
+}
+
 /** Mark ancestors up to the boundary. A missing boundary marks nothing. */
 export function markHubFill(root: HTMLElement, marked: HTMLElement[]): void {
 	const stop = hubFillBoundary(root);

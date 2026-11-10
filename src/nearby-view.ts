@@ -666,7 +666,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
-				this.plugin.setNearbySort(nextPresetSort(current, preset));
+				this.plugin.setNearbySort(nextPresetSort(this.localSort, preset));
 			});
 		}
 		this.paintSortExtras();
@@ -740,7 +740,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			for (const preset of presets) {
 				const active = current.property.toLowerCase() === preset.property.toLowerCase();
 				this.barSlot(bar, sortPresetShortLabel(preset), sortPresetIcon(preset.id), active, () => {
-					this.plugin.setNearbySort(nextPresetSort(current, preset));
+					this.plugin.setNearbySort(nextPresetSort(this.localSort, preset));
 					this.paintSortPresets();
 				});
 			}

@@ -12,7 +12,7 @@ import type RVLocatorPlugin from './main';
 import { glancableLineId } from './glancable-lines';
 import { rememberGlanceGroups } from './glance-hold';
 import { HUB_FIRST_PAINT } from './hub-open';
-import { hostIsHidden, markHubFill } from './hub-cover';
+import { hostIsHidden, isHubSwapFile, markHubFill } from './hub-cover';
 import { copyShellBand, ensureMapSpacer, markShellSide, sizeMapSpacer } from './map-shell';
 import { cardPaintKey } from './hub-cache';
 import { NearbyBasesView } from './nearby-view';
@@ -51,6 +51,11 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private stackedLayout = false;
 	private glanceFrame = 0;
 	private fillToken = 0;
+	private fillIdle = 0;
+	private fillTimer: ReturnType<typeof setTimeout> | number = 0;
+	private fillEpoch = 0;
+	private leftHub = false;
+	private sawNote = false;
 	private searchOpen = false;
 	private hubScrollerStop: (() => void) | null = null;
 	private hubFullscreenStop: (() => void) | null = null;
@@ -93,6 +98,10 @@ export class NearbyGlancableView extends NearbyBasesView {
 			return true;
 		});
 		if (stopSearch) this.register(stopSearch);
+		const pause = this.plugin.registerHubQuiesce?.(() => this.cancelScheduledFill());
+		if (typeof pause === 'function') this.register(pause);
+		const leave = this.plugin.registerHubLeave?.(() => this.leaveSurface());
+		if (typeof leave === 'function') this.register(leave);
 		// A markdown file builds both reading and live-preview modes. The hidden
 		// mode's embed is 0×0. Painting cards there is the cheap ghost that still
 		// delays the real hub. Paint when that mode is actually shown.
@@ -115,7 +124,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	override onunload(): void {
-		this.fillToken += 1;
+		this.cancelScheduledFill();
 		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.root.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.hubMapEl = null;
@@ -130,11 +139,16 @@ export class NearbyGlancableView extends NearbyBasesView {
 	 * shows it, then paint once. A timer would keep waking a mode the user never opens.
 	 */
 	private deferUntilShown(): void {
-		if (this.hiddenWatch) return;
+		if (this.leftHub || this.hiddenWatch) return;
 		const mode = this.root.closest('.markdown-source-view, .markdown-reading-view, .markdown-preview-view');
 		const target = mode instanceof HTMLElement ? mode : this.root.parentElement;
 		if (!target) return;
 		const observer = new MutationObserver(() => {
+			if (!this.hubReturned()) {
+				if (this.root?.isConnected) this.root.setAttribute('hidden', '');
+				return;
+			}
+			this.root.removeAttribute('hidden');
 			if (hostIsHidden(this.root)) return;
 			observer.disconnect();
 			this.hiddenWatch = null;
@@ -327,13 +341,83 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	protected override renderBody(): void {
-		this.fillToken += 1;
+		if (!this.hubReturned()) {
+			if (this.root?.isConnected) this.root.setAttribute('hidden', '');
+			return;
+		}
+		this.root.removeAttribute('hidden');
+		this.cancelScheduledFill();
 		if (hostIsHidden(this.root)) {
 			this.deferUntilShown();
 			return;
 		}
 		super.renderBody();
 		if (this.totalRows() === 0 && this.glanceCards().length === 0) this.publishPinOrder([]);
+	}
+
+	/** A hidden mode was shown. A list we hid for a note stays hidden. */
+	protected override resumeAfterShow(): void {
+		if (!this.hubReturned()) {
+			if (this.root?.isConnected) this.root.setAttribute('hidden', '');
+			return;
+		}
+		this.root.removeAttribute('hidden');
+		super.resumeAfterShow();
+	}
+
+	/**
+	 * A note open hid this list. Stay hidden until the leaf has shown a note
+	 * and is a hub again. A brand-new view has not left, so it paints.
+	 */
+	private hubReturned(): boolean {
+		if (!this.leftHub) return true;
+		if (this.hostingNote()) {
+			this.sawNote = true;
+			return false;
+		}
+		if (!this.sawNote) return false;
+		this.leftHub = false;
+		this.sawNote = false;
+		return true;
+	}
+
+	/** The leaf's file is an ordinary note, not the hub and not a base. */
+	private hostingNote(): boolean {
+		const read = this.plugin.glanceSurfacePath;
+		if (typeof read !== 'function') return false;
+		let path = '';
+		try { path = read.call(this.plugin, this.root); } catch { return false; }
+		if (typeof path !== 'string' || path.length === 0) return false;
+		const vault = this.plugin.app?.vault as { getFileByPath?: (next: string) => { extension?: string } | null } | undefined;
+		const file = vault?.getFileByPath?.(path) ?? null;
+		const extension = typeof file?.extension === 'string' ? file.extension : path.split('.').pop() ?? '';
+		const front = this.plugin.noteFrontmatter;
+		const fm = typeof front === 'function' ? front.call(this.plugin, path) : null;
+		return !isHubSwapFile(extension, fm as Record<string, unknown> | null);
+	}
+
+	/** Cancel the idle fill and hide the list. The nodes stay until Obsidian detaches them. */
+	private leaveSurface(): void {
+		this.leftHub = true;
+		this.cancelScheduledFill();
+		if (this.root?.isConnected) this.root.setAttribute('hidden', '');
+		this.clearHubFill();
+	}
+
+	private cancelScheduledFill(): void {
+		this.fillToken += 1;
+		const view = this.root?.ownerDocument?.defaultView as (Window & {
+			cancelIdleCallback?: (id: number) => void;
+		}) | null;
+		if (this.fillIdle) {
+			view?.cancelIdleCallback?.(this.fillIdle);
+			this.fillIdle = 0;
+		}
+		if (this.fillTimer) {
+			const clear = view?.clearTimeout ?? clearTimeout;
+			clear(this.fillTimer as never);
+			this.fillTimer = 0;
+		}
 	}
 
 	/**
@@ -413,33 +497,42 @@ export class NearbyGlancableView extends NearbyBasesView {
 		foot.createSpan({ cls: 'rv-locator-return-bucket', text: bucket || daypart || 'Return' });
 	}
 
-	/** One slice stays under a frame. Stubs are replaced, then the rest append in the same sorted order. */
+	/** One slice stays under a frame. Stubs are replaced, then missing cards go in at their sorted index. */
 	private scheduleCardFill(rows: readonly RowModel[]): void {
 		const token = ++this.fillToken;
-		const painted = new Set(rows.slice(0, HUB_FIRST_PAINT).map((row) => row.path));
-		let appendAt = HUB_FIRST_PAINT;
+		const epoch = typeof this.plugin.hubWorkEpoch === 'number' ? this.plugin.hubWorkEpoch : 0;
+		this.fillEpoch = epoch;
+		const refreshed = new Set<string>();
 		const step = (): void => {
-			if (token !== this.fillToken || !this.root?.isConnected || !this.scrollEl?.isConnected) return;
+			const liveEpoch = typeof this.plugin.hubWorkEpoch === 'number' ? this.plugin.hubWorkEpoch : 0;
+			if (token !== this.fillToken || liveEpoch !== this.fillEpoch || this.leftHub) return;
+			if (!this.root?.isConnected || !this.scrollEl?.isConnected) return;
+			if (hostIsHidden(this.root) || this.root.hasAttribute('hidden')) return;
 			const start = performance.now();
 			const host = this.ensureCardGrid();
 			const stub = host.querySelector('.rv-locator-card.is-stub');
+			const stale = stub instanceof HTMLElement ? null : this.staleCard(host, rows, refreshed);
+			let pending = false;
 			if (stub instanceof HTMLElement) {
 				const path = stub.getAttribute('data-rv-path') ?? '';
 				const row = rows.find((item) => item.path === path);
 				if (row) this.replaceStub(stub, row);
 				else stub.classList.remove('is-stub');
-			} else if (appendAt < rows.length) {
-				const row = rows[appendAt];
-				appendAt += 1;
-				if (row && !painted.has(row.path)) {
-					this.paintCard(host, row, `0:${appendAt}:${row.path}`);
-					painted.add(row.path);
+				pending = true;
+			} else if (stale) {
+				refreshed.add(stale.row.path);
+				this.replaceStub(stale.card, stale.row);
+				pending = true;
+			} else {
+				const missing = this.missingRow(host, rows);
+				if (missing) {
+					this.placeCard(host, missing, rows);
+					pending = true;
 				}
 			}
 			const elapsed = performance.now() - start;
 			const sink = (globalThis as { __rvOpenSlice?: (ms: number) => void }).__rvOpenSlice;
 			sink?.(elapsed);
-			const pending = appendAt < rows.length || host.querySelector('.rv-locator-card.is-stub') != null;
 			if (pending) {
 				this.scheduleSlice(step);
 				return;
@@ -449,6 +542,46 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.landArrival();
 		};
 		this.scheduleSlice(step);
+	}
+
+	private staleCard(host: HTMLElement, rows: readonly RowModel[], skip: ReadonlySet<string>): { card: HTMLElement; row: RowModel } | null {
+		for (const row of rows) {
+			if (skip.has(row.path)) continue;
+			const card = host.querySelector(`[data-rv-path="${row.path.replace(/"/g, '')}"]`);
+			if (!(card instanceof HTMLElement) || card.classList.contains('is-stub')) continue;
+			if (card.getAttribute('data-rv-paint') !== this.paintSignature(row)) return { card, row };
+		}
+		return null;
+	}
+
+	private missingRow(host: HTMLElement, rows: readonly RowModel[]): RowModel | null {
+		const placed = new Set<string>();
+		host.querySelectorAll('.rv-locator-card').forEach((node) => {
+			if (!(node instanceof HTMLElement)) return;
+			const path = node.getAttribute('data-rv-path') ?? '';
+			if (path) placed.add(path);
+		});
+		return rows.find((row) => !placed.has(row.path)) ?? null;
+	}
+
+	private placeCard(host: HTMLElement, row: RowModel, rows: readonly RowModel[]): void {
+		const holder = host.ownerDocument.createElement('div');
+		const index = rows.indexOf(row);
+		this.paintCard(holder, row, `0:${index}:${row.path}`);
+		const fresh = holder.firstElementChild;
+		if (!(fresh instanceof HTMLElement)) return;
+		const order = new Map(rows.map((item, at) => [item.path, at]));
+		const at = order.get(row.path) ?? rows.length;
+		let cursor: ChildNode | null = null;
+		for (const child of Array.from(host.children)) {
+			if (!(child instanceof HTMLElement) || !child.classList.contains('rv-locator-card')) continue;
+			const path = child.getAttribute('data-rv-path') ?? '';
+			if ((order.get(path) ?? -1) > at) {
+				cursor = child;
+				break;
+			}
+		}
+		host.insertBefore(fresh, cursor);
 	}
 
 	private replaceStub(stub: HTMLElement, row: RowModel): void {
@@ -462,13 +595,28 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private scheduleSlice(run: () => void): void {
 		const view = this.root.ownerDocument?.defaultView as (Window & {
 			requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
+			cancelIdleCallback?: (id: number) => void;
 		}) | null;
+		if (this.fillIdle && view?.cancelIdleCallback) {
+			view.cancelIdleCallback(this.fillIdle);
+			this.fillIdle = 0;
+		}
+		if (this.fillTimer) {
+			(view?.clearTimeout ?? clearTimeout)(this.fillTimer as never);
+			this.fillTimer = 0;
+		}
 		if (view && typeof view.requestIdleCallback === 'function') {
-			view.requestIdleCallback(() => run(), { timeout: 48 });
+			this.fillIdle = view.requestIdleCallback(() => {
+				this.fillIdle = 0;
+				run();
+			}, { timeout: 48 });
 			return;
 		}
 		const timer = view?.setTimeout ?? setTimeout;
-		timer(run, 0);
+		this.fillTimer = timer(() => {
+			this.fillTimer = 0;
+			run();
+		}, 0);
 	}
 
 	/** Cards are in the live scroller. Measuring and pin rings wait for the next frame. */
@@ -491,7 +639,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const labeled = groups.some((group) => group.label);
 		const cards = this.glanceCards();
 		if (rows.length === 0 && cards.length > 0 && !this.glanceDataSeen) return;
-		if (labeled || rows.length === 0 || cards.length === 0) {
+		if (labeled || rows.length === 0) {
 			super.fillScroll();
 			return;
 		}
@@ -501,6 +649,20 @@ export class NearbyGlancableView extends NearbyBasesView {
 			this.applyDensity();
 			this.publishPinOrder(rows.map((row) => row.path));
 			this.afterListSwap();
+			return;
+		}
+		// Painting every card whose snooze or score changed is the long task
+		// on hub→base (about 195ms for a full list). The first screen is
+		// synchronous. The rest is one card per idle slice, and leaving cancels it.
+		if (cards.length === 0 || this.staleCardCount(cards, rows) > HUB_FIRST_PAINT) {
+			this.dropCardsOutside(rows);
+			this.orderExistingCards(rows);
+			if (this.glanceCards().length === 0) this.patchGlanceCards(rows.slice(0, HUB_FIRST_PAINT), false);
+			this.root.removeClass('is-glance-pending');
+			if (!this.scrollEl.querySelector('.rv-locator-list-disclaimer')) this.paintListTail();
+			this.applyDensity();
+			this.publishPinOrder(rows.map((row) => row.path));
+			this.scheduleCardFill(rows);
 			return;
 		}
 		const atTop = this.directHubOpensAtTop();
@@ -969,7 +1131,42 @@ export class NearbyGlancableView extends NearbyBasesView {
 		});
 	}
 
-	private patchGlanceCards(rows: readonly RowModel[]): void {
+	private staleCardCount(cards: readonly HTMLElement[], rows: readonly RowModel[]): number {
+		return rows.filter((row) => {
+			const card = cards.find((node) => node.getAttribute('data-rv-path') === row.path);
+			return !card || card.classList.contains('is-stub') || card.getAttribute('data-rv-paint') !== this.paintSignature(row);
+		}).length;
+	}
+
+	private dropCardsOutside(rows: readonly RowModel[]): void {
+		const keep = new Set(rows.map((row) => row.path));
+		for (const card of this.glanceCards()) {
+			const path = card.getAttribute('data-rv-path') ?? '';
+			if (path && !keep.has(path)) card.remove();
+		}
+	}
+
+	/** Move cards that already exist into the ranked order. No card is rebuilt. */
+	private orderExistingCards(rows: readonly RowModel[]): void {
+		const grid = this.scrollEl?.querySelector('.rv-locator-card-grid');
+		if (!(grid instanceof HTMLElement)) return;
+		const pool = new Map<string, HTMLElement>();
+		for (const card of Array.from(grid.children)) {
+			if (!(card instanceof HTMLElement) || !card.classList.contains('rv-locator-card')) continue;
+			const path = card.getAttribute('data-rv-path') ?? '';
+			if (path && !pool.has(path)) pool.set(path, card);
+		}
+		let cursor: ChildNode | null = grid.firstChild;
+		for (const row of rows) {
+			const existing = pool.get(row.path);
+			if (!existing) continue;
+			pool.delete(row.path);
+			if (cursor !== existing) grid.insertBefore(existing, cursor);
+			else cursor = existing.nextSibling;
+		}
+	}
+
+	private patchGlanceCards(rows: readonly RowModel[], dropTail = true): void {
 		this.distanceEls.clear();
 		this.distanceRows.clear();
 		this.scrollEl.querySelectorAll('.rv-locator-group-label, .rv-locator-empty').forEach((node) => node.remove());
@@ -1003,7 +1200,9 @@ export class NearbyGlancableView extends NearbyBasesView {
 			}
 			grid.insertBefore(fresh, cursor);
 		});
-		for (const leftover of pool.values()) leftover.remove();
+		if (dropTail) {
+			for (const leftover of pool.values()) leftover.remove();
+		}
 	}
 
 	private ensureCardGrid(): HTMLElement {

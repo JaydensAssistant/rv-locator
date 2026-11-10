@@ -31,7 +31,7 @@ import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, w
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
-import { hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
+import { concealHubList, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
 import { shownHubStage } from './map-handoff';
 import { copyShellBand, createMapShell, destroyMapShell, ensureMapSpacer, holdShellSize, markShellSide, placeShellOver, removeMapSpacers, shellBandPx, showMapShell, sizeMapSpacer, visibleMapSpacer, writeShellBand } from './map-shell';
 import { paintedHubLeaf } from './hub-open';
@@ -1108,6 +1108,7 @@ export default class RVLocatorPlugin extends Plugin {
 		proto.openFile = function (this: WorkspaceLeaf, file: TFile, openState?: OpenViewState) {
 			if (!plugin.unloaded) plugin.beginBarNav(file);
 			if (!plugin.unloaded && plugin.coversHubOpen(file)) {
+				plugin.quiesceHubWork();
 				if (plugin.hubLinkOpen) plugin.hubLinkOpen = false;
 				else plugin.noteDirectHubOpen();
 				plugin.retainMapForHub();
@@ -1115,6 +1116,7 @@ export default class RVLocatorPlugin extends Plugin {
 				if (plugin.hubListAtTop) plugin.pinDirectHubScroll();
 			} else if (!plugin.unloaded) {
 				plugin.carryMapToOpenedFile(file);
+				plugin.leaveHubForNote(this);
 			}
 			const result = openFile.call(this, file, plugin.previewStateFor(file, openState));
 			if (result instanceof Promise) {
@@ -1125,6 +1127,15 @@ export default class RVLocatorPlugin extends Plugin {
 			return result;
 		};
 		proto.setViewState = function (this: WorkspaceLeaf, viewState: ViewState, eState?: unknown) {
+			if (!plugin.unloaded) {
+				const nextPath = typeof viewState.state?.file === 'string' ? viewState.state.file : '';
+				const currentPath = (this.view as { file?: { path?: string } } | undefined)?.file?.path ?? '';
+				if (nextPath && nextPath !== currentPath) {
+					const next = plugin.app.vault.getFileByPath(nextPath);
+					if (next instanceof TFile && !plugin.coversHubOpen(next)) plugin.leaveHubForNote(this);
+					else if (next instanceof TFile) plugin.quiesceHubWork();
+				}
+			}
 			const result = setViewState.call(this, plugin.previewViewState(this, viewState), eState);
 			const after = (): void => {
 				if (plugin.unloaded) return;
@@ -1971,6 +1982,40 @@ export default class RVLocatorPlugin extends Plugin {
 		window.setTimeout(() => { this.hubLinkOpen = false; }, 0);
 	}
 
+	/** Drop a queued card fill and pin scan before the next view is created. */
+	quiesceHubWork(): void {
+		this.hubWorkEpoch += 1;
+		this.cancelPinScanNow();
+		for (const pause of this.hubQuiesceHooks) {
+			try { pause(); } catch { /* A torn-down view must not block the next open. */ }
+		}
+	}
+
+	/** The leaf is opening a note. Hide our list before Obsidian paints the note. */
+	leaveHubForNote(leaf: WorkspaceLeaf): void {
+		this.quiesceHubWork();
+		for (const leave of this.hubLeaveHooks) {
+			try { leave(); } catch { /* A torn-down view must not block the note. */ }
+		}
+		const view = leaf.view as { containerEl?: ParentNode } | undefined;
+		concealHubList(view?.containerEl ?? null);
+	}
+
+	registerHubQuiesce(pause: () => void): () => void {
+		this.hubQuiesceHooks.add(pause);
+		return () => { this.hubQuiesceHooks.delete(pause); };
+	}
+
+	registerHubLeave(leave: () => void): () => void {
+		this.hubLeaveHooks.add(leave);
+		return () => { this.hubLeaveHooks.delete(leave); };
+	}
+
+	cancelPinScanNow(): void {
+		this.pinScanStop?.();
+		this.pinScanStop = null;
+	}
+
 	/** Phone frames before the hub view exists stay covered by the note. */
 	private coversHubOpen(file: TFile): boolean {
 		const cached = this.cachedFrontmatter.get(file.path);
@@ -2499,6 +2544,11 @@ export default class RVLocatorPlugin extends Plugin {
 	liveFix: { lat: number; lon: number } | null = null;
 	/** Set for one pin-order call. The map scans the vault between frames instead of inside the card paint. */
 	deferMapPinScan = false;
+	/** Bumped when a leaf changes file, so a fill queued by the previous hub does not run. */
+	hubWorkEpoch = 0;
+	private hubLeaveHooks = new Set<() => void>();
+	private hubQuiesceHooks = new Set<() => void>();
+	private pinScanStop: (() => void) | null = null;
 	private addressSuggestCache = new Map<string, GeocodeHit[]>();
 	private countyPlaceCache = new Map<string, string>();
 	private mapCanvases = new Set<{ refresh(): void; reloadPins?(): void; focus(path: string | null, center: boolean, source?: 'follow' | 'card'): void }>();
@@ -3857,7 +3907,14 @@ export default class RVLocatorPlugin extends Plugin {
 		let index = 0;
 		let dead = false;
 		const view = typeof window === 'undefined' ? null : window;
+		const stop = (): void => {
+			dead = true;
+			if (this.pinScanStop === stop) this.pinScanStop = null;
+		};
+		this.pinScanStop?.();
+		this.pinScanStop = stop;
 		const schedule = (fn: () => void): void => {
+			if (dead) return;
 			if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(fn);
 			else if (view) view.setTimeout(fn, 0);
 			else fn();
@@ -3871,16 +3928,17 @@ export default class RVLocatorPlugin extends Plugin {
 				index += 1;
 				if (file) rows.push(this.mapPinRow(file));
 				const count = index - start;
-				const slow = count > 1 && typeof performance !== 'undefined' && performance.now() - started > 8;
+				const slow = count >= 1 && typeof performance !== 'undefined' && performance.now() - started > 8;
 				if (index < files.length && (count >= 12 || slow)) {
 					schedule(step);
 					return;
 				}
 			}
+			if (this.pinScanStop === stop) this.pinScanStop = null;
 			done(this.pinsFromRows(rows));
 		};
 		schedule(step);
-		return () => { dead = true; };
+		return stop;
 	}
 
 	/** The card paint set this. One call consumes it so a later map move still scans immediately. */

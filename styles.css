@@ -4540,7 +4540,21 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	margin: 0;
 }
 
-/* Ancestors of the hub, marked in the view, so the bar sits on the frame bottom. */
+/* Ancestors of the hub, marked in the view, so the bar sits on the frame bottom.
+   A mode Obsidian has already hidden, and a list concealed on the way to a note,
+   stay hidden. display:flex here must not paint the old hub over the note. */
+.rv-hub-fill[hidden],
+.rv-hub-fill.is-hidden,
+.markdown-source-view.rv-hub-fill[style*="display: none"],
+.markdown-source-view.rv-hub-fill[style*="display:none"],
+.markdown-reading-view.rv-hub-fill[style*="display: none"],
+.markdown-reading-view.rv-hub-fill[style*="display:none"],
+.markdown-preview-view.rv-hub-fill[style*="display: none"],
+.markdown-preview-view.rv-hub-fill[style*="display:none"],
+.rv-locator-glancable[hidden] {
+	display: none !important;
+}
+
 .rv-hub-fill {
 	display: flex !important;
 	flex-direction: column !important;
