@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { JSDOM } from 'jsdom';
 import { describe, it } from 'node:test';
 import { APP_TABS, appBarSlotPx, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from '../src/app-bar';
@@ -9,7 +11,8 @@ import { mountNoteHubBar, openNoteFind, revealNoteMatch } from '../src/note-hub-
 import { buildCountySuggestUrl, countyGeocodeText } from '../src/address';
 import { claimParkedMap, lockHandedMapBand, parkMapNode, seatMapGrip } from '../src/map-handoff';
 import { alignHubCover } from '../src/hub-cover';
-import { editVisit, listVisits, visitWhenFrom } from '../src/visit-editor';
+import { applyVisitChangeFrontmatter, editVisit, listVisits, removeVisit, visitFacts, visitWhenFrom } from '../src/visit-editor';
+import { applyVisitBody, applyVisitFrontmatter, type VisitOutcome } from '../src/visit-log';
 import { readVisitControls } from '../src/visit-modals';
 import { hubAccentColor } from '../src/urgency-palette';
 import { clampMapSplit, mergeSettings } from '../src/types';
@@ -692,6 +695,82 @@ describe('phone smoke after d0b76ff', () => {
 		assert.ok(fn.indexOf('dismissOpenMenus') < fn.indexOf('new Menu('));
 	});
 
+	it('RV-B78 leaves Met at the creation time on disk', () => {
+		const created = '2026-09-02T16:32:00';
+		const seeded = [
+			'---',
+			'Address: "12 Red Lane"',
+			`Met: "${created}"`,
+			'Last Spoke: "2026-09-02T16:32:00"',
+			'Last Attempted: "2026-09-02T16:32:00"',
+			'Visits: 1',
+			'Successful Visits: 1',
+			'Met With: "Ada"',
+			'Taken:',
+			'  - "Ada"',
+			'---',
+			'',
+			'### Recent Notes:',
+			'##### Wed, 4:32pm — Sep 2, 2026',
+			'`INPUT[textArea:sVisit1Notes]`',
+			'',
+			'> [!note]- Log',
+			'> - Wed, 4:32pm — Sep 2, 2026 — success',
+			'',
+		].join('\n');
+		const dir = mkdtempSync(join(tmpdir(), 'rv-met-'));
+		try {
+			const home = writeLogged(dir, 'home.md', seeded, 'home', new Date(2026, 9, 15, 14, 30, 0), 'Sam');
+			assert.equal(metLine(home), `Met: "${created}"`);
+			assert.match(home, /Last Attempted: "2026-10-15T14:30:00"/);
+			assert.match(home, /Visits: 2/);
+			assert.match(home, /Met With: "Ada"/);
+			assert.match(home, /"Sam"/);
+			const miss = writeLogged(dir, 'miss.md', seeded, 'miss', new Date(2026, 9, 16, 9, 5, 0), 'Pat');
+			assert.equal(metLine(miss), `Met: "${created}"`);
+			assert.match(miss, /Last Attempted: "2026-10-16T09:05:00"/);
+			assert.match(miss, /Last Spoke: "2026-09-02T16:32:00"/);
+			assert.match(miss, /Met With: "Ada"/);
+			assert.doesNotMatch(miss, /Pat/);
+			const edited = writeChanged(dir, 'edit.md', seeded, (body, frontmatter) => {
+				const entry = listVisits(body)[0];
+				assert.ok(entry);
+				const when = new Date(2026, 8, 20, 14, 15, 0);
+				const added = { ...visitFacts(entry), when, home: true, companion: 'Sam' };
+				applyVisitChangeFrontmatter(frontmatter, {
+					removed: visitFacts(entry),
+					added,
+					remaining: [],
+					removedNotesProperty: entry.notesProperty,
+				});
+				return editVisit(body, entry, added, new Date(2026, 8, 29, 12));
+			});
+			assert.equal(metLine(edited), `Met: "${created}"`);
+			assert.match(edited, /##### Sun, 2:15pm — Sep 20, 2026/);
+			assert.doesNotMatch(edited, /##### Wed, 4:32pm — Sep 2, 2026/);
+			const deleted = writeChanged(dir, 'delete.md', seeded, (body, frontmatter) => {
+				const entry = listVisits(body)[0];
+				assert.ok(entry);
+				applyVisitChangeFrontmatter(frontmatter, {
+					removed: visitFacts(entry),
+					remaining: [],
+					removedNotesProperty: entry.notesProperty,
+				});
+				return removeVisit(body, entry);
+			});
+			assert.equal(metLine(deleted), `Met: "${created}"`);
+			assert.doesNotMatch(deleted, /##### Wed, 4:32pm — Sep 2, 2026/);
+			assert.match(deleted, /Last Attempted: ""/);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+		assert.match(source('extras/templater-metabind/New RV.md'), /Met: "<% rv\.created %>"/);
+		assert.doesNotMatch(source('src/visit-editor.ts'), /syncMet|earliestNonFutureVisit/);
+		assert.doesNotMatch(source('src/main.ts'), /syncMet|Met becomes/);
+		assert.match(source('src/main.ts'), /Met is not changed\. Met With is not changed\./);
+		assert.match(source('src/note-chrome.ts'), /factDateRow\(content, 'home', 'Met', readProperty\(data, 'Met'\)\)/);
+	});
+
 	it('leaves the body Last Attempted line to the template', () => {
 		const template = source('extras/templater-metabind/New RV.md');
 		assert.match(template, /\*\*Last Attempted\*\*/);
@@ -700,3 +779,83 @@ describe('phone smoke after d0b76ff', () => {
 		assert.doesNotMatch(src, /\*\*Last Attempted\*\*/);
 	});
 });
+
+const CREATION_MET = '2026-09-02T16:32:00';
+
+function metLine(text: string): string {
+	return text.split('\n').find((line) => line.startsWith('Met:')) ?? '';
+}
+
+function writeLogged(dir: string, name: string, markdown: string, outcome: VisitOutcome, now: Date, companion: string): string {
+	const { frontmatter, body } = splitNote(markdown);
+	applyVisitFrontmatter(frontmatter, outcome, now, companion);
+	return writeDisk(dir, name, frontmatter, applyVisitBody(body, outcome, now, companion));
+}
+
+function writeChanged(
+	dir: string,
+	name: string,
+	markdown: string,
+	change: (body: string, frontmatter: Record<string, unknown>) => string,
+): string {
+	const { frontmatter, body } = splitNote(markdown);
+	const nextBody = change(body, frontmatter);
+	assert.equal(frontmatter.Met, CREATION_MET);
+	return writeDisk(dir, name, frontmatter, nextBody);
+}
+
+function writeDisk(dir: string, name: string, frontmatter: Record<string, unknown>, body: string): string {
+	const file = join(dir, name);
+	writeFileSync(file, renderNote(frontmatter, body));
+	const disk = readFileSync(file, 'utf8');
+	assert.equal(disk, readFileSync(file, 'utf8'));
+	return disk;
+}
+
+function splitNote(text: string): { frontmatter: Record<string, unknown>; body: string } {
+	const match = /^---\n([\s\S]*?)\n---\n/.exec(text);
+	if (!match) throw new Error('no frontmatter');
+	return { frontmatter: parseFrontmatter(match[1] ?? ''), body: text.slice(match[0].length) };
+}
+
+function parseFrontmatter(block: string): Record<string, unknown> {
+	const frontmatter: Record<string, unknown> = {};
+	const lines = block.split('\n');
+	for (let index = 0; index < lines.length; index += 1) {
+		const line = lines[index] ?? '';
+		const match = /^([^:#][^:]*?):\s*(.*)$/.exec(line);
+		if (!match) continue;
+		const key = match[1]?.trim() ?? '';
+		const raw = match[2] ?? '';
+		if (raw === '') {
+			const items: string[] = [];
+			while (index + 1 < lines.length && /^\s+-\s+/.test(lines[index + 1] ?? '')) {
+				index += 1;
+				items.push((lines[index] ?? '').replace(/^\s+-\s+/, '').replace(/^"|"$/g, ''));
+			}
+			frontmatter[key] = items;
+			continue;
+		}
+		if (/^-?\d+$/.test(raw)) frontmatter[key] = Number(raw);
+		else frontmatter[key] = raw.replace(/^"|"$/g, '');
+	}
+	return frontmatter;
+}
+
+function renderNote(frontmatter: Record<string, unknown>, body: string): string {
+	const lines = ['---'];
+	for (const [key, value] of Object.entries(frontmatter)) {
+		if (Array.isArray(value)) {
+			lines.push(`${key}:`);
+			for (const item of value) lines.push(`  - "${item}"`);
+			continue;
+		}
+		if (typeof value === 'number') {
+			lines.push(`${key}: ${value}`);
+			continue;
+		}
+		lines.push(`${key}: "${value ?? ''}"`);
+	}
+	lines.push('---', '');
+	return `${lines.join('\n')}${body.replace(/^\n/, '')}`;
+}

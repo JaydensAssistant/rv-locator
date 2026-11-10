@@ -7,7 +7,8 @@ import { settingsGraphs } from '../src/settings-graphs';
 import { sortRowsBy } from '../src/sort';
 import { applyStatusPriority, matchesGenderFilter, matchesReturnScope, resolveStatus, statusForNewNote } from '../src/status';
 import { DEFAULT_SETTINGS } from '../src/types';
-import { earliestNonFutureVisit, syncMet } from '../src/visit-editor';
+import { applyVisitFrontmatter } from '../src/visit-log';
+import { applyVisitChangeFrontmatter } from '../src/visit-editor';
 
 describe('status and priority', () => {
 	it('resolves Study, Active, and Inactive', () => {
@@ -48,20 +49,34 @@ describe('status and priority', () => {
 });
 
 describe('met and exact stamps', () => {
-	const now = new Date(2026, 9, 1, 12, 0, 0);
+	const created = '2026-09-02T16:32:00';
 
-	it('sets Met to the earliest visit that is not in the future', () => {
-		const early = new Date(2026, 8, 2, 16, 32, 0);
-		const later = new Date(2026, 8, 20, 9, 0, 0);
-		const future = new Date(2026, 9, 3, 9, 0, 0);
-		assert.equal(earliestNonFutureVisit([{ when: later }, { when: future }, { when: early }], now)?.getTime(), early.getTime());
-		assert.equal(earliestNonFutureVisit([{ when: future }], now), null);
-		const frontmatter: Record<string, unknown> = { Met: '2026-09-20T09:00:00' };
-		syncMet(frontmatter, [{ when: later }, { when: early }, { when: future }], now);
-		assert.equal(frontmatter.Met, '2026-09-02T16:32:00');
-		const untouched: Record<string, unknown> = { Met: '2026-09-20T09:00:00' };
-		syncMet(untouched, [{ when: future }], now);
-		assert.equal(untouched.Met, '2026-09-20T09:00:00');
+	it('leaves the creation Met alone when a visit is logged, edited, or deleted', () => {
+		const home: Record<string, unknown> = { Met: created, Visits: 1, 'Successful Visits': 1 };
+		applyVisitFrontmatter(home, 'home', new Date(2026, 9, 1, 12), 'Sam');
+		assert.equal(home.Met, created);
+		const miss: Record<string, unknown> = { Met: created, Visits: 1 };
+		applyVisitFrontmatter(miss, 'miss', new Date(2026, 9, 2, 9), 'Sam');
+		assert.equal(miss.Met, created);
+		const edited: Record<string, unknown> = { Met: created };
+		applyVisitChangeFrontmatter(edited, {
+			removed: { when: new Date(2026, 8, 2, 16, 32), home: true, companion: '' },
+			added: { when: new Date(2026, 8, 20, 9), home: false, companion: '' },
+			remaining: [],
+		});
+		assert.equal(edited.Met, created);
+		const deleted: Record<string, unknown> = { Met: created, Visits: 1, 'Successful Visits': 1 };
+		applyVisitChangeFrontmatter(deleted, {
+			removed: { when: new Date(2026, 8, 20, 9), home: true, companion: '' },
+			remaining: [],
+		});
+		assert.equal(deleted.Met, created);
+		const blank: Record<string, unknown> = { Visits: 1 };
+		applyVisitChangeFrontmatter(blank, {
+			removed: { when: new Date(2026, 8, 2, 16, 32), home: true, companion: '' },
+			remaining: [{ when: new Date(2026, 8, 1, 9), home: true, companion: '' }],
+		});
+		assert.equal(blank.Met, undefined);
 	});
 
 	it('keeps minutes on the attempt log and shrinks only the date', () => {

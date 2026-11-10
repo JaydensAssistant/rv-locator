@@ -289,9 +289,8 @@ export interface VisitChange {
  * that remain. Last Attempted is the latest visit, Last Spoke the latest Home,
  * and Last Studied the latest visit that recorded a lesson. Each is cleared
  * when nothing qualifies. A companion leaves Taken only when no other visit
- * records them and they are not Met With. Met With is not changed. Met becomes
- * the earliest logged visit that is not in the future, and is cleared when no
- * visit remains.
+ * records them and they are not Met With. Met With is not changed. Met is the
+ * time the note was created and is not rewritten.
  */
 export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>, change: VisitChange): void {
 	const removed = change.removed ?? null;
@@ -305,7 +304,6 @@ export function applyVisitChangeFrontmatter(frontmatter: Record<string, unknown>
 	applyShareHistory(frontmatter, 'Shared Media', change, 'media');
 	applyLessonChange(frontmatter, change);
 	updateTaken(frontmatter, removed, added, after);
-	syncMet(frontmatter, after, new Date());
 	const property = change.removedNotesProperty?.trim();
 	if (removed?.home && property && !added?.home) removeProperty(frontmatter, property);
 }
@@ -425,26 +423,6 @@ export function parseFrontmatterDateTime(raw: string): Date | null {
 		Number(match[6] ?? 0),
 	);
 	return Number.isNaN(date.getTime()) ? null : date;
-}
-
-/** Earliest logged visit that is not later than `now`. Future visits do not move Met. */
-export function earliestNonFutureVisit(visits: readonly { when: Date }[], now: Date): Date | null {
-	let earliest: Date | null = null;
-	for (const visit of visits) {
-		if (visit.when.getTime() > now.getTime()) continue;
-		if (!earliest || visit.when.getTime() < earliest.getTime()) earliest = visit.when;
-	}
-	return earliest;
-}
-
-export function syncMet(frontmatter: Record<string, unknown>, visits: readonly { when: Date }[], now: Date): void {
-	const earliest = earliestNonFutureVisit(visits, now);
-	// A future visit must not wipe a Met that an earlier visit already set.
-	if (!earliest) {
-		if (visits.length === 0) writeLatest(frontmatter, 'Met', []);
-		return;
-	}
-	assignDerivedStamp(frontmatter, 'Met', earliest);
 }
 
 function assignDerivedStamp(frontmatter: Record<string, unknown>, name: string, when: Date | null): void {

@@ -17,7 +17,7 @@ import { HUB_STACK_BELOW_PX, applyNoteMapFrame, leafHoldsHub, mapPanePx, writeMa
 import { appendCompanionTaken, companionRecency, formatStoredCompanion, recentCompanionNames as collectRecentCompanionNames, stabilizeCompanionFrontmatter as quoteCompanionFrontmatter } from './companions';
 import { resolveExtrasPlacement, resolveTemplatePath, rewriteNewRvTemplate, DEFAULT_HOME_LOG_TEMPLATE_FILE, DEFAULT_MISS_LOG_TEMPLATE_FILE, LEGACY_HOME_LOG_TEMPLATE_FILE, LEGACY_MISS_LOG_TEMPLATE_FILE, type ExtrasPlacement } from './extras-sync';
 import { appendLogLine, appendShareToFirstStamp, applyVisitBody, applyVisitFrontmatter, ensureAttemptLog, ensureDashboardLeadBlank, ensureVisitButtons, ensureVisitNotesHeading, formatFrontmatterDateTime, formatVisitStamp, insertHomeHeading, nextVisitNotesProperty, recordLoggedLessons, refreshHomeStampAges, restoreExactVisitClocks, shouldNudgePriority, unfoldDashboard, type VisitOutcome } from './visit-log';
-import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, syncMet, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
+import { applyVisitChangeFrontmatter, describeVisit, editVisit, hintFor, insertVisit, listVisits, removeVisit, resolveVisit, visitFacts, type VisitChange, type VisitEntry, type VisitFacts, type VisitHint } from './visit-editor';
 import { ConfirmActionModal, LiteraturePromptModal, VisitEditModal, VisitPickModal } from './visit-modals';
 import { LESSONS, MEDIA_TITLES, PUBLICATION_TITLES, emptyShare, formatStudyFraction, rememberCustom, renameCustom, renameLabelInMarkdown, shareFromNewRvDraft, shareTitles, studyPrefill, type VisitShare } from './catalog';
 import type { ShareFieldOptions } from './catalog-fields';
@@ -4136,10 +4136,8 @@ export default class RVLocatorPlugin extends Plugin {
 		const body = before.slice(info.contentStart);
 		const notesProperty = outcome === 'home' ? nextVisitNotesProperty(body) : null;
 		const nextBody = applyVisitBody(body, outcome, now, companion, share, coveredName);
-		const visitsAfter = listVisits(nextBody);
 		await this.writeVisitHeadThenBody(file, nextBody, (data) => {
 			applyVisitFrontmatter(data, outcome, now, companion, share);
-			syncMet(data, visitsAfter, now);
 		});
 		await this.rememberShare(share);
 		await this.restabilizeCompanions(file);
@@ -4340,7 +4338,7 @@ export default class RVLocatorPlugin extends Plugin {
 		const parts = entry.home
 			? 'its stamp and notes, its Attempt Log line, and what it added to Visits, Successful Visits, Last Attempted, Last Spoke, and Taken'
 			: 'its Attempt Log line, and what it added to Visits and Last Attempted';
-		return `Delete ${describeVisit(entry)}? This removes ${parts}. Met becomes the earliest visit that is not in the future. Met With is not changed.`;
+		return `Delete ${describeVisit(entry)}? This removes ${parts}. Met is not changed. Met With is not changed.`;
 	}
 
 	private confirmDeleteVisit(file: TFile, entry: VisitEntry, hint: VisitHint): void {

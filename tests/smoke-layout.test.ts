@@ -1926,6 +1926,28 @@ describe('smoke layout', () => {
 		assert.equal(reading?.querySelector('.stale'), null);
 	});
 
+	it('RV-B78 paints Visit Facts Met from the stored frontmatter', () => {
+		const callout = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div><div class="callout-content"></div></div>';
+		const root = window.document.createElement('div');
+		root.className = 'workspace-leaf-content';
+		root.innerHTML = `<div class="markdown-preview-view">${callout}</div>`;
+		decorateNoteChrome(root, 'People/Red.md', chromeHost({
+			cssclasses: ['rv-dashboard'],
+			Status: 'Active',
+			Priority: 4,
+			'Last Spoke': '2026-11-09T15:00:00',
+			'Last Attempted': '2026-11-09T15:00:00',
+			Met: '2026-09-02T16:32:00',
+		}, { count: 0 }));
+		const rows = [...root.querySelectorAll('.rv-qf-row')];
+		const met = rows.find((row) => row.querySelector('.rv-qf-label')?.textContent === 'Met');
+		assert.ok(met);
+		assert.equal(met.querySelector('.rv-cal-month')?.textContent, 'SEP');
+		assert.equal(met.querySelector('.rv-cal-day')?.textContent, '2');
+		const spoke = rows.find((row) => row.querySelector('.rv-qf-label')?.textContent === 'Spoke');
+		assert.equal(spoke?.querySelector('.rv-cal-day')?.textContent, '9');
+	});
+
 	it('repaints Last Attempted when the callout body was replaced but the paint key stayed', () => {
 		const callout = '<div class="callout" data-callout="rv"><div class="callout-title"><div class="callout-title-inner">Visit Facts</div></div><div class="callout-content"></div></div>';
 		const root = window.document.createElement('div');

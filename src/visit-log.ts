@@ -79,6 +79,7 @@ export function formatVisitStamp(date: Date): string {
  * A miss bumps Visits and moves Last Attempted forward. An earlier stamp does not replace a later one.
  * A non-empty home companion is appended to Taken. Met With is left unchanged.
  * A blank companion, and every miss, leaves Met With and Taken alone.
+ * Met is the creation time and is not written here.
  */
 export function applyVisitFrontmatter(
 	frontmatter: Record<string, unknown>,
