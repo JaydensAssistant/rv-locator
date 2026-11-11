@@ -16,6 +16,7 @@ import { heldGlanceColumns, heldGlanceGroups } from './glance-hold';
 import { hubCacheColumns } from './hub-cache';
 import { annotateRowScores } from './row-score';
 import { APP_TABS, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from './app-bar';
+import { hostIsHidden } from './hub-cover';
 import { ensureBarSpacer } from './bar-shell';
 import { armHoverTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
@@ -60,6 +61,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	/** Cold first paint came from vault frontmatter, so a refresh can re-read it. */
 	private glanceFromCache = false;
 	private sortPaintStampSeen = '';
+	private dropSort: (() => void) | null = null;
 
 	protected constructor(
 		controller: QueryController,
@@ -96,9 +98,9 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(deferOpenBookkeeping);
 		else deferOpenBookkeeping();
 		if (this.mode === 'glancable') {
-			const stopSort = this.plugin.registerHubSortOpener?.(() => {
+			const stopSort = this.plugin.registerHubSortOpener?.(this.root, () => {
 				const root = this.root;
-				if (!root?.isConnected || root.ownerDocument == null) return false;
+				if (!root?.isConnected || root.ownerDocument == null || hostIsHidden(root)) return false;
 				if (typeof root.closest === 'function' && root.closest('.rv-hub-swap-cover')) return false;
 				if (!this.chromeReady) this.ensureChrome();
 				if (!this.sortEl?.isConnected) return false;
@@ -107,11 +109,14 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				this.paintSortPresets();
 				return true;
 			});
-			if (stopSort) this.register(stopSort);
+			this.dropSort = typeof stopSort === 'function' ? stopSort : null;
+			if (this.dropSort) this.register(this.dropSort);
 		}
 	}
 
 	override onunload(): void {
+		this.dropSort?.();
+		this.dropSort = null;
 		this.releaseSortSize();
 		this.stopLiveUpdates();
 	}

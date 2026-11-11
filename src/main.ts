@@ -32,6 +32,7 @@ import { askCampaignCovered, CampaignModal } from './campaign-modal';
 import { hubGroupsFromCache } from './hub-cache';
 import { clearGlanceHold } from './glance-hold';
 import { concealHubList, holdLeafForHubPaint, hostIsHidden, isHubSwapFile, mountNewRvCover, noteSurfaceShown, releaseHubSwapCover, waitForDashboard, type HubCoverPaint } from './hub-cover';
+import { activeLeafElement, HubOpenerList } from './hub-openers';
 import { shownHubStage } from './map-handoff';
 import { copyShellBand, createMapShell, destroyMapShell, ensureMapSpacer, holdShellSize, markShellSide, placeShellOver, removeMapSpacers, shellBandPx, showMapShell, sizeMapSpacer, visibleMapSpacer, writeShellBand } from './map-shell';
 import { hubReturnChoice, paintedHubLeaf } from './hub-open';
@@ -679,16 +680,12 @@ export default class RVLocatorPlugin extends Plugin {
 		this.openHubLink(path, target);
 	}
 
-	registerHubSearch(open: () => boolean): () => void {
-		this.hubSearchOpeners.add(open);
-		return () => { this.hubSearchOpeners.delete(open); };
+	registerHubSearch(root: HTMLElement, open: () => boolean): () => void {
+		return this.hubSearchOpeners.register(root, open);
 	}
 
 	private askHubSearch(): boolean {
-		for (const open of this.hubSearchOpeners) {
-			if (open()) return true;
-		}
-		return false;
+		return this.hubSearchOpeners.ask(activeLeafElement(this.app.workspace, document));
 	}
 
 	takeHubSearch(): boolean {
@@ -2863,7 +2860,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private noteMapHandle: { destroy(): void; applyRenderedOrder(paths: readonly string[]): void; invalidateSize(): void } | null = null;
 	private mapSplitDirty = false;
 	private mapSplitWatchers = new Set<() => void>();
-	private hubSearchOpeners = new Set<() => boolean>();
+	private hubSearchOpeners = new HubOpenerList();
 	private pendingHubSearch = false;
 
 	/** The size last dragged on a hub, a base, or a note. */
@@ -3414,25 +3411,16 @@ export default class RVLocatorPlugin extends Plugin {
 		return () => { this.barPainters.delete(paint); };
 	}
 
-	private hubSortOpeners = new Set<() => boolean>();
+	private hubSortOpeners = new HubOpenerList();
 
 	/** The hub view that is on screen right now. Resolved when Sort is tapped. */
-	registerHubSortOpener(open: () => boolean): () => void {
-		this.hubSortOpeners.add(open);
-		return () => { this.hubSortOpeners.delete(open); };
+	registerHubSortOpener(root: HTMLElement, open: () => boolean): () => void {
+		return this.hubSortOpeners.register(root, open);
 	}
 
 	private openBarSort(): void {
 		if (this.barSurfaceNow !== 'hub') return;
-		let opened = false;
-		for (const open of this.hubSortOpeners) {
-			try {
-				if (open()) opened = true;
-			} catch {
-				/* A torn-down view must not block the live hub. */
-			}
-		}
-		if (opened) return;
+		if (this.hubSortOpeners.ask(activeLeafElement(this.app.workspace, document))) return;
 		for (const paint of this.barPainters) {
 			try { paint(); } catch { /* same */ }
 		}

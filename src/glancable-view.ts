@@ -57,6 +57,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private hubFullscreenStop: (() => void) | null = null;
 	private hubFillNodes: HTMLElement[] = [];
 	private hiddenWatch: MutationObserver | null = null;
+	private dropSearch: (() => void) | null = null;
 
 	constructor(
 		controller: QueryController,
@@ -88,12 +89,13 @@ export class NearbyGlancableView extends NearbyBasesView {
 			});
 			if (adopt) this.register(adopt);
 		}
-		const stopSearch = this.plugin.registerHubSearch?.(() => {
+		const stopSearch = this.plugin.registerHubSearch?.(this.root, () => {
 			if (this.root.closest('.rv-hub-swap-cover') || hostIsHidden(this.root)) return false;
 			this.openGlanceSearch();
 			return true;
 		});
-		if (stopSearch) this.register(stopSearch);
+		this.dropSearch = typeof stopSearch === 'function' ? stopSearch : null;
+		if (this.dropSearch) this.register(this.dropSearch);
 		const pause = this.plugin.registerHubQuiesce?.(() => this.cancelScheduledFill());
 		if (typeof pause === 'function') this.register(pause);
 		const leave = this.plugin.registerHubLeave?.(() => this.leaveSurface());
@@ -122,6 +124,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 	}
 
 	override onunload(): void {
+		this.dropSearch?.();
+		this.dropSearch = null;
 		this.cancelScheduledFill();
 		this.stageEl?.querySelector(':scope > .rv-map-spacer')?.remove();
 		this.root.querySelector(':scope > .rv-map-spacer')?.remove();

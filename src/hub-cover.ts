@@ -43,11 +43,42 @@ function layoutHeight(el: HTMLElement): number {
 }
 
 /**
+ * A box the layout engine actually measured as empty. JSDOM reports 0 for
+ * every element, including one that is showing, so a page with no box of its
+ * own does not count unless this node stubs its own empty rect.
+ */
+function measuredEmpty(node: HTMLElement): boolean {
+	if (typeof node.getBoundingClientRect !== 'function') return false;
+	let rect: { width: number; height: number };
+	try { rect = node.getBoundingClientRect(); } catch { return false; }
+	if (rect.width > 0 || rect.height > 0) return false;
+	const page = node.ownerDocument?.documentElement;
+	if (!page || page === node || typeof page.getBoundingClientRect !== 'function') return true;
+	let pageRect: { width: number; height: number };
+	try { pageRect = page.getBoundingClientRect(); } catch { return true; }
+	if (pageRect.width > 0 || pageRect.height > 0) return true;
+	return Object.prototype.hasOwnProperty.call(node, 'getBoundingClientRect');
+}
+
+function computedDisplayNone(node: HTMLElement): boolean {
+	const view = node.ownerDocument?.defaultView;
+	if (!view || typeof view.getComputedStyle !== 'function') return false;
+	try {
+		return view.getComputedStyle(node).display === 'none';
+	} catch {
+		return false;
+	}
+}
+
+/**
  * Obsidian's markdown view builds reading mode and live preview together.
  * The mode that is not showing is hidden with `display: none` (`Element.hide`).
- * Its `.bases-embed` stays in the document at 0×0. That is the ghost.
+ * Its `.bases-embed` stays in the document at 0×0. A view that was removed
+ * and never unloaded is detached, also 0×0. Both are the ghost.
  */
 export function hostIsHidden(node: HTMLElement): boolean {
+	if (!node) return true;
+	if (node.isConnected === false) return true;
 	let current: HTMLElement | null = node;
 	while (current) {
 		if (current.style?.display === 'none') return true;
@@ -57,17 +88,10 @@ export function hostIsHidden(node: HTMLElement): boolean {
 		if (!parent || parent === current) break;
 		current = parent;
 	}
+	if (measuredEmpty(node)) return true;
 	const mode = node.closest?.('.markdown-source-view, .markdown-reading-view, .markdown-preview-view');
 	if (!isElement(mode)) return false;
-	const view = mode.ownerDocument?.defaultView;
-	if (view && typeof view.getComputedStyle === 'function') {
-		try {
-			if (view.getComputedStyle(mode).display === 'none') return true;
-		} catch {
-			// A detached node has nothing to measure.
-		}
-	}
-	return false;
+	return computedDisplayNone(mode);
 }
 
 /**
