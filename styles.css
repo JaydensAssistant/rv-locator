@@ -4180,6 +4180,14 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	overflow: hidden;
 }
 
+/* The closed hub sits under the full-base preview's top pad. The open map is
+   absolute, so it has to take that same offset or the cards jump. A base
+   opened on its own has no pad and stays at inset 0. */
+.markdown-preview-view.rv-locator-full-base .rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen),
+.markdown-reading-view.rv-locator-full-base .rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) {
+	top: var(--rv-hub-top);
+}
+
 .rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-stage {
 	flex: 1 1 0% !important;
 	height: 0 !important;
@@ -4211,9 +4219,9 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 	flex: 0 0 auto;
 	gap: 0;
 	padding: 0;
-	height: calc(52px + env(safe-area-inset-bottom, 0px));
+	height: var(--rv-bar-band);
 	min-height: 52px;
-	max-height: calc(52px + env(safe-area-inset-bottom, 0px));
+	max-height: var(--rv-bar-band);
 	box-sizing: border-box;
 }
 
@@ -6625,7 +6633,7 @@ body.rv-center-visit-notes .rv-older-heading {
 /* The note uses the hub's bottom bar, so the map sits in the same place. */
 .workspace-leaf-content.is-rv-note {
 	position: relative;
-	--rv-note-bar: calc(52px + env(safe-area-inset-bottom, 0px));
+	--rv-note-bar: var(--rv-bar-band);
 }
 
 .workspace-leaf-content.is-rv-note:not(.is-note-map) > .view-content {
@@ -6684,9 +6692,9 @@ body.rv-center-visit-notes .rv-older-heading {
 
 .workspace-leaf-content.is-rv-note.is-note-map > .rv-bar-spacer {
 	position: relative;
-	height: calc(52px + env(safe-area-inset-bottom, 0px));
+	height: var(--rv-bar-band);
 	min-height: 52px;
-	max-height: calc(52px + env(safe-area-inset-bottom, 0px));
+	max-height: var(--rv-bar-band);
 	padding: 0;
 	margin: 0;
 	box-sizing: border-box;
@@ -6703,7 +6711,7 @@ body.rv-center-visit-notes .rv-older-heading {
 .rv-locator-sortbar > .rv-bar-spacer {
 	flex: 0 0 auto;
 	width: 100%;
-	height: calc(52px + env(safe-area-inset-bottom, 0px));
+	height: var(--rv-bar-band);
 	min-height: 52px;
 	pointer-events: none;
 }
@@ -6747,6 +6755,12 @@ body.rv-center-visit-notes .rv-older-heading {
 	min-width: 0;
 	gap: 0;
 	overflow: visible;
+}
+
+/* One bar band and one top band. Hub, base, note, and the swap cover read these. */
+html {
+	--rv-bar-band: calc(52px + env(safe-area-inset-bottom, 0px));
+	--rv-top-band: calc(env(safe-area-inset-top, 0px) + max(0px, (var(--header-height, 40px) - (var(--font-ui-medium, 16px) * 1.4)) / 2));
 }
 
 /* One tab bar for the hub, bases, and notes. A view swap never detaches it. */
@@ -9526,8 +9540,9 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
    6px the direct base still has so the two tops land together. */
 .markdown-preview-view.rv-locator-full-base,
 .markdown-reading-view.rv-locator-full-base {
+	--rv-hub-top: calc(env(safe-area-inset-top, 0px) + 6px);
 	--view-top-spacing-markdown: env(safe-area-inset-top, 0px);
-	padding-top: calc(env(safe-area-inset-top, 0px) + 6px) !important;
+	padding-top: var(--rv-hub-top) !important;
 }
 
 .markdown-preview-view.rv-locator-full-base::-webkit-scrollbar,
@@ -10952,12 +10967,15 @@ body.rv-hub-swapping .mobile-navbar {
    so the phone paints that hub instead of the old note or an empty frame. */
 .workspace-leaf > .rv-hub-swap-cover {
 	position: absolute !important;
-	inset: 0 !important;
-	z-index: 50 !important;
+	top: 0 !important;
+	right: 0 !important;
+	bottom: var(--rv-bar-band) !important;
+	left: 0 !important;
+	z-index: 31 !important;
 	display: flex;
 	flex-direction: column;
 	width: 100% !important;
-	height: 100% !important;
+	height: auto !important;
 	overflow: hidden !important;
 	box-sizing: border-box;
 	margin: 0 !important;
@@ -10989,6 +11007,25 @@ body.rv-hub-swapping .mobile-navbar {
 	box-sizing: border-box;
 	width: 100% !important;
 	pointer-events: none;
+}
+
+/* Hub, base, and note share this band. It ends where the centered title used to start. */
+.workspace-leaf-content.is-rv-app > .view-header,
+.workspace-leaf > .rv-hub-swap-cover > .view-header {
+	height: var(--rv-top-band) !important;
+	min-height: var(--rv-top-band) !important;
+	max-height: var(--rv-top-band) !important;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+	overflow: hidden !important;
+	box-sizing: border-box;
+}
+
+.workspace-leaf-content.is-rv-app > .view-header :is(.view-header-title, .view-header-title-container),
+.workspace-leaf > .rv-hub-swap-cover > .view-header :is(.view-header-title, .view-header-title-container) {
+	font-size: 0 !important;
+	line-height: 0 !important;
+	color: transparent !important;
 }
 
 .workspace-leaf > .rv-hub-swap-cover > .view-header :is(
@@ -11592,6 +11629,13 @@ body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header::after {
 	color: var(--text-normal);
 	pointer-events: none;
 	z-index: 1;
+}
+
+body.is-phone .workspace-leaf-content.is-rv-app > .view-header::after,
+body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header::after,
+body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header::after {
+	content: none !important;
+	display: none !important;
 }
 
 body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header .view-header-title {

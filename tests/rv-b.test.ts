@@ -1053,7 +1053,7 @@ function placeDock(leaf: HTMLElement, sortTop: number): void {
 describe('RV-B7 hub forehead', () => {
 	it('keeps the safe area and the 6px the direct base sits lower', () => {
 		const css = source('styles.css');
-		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: calc\(env\(safe-area-inset-top, 0px\) \+ 6px\) !important;\s*\}/);
+		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--rv-hub-top: calc\(env\(safe-area-inset-top, 0px\) \+ 6px\);\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: var\(--rv-hub-top\) !important;\s*\}/);
 		assert.match(css, /env\(safe-area-inset-top, 0px\)/);
 		assert.equal(css.includes('--view-top-spacing-markdown: 0'), false);
 		const phoneAt = css.indexOf('/* RV-162.');
@@ -1785,11 +1785,11 @@ describe('RV-B90 hub return does not shift', () => {
 			css.indexOf('.workspace-leaf-content.is-rv-note.is-note-map > .rv-bar-spacer {'),
 			css.indexOf('.workspace-leaf-content.is-rv-note.is-note-map.is-note-map-side > .rv-bar-spacer {'),
 		);
-		const band = 'height: calc(52px + env(safe-area-inset-bottom, 0px))';
 		assert.match(hubBar, /padding:\s*0/);
 		assert.match(hubBar, /gap:\s*0/);
-		assert.ok(hubBar.includes(band));
-		assert.ok(noteBar.includes(band));
+		assert.match(hubBar, /height:\s*var\(--rv-bar-band\)/);
+		assert.match(noteBar, /height:\s*var\(--rv-bar-band\)/);
+		assert.equal(css.match(/--rv-bar-band:\s*calc\(52px \+ env\(safe-area-inset-bottom, 0px\)\)/g)?.length, 1);
 
 		const main = source('src/main.ts');
 		const surface = main.slice(main.indexOf('glanceSurfacePath(surface: HTMLElement)'), main.indexOf('private pathForSurface'));
@@ -1979,5 +1979,87 @@ describe('RV-267 hub search matches the suggester field', () => {
 		assert.doesNotMatch(field, /#1f8a4c|#14ac87|#d63c3c/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-search\.rv-suggest-host \{[^}]*--rv-modal-accent:\s*var\(--rv-hub-accent\)/);
 		assert.match(css, /\.rv-suggest-host > input::placeholder,\s*\n\.rv-locator-search > \.rv-locator-search-input::placeholder \{[^}]*color:\s*var\(--text-faint\)/);
+	});
+});
+
+describe('RV-B91 cover stops above the tab bar', () => {
+	it('reserves the shared bar band and sits under the bar', () => {
+		const css = source('styles.css');
+		const cover = css.slice(
+			css.indexOf('.workspace-leaf > .rv-hub-swap-cover {'),
+			css.indexOf('.workspace-leaf > .rv-hub-swap-cover > .view-header'),
+		);
+		assert.match(cover, /bottom:\s*var\(--rv-bar-band\) !important/);
+		assert.match(cover, /height:\s*auto !important/);
+		assert.doesNotMatch(cover, /inset:\s*0 !important/);
+		assert.doesNotMatch(cover, /height:\s*100% !important/);
+		const bar = css.slice(css.indexOf('.rv-bar-shell {'), css.indexOf('.modal-container:has(.modal.rv-locator-modal)'));
+		const barZ = Number(/z-index:\s*(\d+)/.exec(bar)?.[1]);
+		const coverZ = Number(/z-index:\s*(\d+)/.exec(cover)?.[1]);
+		assert.ok(barZ > coverZ, `bar ${barZ} cover ${coverZ}`);
+		assert.match(cover, /pointer-events:\s*none !important/);
+		const hubBar = css.slice(
+			css.indexOf('.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-sortbar {'),
+			css.indexOf('.rv-locator-glancable.is-stacked .rv-locator-sortbar {'),
+		);
+		assert.match(hubBar, /height:\s*var\(--rv-bar-band\)/);
+	});
+});
+
+describe('RV-B92 map open keeps the hub top', () => {
+	it('uses the full-base top pad for the open map and leaves a standalone base at inset 0', () => {
+		const css = source('styles.css');
+		const open = css.slice(
+			css.indexOf('.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) {'),
+			css.indexOf('.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-stage'),
+		);
+		assert.match(open, /inset:\s*0/);
+		assert.match(open, /\.markdown-preview-view\.rv-locator-full-base \.rv-locator-glancable\.is-hub-map\.is-stacked:not\(\.is-map-fullscreen\)/);
+		assert.match(open, /top:\s*var\(--rv-hub-top\)/);
+		assert.equal(css.match(/--rv-hub-top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ 6px\)/g)?.length, 1);
+		assert.match(css, /padding-top:\s*var\(--rv-hub-top\) !important/);
+		const standalone = open.slice(0, open.indexOf('.markdown-preview-view.rv-locator-full-base'));
+		assert.doesNotMatch(standalone, /top:\s*var\(--rv-hub-top\)/);
+	});
+});
+
+describe('RV-268 shared top band', () => {
+	it('gives hub, base, note, and the cover one band and no title text', () => {
+		const css = source('styles.css');
+		assert.equal(css.match(/--rv-top-band:/g)?.length, 1);
+		assert.match(css, /--rv-top-band:\s*calc\(env\(safe-area-inset-top, 0px\) \+ max\(0px, \(var\(--header-height, 40px\) - \(var\(--font-ui-medium, 16px\) \* 1\.4\)\) \/ 2\)\)/);
+		const band = css.slice(
+			css.indexOf('.workspace-leaf-content.is-rv-app > .view-header,'),
+			css.indexOf('.workspace-leaf-content.is-rv-app > .view-header :is(.view-header-title'),
+		);
+		assert.match(band, /\.workspace-leaf > \.rv-hub-swap-cover > \.view-header \{[^}]*height:\s*var\(--rv-top-band\) !important/);
+		assert.match(band, /min-height:\s*var\(--rv-top-band\) !important/);
+		const titleAt = css.indexOf('.workspace-leaf-content.is-rv-app > .view-header :is(.view-header-title, .view-header-title-container)');
+		const title = css.slice(titleAt, css.indexOf('.view-header-nav-buttons,', titleAt));
+		assert.match(title, /font-size:\s*0 !important/);
+		const painted = css.slice(
+			css.indexOf("content: 'Return Visits'"),
+			css.indexOf('body.is-phone .workspace-leaf > .rv-hub-swap-cover > .view-header .view-header-title'),
+		);
+		assert.match(painted, /content:\s*none !important/);
+		assert.match(css, /content:\s*'Return Visits'/);
+		assert.doesNotMatch(band, /#1f8a4c|#14ac87|#d63c3c/);
+
+		const dom = new JSDOM(`<!DOCTYPE html><html style="--header-height:40px;--font-ui-medium:16px"><head><style>${css}</style></head><body class="is-phone">
+			<div class="workspace-leaf-content is-rv-app"><div class="view-header" id="hub"><div class="view-header-title">Return Visits</div></div></div>
+			<div class="workspace-leaf-content is-rv-app"><div class="view-header" id="base"><div class="view-header-title">Base</div></div></div>
+			<div class="workspace-leaf-content is-rv-app is-rv-note"><div class="view-header" id="note"><div class="view-header-title">Ada</div></div></div>
+			<div class="workspace-leaf"><div class="rv-hub-swap-cover" id="cover"><div class="view-header" id="cover-header"><div class="view-header-title">Return Visits</div></div></div></div>
+			<div class="rv-bar-shell" id="bar"></div>
+		</body></html>`);
+		const styleOf = (id: string) => dom.window.getComputedStyle(dom.window.document.getElementById(id)!);
+		const heights = ['hub', 'base', 'note', 'cover-header'].map((id) => styleOf(id).height);
+		assert.deepEqual(heights, ['var(--rv-top-band)', 'var(--rv-top-band)', 'var(--rv-top-band)', 'var(--rv-top-band)']);
+		for (const id of ['hub', 'base', 'note', 'cover-header']) {
+			const title = dom.window.document.getElementById(id)!.querySelector('.view-header-title');
+			assert.equal(dom.window.getComputedStyle(title!).fontSize, '0px');
+		}
+		assert.equal(styleOf('cover').bottom, 'var(--rv-bar-band)');
+		assert.ok(Number(styleOf('bar').zIndex) > Number(styleOf('cover').zIndex));
 	});
 });
