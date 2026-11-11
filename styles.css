@@ -6757,10 +6757,13 @@ body.rv-center-visit-notes .rv-older-heading {
 	overflow: visible;
 }
 
-/* One bar band and one top band. Hub, base, note, and the swap cover read these. */
+/* One bar band and one top band. Hub, base, note, and the swap cover read these.
+   The band is the status-bar inset once, then the pad above where the title
+   text used to start. `--view-header-top-offset` is that inset when Obsidian
+   sets it; otherwise the safe area is. */
 html {
 	--rv-bar-band: calc(52px + env(safe-area-inset-bottom, 0px));
-	--rv-top-band: calc(env(safe-area-inset-top, 0px) + max(0px, (var(--header-height, 40px) - (var(--font-ui-medium, 16px) * 1.4)) / 2));
+	--rv-top-band: calc(var(--view-header-top-offset, env(safe-area-inset-top, 0px)) + max(0px, (var(--header-height, 40px) - (var(--font-ui-medium, 16px) * 1.4)) / 2));
 	--rv-hub-top: calc(env(safe-area-inset-top, 0px) + 6px);
 }
 
@@ -11173,6 +11176,24 @@ body.is-phone .markdown-reading-view.rv-locator-full-base::-webkit-scrollbar,
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-content::-webkit-scrollbar {
 	width: 0 !important;
 	height: 0 !important;
+}
+
+/* The shared band already ends where the title started. A note must not also
+   keep the status-bar pad and the file margin, or the dashboard card sits
+   far below the hub's first card. The preview pad is the hub's, and the
+   first block takes the list's 6px top pad. Side file margins stay. */
+html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app > .view-content {
+	padding-top: 0 !important;
+}
+
+html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app.is-rv-note :is(.markdown-preview-view, .markdown-reading-view, .markdown-source-view):not(.rv-locator-full-base),
+html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app :is(.markdown-preview-view, .markdown-reading-view, .markdown-source-view).rv-dashboard:not(.rv-locator-full-base) {
+	--file-margins-y: 0px;
+	padding-top: var(--rv-hub-top) !important;
+}
+
+html body.is-phone .workspace-leaf .workspace-leaf-content.is-rv-app .markdown-preview-view.rv-dashboard .markdown-preview-sizer > .el-div:has(> .callout[data-callout="quote"]:not(.rv-locator-return-suggestions)) {
+	margin-top: 6px !important;
 }
 
 body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) .view-header-title {

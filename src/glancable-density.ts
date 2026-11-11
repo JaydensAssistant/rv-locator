@@ -128,6 +128,16 @@ export function glancableCardColumns(leafPx: number, gutterPx: number, settings:
 	return fitCount >= 2 ? fitCount : glancableColumns(grid, settings);
 }
 
+/**
+ * Identity of a card-height snap. Width is stored beside this. A later frame
+ * at the same width still remeasures when the font scale, the control size,
+ * or the scrollbar gutter changed.
+ */
+export function glanceSnapToken(gutterPx: number, fontScale: string, controlSize: string): string {
+	const gutter = Number.isFinite(gutterPx) && gutterPx > 0 ? Math.round(gutterPx) : 0;
+	return `${gutter}|${fontScale}|${controlSize}`;
+}
+
 /** How many cards fit side by side. A wide pane is not capped at two. */
 export function glancableColumns(containerPx: number, settings: DensityMeasure): number {
 	if (!Number.isFinite(containerPx) || containerPx <= 0) return 1;

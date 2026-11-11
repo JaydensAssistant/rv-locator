@@ -5,7 +5,7 @@ import { CARD_BLANK_IGNORE, cardBlankOpensPin } from './map-pins';
 import type { NearbyScope } from './active-layout';
 import { GLANCABLE_VIEW_TYPE, NON_AFFILIATION_NOTICE } from './constants';
 import { domInstanceOf } from './dom';
-import { compactBadgePx, elementScrollbarGutterPx, fittedFontScale, glancableCardColumns, glancableCardWidthPx, type CompactLineKind } from './glancable-density';
+import { compactBadgePx, elementScrollbarGutterPx, fittedFontScale, glanceSnapToken, glancableCardColumns, glancableCardWidthPx, type CompactLineKind } from './glancable-density';
 import { CHROME_PIECES, chromeControlHint, classifyChromeControl, type ChromePiece } from './glancable-chrome';
 import type { CellModel, ColumnModel, GroupModel, RowModel } from './model';
 import type RVLocatorPlugin from './main';
@@ -453,6 +453,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.syncHubMapMount();
 		if (this.directHubOpensAtTop() && this.scrollEl) this.scrollEl.scrollTop = 0;
 		this.landArrival();
+		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) this.watchLayout();
 		this.scheduleCardFill(rows);
 	}
 
@@ -710,8 +711,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const frame = ++this.glanceFrame;
 		const run = (): void => {
 			if (frame !== this.glanceFrame || !this.scrollEl?.isConnected) return;
-			this.applyColumnSnap();
-			this.snapCardFrames();
+			this.watchLayout();
+			this.settleGlanceLayout();
 			this.strokeHubRings();
 			this.sizeEmbedFrame();
 		};
@@ -1578,13 +1579,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 			}
 		}
 		if (cards.length === 0) return;
+		const token = this.currentSnapToken();
 		const widths = cards.map((el) => Math.round(el.getBoundingClientRect().width));
 		const pending: HTMLElement[] = [];
 		for (let index = 0; index < cards.length; index += 1) {
 			const el = cards[index];
 			const widthNow = widths[index] ?? 0;
 			if (!el || widthNow < 1) continue;
-			if (el.dataset.rvSnapWidth === String(widthNow) && el.style.height) continue;
+			if (el.dataset.rvSnapWidth === String(widthNow) && el.dataset.rvSnapToken === token && el.style.height) continue;
 			el.style.height = '';
 			el.style.minHeight = '';
 			pending.push(el);
@@ -1609,6 +1611,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 			const el = snapped[index];
 			if (!el) continue;
 			el.dataset.rvSnapWidth = String(snappedWidths[index] ?? 0);
+			el.dataset.rvSnapToken = token;
 			const rail = el.querySelector(':scope > .rv-locator-card-actions');
 			if (rail instanceof HTMLElement) rails.push(rail);
 		}
@@ -1618,15 +1621,52 @@ export class NearbyGlancableView extends NearbyBasesView {
 	/** The list scroller's own scrollbar. A hidden scroller is not a measurement, and a side map is not a gutter. */
 	private rememberScrollbar(): void {
 		if (this.root.classList.contains('is-map-fullscreen')) return;
+		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) return;
 		const scroll = this.scrollEl;
 		if (!scroll || scroll.clientWidth <= 1) return;
 		this.plugin.rememberGlanceScrollbar(elementScrollbarGutterPx(scroll));
 	}
 
+	/** Cover cards use the live list's gutter once that list has a box. */
+	private measureGutter(): number {
+		const own = elementScrollbarGutterPx(this.scrollEl);
+		if (typeof this.root.closest !== 'function' || !this.root.closest('.rv-hub-swap-cover')) return own;
+		const live = this.liveListScroller();
+		if (!live) return own;
+		return elementScrollbarGutterPx(live);
+	}
+
+	private liveListScroller(): HTMLElement | null {
+		const doc = this.root.ownerDocument;
+		if (!doc || typeof doc.querySelectorAll !== 'function') return null;
+		const nodes = doc.querySelectorAll('.rv-locator-scroll');
+		for (let index = 0; index < nodes.length; index += 1) {
+			const node = nodes[index];
+			if (!(node instanceof HTMLElement) || node === this.scrollEl) continue;
+			if (typeof node.closest === 'function' && node.closest('.rv-hub-swap-cover')) continue;
+			if (node.clientWidth > 1) return node;
+		}
+		return null;
+	}
+
+	private currentSnapToken(): string {
+		const scale = this.root.style.getPropertyValue('--rv-font-scale').trim() || '1';
+		const control = this.root.style.getPropertyValue('--rv-control-size').trim();
+		return glanceSnapToken(this.measureGutter(), scale, control);
+	}
+
+	/** Density, columns, then card heights. A cover resnap reads the settled box. */
+	private settleGlanceLayout(): void {
+		if (!this.scrollEl?.isConnected) return;
+		this.applyDensity();
+		this.applyColumnSnap();
+		this.snapCardFrames();
+	}
+
 	private applyColumnSnap(): void {
 		this.rememberScrollbar();
 		const scroll = this.scrollEl;
-		const gutter = elementScrollbarGutterPx(scroll);
+		const gutter = this.measureGutter();
 		const column = scroll.offsetWidth > 1 ? scroll.offsetWidth : scroll.clientWidth + gutter;
 		const settings = this.plugin.settings;
 		const card = glancableCardWidthPx(column, gutter, settings, settings.glancableFitCount);
@@ -1642,10 +1682,8 @@ export class NearbyGlancableView extends NearbyBasesView {
 	private watchLayout(): void {
 		if (this.layoutObserver || typeof ResizeObserver === 'undefined') return;
 		this.layoutObserver = new ResizeObserver(() => {
-			this.applyColumnSnap();
-			if (this.plugin.settings.glancableFitCount !== 0) this.applyDensity();
+			this.settleGlanceLayout();
 			this.syncHubMapMount();
-			this.snapCardFrames();
 		});
 		this.layoutObserver.observe(this.scrollEl);
 		this.layoutObserver.observe(this.root);

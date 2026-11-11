@@ -26,6 +26,7 @@ import type { RowModel } from '../src/model';
 import { fitEndEllipsis, mountFittedTitle } from '../src/title-fit';
 import { DEFAULT_SETTINGS } from '../src/types';
 import { fillItemStrip } from '../src/visit-controls';
+import { glanceSnapToken } from '../src/glancable-density';
 import { matchesHubSearch } from '../src/glance-search';
 import { revealNoteMatch } from '../src/note-hub-bar';
 import { TFile, type QueryController } from 'obsidian';
@@ -2030,7 +2031,7 @@ describe('RV-268 shared top band', () => {
 	it('gives hub, base, note, and the cover one band and no title text', () => {
 		const css = source('styles.css');
 		assert.equal(css.match(/--rv-top-band:/g)?.length, 1);
-		assert.match(css, /--rv-top-band:\s*calc\(env\(safe-area-inset-top, 0px\) \+ max\(0px, \(var\(--header-height, 40px\) - \(var\(--font-ui-medium, 16px\) \* 1\.4\)\) \/ 2\)\)/);
+		assert.match(css, /--rv-top-band:\s*calc\(var\(--view-header-top-offset, env\(safe-area-inset-top, 0px\)\) \+ max\(0px, \(var\(--header-height, 40px\) - \(var\(--font-ui-medium, 16px\) \* 1\.4\)\) \/ 2\)\)/);
 		const band = css.slice(
 			css.indexOf('.workspace-leaf-content.is-rv-app > .view-header,'),
 			css.indexOf('.workspace-leaf-content.is-rv-app > .view-header :is(.view-header-title'),
@@ -2159,5 +2160,41 @@ describe('RV-B91 round 2 the bar stays on screen during the cover', () => {
 		assert.match(rule, /max-height:\s*var\(--rv-top-band\) !important/);
 		assert.match(rule, /padding-top:\s*0 !important/);
 		assert.doesNotMatch(rule, /height:\s*var\(--header-height\)/);
+	});
+});
+
+describe('RV-268 the note band matches the hub', () => {
+	it('counts the status-bar inset once and drops the note file margin', () => {
+		const css = source('styles.css');
+		const note = css.slice(css.indexOf('html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app > .view-content {'));
+		assert.match(note, /html body\.is-mobile \.workspace-leaf \.workspace-leaf-content\.is-rv-app > \.view-content \{[^}]*padding-top:\s*0 !important/);
+		assert.match(note, /--file-margins-y:\s*0px;/);
+		assert.match(note, /padding-top:\s*var\(--rv-hub-top\) !important/);
+		assert.doesNotMatch(note.slice(0, note.indexOf('margin-top: 6px')), /calc\(\s*var\(--file-margins\)[^)]*var\(--rv-hub-top\)/);
+		assert.match(note, /margin-top:\s*6px !important/);
+		assert.match(css, /margin-top:\s*-5px !important/);
+		assert.equal(glanceSnapToken(0, '1', '28px'), glanceSnapToken(0, '1', '28px'));
+		assert.notEqual(glanceSnapToken(0, '1', '28px'), glanceSnapToken(12, '1', '28px'));
+		assert.notEqual(glanceSnapToken(0, '1', '28px'), glanceSnapToken(0, '0.86', '24px'));
+	});
+});
+
+describe('RV-B91 cover cards resnap when the scale or gutter settles', () => {
+	it('applies density before the snap and skips only a matching token', () => {
+		const view = source('src/glancable-view.ts');
+		const frame = view.slice(view.indexOf('private scheduleGlanceFrame'), view.indexOf('private strokeHubRings'));
+		assert.match(frame, /this\.settleGlanceLayout\(\)/);
+		const settle = view.slice(view.indexOf('private settleGlanceLayout'), view.indexOf('private applyColumnSnap'));
+		assert.ok(settle.indexOf('this.applyDensity()') < settle.indexOf('this.applyColumnSnap()'));
+		assert.ok(settle.indexOf('this.applyColumnSnap()') < settle.indexOf('this.snapCardFrames()'));
+		const snap = view.slice(view.indexOf('private snapCardFrames'), view.indexOf('private rememberScrollbar'));
+		assert.match(snap, /el\.dataset\.rvSnapToken === token/);
+		assert.match(snap, /el\.dataset\.rvSnapToken = token/);
+		const gutter = view.slice(view.indexOf('private measureGutter'), view.indexOf('private liveListScroller'));
+		assert.match(gutter, /rv-hub-swap-cover/);
+		assert.match(gutter, /liveListScroller\(\)/);
+		const memory = view.slice(view.indexOf('private rememberScrollbar'), view.indexOf('private measureGutter'));
+		assert.match(memory, /rv-hub-swap-cover'\)\) return/);
+		assert.notEqual(glanceSnapToken(0, '1', '28px'), glanceSnapToken(0, '1', '22px'));
 	});
 });
