@@ -4,6 +4,7 @@ import { setIcon } from 'obsidian';
 import { APP_TABS } from './app-bar';
 import { ensureBarSpacer } from './bar-shell';
 import { hostIsHidden } from './hub-cover';
+import { setOlderVisitsOpenState } from './visit-older';
 
 /** The hub bottom bar, mounted on an RV note so the map does not jump. */
 export interface NoteHubBarHost {
@@ -240,11 +241,65 @@ function wrapText(node: Text, start: number, end: number, current: boolean): HTM
 	return mark;
 }
 
-function paintDomMatches(root: ParentNode, needle: string, index: number): number {
-	const { text, pieces } = collectPieces(root);
-	const hits = findHits(text, needle);
-	if (hits.length === 0) return 0;
-	const at = wrapIndex(index, hits.length);
+const NOTES_AREA = 'textarea.rv-native-notes-area, textarea.rv-visit-note, .rv-visit-notes-host textarea, .rv-lp-notes textarea';
+
+function notesAreas(root: ParentNode): HTMLTextAreaElement[] {
+	const el = root as Element;
+	if (typeof el.querySelectorAll !== 'function') return [];
+	const nodes = el.querySelectorAll(NOTES_AREA);
+	const areas: HTMLTextAreaElement[] = [];
+	for (let index = 0; index < nodes.length; index += 1) {
+		const node = nodes[index];
+		if (!node || node.nodeType !== 1) continue;
+		const area = node as HTMLTextAreaElement;
+		if (area.tagName !== 'TEXTAREA') continue;
+		if (area.closest('.rv-note-find, .rv-bar-shell, .rv-locator-search')) continue;
+		const folded = area.closest('.rv-older-collapsed');
+		if (!folded && hostIsHidden(area)) continue;
+		areas.push(area);
+	}
+	return areas;
+}
+
+function areaMatches(root: ParentNode, needle: string): HTMLTextAreaElement[] {
+	const want = foldUnits(needle);
+	if (!want) return [];
+	return notesAreas(root).filter((area) => foldUnits(area.value ?? '').includes(want));
+}
+
+/** Open Older Visits when the current hit sits in that fold. The field stays put. */
+function revealFind(node: HTMLElement): void {
+	const collapsed = typeof node.closest === 'function' ? node.closest('.rv-older-collapsed') : null;
+	if (collapsed && collapsed.nodeType === 1) {
+		const host = collapsed as HTMLElement;
+		host.classList.remove('rv-older-collapsed');
+		const path = host.dataset?.rvNoteFile
+			?? host.closest?.('[data-rv-note-file]')?.getAttribute('data-rv-note-file')
+			?? '';
+		setOlderVisitsOpenState(path, true, host);
+		host.querySelectorAll('.rv-older-visits').forEach((heading) => {
+			if (heading.nodeType === 1) (heading as HTMLElement).classList.add('is-open');
+		});
+	}
+	try { node.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch { /* The note is already in view. */ }
+}
+
+function markFindClass(host: HTMLElement, current: boolean): void {
+	host.classList.add('rv-note-find-mark');
+	host.classList.toggle('rv-note-find-current', current);
+	host.setAttribute('data-rv-find', 'class');
+}
+
+function documentBefore(a: Node, b: Node): boolean {
+	if (a === b || typeof a.compareDocumentPosition !== 'function') return false;
+	return (a.compareDocumentPosition(b) & 4) !== 0;
+}
+
+function paintTextHits(
+	pieces: readonly TextPiece[],
+	hits: readonly FindHit[],
+	currentHit: number,
+): HTMLElement | null {
 	const jobs: { node: Text; start: number; end: number; current: boolean }[] = [];
 	hits.forEach((hit, hitIndex) => {
 		for (const piece of pieces) {
@@ -255,7 +310,7 @@ function paintDomMatches(root: ParentNode, needle: string, index: number): numbe
 				node: piece.node,
 				start: start - piece.from,
 				end: end - piece.from,
-				current: hitIndex === at,
+				current: hitIndex === currentHit,
 			});
 		}
 	});
@@ -266,8 +321,14 @@ function paintDomMatches(root: ParentNode, needle: string, index: number): numbe
 		const mark = wrapText(job.node, job.start, job.end, job.current);
 		if (job.current && mark) lead = mark;
 	}
-	try { lead?.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch { /* The note is already in view. */ }
-	return at;
+	return lead;
+}
+
+function textAnchor(pieces: readonly TextPiece[], hit: FindHit): Node | null {
+	for (const piece of pieces) {
+		if (hit.from < piece.to && hit.to > piece.from) return piece.node;
+	}
+	return pieces[0]?.node ?? null;
 }
 
 /** A class on the widget. The text node stays whole so a live embed is not rewritten. */
@@ -296,11 +357,6 @@ function paintWidgetMarks(root: ParentNode, needle: string, index: number): numb
 	});
 	try { hits[at]?.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch { /* The note is already in view. */ }
 	return at;
-}
-
-function hasFindMark(root: ParentNode): boolean {
-	const el = root as Element;
-	return typeof el.querySelector === 'function' && Boolean(el.querySelector('.rv-note-find-mark'));
 }
 
 const currentMark = Decoration.mark({ class: 'rv-note-find-mark rv-note-find-current' });
@@ -372,28 +428,90 @@ function editorHits(view: EditorView, needle: string): FindHit[] {
 	));
 }
 
-function paintEditorMatches(view: EditorView, needle: string, index: number): number {
+function paintEditorMatches(view: EditorView, hits: readonly FindHit[], currentHit: number): void {
 	if (view.state.field(noteFindField, false) == null) {
 		view.dispatch({ effects: StateEffect.appendConfig.of(noteFindField) });
 	}
-	const hits = editorHits(view, needle);
 	noteFindEditor = view;
 	if (hits.length === 0) {
 		view.dispatch({ effects: setNoteFind.of(null) });
-		return 0;
+		return;
 	}
-	const at = wrapIndex(index, hits.length);
-	const painted = hits.map((hit, hitIndex) => ({ ...hit, current: hitIndex === at }));
-	const current = painted[at];
+	const painted = hits.map((hit, hitIndex) => ({ ...hit, current: hitIndex === currentHit }));
+	const current = painted.find((hit) => hit.current);
 	view.dispatch({ effects: setNoteFind.of(painted) });
 	if (current) view.dispatch({ effects: EditorView.scrollIntoView(current.from, { y: 'center' }) });
+}
+
+function areaDocPos(view: EditorView, area: HTMLTextAreaElement): number {
+	try {
+		return view.posAtDOM(area, 0);
+	} catch {
+		return Number.MAX_SAFE_INTEGER;
+	}
+}
+
+/** Editor text and visit-note values share one next/prev list, in document order. */
+function paintEditorAndNotes(view: EditorView, root: ParentNode, needle: string, index: number): number | null {
+	const hits = editorHits(view, needle);
+	const areas = areaMatches(root, needle);
+	if (hits.length === 0 && areas.length === 0) return null;
+	const slots: { kind: 'doc' | 'area'; from: number; hitIndex: number; area?: HTMLTextAreaElement }[] = [];
+	hits.forEach((hit, hitIndex) => slots.push({ kind: 'doc', from: hit.from, hitIndex }));
+	areas.forEach((area) => slots.push({ kind: 'area', from: areaDocPos(view, area), hitIndex: -1, area }));
+	slots.sort((left, right) => left.from - right.from || (left.kind === 'doc' ? -1 : 1));
+	const at = wrapIndex(index, slots.length);
+	const current = slots[at];
+	paintEditorMatches(view, hits, current?.kind === 'doc' ? current.hitIndex : -1);
+	for (const area of areas) markFindClass(area, current?.kind === 'area' && current.area === area);
+	if (current?.kind === 'area' && current.area) revealFind(current.area);
 	return at;
 }
 
+interface FindSlot {
+	kind: 'text' | 'area';
+	node: Node;
+	hitIndex?: number;
+	area?: HTMLTextAreaElement;
+}
+
+function mergedSlots(pieces: readonly TextPiece[], hits: readonly FindHit[], areas: readonly HTMLTextAreaElement[]): FindSlot[] {
+	const text: FindSlot[] = [];
+	hits.forEach((hit, hitIndex) => {
+		const node = textAnchor(pieces, hit);
+		if (node) text.push({ kind: 'text', node, hitIndex });
+	});
+	const notes: FindSlot[] = areas.map((area) => ({ kind: 'area', node: area, area }));
+	const slots: FindSlot[] = [];
+	let textAt = 0;
+	let noteAt = 0;
+	while (textAt < text.length || noteAt < notes.length) {
+		const left = text[textAt];
+		const right = notes[noteAt];
+		if (left && (!right || documentBefore(left.node, right.node))) {
+			slots.push(left);
+			textAt += 1;
+		} else if (right) {
+			slots.push(right);
+			noteAt += 1;
+		}
+	}
+	return slots;
+}
+
 function paintShownDom(root: ParentNode, needle: string, index: number): number {
-	const at = paintDomMatches(root, needle, index);
-	if (hasFindMark(root)) return at;
-	return paintWidgetMarks(root, needle, index);
+	const { text, pieces } = collectPieces(root);
+	const hits = findHits(text, needle);
+	const areas = areaMatches(root, needle);
+	if (hits.length === 0 && areas.length === 0) return paintWidgetMarks(root, needle, index);
+	const slots = mergedSlots(pieces, hits, areas);
+	const at = wrapIndex(index, slots.length);
+	const current = slots[at];
+	const lead = paintTextHits(pieces, hits, current?.kind === 'text' ? current.hitIndex ?? -1 : -1);
+	for (const area of areas) markFindClass(area, current?.kind === 'area' && current.area === area);
+	const shown = current?.kind === 'area' ? current.area ?? null : lead;
+	if (shown) revealFind(shown);
+	return at;
 }
 
 /**
@@ -401,7 +519,8 @@ function paintShownDom(root: ParentNode, needle: string, index: number): number 
  * The find field stays focused. The document selection is not the highlight.
  * Reading view searches the preview that is on screen. Source and live preview
  * use the editor text when that editor is visible, and a visible widget when
- * the source text has no hit. A match may cross text nodes that CodeMirror split.
+ * the source text has no hit. Visit notes are the textarea value, in the same
+ * next and previous list. A match may cross text nodes that CodeMirror split.
  */
 export function revealNoteMatch(root: ParentNode, query: string, index: number): number {
 	clearFindMarks(root);
@@ -418,7 +537,8 @@ export function revealNoteMatch(root: ParentNode, query: string, index: number):
 		const editor = editorIn(editorEl);
 		if (editor) {
 			try {
-				if (editorHits(editor, needle).length > 0) return paintEditorMatches(editor, needle, index);
+				const mixed = paintEditorAndNotes(editor, editorEl, needle, index);
+				if (mixed != null) return mixed;
 			} catch {
 				/* Reading view, or an editor that rejected the decoration. */
 			}

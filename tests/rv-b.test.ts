@@ -32,6 +32,7 @@ import { matchesHubSearch } from '../src/glance-search';
 import { closeNoteFind, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
 import { dismissOpenMenus } from '../src/app-bar';
 import { openUrgencyPopover, placeUrgencyPopover, URGENCY_POPOVER_WIDTH, URGENCY_ROW_PX } from '../src/urgency-popover';
+import { clearOlderVisitsState, olderVisitsOpen } from '../src/visit-older';
 import { TFile, type QueryController } from 'obsidian';
 import type RVLocatorPlugin from '../src/main';
 
@@ -2758,6 +2759,226 @@ describe('RV-B100 note find uses the visible surface', () => {
 		assert.equal(hiddenReading.querySelector('.rv-note-find-mark'), null);
 		assert.equal(hostIsHidden(embed), false);
 		live.remove();
+	});
+});
+
+describe('RV-B102 the urgency popover is one card', () => {
+	it('flattens phone pill buttons and fills the panel like a modal', () => {
+		const css = source('styles.css');
+		const row = css.match(/\.rv-urgency-popover > button\.rv-urgency-popover-row,\s*\nbody\.is-phone \.rv-urgency-popover > button\.rv-urgency-popover-row \{([^}]*)\}/)?.[1] ?? '';
+		assert.match(row, /border-radius:\s*0/);
+		assert.match(row, /corner-shape:\s*unset/);
+		assert.match(row, /background:\s*transparent/);
+		assert.match(row, /background-color:\s*transparent/);
+		assert.match(row, /box-shadow:\s*none/);
+		assert.match(row, /justify-content:\s*flex-start/);
+		assert.match(row, /appearance:\s*none/);
+		assert.match(row, /padding:\s*12px 16px/);
+		const panel = css.match(/\.rv-urgency-popover \{([^}]*)\}/)?.[1] ?? '';
+		assert.match(panel, /background:\s*var\(--background-secondary\)/);
+		assert.match(panel, /border-radius:\s*var\(--menu-radius, var\(--radius-m, 8px\)\)/);
+		assert.match(panel, /border:\s*1px solid var\(--background-modifier-border\)/);
+		assert.match(css, /\.rv-urgency-popover-row:not\(:last-child\)::after \{[^}]*left:\s*16px/);
+		const icon = css.slice(css.indexOf('.rv-urgency-popover-icon svg {'));
+		assert.match(icon, /color:\s*var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+		assert.match(icon, /stroke:\s*var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+		assert.match(icon, /--icon-color:\s*var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+		const start = css.indexOf('/* Ring menu.');
+		const end = css.indexOf('.rv-note-find-mark {');
+		const popoverCss = css.slice(start, end);
+		const phone = new JSDOM(`<!doctype html><head><style>
+			:root {
+				--button-radius: 44px;
+				--interactive-normal: rgb(80, 80, 80);
+				--background-primary: rgb(0, 0, 0);
+				--background-secondary: rgb(30, 30, 30);
+				--background-modifier-border: rgb(58, 58, 58);
+				--interactive-accent: rgb(138, 92, 245);
+				--text-muted: rgb(150, 150, 150);
+				--menu-radius: 8px;
+			}
+			button:not(.clickable-icon) {
+				display: inline-flex;
+				align-items: center;
+				justify-content: center;
+				border-radius: var(--button-radius);
+				corner-shape: squircle;
+				background-color: var(--interactive-normal);
+				box-shadow: 0 1px 2px rgb(0, 0, 0);
+				appearance: auto;
+			}
+			body.is-phone button:not(.clickable-icon) {
+				border-radius: 44px;
+				background-color: var(--interactive-normal);
+				justify-content: center;
+			}
+			button:not(.clickable-icon) svg {
+				color: var(--text-muted);
+				stroke: var(--text-muted);
+				--icon-color: var(--text-muted);
+			}
+			${popoverCss}
+		</style></head><body class="theme-dark is-phone"></body>`, { pretendToBeVisual: true });
+		const doc = phone.window.document;
+		const pop = doc.createElement('div');
+		pop.className = 'rv-urgency-popover';
+		pop.style.setProperty('--rv-urgency-accent', 'rgb(214, 161, 0)');
+		const button = doc.createElement('button');
+		button.type = 'button';
+		button.className = 'rv-urgency-popover-row';
+		const glyph = doc.createElement('span');
+		glyph.className = 'rv-urgency-popover-icon';
+		const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
+		glyph.appendChild(svg);
+		const label = doc.createElement('span');
+		label.textContent = 'Home';
+		button.append(glyph, label);
+		pop.appendChild(button);
+		doc.body.appendChild(pop);
+		const rowStyle = phone.window.getComputedStyle(button);
+		const panelStyle = phone.window.getComputedStyle(pop);
+		const iconStyle = phone.window.getComputedStyle(svg);
+		const used = (value: string, el: Element): string => {
+			const named = value.match(/^var\((--[\w-]+)/);
+			if (!named?.[1]) return value;
+			const inline = el instanceof phone.window.HTMLElement ? el.style.getPropertyValue(named[1]).trim() : '';
+			const own = phone.window.getComputedStyle(el).getPropertyValue(named[1]).trim();
+			const root = phone.window.getComputedStyle(doc.documentElement).getPropertyValue(named[1]).trim();
+			return inline || own || root || value;
+		};
+		assert.ok(rowStyle.borderRadius === '0px' || rowStyle.borderRadius === '0');
+		assert.equal(rowStyle.justifyContent, 'flex-start');
+		assert.equal(rowStyle.backgroundColor, 'rgba(0, 0, 0, 0)');
+		assert.equal(rowStyle.boxShadow, 'none');
+		assert.equal(rowStyle.paddingLeft, '16px');
+		assert.equal(rowStyle.appearance, 'none');
+		assert.equal(used(panelStyle.backgroundColor, pop), 'rgb(30, 30, 30)');
+		assert.notEqual(panelStyle.backgroundColor, 'rgb(0, 0, 0)');
+		assert.ok(panelStyle.borderRadius === '8px' || panelStyle.borderRadius.startsWith('var(--menu-radius'));
+		assert.equal(used(iconStyle.color, pop), 'rgb(214, 161, 0)');
+		assert.notEqual(iconStyle.color, 'rgb(150, 150, 150)');
+		phone.window.close();
+	});
+});
+
+describe('RV-B103 note find reads the visit notes', () => {
+	it('marks a notes value, keeps the caret, and steps across headings', () => {
+		const doc = window.document;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf-content is-rv-note';
+		const content = doc.createElement('div');
+		content.className = 'view-content';
+		const reading = doc.createElement('div');
+		reading.className = 'markdown-reading-view';
+		const heading = doc.createElement('h5');
+		heading.textContent = 'Tuesday Ada';
+		const host = doc.createElement('div');
+		host.className = 'rv-visit-notes-host';
+		const area = doc.createElement('textarea');
+		area.className = 'rv-native-notes-area';
+		area.dataset.rvNotesKey = 'sVisit5Notes';
+		area.value = 'Ada kingdom south';
+		let focused = 0;
+		area.focus = () => { focused += 1; };
+		area.setSelectionRange = () => { focused += 1; };
+		host.appendChild(area);
+		const again = doc.createElement('p');
+		again.textContent = 'Ada again';
+		const address = doc.createElement('input');
+		address.value = 'Ada address';
+		reading.append(heading, host, again, address);
+		content.appendChild(reading);
+		leaf.appendChild(content);
+		const bar = doc.createElement('div');
+		bar.className = 'rv-bar-shell';
+		doc.body.append(leaf, bar);
+		assert.equal(revealNoteMatch(content, 'kingdom', 0), 0);
+		assert.equal(area.classList.contains('rv-note-find-mark'), true);
+		assert.equal(area.classList.contains('rv-note-find-current'), true);
+		assert.equal(area.getAttribute('data-rv-find'), 'class');
+		assert.equal(area.value, 'Ada kingdom south');
+		assert.equal(heading.querySelector('.rv-note-find-mark'), null);
+		assert.equal(address.classList.contains('rv-note-find-mark'), false);
+		const slot = openNoteFind(leaf, bar);
+		const input = slot.querySelector('input');
+		assert.ok(input instanceof window.HTMLInputElement);
+		input.focus();
+		input.value = 'Ada';
+		input.dispatchEvent(new window.Event('input', { bubbles: true }));
+		assert.equal(doc.activeElement, input);
+		assert.equal(focused, 0);
+		assert.equal([...heading.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), 'Ada');
+		assert.equal(area.classList.contains('rv-note-find-current'), false);
+		input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		assert.equal(doc.activeElement, input);
+		assert.equal(area.classList.contains('rv-note-find-current'), true);
+		assert.equal(focused, 0);
+		input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		assert.equal(doc.activeElement, input);
+		assert.equal([...again.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), 'Ada');
+		assert.equal(area.classList.contains('rv-note-find-current'), false);
+		input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+		assert.equal(doc.activeElement, input);
+		assert.equal(area.classList.contains('rv-note-find-current'), true);
+		assert.equal(area.value, 'Ada kingdom south');
+		assert.doesNotMatch(sourceOfNote(), /setSelectionRange/);
+		assert.match(source('styles.css'), /textarea\.rv-note-find-mark \{[^}]*outline:\s*2px solid var\(--rv-urgency-accent/);
+		leaf.remove();
+		bar.remove();
+	});
+
+	it('expands a collapsed older visit and finds the note in source mode', () => {
+		clearOlderVisitsState();
+		const doc = window.document;
+		const content = doc.createElement('div');
+		content.className = 'view-content';
+		const reading = doc.createElement('div');
+		reading.className = 'markdown-reading-view rv-older-collapsed';
+		reading.dataset.rvNoteFile = 'People/Ada.md';
+		const section = doc.createElement('div');
+		section.className = 'rv-older-section';
+		const area = doc.createElement('textarea');
+		area.className = 'rv-native-notes-area';
+		area.value = 'hidden kingdom';
+		area.getBoundingClientRect = () => ({ width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() { return {}; } });
+		section.appendChild(area);
+		reading.appendChild(section);
+		content.appendChild(reading);
+		doc.body.append(content);
+		assert.equal(hostIsHidden(area), true);
+		assert.equal(revealNoteMatch(content, 'kingdom', 0), 0);
+		assert.equal(reading.classList.contains('rv-older-collapsed'), false);
+		assert.equal(olderVisitsOpen('People/Ada.md', reading), true);
+		assert.equal(area.classList.contains('rv-note-find-mark'), true);
+		assert.equal(area.classList.contains('rv-note-find-current'), true);
+		assert.equal(area.value, 'hidden kingdom');
+		content.remove();
+
+		const live = doc.createElement('div');
+		live.className = 'view-content';
+		const sourceView = doc.createElement('div');
+		sourceView.className = 'markdown-source-view';
+		const editor = doc.createElement('div');
+		editor.className = 'cm-content';
+		const body = doc.createElement('p');
+		body.textContent = 'Heading Ada';
+		const note = doc.createElement('textarea');
+		note.className = 'rv-native-notes-area';
+		note.value = 'Ada notes';
+		editor.append(body, note);
+		sourceView.appendChild(editor);
+		live.appendChild(sourceView);
+		doc.body.append(live);
+		assert.equal(revealNoteMatch(live, 'Ada', 0), 0);
+		assert.equal([...body.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), 'Ada');
+		assert.equal(note.classList.contains('rv-note-find-current'), false);
+		assert.equal(revealNoteMatch(live, 'Ada', 1), 1);
+		assert.equal(note.classList.contains('rv-note-find-mark'), true);
+		assert.equal(note.classList.contains('rv-note-find-current'), true);
+		assert.equal(note.value, 'Ada notes');
+		assert.equal(body.querySelector('.rv-note-find-current'), null);
+		live.remove();
+		clearOlderVisitsState();
 	});
 });
 
