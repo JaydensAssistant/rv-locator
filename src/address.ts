@@ -1,5 +1,7 @@
-import { GEOCODE_ENDPOINT } from './constants';
-import type { GeocodeHit } from './types';
+import { parseDisplayAddress } from './address-display';
+import { autocompleteEndpoint, geocodeEndpoint, type GeoapifyRegion } from './constants';
+import { countyNameKey } from './home-base';
+import type { GeocodeHit, RouteProvider } from './types';
 
 export interface AddressParts {
 	housenumber?: string;
@@ -32,11 +34,23 @@ export function addressForQuery(address: string): string {
 	return address.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
 }
 
+/** Soft Geoapify proximity. This is a bias, not a filter, so other places can still return. */
+export interface GeocodeBias {
+	lat: number;
+	lon: number;
+}
+
 /**
  * Build a forward-geocode URL.
  * `text` is the address string only. Do not append names, phones, or note bodies.
+ * `bias` adds `bias=proximity:lon,lat` when present. It does not switch the host.
  */
-export function buildGeocodeUrl(address: string, apiKey: string): string {
+export function buildGeocodeUrl(
+	address: string,
+	apiKey: string,
+	region: GeoapifyRegion = 'global',
+	bias?: GeocodeBias | null,
+): string {
 	const text = addressForQuery(address);
 	if (!text) {
 		throw new Error('Address is empty.');
@@ -44,12 +58,336 @@ export function buildGeocodeUrl(address: string, apiKey: string): string {
 	if (!apiKey.trim()) {
 		throw new Error('API key is empty.');
 	}
-	const url = new URL(GEOCODE_ENDPOINT);
+	const url = new URL(geocodeEndpoint(region));
 	url.searchParams.set('text', text);
 	url.searchParams.set('format', 'json');
 	url.searchParams.set('limit', '5');
 	url.searchParams.set('apiKey', apiKey.trim());
+	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+	}
 	return url.toString();
+}
+
+/**
+ * Autocomplete type-ahead. The default limit is 5.
+ * A home-county pass passes `placeFilter` (`place:id|place:id`) and uses limit 10.
+ * Autocomplete does not accept `county:` filters, so `countyFilter` is ignored.
+ * A circle filter is the no-county home pass.
+ */
+export function buildAutocompleteUrl(
+	address: string,
+	apiKey: string,
+	region: GeoapifyRegion = 'global',
+	options?: { bias?: GeocodeBias | null; filterRadiusM?: number | null; countyFilter?: string | null; placeFilter?: string | null; limit?: number },
+): string {
+	const text = addressForQuery(address);
+	if (!text) throw new Error('Address is empty.');
+	if (!apiKey.trim()) throw new Error('API key is empty.');
+	const url = new URL(autocompleteEndpoint(region));
+	url.searchParams.set('text', text);
+	url.searchParams.set('format', 'json');
+	const place = options?.placeFilter?.trim() ?? '';
+	const requested = options?.limit;
+	const limit = place ? 10 : (requested && requested > 0 ? Math.round(requested) : 5);
+	url.searchParams.set('limit', String(limit));
+	url.searchParams.set('apiKey', apiKey.trim());
+	const bias = options?.bias;
+	if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		url.searchParams.set('bias', `proximity:${bias.lon},${bias.lat}`);
+	}
+	if (place) {
+		url.searchParams.set('filter', place);
+	} else if (bias && Number.isFinite(bias.lat) && Number.isFinite(bias.lon)) {
+		const radius = options?.filterRadiusM;
+		if (radius && radius > 0) {
+			url.searchParams.set('filter', `circle:${bias.lon},${bias.lat},${Math.round(radius)}`);
+		}
+	}
+	return url.toString();
+}
+
+/** Place id of the county result that matches `county` and, when given, its state. */
+export function readCountyPlaceId(body: unknown, county: string): string | null {
+	const wanted = countyNameKey(county);
+	const state = stateCode(county);
+	if (!wanted || !body || typeof body !== 'object') return null;
+	const results = (body as { results?: unknown }).results;
+	if (!Array.isArray(results)) return null;
+	for (const item of results) {
+		if (!item || typeof item !== 'object') continue;
+		const row = item as Record<string, unknown>;
+		const id = typeof row.place_id === 'string' ? row.place_id.trim() : '';
+		if (!id || !isCountyResult(row, wanted)) continue;
+		const fields = [row.county, row.name, row.formatted, row.address_line1];
+		const matched = fields.some((value) => typeof value === 'string' && countyNameKey(value) === wanted);
+		if (!matched || (state && !resultStateMatches(row, state))) continue;
+		return id;
+	}
+	return null;
+}
+
+/** "Citrus County, Florida" and "Citrus County, FL" share one cache key. */
+export function countyPlaceCacheKey(line: string): string {
+	const name = countyNameKey(line);
+	if (!name) return '';
+	const state = stateCode(line);
+	return state ? `${name}|${state}` : name;
+}
+
+const US_STATE_CODE: Record<string, string> = {
+	al: 'al', alabama: 'al', ak: 'ak', alaska: 'ak', az: 'az', arizona: 'az', ar: 'ar', arkansas: 'ar',
+	ca: 'ca', california: 'ca', co: 'co', colorado: 'co', ct: 'ct', connecticut: 'ct', de: 'de', delaware: 'de',
+	dc: 'dc', 'district of columbia': 'dc', fl: 'fl', florida: 'fl', ga: 'ga', georgia: 'ga', hi: 'hi', hawaii: 'hi',
+	id: 'id', idaho: 'id', il: 'il', illinois: 'il', in: 'in', indiana: 'in', ia: 'ia', iowa: 'ia',
+	ks: 'ks', kansas: 'ks', ky: 'ky', kentucky: 'ky', la: 'la', louisiana: 'la', me: 'me', maine: 'me',
+	md: 'md', maryland: 'md', ma: 'ma', massachusetts: 'ma', mi: 'mi', michigan: 'mi', mn: 'mn', minnesota: 'mn',
+	ms: 'ms', mississippi: 'ms', mo: 'mo', missouri: 'mo', mt: 'mt', montana: 'mt', ne: 'ne', nebraska: 'ne',
+	nv: 'nv', nevada: 'nv', nh: 'nh', 'new hampshire': 'nh', nj: 'nj', 'new jersey': 'nj', nm: 'nm', 'new mexico': 'nm',
+	ny: 'ny', 'new york': 'ny', nc: 'nc', 'north carolina': 'nc', nd: 'nd', 'north dakota': 'nd', oh: 'oh', ohio: 'oh',
+	ok: 'ok', oklahoma: 'ok', or: 'or', oregon: 'or', pa: 'pa', pennsylvania: 'pa', ri: 'ri', 'rhode island': 'ri',
+	sc: 'sc', 'south carolina': 'sc', sd: 'sd', 'south dakota': 'sd', tn: 'tn', tennessee: 'tn', tx: 'tx', texas: 'tx',
+	ut: 'ut', utah: 'ut', vt: 'vt', vermont: 'vt', va: 'va', virginia: 'va', wa: 'wa', washington: 'wa',
+	wv: 'wv', 'west virginia': 'wv', wi: 'wi', wisconsin: 'wi', wy: 'wy', wyoming: 'wy',
+};
+
+function stateCode(line: string): string {
+	const comma = line.indexOf(',');
+	if (comma < 0) return '';
+	const token = (line.slice(comma + 1).split(',')[0] ?? '').trim().toLowerCase().replace(/\./g, '');
+	return US_STATE_CODE[token] ?? '';
+}
+
+function isCountyResult(row: Record<string, unknown>, wanted: string): boolean {
+	const type = typeof row.result_type === 'string' ? row.result_type.trim().toLowerCase() : '';
+	if (type === 'county') return true;
+	if (type) return false;
+	return typeof row.county === 'string' && countyNameKey(row.county) === wanted;
+}
+
+function resultStateMatches(row: Record<string, unknown>, wanted: string): boolean {
+	const fields = [row.state, row.state_code, row.formatted];
+	for (const value of fields) {
+		if (typeof value !== 'string') continue;
+		for (const part of value.split(',')) {
+			const token = part.trim().toLowerCase().replace(/\./g, '');
+			if (!token) continue;
+			if (US_STATE_CODE[token] === wanted) return true;
+			const words = token.split(/\s+/);
+			if (words.some((word) => word.length <= 3 && US_STATE_CODE[word] === wanted)) return true;
+		}
+	}
+	return false;
+}
+
+/**
+ * "Citrus County, Florida" stays as written. A bare county name gains "County"
+ * so the geocode search can resolve a place id.
+ */
+export function countyGeocodeText(line: string): string {
+	const trimmed = line.trim().replace(/\s+/g, ' ');
+	if (!trimmed) return '';
+	if (/county/i.test(trimmed)) return trimmed;
+	const comma = trimmed.indexOf(',');
+	const name = (comma >= 0 ? trimmed.slice(0, comma) : trimmed).trim();
+	const rest = comma >= 0 ? trimmed.slice(comma + 1).trim() : '';
+	const head = `${name} County`;
+	return rest ? `${head}, ${rest}` : head;
+}
+
+/**
+ * County place ids come from geocode search. `type=county` is not a Geoapify
+ * search type, so the county is chosen from the results.
+ */
+export function buildCountySuggestUrl(text: string, apiKey: string, region: GeoapifyRegion = 'global'): string {
+	const query = countyGeocodeText(text);
+	if (!query) throw new Error('Address is empty.');
+	if (!apiKey.trim()) throw new Error('API key is empty.');
+	const url = new URL(geocodeEndpoint(region));
+	url.searchParams.set('text', query);
+	url.searchParams.set('format', 'json');
+	url.searchParams.set('limit', '5');
+	url.searchParams.set('apiKey', apiKey.trim());
+	return url.toString();
+}
+
+/**
+ * Turn-by-turn from the note's Address and City text.
+ * Location coordinates are for distance only. A coordinate pin is a worse
+ * destination than the address Google, Apple, or Waze would look up themselves.
+ */
+export function directionsUrl(
+	provider: RouteProvider,
+	input: { lat?: number | null; lon?: number | null; address?: string | null; city?: string | null },
+): string {
+	const address = input.address ?? '';
+	const city = input.city;
+	const query = mapsSearchQuery(address, city);
+	if (provider === 'apple') return `https://maps.apple.com/?daddr=${encodeURIComponent(query)}`;
+	if (provider === 'waze') return `https://waze.com/ul?q=${encodeURIComponent(query)}&navigate=yes`;
+	return googleMapsDirectionsLink(address, city);
+}
+
+/**
+ * One tap can reach `shell.openExternal` twice: a second listener on the same
+ * node, or the phone dispatching a second trusted click. The same URL inside
+ * this window is the duplicate. A later, different tap still opens.
+ */
+const EXTERNAL_OPEN_WINDOW_MS = 500;
+let lastExternalOpen = { url: '', at: 0 };
+
+export function claimExternalOpen(url: string, now = Date.now()): boolean {
+	const target = url.trim();
+	if (!target) return false;
+	if (target === lastExternalOpen.url && now - lastExternalOpen.at < EXTERNAL_OPEN_WINDOW_MS) return false;
+	lastExternalOpen = { url: target, at: now };
+	return true;
+}
+
+/**
+ * Open a web URL in the system browser.
+ * `window.open(url, '_blank', 'noopener')` stays on about:blank in Obsidian's
+ * Electron shell, so Maps never loads. Desktop uses `shell.openExternal`.
+ */
+export function openExternalUrl(url: string): void {
+	const target = url.trim();
+	if (!claimExternalOpen(target)) return;
+	if (openWithElectron(target)) return;
+	const opened = window.open(target, '_blank');
+	if (opened) opened.opener = null;
+}
+
+type AddressClickHost = HTMLElement & {
+	rvAddressBound?: boolean;
+	rvAddressOpen?: (path: string) => void;
+};
+
+/**
+ * One listener per element. Decorating the same note again, or with a new
+ * path, updates the path the existing listener reads. A second listener on
+ * the same click is ignored.
+ */
+export function bindAddressDirections(element: HTMLElement, open: (path: string) => void): void {
+	const host = element as AddressClickHost;
+	host.rvAddressOpen = open;
+	if (host.rvAddressBound) return;
+	host.rvAddressBound = true;
+	element.addEventListener('click', (event) => {
+		handleAddressDirectionsClick(event, (path) => { host.rvAddressOpen?.(path); });
+	}, true);
+}
+
+export function handleAddressDirectionsClick(event: Event, open: (path: string) => void): void {
+	const target = event.target;
+	if (!(target instanceof Element)) return;
+	if (target.closest('a.rv-map-button, input, button, .rv-label-icon')) return;
+	if (!target.closest('a.rv-address-link, .rv-address-field')) return;
+	const marked = event as Event & { rvAddressOpened?: boolean };
+	if (marked.rvAddressOpened) return;
+	marked.rvAddressOpened = true;
+	event.preventDefault();
+	event.stopPropagation();
+	if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation();
+	const anchor = target.closest('a.rv-address-link');
+	if (anchor instanceof HTMLElement) {
+		anchor.setAttribute('href', '#');
+		anchor.removeAttribute('target');
+	}
+	const root = target.closest('[data-rv-route-path]');
+	const path = root instanceof HTMLElement ? root.dataset.rvRoutePath ?? '' : '';
+	if (!path) return;
+	open(path);
+}
+
+function openWithElectron(url: string): boolean {
+	try {
+		const requireFn = (globalThis as { require?: (id: string) => { shell?: { openExternal?: (target: string) => void } } }).require;
+		const open = requireFn?.('electron')?.shell?.openExternal;
+		if (typeof open !== 'function') return false;
+		open(url);
+		return true;
+	} catch {
+		return false;
+	}
+}
+
+/** Same characters, one for one, after trimming and collapsing whitespace. */
+export function addressesMatchOneForOne(left: string, right: string): boolean {
+	return collapseSpaces(left) === collapseSpaces(right);
+}
+
+function collapseSpaces(value: string): string {
+	return value.replace(/\s+/g, ' ').trim();
+}
+
+/** Street and city, for a one-line suggestion. The stored value stays the full address. */
+export function abbreviateAddress(formatted: string): string {
+	const parts = formatted.split(',').map((part) => part.trim()).filter((part) => part.length > 0);
+	if (parts.length <= 2) return parts.join(', ');
+	return `${parts[0]}, ${parts[1]}`;
+}
+
+/** How many stored addresses the New RV chevron offers before a lookup. */
+export const RECENT_ADDRESS_LIMIT = 24;
+
+/**
+ * Newest addresses first. The same address, ignoring case and spacing, is kept once
+ * from the newest note.
+ */
+export function recentAddresses(
+	notes: readonly { address: string; recentAt: number }[],
+	limit = RECENT_ADDRESS_LIMIT,
+): string[] {
+	const cap = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : RECENT_ADDRESS_LIMIT;
+	const sorted = [...notes].sort((a, b) => b.recentAt - a.recentAt);
+	const seen = new Set<string>();
+	const labels: string[] = [];
+	for (const note of sorted) {
+		const label = note.address.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+		if (!label) continue;
+		const key = normalizeAddress(label);
+		if (seen.has(key)) continue;
+		seen.add(key);
+		labels.push(label);
+		if (labels.length >= cap) return labels;
+	}
+	return labels;
+}
+
+/**
+ * Address chevron before a lookup shows stored addresses, most recent first.
+ * A finished lookup replaces that list. Hits stay in lookup order.
+ */
+export function addressChevronLabels(
+	recent: readonly string[],
+	lookupHits: readonly string[],
+	query: string,
+): string[] {
+	const hits = lookupHits.map((item) => item.trim()).filter(Boolean);
+	if (hits.length > 0) return hits;
+	const labels = recent.map((item) => item.trim()).filter(Boolean);
+	const needle = query.trim().toLowerCase();
+	if (!needle) return labels;
+	return labels.filter((item) => item.toLowerCase().includes(needle));
+}
+
+/**
+ * Enter or leaving the field selects a hit only when the text matches one.
+ * Several remaining hits do not count as a choice.
+ */
+export function matchingAddress<T extends { formattedAddress: string }>(hits: readonly T[], typed: string): T | null {
+	const needle = typed.replace(/\s+/g, ' ').trim().toLowerCase();
+	if (!needle) return null;
+	const exact = hits.find((hit) => {
+		const full = hit.formattedAddress.replace(/\s+/g, ' ').trim().toLowerCase();
+		return addressesMatchOneForOne(hit.formattedAddress, typed) || abbreviateAddress(hit.formattedAddress).toLowerCase() === needle || full === needle;
+	});
+	if (exact) return exact;
+	const partial = hits.filter((hit) => {
+		const full = hit.formattedAddress.toLowerCase();
+		return full.includes(needle) || abbreviateAddress(hit.formattedAddress).toLowerCase().includes(needle);
+	});
+	return partial.length === 1 ? partial[0] ?? null : null;
 }
 
 /**
@@ -90,8 +428,59 @@ function formattedIncludesStreet(formatted: string, parts: AddressParts): boolea
 	return street.length > 0 && formatted.toLowerCase().includes(street);
 }
 
-export function googleMapsLink(lat: number, lon: number): string {
-	return `https://www.google.com/maps?q=${lat},${lon}`;
+/**
+ * Google Maps search text.
+ * A bare street (no comma-separated locality, and the City token is not already
+ * in the string) gets `, City` appended. Address itself is never rewritten.
+ * An empty City leaves the address unchanged. A line that already parses to a
+ * city is left alone, even when City disagrees with that locality.
+ */
+export function mapsSearchQuery(address: string, city?: string | null): string {
+	const query = collapseAddress(address);
+	const extra = collapseAddress(city ?? '');
+	if (!query || !extra) return query;
+	if (addressAlreadyNamesCity(query, extra)) return query;
+	return `${query}, ${extra}`;
+}
+
+/**
+ * Google Maps search for the note’s Address text.
+ * Location stays a coordinate pair for distance. Map Link does not use lat/lon,
+ * because a coordinate pin is a poor way to find the house in the field.
+ * Pass the note’s City so a street-only Address still searches in that city.
+ */
+export function googleMapsAddressLink(address: string, city?: string | null): string {
+	const query = mapsSearchQuery(address, city);
+	return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+}
+
+/** Turn-by-turn starts in Google Maps. OpenStreetMap is the basemap, not the route. */
+export function googleMapsDirectionsLink(address: string, city?: string | null): string {
+	const query = mapsSearchQuery(address, city);
+	return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;
+}
+
+const BODY_MAP_LINK = /\[🗺️\]\(https?:\/\/[^)\s]+\)/g;
+
+/**
+ * Point the note's map icon at the current Map Link.
+ * Address text is left unchanged. Other links are left unchanged.
+ */
+export function refreshBodyMapLink(markdown: string, url: string): string {
+	if (!url.trim()) return markdown;
+	return markdown.replace(BODY_MAP_LINK, `[🗺️](${url})`);
+}
+
+function collapseAddress(value: string): string {
+	return value.replace(/[\r\n]+/g, ' ').replace(/[ \t]{2,}/g, ' ').trim();
+}
+
+function addressAlreadyNamesCity(address: string, city: string): boolean {
+	if (parseDisplayAddress(address)?.city) return true;
+	const token = city.toLowerCase();
+	if (!token) return true;
+	const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	return new RegExp(`(?:^|[,\\s])${escaped}(?:$|[,\\s])`, 'i').test(address);
 }
 
 export function parseGeocodeBody(body: unknown): GeocodeHit[] {

@@ -1,0 +1,794 @@
+/*
+  Phone-safe RV Dashboard. Same rules as the plugin styles.css .rv-dashboard block.
+  The New RV template adds cssclass `rv-dashboard`.
+
+  Enable this snippet when RV Locator is off:
+  1. Copy this file to <vault>/.obsidian/snippets/rv-dashboard.css
+  2. Settings → Appearance → CSS snippets → turn on "rv-dashboard"
+
+  With RV Locator enabled, the plugin stylesheet already includes these rules.
+  This file does not style cssclass hide-props. Keep that in the vault’s own snippet.
+*/
+
+.rv-dashboard.markdown-preview-view,
+.rv-dashboard.markdown-reading-view,
+.rv-dashboard.markdown-source-view,
+.markdown-preview-view.rv-dashboard,
+.markdown-reading-view.rv-dashboard,
+.markdown-source-view.rv-dashboard {
+	overflow-x: hidden;
+	max-width: 100%;
+}
+
+.rv-dashboard .callout-content {
+	max-width: 100%;
+	overflow-x: hidden;
+	overflow-wrap: anywhere;
+}
+
+.rv-dashboard .callout-content :is(p, div, span, input, select, textarea, button) {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+/* Hubs and Address sit in a quote strip above the collapsed dashboard. Same width cap. */
+.rv-dashboard :is(input, select, textarea, button, a) {
+	max-width: 100%;
+	min-width: 0;
+	box-sizing: border-box;
+}
+
+.rv-dashboard a {
+	overflow-wrap: anywhere;
+}
+
+.rv-dashboard .callout {
+	max-width: 100%;
+	overflow-x: hidden;
+	border-radius: var(--radius-m, 8px);
+}
+
+/*
+  RV Dashboard callout ([!rv]) blends into the note.
+  Surfaces come from the theme so light and dark stay quiet.
+  --background-primary matches the page; --background-secondary lifts the quote strip.
+*/
+.rv-dashboard .callout[data-callout="rv"] {
+	background-color: var(--background-primary);
+	background-image: none;
+	border-color: var(--background-modifier-border);
+	box-shadow: none;
+	color: var(--text-normal);
+	mix-blend-mode: normal;
+}
+
+.rv-dashboard .callout[data-callout="rv"] .callout-title,
+.rv-dashboard .callout[data-callout="rv"] .callout-title-inner,
+.rv-dashboard .callout[data-callout="rv"] .callout-icon {
+	background-color: transparent;
+	color: var(--text-muted);
+}
+
+.rv-dashboard blockquote {
+	margin: 0.35em 0 0.6em;
+	padding: 0.2em 0.7em;
+	border-left: 2px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	background-color: var(--background-secondary);
+	font-weight: var(--font-semibold);
+}
+
+.rv-dashboard blockquote p,
+.rv-dashboard .callout[data-callout="rv"] .callout-content p {
+	margin-block: 0.2em;
+}
+
+.rv-dashboard blockquote :is(input, select, textarea),
+.rv-dashboard .callout[data-callout="rv"] :is(input, select, textarea) {
+	padding: 2px 6px;
+	min-height: 1.6em;
+}
+
+.rv-dashboard blockquote a {
+	text-decoration: none;
+}
+
+.rv-dashboard hr {
+	border: none;
+	border-top: 1px solid var(--background-modifier-border);
+	margin: 0.7em 0 0.45em;
+}
+
+/*
+  Meta Bind 1.x renders BUTTON[a, b] as:
+    .mb-button-group.mb-button-group-inline
+      > span.mb-button.mb-button-inline
+        > button.mb-button-inner
+  The class from the button block lands on the span, not the <button>.
+  button.mb-button never matches, so these rules do not use it.
+  They also do not require cssclass rv-dashboard. The buttons sit inside
+  the RV Dashboard quote callout.
+*/
+.mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
+	display: inline-flex;
+	flex-wrap: nowrap;
+	align-items: stretch;
+	gap: 0.4em;
+	box-sizing: border-box;
+	width: min(100%, var(--rv-dash-column, 100%));
+	max-width: 100%;
+	vertical-align: middle;
+}
+
+body.rv-wide-visit-buttons .mb-button-group.mb-button-group-inline:has(> .mb-button.rv-visit-btn) {
+	width: 100%;
+}
+
+/* Four icon-only buttons on one line, sharing the dashboard column. The tooltip gives each one its name. */
+span.mb-button.rv-visit-btn {
+	display: inline-flex;
+	flex: 1 1 0;
+	min-width: 0;
+	max-width: none;
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner {
+	--rv-visit-btn-bg: var(--interactive-accent);
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 0;
+	width: 100%;
+	min-width: 0;
+	max-width: none;
+	height: 2rem;
+	min-height: 2rem;
+	margin: 0;
+	padding: 0;
+	border: 1px solid var(--rv-visit-btn-bg);
+	border-radius: var(--radius-s, 6px);
+	background-color: var(--rv-visit-btn-bg);
+	box-shadow: none;
+	color: var(--text-on-accent);
+	line-height: 1;
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn > button.mb-button-inner:hover {
+	filter: brightness(1.12);
+}
+
+span.mb-button.rv-visit-btn > button.mb-button-inner :is(.mb-icon-wrapper, .mb-button-icon) {
+	display: inline-flex;
+	margin: 0;
+}
+
+span.mb-button.rv-visit-btn > button.mb-button-inner svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
+}
+
+/*
+  Pull a very light or very dark accent toward the middle, then step down.
+  The lightest button is a bit darker than the raw accent. The darkest is
+  lighter than a hard mix toward black. relative color() clamps lightness
+  when the browser has it; color-mix is the fallback.
+*/
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(1) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 78%, oklch(0.62 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.52, l, 0.68) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(2) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 62%, oklch(0.48 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.44, calc(l - 0.08), 0.6) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(3) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 48%, oklch(0.38 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.36, calc(l - 0.16), 0.52) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:nth-child(4) > button.mb-button-inner {
+	--rv-visit-btn-bg: color-mix(in oklab, var(--interactive-accent) 36%, oklch(0.32 0 0));
+	--rv-visit-btn-bg: oklch(from var(--interactive-accent) clamp(0.3, calc(l - 0.24), 0.46) c h);
+}
+
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:first-child > button.mb-button-inner,
+.mb-button-group.mb-button-group > span.mb-button.rv-visit-btn:last-child > button.mb-button-inner {
+	border-top-left-radius: var(--radius-s, 6px);
+	border-top-right-radius: var(--radius-s, 6px);
+	border-bottom-right-radius: var(--radius-s, 6px);
+	border-bottom-left-radius: var(--radius-s, 6px);
+}
+
+/*
+  Hubs and Address are soft-wrapped lines of one paragraph, each starting
+  with a <strong> label. One column layout for the dashboard:
+  label | field | Hub + or 🗺️. The Hub item and the Address box share one
+  width, so the map link lines up under the Hub plus button. Quick Facts
+  and Attempt Log end at that same right edge (--rv-dash-column), so the
+  note reads as one column. Registered properties resolve the em values
+  once, on the note, so inputs and tables with a smaller font keep the same
+  lengths. Return Suggestions can also be a quote callout, so it is
+  excluded from the Hubs / Address rules.
+*/
+@property --rv-dash-label {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-field {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-plus {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-gap {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+@property --rv-dash-column {
+	syntax: "<length>";
+	inherits: true;
+	initial-value: 0px;
+}
+
+.rv-dashboard {
+	--rv-dash-label: 5.25em;
+	--rv-dash-field: 11em;
+	--rv-dash-plus: 2.1em;
+	--rv-dash-gap: 0.22em;
+	--rv-dash-column: calc(var(--rv-dash-label) + var(--rv-dash-field) + var(--rv-dash-gap) + var(--rv-dash-plus) + 0.3em);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
+	display: inline-block;
+	width: var(--rv-dash-label);
+	margin: 0;
+	font-weight: var(--font-semibold);
+	white-space: nowrap;
+}
+
+/*
+  Hub and Address share one max-content column, sized to the longer label
+  ("Address:"), with the same 0.22em gap. The label text is never clipped.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	--rv-hub-gap: 0.22em;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: var(--rv-dash-pad, 12px);
+	justify-items: start;
+	text-align: start;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+	grid-column: 1 / -1;
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: 0.22em;
+	width: 100%;
+}
+
+@supports (grid-template-columns: subgrid) {
+	.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+		grid-template-columns: subgrid;
+		column-gap: inherit;
+	}
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	display: inline-flex;
+	grid-column: 1;
+	width: max-content;
+	max-width: none;
+	overflow: visible;
+	text-overflow: clip;
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > :is(input.rv-address-input, a.rv-address-link),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row {
+	grid-column: 2;
+	justify-self: stretch;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-item {
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type])) {
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a {
+	display: inline-block;
+	width: var(--rv-dash-plus);
+	margin-left: 0;
+	text-align: center;
+	vertical-align: middle;
+}
+
+/*
+  The Hub plus and the map button share one box: --rv-dash-plus wide and
+  one input tall, so the map pin sits directly under the plus. The map link
+  is drawn by the plugin as a map-pin icon, without the external-link mark,
+  and the plugin drops the space before it. The Address input has no inline
+  padding, so its box ends where the Hub item does.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > code.mb-input {
+	padding-inline: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p .mb-inline-list-add,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: var(--rv-dash-plus);
+	min-width: var(--rv-dash-plus);
+	height: var(--input-height, 2em);
+	padding: 0;
+	vertical-align: middle;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > a.rv-map-button {
+	margin-left: 0;
+	border: 1px solid color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+	border-radius: var(--button-radius, var(--radius-s, 4px));
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	background-image: none;
+	color: var(--text-muted);
+	text-decoration: none;
+}
+
+.rv-dashboard a.rv-map-button:hover {
+	color: var(--text-normal);
+}
+
+.rv-dashboard a.rv-map-button svg {
+	width: var(--icon-s, 16px);
+	height: var(--icon-s, 16px);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
+	max-width: min(100%, var(--rv-dash-column));
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] {
+	max-width: min(100%, var(--rv-dash-column));
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log table,
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] table {
+	box-sizing: border-box;
+	width: 100%;
+	max-width: 100%;
+	table-layout: auto;
+}
+
+.rv-dashboard .callout.rv-locator-attempt-log :is(th, td),
+.rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] :is(th, td) {
+	padding: 0.25em 0.4em;
+	white-space: nowrap;
+}
+
+/* A table wider than the column scrolls instead of being cut off. */
+.rv-dashboard .callout.rv-locator-attempt-log > .callout-content {
+	overflow-x: auto;
+}
+
+/* Attempt Log width: Full width, or Automatic with days as columns. */
+body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-attempt-log,
+body.rv-attempt-log-wide .rv-dashboard .callout.rv-locator-return-suggestions > .callout-content > .callout[data-callout="note"] {
+	max-width: 100%;
+}
+
+/* Only the calendar date is small. The weekday, exact time, and dash stay body size. */
+.rv-dashboard .rv-log-date {
+	color: var(--text-muted);
+	font-size: 0.72em;
+	font-weight: var(--font-normal, 400);
+	letter-spacing: 0;
+}
+
+/*
+  Only the Address text box, the Hub list items, and the Hub plus button are
+  darkened. Their wrappers keep the callout background. Quick Facts sits in
+  a nested callout, not a direct paragraph, and is not matched.
+*/
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p :is(input[type="text"], input:not([type]), textarea, .mb-inline-list-item, .mb-inline-list-add) {
+	background-color: color-mix(in srgb, var(--background-primary) 74%, #000);
+	color: var(--text-normal);
+	border-color: color-mix(in srgb, var(--background-modifier-border) 65%, var(--text-faint));
+}
+
+/*
+  Visit notes under each stamp are Meta Bind textAreas. One line when
+  empty, growing with the text to five lines, then scrolling. The plugin
+  sets the height as you type and on every open; field-sizing does the same
+  where the browser supports it.
+*/
+.rv-dashboard textarea {
+	--rv-notes-pad: 0.3em;
+	box-sizing: border-box;
+	width: 100%;
+	padding: var(--rv-notes-pad) 0.6em;
+	line-height: 1.45;
+	resize: none;
+	field-sizing: content;
+	min-height: calc(1lh + 2 * var(--rv-notes-pad) + 2 * var(--input-border-width, 1px));
+	max-height: calc(5lh + 2 * var(--rv-notes-pad) + 2 * var(--input-border-width, 1px));
+	overflow-y: auto;
+}
+
+/* Edit or delete one visit: an ellipsis after each stamp and each Attempt Log line. */
+.rv-visit-more {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	margin-left: 0.35em;
+	padding: 0.1em 0.25em;
+	height: auto;
+	vertical-align: middle;
+	background: none;
+	box-shadow: none;
+	color: var(--text-faint);
+	--icon-size: var(--icon-xs, 14px);
+}
+
+.rv-visit-more:hover,
+.rv-visit-more:focus-visible {
+	color: var(--text-normal);
+}
+
+.rv-visit-more svg {
+	width: var(--icon-xs, 14px);
+	height: var(--icon-xs, 14px);
+}
+
+/*
+  Hide callout type icons on RV notes (quote mark, list, pencil). The title
+  shifts left because the icon is out of the flex row, not covered.
+  Scoped to cssclasses rv-dashboard.
+
+  RV notes open in Reading view, and visit notes are Meta Bind textAreas,
+  so the callout source is not revealed while typing a note.
+*/
+.rv-dashboard .callout-icon {
+	display: none;
+}
+
+.rv-dashboard .callout-title {
+	gap: 0;
+}
+
+/*
+  Center-align toggles in Settings → Everyday → RV note layout. Each one is
+  a body class, so the RV Dashboard, the visit notes, and Return
+  Suggestions can be centered on their own.
+*/
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) .callout-title {
+	justify-content: center;
+}
+
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) .callout-content {
+	text-align: center;
+}
+
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content .callout[data-callout="rv"] {
+	margin-inline: auto;
+}
+
+body.rv-center-dashboard .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p > strong {
+	text-align: start;
+}
+
+body.rv-center-visit-notes .rv-dashboard :is(h3.rv-visit-notes-heading, h5.rv-visit-stamp) {
+	text-align: center;
+}
+
+body.rv-center-visit-notes .rv-dashboard textarea {
+	text-align: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-title {
+	justify-content: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout-content {
+	text-align: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout,
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions table {
+	margin-inline: auto;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions :is(th, td) {
+	text-align: center;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions ul {
+	padding-inline-start: 0;
+	list-style-position: inside;
+}
+
+.rv-qf-badges {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
+	margin-left: auto;
+}
+
+.rv-dashboard .callout[data-callout="rv"] > .callout-title {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+}
+
+.rv-qf-body {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2em;
+}
+
+.rv-qf-row {
+	display: grid;
+	grid-template-columns: 1.25em 8.2em minmax(0, 1fr);
+	align-items: center;
+	column-gap: 0.4em;
+}
+
+.rv-qf-icon {
+	display: inline-flex;
+	color: var(--text-muted);
+}
+
+.rv-qf-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-qf-value {
+	justify-self: end;
+	min-width: 0;
+	text-align: right;
+}
+
+.rv-qf-control {
+	width: 9em;
+	max-width: 100%;
+}
+
+.rv-qf-taken.is-met-with {
+	color: var(--text-accent);
+	font-weight: 650;
+}
+
+.rv-hub-owned :is(.mb-inline-list, .mb-suggest-container, .mb-suggest) {
+	display: none;
+}
+
+.rv-hub-row {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.25em;
+	box-sizing: border-box;
+	width: var(--rv-dash-field);
+	max-width: var(--rv-dash-field);
+	vertical-align: middle;
+}
+
+.rv-hub-chip {
+	display: inline-flex;
+	flex: 1 1 0;
+	align-items: center;
+	min-width: 0;
+	overflow: hidden;
+	padding: 0 0.35em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s, 4px);
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.rv-hub-remove,
+.rv-hub-add {
+	flex: 0 0 auto;
+	margin: 0;
+	padding: 0 0.25em;
+	border: 0;
+	background: transparent;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > .callout[data-callout="rv"],
+body.rv-wide-quick-facts .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > * > .callout[data-callout="rv"] {
+	max-width: 100%;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong) {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
+	align-items: center;
+	column-gap: 0.22em;
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong):not(.rv-hub-owned) {
+	display: flex;
+	align-items: center;
+	gap: var(--rv-dash-gap);
+}
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p:has(> strong) :is(input[type="text"], input:not([type])),
+body.rv-wide-hubs .rv-hub-row {
+	flex: 1 1 auto;
+	width: auto;
+	max-width: none;
+}
+
+.inline-title .rv-note-status {
+	display: inline-flex;
+	align-items: center;
+	margin-right: 0.35em;
+	color: var(--text-muted);
+	vertical-align: -0.12em;
+}
+
+.inline-title .rv-note-status svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-locator-status-icon,
+.rv-locator-place-earth {
+	display: inline-flex;
+	margin-right: 0.3em;
+	color: var(--text-muted);
+	vertical-align: -0.15em;
+}
+
+.rv-locator-status-icon svg,
+.rv-locator-place-earth svg {
+	width: 1em;
+	height: 1em;
+}
+
+.rv-locator-place {
+	cursor: pointer;
+}
+
+.rv-map-soon {
+	padding: 1.5rem 1.25rem;
+}
+
+.rv-dashboard {
+	--rv-dash-pad: 12px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content {
+	padding-left: var(--rv-dash-pad);
+	padding-right: var(--rv-dash-pad);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+	column-gap: var(--rv-dash-pad);
+}
+
+/* Same lock as styles.css, so a snippet enabled after the plugin cannot put the buttons back under the labels. */
+
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned,
+body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned:has(> strong),
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr) 40px;
+	column-gap: var(--rv-dash-pad, 12px);
+	row-gap: 8px;
+	align-items: center;
+	justify-items: stretch;
+	text-align: start;
+	width: 100%;
+	max-width: 100%;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line {
+	display: contents;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > strong,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > strong {
+	grid-column: 1;
+	justify-self: start;
+	text-align: start;
+	width: max-content;
+	max-width: none;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-row,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input,
+body.rv-wide-hubs .rv-hub-row {
+	grid-column: 2;
+	width: 100%;
+	min-width: 0;
+	max-width: 100%;
+}
+
+body.rv-wide-hubs .rv-dashboard a.internal-link.rv-hub-chip,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-address-link,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > input.rv-address-input {
+	box-sizing: border-box;
+	height: 40px;
+	min-height: 40px;
+	max-height: 40px;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > .rv-hub-line > .rv-hub-add,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-content > p.rv-hub-owned > a.rv-map-button,
+.rv-hub-add,
+.rv-dashboard a.rv-map-button {
+	grid-column: 3;
+	box-sizing: border-box;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 40px;
+	height: 40px;
+	min-width: 40px;
+	max-width: 40px;
+	min-height: 40px;
+	padding: 0;
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-campaign,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-status,
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .rv-dash-rename {
+	color: var(--text-normal);
+}
+
+.rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-return-suggestions) > .callout-title .callout-title-inner {
+	font-size: 1.15em;
+	font-weight: var(--font-semibold, 600);
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-return-suggestions .callout.rv-locator-attempt-log > .callout-title {
+	justify-content: flex-start;
+	text-align: start;
+}
+
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log > .callout-content,
+body.rv-center-suggestions .rv-dashboard .callout.rv-locator-attempt-log :is(li, p, ul, ol) {
+	text-align: start;
+}

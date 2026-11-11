@@ -1,0 +1,209 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { describe, it } from 'node:test';
+import { GLANCE_MATCH_SCOPE, glanceRecordFromNote, matchesGlanceQuery, parseGlanceQuery } from '../src/glance-search';
+import { stripRenameState } from '../src/rename-guard';
+import { isRvLocatorSurface } from '../src/rv-note-view';
+import { pinMatches, storeFrontmatter } from '../src/visit-paint-guard';
+
+const source = (file: string): string => readFileSync(file, 'utf8');
+
+describe('locked next build', () => {
+	it('RV-67A keeps a stale parse from replacing the visit pin', () => {
+		const pinned = {
+			'Last Spoke': '2026-11-02T15:00:00',
+			Visits: 4,
+			'Left Publications': 'Will Suffering Ever End?',
+		};
+		const stale = {
+			'Last Spoke': '2026-10-01T15:00:00',
+			Visits: 3,
+			'Left Publications': '',
+			Address: '123 Oak St',
+		};
+		const behind = storeFrontmatter(stale, pinned);
+		assert.equal(behind.clearPin, false);
+		assert.equal(behind.stored['Last Spoke'], '2026-11-02T15:00:00');
+		assert.equal(behind.stored.Visits, 4);
+		assert.equal(behind.stored.Address, '123 Oak St');
+		const fresh = { ...stale, ...pinned };
+		assert.equal(pinMatches(fresh, pinned), true);
+		const caughtUp = storeFrontmatter(fresh, pinned);
+		assert.equal(caughtUp.clearPin, true);
+		assert.equal(caughtUp.stored.Visits, 4);
+		const main = source('src/main.ts');
+		const commit = main.slice(main.indexOf('private async commitVisit'), main.indexOf('promptPastVisit(file: TFile)'));
+		assert.ok(commit.indexOf('writeVisitHeadThenBody') < commit.indexOf('rememberShare'));
+		assert.equal(commit.includes('vault.process'), false);
+		const changed = main.slice(main.indexOf("metadataCache.on('changed'"), main.indexOf("vault.on('modify'"));
+		assert.match(changed, /storeFrontmatter/);
+		assert.match(changed, /clearPin/);
+		const front = main.slice(main.indexOf('noteFrontmatter(path: string)'), main.indexOf('private async writeAddress'));
+		assert.equal(front.includes('this.visitPaint.delete'), false);
+	});
+
+	it('RV-157 strips a Templater rename request after New RV', () => {
+		assert.deepEqual(stripRenameState({ rename: 'all', mode: 'preview' }), { mode: 'preview' });
+		assert.deepEqual(stripRenameState({ mode: 'preview' }), { mode: 'preview' });
+		assert.equal(stripRenameState(null), null);
+		const main = source('src/main.ts');
+		const launch = main.slice(main.indexOf('private async launchNewRvTemplate'), main.indexOf('private async writeNewRvShare'));
+		assert.match(launch, /installRenameSwallow\(WorkspaceLeaf\)/);
+		assert.match(launch, /dismissNoteTitleModal/);
+		assert.match(source('src/new-rv-modal.ts'), /Address is required\./);
+		assert.match(source('src/new-rv-modal.ts'), /Gender is required\./);
+		assert.match(source('src/new-rv-modal.ts'), /private gender: RvGender \| null = null/);
+		const created = source('src/new-rv-modal.ts').slice(0, source('src/new-rv-modal.ts').indexOf('export class EditAttributesModal'));
+		assert.ok(created.indexOf("mountGenderButton(button, 'Woman'") < created.indexOf("mountGenderButton(button, 'Man'"));
+		assert.match(created, /rv-required-label/);
+		assert.match(source('src/new-rv-modal.ts'), /setLimits\(1,\s*5\)/);
+	});
+
+	it('RV-159 routes the heading strip through fitTitleRow and keeps two lines', () => {
+		const controls = source('src/visit-controls.ts');
+		const paint = controls.slice(controls.indexOf('function paintItemStrip'), controls.indexOf('export function fillItemStrip'));
+		assert.match(paint, /fitHeadingStrip/);
+		assert.equal(paint.includes('refitItemStrip'), false);
+		assert.match(controls, /export function fitHeadingStrip/);
+		assert.match(controls, /fitTitleRow\(strip\)/);
+		assert.match(controls, /Campaign stays/);
+		assert.match(controls, /\+n button/);
+		const css = source('styles.css');
+		assert.match(css, /\.rv-item-strip\.is-two-line:not\(\.is-ghost\) > \.rv-strip-break \{[^}]*display:\s*block/);
+		assert.match(css, /\.rv-item-strip:not\(\.is-ghost\) > \.rv-item,[\s\S]{0,80}\.rv-fit \{[^}]*min-width:\s*0/);
+		assert.match(css, /\.rv-item-strip:not\(\.is-ghost\) > \.rv-item\.is-campaign \{[^}]*flex:\s*0 0 auto/);
+	});
+
+	it('RV-74B keeps the age and restroom icon from shrinking', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-locator-file-link \{[^}]*flex:\s*0 1 auto/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-age \{[^}]*flex-shrink:\s*0/);
+		assert.match(css, /\.rv-locator-glancable \.rv-locator-card-name \.rv-title-gender \{[^}]*flex-shrink:\s*0/);
+	});
+
+	it('RV-160D and RV-160E center the embed and cap the frame', () => {
+		const css = source('styles.css');
+		assert.match(css, /--file-margins-x:\s*0px/);
+		assert.match(css, /--file-margins-y:\s*0px/);
+		assert.match(css, /--bases-embed-transform:\s*none/);
+		assert.match(css, /\.is-embed-capped \{[^}]*height:\s*var\(--rv-embed-cap\) !important/);
+		assert.match(css, /transform:\s*none !important/);
+		const view = source('src/glancable-view.ts');
+		const frame = view.slice(view.indexOf('private sizeEmbedFrame'), view.indexOf('private bindHubHandle'));
+		assert.match(frame, /is-embed-capped/);
+		assert.match(frame, /transform', 'none'/);
+		assert.match(frame, /overflow', 'hidden'/);
+		assert.equal(frame.includes("overflow', 'visible'"), false);
+		assert.match(frame, /Math\.max\(160/);
+		assert.equal(isRvLocatorSurface({ cssclasses: ['rv-locator-full-base'] }), true);
+		assert.equal(isRvLocatorSurface({ cssclass: 'rv-dashboard' }), true);
+		assert.equal(isRvLocatorSurface({ cssclasses: ['other'] }), false);
+		const main = source('src/main.ts');
+		assert.match(main, /rv-hide-mobile-nav/);
+		assert.match(main, /isRvLocatorSurface/);
+		assert.match(css, /body\.rv-hide-mobile-nav \.mobile-navbar \{[^}]*display:\s*none !important/);
+		assert.match(css, /content:\s*'Return Visits'/);
+		assert.match(css, /body\.is-phone \.workspace-leaf-content:has\(\.rv-locator-full-base\) > \.view-header::after/);
+		assert.match(css, /body\.is-phone \.markdown-preview-view\.rv-locator-full-base[\s\S]*overflow:\s*hidden !important/);
+		assert.match(css, /body\.is-phone \.markdown-preview-view\.rv-locator-full-base,\s*\nbody\.is-phone \.markdown-reading-view\.rv-locator-full-base[\s\S]*scrollbar-width:\s*none !important/);
+		assert.equal(css.includes('--scrollbar-width: 0px'), false);
+		assert.match(css, /\.modal\.rv-locator-modal button\.rv-priority-seg\.is-selected \{[^}]*box-shadow:[^}]*0 0 0 4px #d6d6d6 !important/);
+		const edit = source('src/new-rv-modal.ts').slice(source('src/new-rv-modal.ts').indexOf('export class EditAttributesModal'));
+		assert.ok(edit.indexOf("mountGenderButton(button, 'Woman'") < edit.indexOf("mountGenderButton(button, 'Man'"));
+		assert.match(source('src/main.ts'), /pointNewNoteAtLogTemplates/);
+		assert.match(source('src/main.ts'), /scheduleReadingDecorate/);
+	});
+
+	it('RV-162 through RV-165 lock the phone forehead and the Visit Facts row', () => {
+		const css = source('styles.css');
+		const phoneAt = css.indexOf('/* RV-162.');
+		const phoneQuote = css.slice(phoneAt, css.indexOf('body.is-phone .markdown-preview-view.rv-locator-full-base', phoneAt));
+		assert.match(phoneQuote, /body\.is-phone \.markdown-preview-view\.rv-dashboard \.markdown-preview-sizer > \.el-div > \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\) \{\s*margin-top:\s*0 !important;\s*\}/);
+		assert.match(phoneQuote, /body\.is-phone \.markdown-preview-view\.rv-dashboard \.markdown-preview-sizer > \.el-div:has\(> \.callout\[data-callout="quote"\]:not\(\.rv-locator-return-suggestions\)\) \{\s*margin-top:\s*-5px !important;\s*\}/);
+		assert.equal(phoneQuote.includes('markdown-source-view'), false);
+		const headAt = css.indexOf('/* RV-163.');
+		const head = css.slice(headAt, css.indexOf('.rv-qf-row {', headAt));
+		assert.match(head, /\.rv-dashboard \.rv-qf-head \{[^}]*gap:\s*0;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-label \{[^}]*font-size:\s*16px;[^}]*font-weight:\s*var\(--bold-weight, 600\);[^}]*line-height:\s*1\.2;[^}]*letter-spacing:\s*normal;[^}]*color:\s*var\(--text-muted\);/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-dot \{[^}]*margin-left:\s*6\.5px;[^}]*margin-right:\s*8\.75px;/);
+		assert.match(head, /body\.is-phone \.rv-dashboard \.rv-qf-head-dot \{[^}]*margin-left:\s*9\.5px;[^}]*margin-right:\s*8\.5px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-count \{[^}]*font-size:\s*10px;[^}]*font-weight:\s*400;[^}]*line-height:\s*11px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-ratio \{[^}]*font-size:\s*10px;[^}]*line-height:\s*11px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-icon \{[^}]*margin-left:\s*-3px;/);
+		assert.match(head, /\.rv-dashboard \.rv-qf-head-icon svg \{[^}]*width:\s*11px;[^}]*height:\s*11px;/);
+		assert.match(head, /\.rv-dashboard \.callout\[data-callout="rv"\] > \.callout-title > \.callout-fold \{[^}]*color:\s*var\(--text-muted\);[^}]*font-weight:\s*var\(--bold-weight, 600\);/);
+		assert.equal(head.includes('font-size: 13px'), false);
+		assert.equal(head.includes('font-size: 11px'), false);
+		assert.equal(head.includes('.rv-qf-badges'), false);
+	});
+
+	it('RV-169 keeps a typed name through the search input handler', () => {
+		const names = ['Jordan Lee', 'Sam Rivera', 'Eve Carter', 'Alexandra Kim', 'Casey Ng', 'Morgan Dale', 'Pat Quinn', 'Riley Quinn'];
+		const query = parseGlanceQuery('Eve', new Date());
+		const kept = names.filter((name) => matchesGlanceQuery(glanceRecordFromNote({
+			name,
+			address: '',
+			city: '',
+			frontmatter: null,
+		}), query));
+		assert.deepEqual(kept, ['Eve Carter']);
+		const view = source('src/glancable-view.ts');
+		const field = view.slice(view.indexOf('private ensureSearchField'), view.indexOf('private clearSearch'));
+		assert.match(field, /addEventListener\('input', \(\) => \{\s*this\.glanceQuery = input\.value;\s*this\.renderBody\(\);\s*\}\)/);
+		assert.equal(field.includes('isTrusted'), false);
+		assert.equal(GLANCE_MATCH_SCOPE, 'all');
+		const daypart = glanceRecordFromNote({
+			name: 'Jordan Hale',
+			address: '1 Oak',
+			city: 'Orlando',
+			frontmatter: null,
+			body: '| Mor | Aft | Eve |',
+		});
+		const eve = parseGlanceQuery('Eve', new Date());
+		assert.equal(matchesGlanceQuery(daypart, eve), true);
+		assert.equal(matchesGlanceQuery(daypart, eve, 'name-address'), false);
+		assert.equal(matchesGlanceQuery(glanceRecordFromNote({
+			name: 'Eve Carter',
+			address: '',
+			city: '',
+			frontmatter: null,
+		}), eve, 'name-address'), true);
+		const nearby = source('src/nearby-view.ts');
+		const paint = nearby.slice(nearby.indexOf('private paintSortPresets'), nearby.indexOf('protected paintSortExtras'));
+		assert.match(paint, /refillKeepingFocus\(this\.sortEl, search/);
+		assert.equal(paint.includes('search.remove()'), false);
+		assert.equal(paint.includes('this.sortEl.empty()'), false);
+	});
+
+	it('RV-173 restores the note-map classes when fullscreen returns', () => {
+		const main = source('src/main.ts');
+		const sync = main.slice(main.indexOf('private syncNoteMap'), main.indexOf('private watchNoteMapBox'));
+		assert.match(sync, /ensureMapShell\(\)/);
+		assert.match(sync, /ensureMapSpacer\(content\)/);
+		assert.match(sync, /shell\.handle/);
+		assert.doesNotMatch(sync, /mountHubMap\(/);
+		const opened = main.slice(main.indexOf('private onNoteOpened'), main.indexOf('private scheduleReadingDecorate'));
+		assert.match(opened, /this\.noteMapOpen && file && file\.path !== this\.mapFocusPath/);
+		const watch = main.slice(main.indexOf('private watchNoteMapBox'), main.indexOf('private armNewRvFocus'));
+		assert.match(watch, /applyNoteMapFrame\(content, width\)/);
+		const map = source('src/map-view.ts');
+		assert.match(map, /keepSplitMapFrame\(\)/);
+		assert.match(map, /keepNoteMapLayout\?\.\(\)/);
+		assert.match(map, /scope: 'hub' \| 'split' = 'hub'/);
+	});
+
+	it('RV-171 anchors the stacked note when the map closes', () => {
+		const main = source('src/main.ts');
+		const openMap = main.slice(main.indexOf('async openMapSoon'), main.indexOf('private noteMapHandle'));
+		const close = openMap.slice(openMap.indexOf('this.noteMapOpen && this.mapFocusPath'), openMap.indexOf('if (path) {'));
+		assert.ok(openMap.indexOf('this.stopVisitFocus') < openMap.indexOf('this.noteMapOpen && this.mapFocusPath'));
+		assert.match(close, /holdReadingPlace/);
+		assert.match(close, /settleReadingPlace/);
+		assert.equal(close.includes('scrollIntoView'), false);
+		assert.equal(close.includes('.focus('), false);
+		assert.match(main, /noteReadingScroller/);
+		const rewrite = main.slice(main.indexOf('private async pointNewNoteAtLogTemplates'), main.indexOf('private async writeNewRvShare'));
+		assert.match(rewrite, /process\(file/);
+		assert.equal(rewrite.includes('getMarkdownFiles'), false);
+	});
+});

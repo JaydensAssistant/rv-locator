@@ -4,6 +4,11 @@ const EARTH_RADIUS_METERS = 6_371_008.8;
 const METERS_PER_MILE = 1609.344;
 const METERS_PER_KILOMETER = 1000;
 
+/** Ideality always uses miles, even when Nearby is showing kilometers. */
+export function milesFromMeters(meters: number): number {
+	return meters / METERS_PER_MILE;
+}
+
 export function haversineMeters(from: LatLon, to: LatLon): number {
 	const toRad = (degrees: number) => (degrees * Math.PI) / 180;
 	const lat1 = toRad(from.lat);
@@ -26,6 +31,18 @@ export function formatDistance(meters: number, unit: DistanceUnit): string {
 
 export function roundCoord(value: number): number {
 	return Math.round(value * 1e7) / 1e7;
+}
+
+/**
+ * Latitude or longitude as text for a YAML list of strings.
+ * Up to 7 decimal places, no scientific notation, no trailing zeros.
+ */
+export function coordString(value: number): string {
+	const rounded = roundCoord(value);
+	if (!Number.isFinite(rounded)) return '0';
+	const fixed = Math.abs(rounded).toFixed(7).replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '');
+	if (fixed === '0' || fixed === '') return '0';
+	return rounded < 0 ? `-${fixed}` : fixed;
 }
 
 export function validLatLon(lat: number, lon: number): LatLon | null {

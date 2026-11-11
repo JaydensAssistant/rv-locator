@@ -1,3 +1,4 @@
+import { URGENCY_COLUMN_ID } from './constants';
 import type { LatLon } from './types';
 import { haversineMeters } from './distance';
 
@@ -18,6 +19,13 @@ export interface DistanceSortable {
 	lat: number | null;
 	lon: number | null;
 	sortKeys: Record<string, Sortable>;
+	/**
+	 * Present on rows annotated for urgency. True puts the row under every
+	 * awake row. Absent keeps the plain urgency comparison.
+	 */
+	urgencySnoozed?: boolean;
+	/** End of an active snooze. Soonest first inside the snoozed group. */
+	urgencySnoozeEnd?: number | null;
 }
 
 /** Header click: ascending, descending, then back to the Base's own order. */
@@ -50,14 +58,60 @@ export function sortRowsBy<T extends DistanceSortable>(
 ): T[] {
 	if (sorts.length === 0) return [...rows];
 	const copy = [...rows];
+	const cityNear = cityNearness(copy, fix);
 	copy.sort((a, b) => {
 		for (const sort of sorts) {
-			const diff = compareRow(a, b, sort, fix, distanceProperty);
+			const diff = sort.property === 'note.City'
+				? compareCity(a, b, sort.direction, fix, cityNear)
+				: compareRow(a, b, sort, fix, distanceProperty);
 			if (diff !== 0) return diff;
 		}
 		return 0;
 	});
 	return copy;
+}
+
+/**
+ * With a position, cities are ordered by the nearest note in that city.
+ * Without one, City is alphabetical. Empty cities sort last.
+ */
+function compareCity(
+	a: DistanceSortable,
+	b: DistanceSortable,
+	direction: SortDirection,
+	fix: LatLon | null,
+	cityNear: Map<string, number>,
+): number {
+	const left = cityText(a);
+	const right = cityText(b);
+	if (!left && !right) return 0;
+	if (!left) return 1;
+	if (!right) return -1;
+	if (fix) {
+		const diff = (cityNear.get(left) ?? Number.POSITIVE_INFINITY) - (cityNear.get(right) ?? Number.POSITIVE_INFINITY);
+		if (diff !== 0) return direction === 'ASC' ? diff : -diff;
+	}
+	const name = left.localeCompare(right, undefined, { numeric: true, sensitivity: 'base' });
+	return direction === 'ASC' ? name : -name;
+}
+
+function cityNearness(rows: readonly DistanceSortable[], fix: LatLon | null): Map<string, number> {
+	const nearest = new Map<string, number>();
+	if (!fix) return nearest;
+	for (const row of rows) {
+		const city = cityText(row);
+		const meters = metersOf(row, fix);
+		if (!city || meters == null) continue;
+		const previous = nearest.get(city);
+		if (previous == null || meters < previous) nearest.set(city, meters);
+	}
+	return nearest;
+}
+
+function cityText(row: DistanceSortable): string {
+	const key = row.sortKeys['note.City'];
+	if (!key || key.kind === 'empty') return '';
+	return displayOf(key).trim();
 }
 
 function compareRow(
@@ -70,9 +124,50 @@ function compareRow(
 	if (sort.property === distanceProperty) {
 		return compareNullableNumber(metersOf(a, fix), metersOf(b, fix), sort.direction);
 	}
+	if (sort.property === URGENCY_COLUMN_ID && (a.urgencySnoozed !== undefined || b.urgencySnoozed !== undefined)) {
+		return compareUrgencyPlacement(
+			{
+				snoozed: a.urgencySnoozed === true,
+				snoozeEndMs: a.urgencySnoozeEnd ?? null,
+				urgency: a.sortKeys[sort.property] ?? { kind: 'empty' },
+			},
+			{
+				snoozed: b.urgencySnoozed === true,
+				snoozeEndMs: b.urgencySnoozeEnd ?? null,
+				urgency: b.sortKeys[sort.property] ?? { kind: 'empty' },
+			},
+			sort.direction,
+		);
+	}
 	const left = a.sortKeys[sort.property] ?? { kind: 'empty' as const };
 	const right = b.sortKeys[sort.property] ?? { kind: 'empty' as const };
 	return compareSortable(left, right, sort.direction);
+}
+
+/**
+ * Urgency order shared by the hub list and the map. An active snooze sorts
+ * under every awake card in either direction. Inside that group the soonest
+ * end comes first, also in either direction. Awake cards keep the usual
+ * empty-last urgency comparison.
+ */
+export function compareUrgencyPlacement(
+	a: { snoozed: boolean; snoozeEndMs: number | null; urgency: Sortable },
+	b: { snoozed: boolean; snoozeEndMs: number | null; urgency: Sortable },
+	direction: SortDirection,
+): number {
+	if (a.snoozed !== b.snoozed) return a.snoozed ? 1 : -1;
+	if (a.snoozed && b.snoozed) {
+		const left = finiteEnd(a.snoozeEndMs);
+		const right = finiteEnd(b.snoozeEndMs);
+		if (left === right) return 0;
+		return left < right ? -1 : 1;
+	}
+	return compareSortable(a.urgency, b.urgency, direction);
+}
+
+function finiteEnd(value: number | null): number {
+	if (value == null || !Number.isFinite(value)) return Number.POSITIVE_INFINITY;
+	return value;
 }
 
 export function compareSortable(a: Sortable, b: Sortable, direction: SortDirection): number {

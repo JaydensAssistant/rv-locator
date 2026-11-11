@@ -20,7 +20,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 1. **Backup** the vault (Obsidian Sync / Git / zip copy). First run should be reversible.
 2. **API key:** Settings store the Geoapify key in local `data.json` only. Prefer a **new restricted Geoapify key** (or the throwaway you planned to revoke) for the first hardware pass. Do not paste keys into chat. `chmod 600` on `data.json` if the OS makes that easy.
 3. **Address is never overwritten** by the plugin. Location / Map Link / City (and optional place fields you enable) may update. Still spot-check Address after the first few geocodes.
-4. Start with **Home base counties empty** so every geocode shows the confirm modal. Turn on counties only after you trust auto-picks on your streets.
+4. Start with **Home counties empty** so every geocode shows the confirm modal. Turn on counties only after a few confirms look right. As of **1.1.1**, auto-pick is confidence 1.00 plus a single in-home hit. Street-token matching was removed. `Location` is written as two quoted strings.
 
 ## A. Install RV Locator
 
@@ -39,7 +39,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 6. Settings → RV Locator:
    - Paste Geoapify API key (local only).
    - Confirm property names match your notes (`Address`, `Location`, `City`, `Visits`, `Successful Visits`, `Last Spoke`, `Last Attempted`, etc.). Leave defaults if your sample base already matched.
-   - **Home base counties:** leave blank for first test.
+   - **Home counties:** leave blank for first test.
    - Distance unit as you prefer.
    - Attribution / privacy: addresses are sent to Geoapify (OSM + Powered by Geoapify).
 
@@ -50,7 +50,7 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 3. With counties empty you **must** get a confirm modal — pick the correct hit.
 4. Check the note:
    - `Address` text unchanged
-   - `Location` / `Map Link` / `City` look right
+   - `Location` is a list of two quoted strings (latitude, then longitude), and `Map Link` / `City` look right
 5. Open your **Return Visits** / Active base → switch to an RV Locator Nearby view (Vanilla or Glancable).
 6. On phone: allow location when prompted; Distance is live in-memory only (not written to the note).
 7. On desktop without GPS: use **Desktop distance testing** in settings only if you want fake coords for layout checks — turn it off for real field use.
@@ -59,8 +59,9 @@ Fake-vault smoke and accuracy are done. This is the checklist for installing on 
 
 1. In Glancable or Vanilla Nearby, tap the **priority** control on a card.
 2. Answer **Were they home?**
-   - Home → Visits++, Successful Visits++, Last Spoke + Last Attempted, mid-note `## Weekday…` blank notes line, Attempt Log `— success`
-   - Not home → Visits++, Last Attempted, Attempt Log `— not home`
+   - Home → Visits++, Successful Visits++, Last Spoke + Last Attempted, mid-note `## Wed, 2pm — Sep 9, 2026` (nearest hour) and a blank notes line above the log, Attempt Log callout `> - … — success`
+   - Not home → Visits++, Last Attempted, Attempt Log callout `> - … — not home`
+   - An old `## Attempt Log` heading is migrated to `> [!note]- Attempt Log` on that write. Address stays unchanged.
 3. Confirm Address still unchanged.
 
 ## D. Optional — Templater + Meta Bind (in-note buttons)
@@ -80,17 +81,29 @@ You already run Templater. Meta Bind JS Engine is **not** required for these but
 
    `BUTTON[rv-log-home, rv-log-miss]`
 
-6. Keep one `## Attempt Log` heading near the bottom of the note.
+6. The note needs a collapsed Attempt Log callout (`> [!note]- Attempt Log`). The script creates it, and it migrates an old `## Attempt Log` heading on the next write.
 7. Adjust `templateFile:` paths if your Templates folder isn’t `Templates/`.
 8. Test Home / Not home on a throwaway note first.
+
+### New RV template (1.1.5)
+
+Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. Or use Settings → **Update Templater / Meta Bind extras from GitHub**. It downloads tag `v1.1.5` only, shows each destination as create or skip, and does not overwrite an existing file unless that checkbox is on. It also copies `geocodeNewRv.js`, `snippets/rv-dashboard.css` under the vault config folder (usually `.obsidian`), and the two docs. It does not write notes, Address, plugin data, or the Geoapify key. The `###` stamp sits directly under Taken. There is no blank line between `---` and the dashboard. Map Link searches the address, and appends City when that address has no city.
+
+### New RV template (1.1.4)
+
+Copy `extras/templater-metabind/newRv.js` and `rvLog.js` to the Templater user-scripts folder, and `New RV.md`, `RV Log Home.md`, and `RV Log Miss.md` to `Templates/`. It asks for the householder and Address, renames to `Name on Street`, and geocodes. The top of the note is a bold quote strip: Hubs, then Address with a 🗺️ link that searches Google Maps for that address. Equal-size Home / Not home buttons sit under that strip and above a divider. The collapsed `[!rv]` dashboard is under the divider. The `Map Link` property is the same search URL (not lat/lon). Creating the note is the first success (Visits and Successful Visits start at 1) with one `###` stamp, a blank notes line, and one Attempt Log success bullet. There is no Log visit label. Home does not add a second copy of a `##` or `###` stamp that is already on the note. Wiring: `extras/templater-metabind/NEW-RV-GEOCODE.md`. cssclass `rv-dashboard` blocks sideways scroll, blends the dashboard, and sizes the two buttons the same. Enable `extras/templater-metabind/rv-dashboard.css` as a snippet only if the plugin is off. No multi-column CSS, and no hide-props CSS, in this pass.
 
 ## E. When to turn on home-base counties
 
 After a few manual confirms look right:
 
-1. Settings → **Home base counties** — one county per line (e.g. `Orange` or `Orange County`).
-2. Auto-pick only when **exactly one** Geoapify hit is in a listed county **and** street tokens match (house number + street words; trailing St/Ave/etc. ignored; directions normalized).
-3. Reminder: `123 Main St` will **not** auto-accept a hit on `123 S Main St` — you’ll get a modal. That is intentional.
+1. Settings → **Home counties** — one county per line (e.g. `Orange` or `Orange County`; those are the same county).
+2. Auto-pick (1.1.1) only when **all** of these are true:
+   - Geoapify `rank.confidence` is **1.00** (a missing confidence never auto-picks)
+   - the hit’s county is in the home list
+   - it is the **only** result in that home-region set
+3. Zero in-home hits, two or more in-home hits, or an empty home list always opens the confirm modal. Choosing a row saves the note. Closing the picker skips it.
+4. Street-word matching is not used. A typed address that does not match Geoapify’s formatting can still auto-pick when the three rules above pass.
 
 ## F. First-session checklist
 

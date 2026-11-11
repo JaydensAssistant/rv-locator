@@ -1,11 +1,24 @@
 import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
-import { SORT_PRESETS, type NearbyScope } from './active-layout';
-import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, OSM_ATTRIBUTION } from './constants';
-import { formatDistance, haversineMeters, validLatLon } from './distance';
+import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
+import { refillKeepingFocus } from './keep-focus';
+import { applyControlSizedPills, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
+import { GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter, type CampaignListFilter } from './status';
+import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
+import { formatGlanceableCounter } from './dates';
+import { Notice } from 'obsidian';
+import { domInstanceOf } from './dom';
+import { formatDistance, haversineMeters, milesFromMeters, validLatLon } from './distance';
 import { LivePosition, type GeoState } from './live-position';
 import { readProperty } from './frontmatter';
 import { buildViewModel, iconForColumn, type CellModel, type ColumnModel, type GroupModel, type RowModel } from './model';
 import type RVLocatorPlugin from './main';
+import { heldGlanceColumns, heldGlanceGroups } from './glance-hold';
+import { hubCacheColumns } from './hub-cache';
+import { annotateRowScores } from './row-score';
+import { APP_TABS, appendAppSlot, dismissOpenMenus, keepMenuOnScreen } from './app-bar';
+import { hostIsHidden } from './hub-cover';
+import { ensureBarSpacer } from './bar-shell';
+import { armHoverTooltip } from './title-fit';
 import { cycleSort, sortRowsBy, type ActiveSort } from './sort';
 import type { BasesPropertyId } from 'obsidian';
 import type { LatLon } from './types';
@@ -15,8 +28,15 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected root: HTMLElement;
 	protected bannerEl!: HTMLElement;
 	protected bannerText!: HTMLElement;
+	private toastedBanner = '';
 	protected scrollEl!: HTMLElement;
 	protected sortEl!: HTMLElement;
+	/** Glancable search sits in the sort bar and replaces the pills while it is open. */
+	protected searchSlot: HTMLElement | null = null;
+	private sortMenuOpen = false;
+	private sortSizeObserver: ResizeObserver | null = null;
+	/** Sort chips live here so they can scroll without moving the New button. */
+	protected sortButtonsEl!: HTMLElement;
 	protected groups: GroupModel[] = [];
 	protected columns: ColumnModel[] = [];
 	protected localSort: ActiveSort;
@@ -36,6 +56,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private resultRetry: number | null = null;
 	private resultFollowUps = 0;
 	private resultQueued = false;
+	/** True after Bases has delivered this view's query. A hold is not that delivery. */
+	protected glanceDataSeen = false;
+	/** Cold first paint came from vault frontmatter, so a refresh can re-read it. */
+	private glanceFromCache = false;
+	private sortPaintStampSeen = '';
+	private dropSort: (() => void) | null = null;
 
 	protected constructor(
 		controller: QueryController,
@@ -50,24 +76,53 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const win = this.root.win ?? window;
 		this.position = new LivePosition(win, (state) => {
 			this.geoState = state;
+			this.plugin.noteLiveFix(state.fix);
 			this.onGeoChanged();
 		});
 		this.syncPositionSource();
 		this.register(() => this.stopLiveUpdates());
 		this.unsubSettings = this.plugin.subscribeViewRefresh(() => {
+			if (!this.root?.isConnected) return;
 			this.localSort = { ...this.plugin.nearbySort };
 			this.syncPositionSource();
 			if (this.data) this.onDataUpdated();
+			else if (this.mode === 'glancable' && !this.glanceDataSeen && this.totalRows() === 0) return;
 			else this.renderBody();
 		});
 		this.register(() => this.unsubSettings?.());
+		const deferOpenBookkeeping = (): void => {
+			if (!this.root?.isConnected) return;
+			this.plugin.nudgeIncompleteSetup();
+			if (this.mode === 'glancable') this.plugin.resetHubFilters();
+		};
+		if (typeof win.requestAnimationFrame === 'function') win.requestAnimationFrame(deferOpenBookkeeping);
+		else deferOpenBookkeeping();
+		if (this.mode === 'glancable') {
+			const stopSort = this.plugin.registerHubSortOpener?.(this.root, () => {
+				const root = this.root;
+				if (!root?.isConnected || root.ownerDocument == null || hostIsHidden(root)) return false;
+				if (typeof root.closest === 'function' && root.closest('.rv-hub-swap-cover')) return false;
+				if (!this.chromeReady) this.ensureChrome();
+				if (!this.sortEl?.isConnected) return false;
+				this.sortMenuOpen = true;
+				this.sortPaintStampSeen = '';
+				this.paintSortPresets();
+				return true;
+			});
+			this.dropSort = typeof stopSort === 'function' ? stopSort : null;
+			if (this.dropSort) this.register(this.dropSort);
+		}
 	}
 
 	override onunload(): void {
+		this.dropSort?.();
+		this.dropSort = null;
+		this.releaseSortSize();
 		this.stopLiveUpdates();
 	}
 
 	onDataUpdated(): void {
+		this.glanceDataSeen = true;
 		this.rebuildModel();
 		this.renderChrome();
 	}
@@ -77,31 +132,189 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	protected renderBody(): void {
 		if (!this.chromeReady) this.ensureChrome();
 		this.paintSortPresets();
+		this.fillScroll();
+		this.syncResultCount();
+		this.armResultFollowUps();
+		this.afterRender();
+	}
+
+	/**
+	 * Replace the list. Glancable overrides this so an unchanged card stays
+	 * the same node and the scroll offset is left alone.
+	 */
+	protected fillScroll(): void {
+		const top = this.scrollEl.scrollTop;
+		const left = this.scrollEl.scrollLeft;
+		const live = this.scrollEl;
+		const doc = live.ownerDocument;
+		const canStage = doc != null && typeof doc.createElement === 'function' && typeof live.replaceChildren === 'function';
+		if (!canStage) {
+			this.fillScrollInPlace();
+			return;
+		}
+		const bucket = doc.createElement('div');
+		this.distanceEls.clear();
+		this.distanceRows.clear();
+		const saved = this.scrollEl;
+		this.scrollEl = bucket;
+		try {
+			this.paintScrollContents();
+		} finally {
+			this.scrollEl = saved;
+		}
+		const nodes = Array.from(bucket.childNodes);
+		const kept = nodes.length === 0 && this.mode === 'glancable' && !this.glanceDataSeen && live.querySelector('.rv-locator-card') != null;
+		if (!kept) live.replaceChildren(...nodes);
+		if (live.scrollTop !== top) live.scrollTop = top;
+		if (live.scrollLeft !== left) live.scrollLeft = left;
+		this.afterListSwap();
+	}
+
+	/** A test double with no document. Production always stages into a real element. */
+	private fillScrollInPlace(): void {
 		const top = this.scrollEl.scrollTop;
 		const left = this.scrollEl.scrollLeft;
 		this.scrollEl.empty();
 		this.distanceEls.clear();
 		this.distanceRows.clear();
+		this.paintScrollContents();
+		if (this.scrollEl.scrollTop !== top) this.scrollEl.scrollTop = top;
+		if (this.scrollEl.scrollLeft !== left) this.scrollEl.scrollLeft = left;
+		this.afterListSwap();
+	}
+
+	private paintScrollContents(): void {
 		if (this.totalRows() === 0) {
-			this.scrollEl.createDiv({
-				cls: 'rv-locator-empty',
-				text: 'No notes match this view.',
-			});
+			if (!(this.mode === 'glancable' && !this.glanceDataSeen)) {
+				this.scrollEl.createDiv({
+					cls: 'rv-locator-empty',
+					text: 'No notes match this view.',
+				});
+				this.root.removeClass('is-glance-pending');
+			}
 		} else {
 			this.paint();
+			this.root.removeClass('is-glance-pending');
 		}
-		this.scrollEl.scrollTop = top;
-		this.scrollEl.scrollLeft = left;
-		this.syncResultCount();
-		this.armResultFollowUps();
+		this.paintListTail();
+	}
+
+	/** Glancable snaps cards and rings after the new list is in the live scroller. */
+	protected afterListSwap(): void {}
+
+	/** Glancable retags the Bases toolbar after each paint. */
+	protected afterRender(): void {}
+
+	/** Sort bar and scroller, once, before the first cards. */
+	protected openChrome(): void {
+		if (!this.chromeReady) this.ensureChrome();
+		this.paintSortPresets();
+	}
+
+	/** The file whose list this view may replay. Empty in tests that share one slot. */
+	protected glanceMemoryKey(): string {
+		return '';
+	}
+
+	/**
+	 * This view's own cached rows. A keyed base does not borrow the hub's list.
+	 * The caller paints. This does not build cards.
+	 */
+	protected loadCachedModel(key = this.glanceMemoryKey()): boolean {
+		const held = heldGlanceGroups(key);
+		if (held) {
+			this.glanceFromCache = false;
+			this.groups = held;
+			this.columns = heldGlanceColumns(key) ?? hubCacheColumns(this.plugin.settings.locationProperty);
+			return true;
+		}
+		if (key.toLowerCase().endsWith('.base')) return false;
+		const cached = this.readHubCache();
+		if (!cached) return false;
+		this.columns = cached.columns;
+		this.groups = cached.groups;
+		this.glanceFromCache = true;
+		this.groups = this.rankedGroups();
+		return true;
+	}
+
+	/**
+	 * Paint cards before the first browser frame. A warm hub replays its own
+	 * last list. A cold hub paints the vault cache. Bases reconciles later.
+	 */
+	protected adoptHeldGlance(): void {
+		if (this.mode !== 'glancable') return;
+		if (this.loadCachedModel(this.glanceMemoryKey())) {
+			this.renderBody();
+			return;
+		}
+		if (!this.glanceDataSeen) this.root.addClass('is-glance-pending');
+	}
+
+	/** A hidden embed was shown. Bases data wins once it has arrived; otherwise the cache. */
+	protected resumeAfterShow(): void {
+		if (this.glanceDataSeen || this.chromeReady) this.renderBody();
+		else this.adoptHeldGlance();
+	}
+
+	/** Re-read vault frontmatter until Bases has delivered this view. */
+	protected refreshHubCacheGroups(): void {
+		if (!this.glanceFromCache || this.glanceDataSeen) return;
+		const cached = this.readHubCache();
+		if (!cached) return;
+		this.columns = cached.columns;
+		this.groups = cached.groups;
+	}
+
+	private readHubCache(): { columns: ColumnModel[]; groups: GroupModel[] } | null {
+		const read = this.plugin.hubCacheModel;
+		if (typeof read !== 'function') return null;
+		const cached = read.call(this.plugin);
+		if (!cached || cached.groups.every((group) => group.rows.length === 0)) return null;
+		return cached;
+	}
+
+	/** Last thing in the scrolling list. Glancable puts the disclaimer here. */
+	protected paintListTail(): void {}
+
+	/** Glancable opens the search field in place of the pills. */
+	protected openGlanceSearch(): void {}
+
+	/**
+	 * Full list in the persisted sort, including B53 snooze order. Search and
+	 * the snooze filter are applied later. The vault-cache open uses this so
+	 * the cover and the live hub paint the same order.
+	 */
+	protected rankedGroups(): GroupModel[] {
+		const sorts = this.effectiveSorts();
+		const fix = this.positionFix();
+		const now = new Date();
+		if (this.plugin.settings.homeLikelihoodEnabled) {
+			const paths = this.groups.flatMap((group) => group.rows.map((row) => row.path));
+			this.plugin.prefetchAttemptBuckets(paths);
+		}
+		return this.groups.map((group) => ({
+			label: group.label,
+			rows: sortRowsBy(
+				group.rows.map((row) => this.withScores(row, now)),
+				sorts,
+				fix,
+				DISTANCE_COLUMN_ID,
+			),
+		}));
 	}
 
 	protected sortedGroups(): GroupModel[] {
-		const sorts = this.effectiveSorts();
-		return this.groups.map((group) => ({
-			label: group.label,
-			rows: sortRowsBy(group.rows, sorts, this.positionFix(), DISTANCE_COLUMN_ID),
-		}));
+		return this.rankedGroups();
+	}
+
+	private withScores(row: RowModel, now: Date): RowModel {
+		const meters = this.metersFor(row);
+		const miles = meters == null ? null : milesFromMeters(meters);
+		const buckets = this.plugin.settings.homeLikelihoodEnabled
+			? this.plugin.cachedAttemptBuckets(row.path)
+			: null;
+		return annotateRowScores(row, miles, this.plugin.settings, buckets, now, this.plugin.snoozeUntilFor(row.path));
 	}
 
 	/** Last-used sort, persisted on the plugin. Nearest re-sorts in this view as the fix moves. */
@@ -171,11 +384,10 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (cell.rest) wrap.createSpan({ cls: 'rv-locator-cal', text: cell.rest });
 		if (cell.daysSince != null) {
 			const days = cell.daysSince;
-			const label = days === 1 ? '1 calendar day' : `${days} calendar days`;
 			parent.createSpan({
 				cls: 'rv-locator-days',
-				text: `${days}d`,
-				attr: { title: label },
+				text: formatGlanceableCounter(days),
+				attr: { title: formatGlanceableCounter(days) },
 			});
 		}
 	}
@@ -191,8 +403,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		const open = (evt: MouseEvent) => {
 			if (evt.button !== 0 && evt.button !== 1) return;
 			evt.preventDefault();
-			const newLeaf = Keymap.isModEvent(evt) || evt.button === 1;
-			void this.app.workspace.openLinkText(path, '', newLeaf);
+			const modified = Keymap.isModEvent(evt) || evt.button === 1;
+			if (!modified && this.plugin.hubMapOpen) {
+				this.plugin.keepMapWithNote(path);
+				return;
+			}
+			void this.app.workspace.openLinkText(path, '', modified);
 		};
 		link.addEventListener('click', open);
 		link.addEventListener('auxclick', open);
@@ -237,7 +453,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			settings: this.plugin.settings,
 			mode: this.mode,
 			scope: this.scope,
-			noteValue: (file, name) => readProperty(this.app.metadataCache.getFileCache(file)?.frontmatter, name),
+			returnScope: this.mode === 'glancable' ? this.plugin.settings.returnScope : undefined,
+			genderFilter: this.mode === 'glancable' ? this.plugin.settings.genderFilter : undefined,
+			campaignListFilter: this.mode === 'glancable' ? this.plugin.settings.campaignListFilter : undefined,
+			campaignMark: (path) => this.plugin.campaignMark(path),
+			noteValue: (file, name) => readProperty(this.plugin.noteFrontmatter(file.path), name),
 		});
 		this.columns = model.columns;
 		this.groups = model.groups;
@@ -259,9 +479,16 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		this.bannerEl.hide();
 		this.sortEl = this.root.createDiv('rv-locator-sortbar');
 		this.scrollEl = this.root.createDiv('rv-locator-scroll');
-		const attr = this.root.createDiv('rv-locator-attr');
-		attr.setText(`${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}`);
+		if (this.mode !== 'glancable') {
+			const attr = this.root.createDiv('rv-locator-attr');
+			attr.createSpan({ cls: 'rv-locator-disclaimer', text: NON_AFFILIATION_NOTICE });
+			attr.createSpan({ cls: 'rv-locator-attr-credits', text: `${OSM_ATTRIBUTION} · ${GEOAPIFY_ATTRIBUTION}` });
+		}
+		this.afterChrome();
 	}
+
+	/** Phone hub inserts the map stack once the scroll column exists. */
+	protected afterChrome(): void {}
 
 	private renderBanner(): void {
 		if (!this.chromeReady) return;
@@ -269,6 +496,11 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		if (!message) {
 			this.bannerEl.hide();
 			this.bannerEl.removeClass('is-test');
+			return;
+		}
+		if (message.test || message.error) {
+			this.bannerEl.hide();
+			this.plugin.notifyLocationOnce(message.text);
 			return;
 		}
 		this.bannerText.setText(message.text);
@@ -283,7 +515,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			const lat = this.plugin.settings.testLatitude;
 			const lon = this.plugin.settings.testLongitude;
 			return {
-				text: `Desktop distance testing is on. Distances use the test coordinates ${lat}, ${lon} from settings, not this device. Distance is not written into notes.`,
+				text: `Desktop distance testing is on, using ${lat}, ${lon} instead of this device. Distance is not written into notes.`,
 				error: false,
 				test: true,
 			};
@@ -294,7 +526,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			return {
 				text: this.quietBanner
 					? 'Location access is denied, so distance shows a dash.'
-					: 'Location access is denied. Allow location for Obsidian to calculate distance. Distance is not written into your notes.',
+					: 'Location access is denied. Allow location for Obsidian to show distance. Distance is not written into notes.',
 				error: true,
 				test: false,
 			};
@@ -307,16 +539,16 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				return { text: where, error: false, test: false };
 			}
 			const where = Platform.isMobile || Platform.isMobileApp
-				? 'This device has no position fix, so distance shows a dash.'
-				: 'This desktop has no position fix, so distance shows a dash. Obsidian Mobile can use GPS.';
+				? 'This device has no position, so distance shows a dash.'
+				: 'This desktop has no position, so distance shows a dash. Obsidian Mobile can use GPS.';
 			return {
-				text: `${where} Distance is calculated live and is not written into notes.`,
+				text: `${where} Distance is not written into notes.`,
 				error: true,
 				test: false,
 			};
 		}
 		return {
-			text: 'Looking for your position… Distance stays in this view and is not written into notes.',
+			text: 'Looking for your position. Distance stays in this view and is not written into notes.',
 			error: false,
 			test: false,
 		};
@@ -325,7 +557,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	private onGeoChanged(): void {
 		this.renderBanner();
 		if (!this.chromeReady) return;
-		if (this.effectiveSorts()[0]?.property === DISTANCE_COLUMN_ID) {
+		const sortedBy = this.effectiveSorts()[0]?.property;
+		if (sortedBy === DISTANCE_COLUMN_ID || sortedBy === IDEALITY_COLUMN_ID) {
 			const win = this.root.win ?? window;
 			if (this.geoTimer != null) return;
 			this.geoTimer = win.setTimeout(() => {
@@ -347,7 +580,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 				el.toggleClass('is-live', live);
 				el.toggleClass('is-missing', !live);
 				el.setAttr('aria-label', live ? `Distance ${distance}` : 'Distance unavailable');
-				el.setAttr('title', live ? distance : 'No position');
+				armHoverTooltip(el, live ? distance : 'No position', { touch: false });
 				continue;
 			}
 			el.setText(row ? this.distanceLabel(row) : '—');
@@ -360,8 +593,8 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		return haversineMeters(fix, { lat: row.lat, lon: row.lon });
 	}
 
-	private totalRows(): number {
-		return this.groups.reduce((sum, group) => sum + group.rows.length, 0);
+	protected totalRows(): number {
+		return this.sortedGroups().reduce((sum, group) => sum + group.rows.length, 0);
 	}
 
 	private readOrder(): BasesPropertyId[] {
@@ -378,24 +611,196 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		return column?.id ?? property;
 	}
 
+	private sortPaintStamp(): string {
+		const settings = this.plugin.settings;
+		const chips = visibleSortPresets(settings.sortChips).map((preset) => preset.id).join(',');
+		return [
+			this.localSort.property,
+			this.localSort.direction,
+			this.sortMenuOpen ? '1' : '0',
+			this.mode,
+			chips,
+			this.plugin.hubMapOpen ? '1' : '0',
+			settings.returnScope,
+			settings.genderFilter,
+			settings.campaignListFilter,
+			settings.snoozeListFilter,
+		].join('|');
+	}
+
 	private paintSortPresets(): void {
-		this.sortEl.empty();
+		if (!this.sortEl?.isConnected) return;
+		const stamp = this.sortPaintStamp();
+		const sortRow = this.root.ownerDocument?.querySelector('.rv-bar-shell > .rv-bar-sort');
+		if (stamp === this.sortPaintStampSeen && this.sortEl.querySelector('.rv-locator-sort-scroll, .rv-app-bar, .rv-bar-spacer')) {
+			if (!this.sortMenuOpen || sortRow) return;
+		}
+		this.sortPaintStampSeen = stamp;
+		this.releaseSortSize();
+		const savedScroll = this.sortButtonsEl?.scrollLeft ?? 0;
+		const search = this.searchSlot;
+		const searchHosted = search?.closest('.rv-bar-shell') instanceof HTMLElement;
+		const glancable = this.mode === 'glancable';
+		refillKeepingFocus(this.sortEl, searchHosted ? null : search, () => {
+		if (glancable) {
+			this.paintGlancableTabs();
+			if (search && !searchHosted && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
+			return;
+		}
+		this.sortButtonsEl = this.sortEl.createDiv('rv-locator-sort-scroll');
+		const pillHost = this.sortButtonsEl;
 		const current = this.localSort;
-		for (const preset of SORT_PRESETS) {
-			const active = current.property.toLowerCase() === preset.property.toLowerCase()
-				&& current.direction === preset.direction;
-			const button = this.sortEl.createEl('button', {
+		for (const preset of visibleSortPresets(this.plugin.settings.sortChips)) {
+			const active = current.property.toLowerCase() === preset.property.toLowerCase();
+			const label = sortPresetChipLabel(preset, active ? current.direction : null);
+			const button = pillHost.createEl('button', {
 				cls: `rv-locator-sort-preset${active ? ' is-active' : ''}`,
-				text: preset.label,
 				attr: {
 					type: 'button',
 					'aria-pressed': active ? 'true' : 'false',
+					'aria-label': label,
 				},
 			});
+			const marks = button;
+			const icon = marks.createSpan('rv-sort-icon');
+			setIcon(icon, sortPresetIcon(preset.id));
+			if (active) {
+				button.addClass(current.direction === 'ASC' ? 'is-asc' : 'is-desc');
+				const arrow = marks.createSpan('rv-sort-arrow');
+				arrow.setAttr('aria-hidden', 'true');
+				setIcon(arrow, sortDirectionArrow(current.direction));
+			}
+			button.createSpan({ cls: 'rv-sort-label', text: sortPresetShortLabel(preset) });
 			button.addEventListener('click', () => {
-				this.plugin.setNearbySort({ property: preset.property, direction: preset.direction });
+				this.plugin.setNearbySort(nextPresetSort(this.localSort, preset));
 			});
 		}
+		this.paintSortExtras();
+		equalizeSortPills(pillHost);
+		if (search && search.parentElement !== this.sortEl) this.sortEl.appendChild(search);
+		});
+		if (this.sortButtonsEl) this.sortButtonsEl.scrollLeft = savedScroll;
+		if (glancable && this.sortMenuOpen) {
+			this.bindSortWheel(this.sortButtonsEl);
+			this.watchSortPillSize();
+		}
+	}
+
+	/** A vertical wheel scrolls the pill track. The track is only wider than the pane. */
+	private bindSortWheel(track: HTMLElement): void {
+		track.addEventListener('wheel', (event) => {
+			if (track.scrollWidth <= track.clientWidth) return;
+			const delta = horizontalScrollDelta(event.deltaX, event.deltaY, event.shiftKey);
+			if (!delta) return;
+			event.preventDefault();
+			track.scrollLeft += delta;
+		}, { passive: false });
+	}
+
+	private watchSortPillSize(): void {
+		const pills = this.sortButtonsEl.querySelector('.rv-locator-sort-pills');
+		if (!(pills instanceof HTMLElement)) return;
+		const apply = (): void => { applyControlSizedPills(this.sortEl, pills); };
+		apply();
+		if (typeof ResizeObserver !== 'function') return;
+		this.sortSizeObserver = new ResizeObserver(() => apply());
+		this.sortSizeObserver.observe(this.sortEl);
+	}
+
+	private releaseSortSize(): void {
+		this.sortSizeObserver?.disconnect();
+		this.sortSizeObserver = null;
+	}
+
+	protected paintSortExtras(): void {
+		// Ideality planner was removed in 1.2.6. It may return later.
+	}
+
+	/** The shared bar stays outside this view. Sort options fill its one row. */
+	private paintGlancableTabs(): void {
+		if (!this.sortEl?.isConnected || this.sortEl.ownerDocument == null) return;
+		// The cover stops above the real bar. A spacer here is a second empty band.
+		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) {
+			this.sortEl.querySelector(':scope > .rv-bar-spacer')?.remove();
+			return;
+		}
+		ensureBarSpacer(this.sortEl);
+		if (!this.sortMenuOpen) {
+			const file = this.plugin.app.workspace.getActiveFile?.();
+			if (file) this.plugin.syncAppBarFromActive();
+			else if (this.plugin.barIsHeld()) this.plugin.followAppBar();
+			else this.plugin.syncAppBar('hub', '');
+		} else {
+			this.plugin.followAppBar();
+		}
+		const surface = this.plugin.barSurface();
+		if (this.sortMenuOpen && surface === 'hub') {
+			const bar = this.plugin.sortBarHost();
+			bar.replaceChildren();
+			this.sortButtonsEl = bar;
+			this.barSlot(bar, 'Close', 'x', false, () => {
+				this.sortMenuOpen = false;
+				this.paintSortPresets();
+			});
+			const order = ['urgency', 'distance', 'attempted', 'spoke', 'priority', 'met', 'city', 'ideality'];
+			const presets = visibleSortPresets(this.plugin.settings.sortChips)
+				.slice()
+				.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+			const current = this.localSort;
+			for (const preset of presets) {
+				const active = current.property.toLowerCase() === preset.property.toLowerCase();
+				this.barSlot(bar, sortPresetShortLabel(preset), sortPresetIcon(preset.id), active, () => {
+					this.plugin.setNearbySort(nextPresetSort(this.localSort, preset));
+					this.paintSortPresets();
+				});
+			}
+			bar.createDiv('rv-app-divider');
+			const settings = this.plugin.settings;
+			const campaignLabel: Record<CampaignListFilter, string> = { all: 'All', uncovered: 'Uncovered', covered: 'Covered' };
+			this.barSlot(bar, SNOOZE_FILTER_LABEL[settings.snoozeListFilter], 'moon', settings.snoozeListFilter !== 'all', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setSnoozeListFilter(nextSnoozeListFilter(this.plugin.settings.snoozeListFilter)); });
+			}, settings.snoozeListFilter !== 'all', 'is-filter');
+			this.barSlot(bar, RETURN_SCOPE_LABEL[settings.returnScope], 'layers', settings.returnScope !== 'active', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setReturnScope(nextReturnScope(this.plugin.settings.returnScope)); });
+			}, settings.returnScope !== 'active', 'is-filter');
+			this.barSlot(bar, GENDER_FILTER_LABEL[settings.genderFilter], 'user', settings.genderFilter !== 'all', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setGenderFilter(nextGenderFilter(this.plugin.settings.genderFilter)); });
+			}, settings.genderFilter !== 'all', 'is-filter');
+			this.barSlot(bar, campaignLabel[settings.campaignListFilter], 'flag', settings.campaignListFilter !== 'all', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setCampaignListFilter(nextCampaignListFilter(this.plugin.settings.campaignListFilter)); });
+			}, settings.campaignListFilter !== 'all', 'is-filter');
+			return;
+		}
+		if (this.sortMenuOpen && surface !== 'hub') this.sortMenuOpen = false;
+		this.plugin.closeBarSort();
+	}
+
+	private barSlot(
+		bar: HTMLElement,
+		label: string,
+		icon: string,
+		on: boolean,
+		action: (event: MouseEvent) => void,
+		dot = false,
+		extra = '',
+	): void {
+		const button = appendAppSlot(bar, label, icon, { on, dot, extra });
+		button.addEventListener('click', (event) => {
+			event.preventDefault();
+			action(event);
+		});
+	}
+
+	/** One tap moves to the next saved value. The choice menu stays closed. */
+	private cycleFilter(event: MouseEvent, apply: () => void): void {
+		const slot = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+		if (slot && typeof slot.scrollIntoView === 'function') {
+			try { slot.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* The slot is already on screen. */ }
+		}
+		dismissOpenMenus(event.view?.document ?? this.root.ownerDocument);
+		apply();
+		this.paintSortPresets();
+		keepMenuOnScreen(slot);
 	}
 
 	private syncPositionSource(): void {
@@ -486,6 +891,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			this.resultQueued = false;
 			if (!this.root.isConnected) return;
 			this.paintResultCount();
+			this.afterRender();
 		});
 	}
 
@@ -542,7 +948,7 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		setIcon(icon, iconForColumn(column, sample?.sortKeys[column.id]));
 		button.createSpan({ cls: 'rv-locator-th-label', text: column.displayName });
 		const sortIcon = button.createSpan('rv-locator-th-sort');
-		setIcon(sortIcon, direction === 'ASC' ? 'chevron-up' : 'chevron-down');
+		setIcon(sortIcon, direction === 'ASC' ? 'arrow-up' : 'arrow-down');
 		if (!direction) sortIcon.addClass('is-idle');
 		button.addEventListener('click', () => this.cycleColumn(column.id));
 		const aria = direction === 'ASC' ? 'ascending' : direction === 'DESC' ? 'descending' : 'none';
@@ -565,7 +971,7 @@ function toolbarForHost(host: HTMLElement): HTMLElement | null {
 	let found: HTMLElement | null = null;
 	host.querySelectorAll('.bases-toolbar').forEach((toolbar) => {
 		if (found) return;
-		if (!toolbar.instanceOf(HTMLElement)) return;
+		if (!domInstanceOf(toolbar, HTMLElement)) return;
 		if (toolbar.closest('.bases-embed, .block-language-base, .view-content') !== host) return;
 		found = toolbar;
 	});
@@ -575,7 +981,7 @@ function toolbarForHost(host: HTMLElement): HTMLElement | null {
 function deepestResultLabels(scope: HTMLElement, viewRoot: HTMLElement): HTMLElement[] {
 	const matches: HTMLElement[] = [];
 	scope.querySelectorAll('*').forEach((node) => {
-		if (!node.instanceOf(HTMLElement)) return;
+		if (!domInstanceOf(node, HTMLElement)) return;
 		if (viewRoot.contains(node)) return;
 		if (!isResultCountText(node.textContent ?? '')) return;
 		matches.push(node);
@@ -609,7 +1015,7 @@ function writeResultText(el: HTMLElement, text: string): void {
 	const walker = el.ownerDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
 	let current = walker.nextNode();
 	while (current) {
-		if (current.instanceOf(Text)) texts.push(current);
+		if (domInstanceOf(current, Text)) texts.push(current);
 		current = walker.nextNode();
 	}
 	const numeric = texts.find((node) => /^\s*\d+\s*$/.test(node.textContent ?? ''));
@@ -635,4 +1041,18 @@ function replaceToken(raw: string, token: string, next: string): string {
 	const index = raw.indexOf(token);
 	if (index < 0) return next;
 	return raw.slice(0, index) + next + raw.slice(index + token.length);
+}
+
+function sortPresetIcon(id: string): string {
+	const icons: Record<string, string> = {
+		ideality: 'sparkles',
+		urgency: 'siren',
+		distance: 'ruler',
+		priority: 'gauge',
+		spoke: 'message-circle',
+		attempted: 'clock',
+		met: 'door-open',
+		city: 'building-2',
+	};
+	return icons[id] ?? 'arrow-up-down';
 }
