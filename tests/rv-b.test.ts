@@ -2310,3 +2310,216 @@ describe('RV-269 the urgency ring opens a popover', () => {
 		ring.remove();
 	});
 });
+
+describe('RV-B98 note find keeps the caret', () => {
+	it('types past the first character, marks split text, and steps matches', () => {
+		const doc = window.document;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf-content is-rv-note';
+		const content = doc.createElement('div');
+		content.className = 'view-content';
+		const editor = doc.createElement('div');
+		editor.className = 'cm-content';
+		const embed = doc.createElement('div');
+		embed.className = 'cm-embed-block';
+		embed.setAttribute('contenteditable', 'false');
+		embed.textContent = 'Harrison widget';
+		const south = doc.createElement('p');
+		const har = doc.createElement('span');
+		har.textContent = 'Har';
+		const rison = doc.createElement('span');
+		rison.textContent = 'rison south';
+		south.append(har, rison);
+		const north = doc.createElement('p');
+		north.textContent = 'north Harrison';
+		editor.append(embed, south, north);
+		content.appendChild(editor);
+		leaf.appendChild(content);
+		const bar = doc.createElement('div');
+		bar.className = 'rv-bar-shell';
+		doc.body.append(leaf, bar);
+		assert.equal(revealNoteMatch(content, 'Harrison', 0), 0);
+		assert.equal(embed.querySelector('.rv-note-find-mark'), null);
+		const split = [...south.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join('');
+		assert.equal(split, 'Harrison');
+		assert.equal(south.querySelectorAll('.rv-note-find-current').length, 2);
+		assert.equal(revealNoteMatch(content, 'Harrison', 1), 1);
+		assert.equal([...north.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), 'Harrison');
+		const slot = openNoteFind(leaf, bar);
+		const input = slot.querySelector('input');
+		assert.ok(input instanceof window.HTMLInputElement);
+		input.focus();
+		let typed = '';
+		for (const ch of 'Harrison') {
+			typed += ch;
+			input.value = typed;
+			input.dispatchEvent(new window.Event('input', { bubbles: true }));
+			assert.equal(doc.activeElement, input);
+			assert.equal(input.value, typed);
+		}
+		const typedMark = [...content.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join('');
+		assert.equal(typedMark, 'Harrison');
+		assert.equal(embed.querySelector('.rv-note-find-mark'), null);
+		const selection = doc.getSelection();
+		const anchor = selection?.anchorNode ?? null;
+		assert.equal(Boolean(anchor && content.contains(anchor)), false);
+		input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+		assert.equal(doc.activeElement, input);
+		assert.equal([...north.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), 'Harrison');
+		assert.equal([...south.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), '');
+		input.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+		assert.equal(doc.activeElement, input);
+		assert.equal([...south.querySelectorAll('.rv-note-find-current')].map((node) => node.textContent).join(''), 'Harrison');
+		closeNoteFind(leaf);
+		assert.equal(content.querySelector('.rv-note-find-mark'), null);
+		leaf.remove();
+		bar.remove();
+		assert.doesNotMatch(source('src/note-hub-bar.ts'), /getSelection/);
+		const css = source('styles.css');
+		assert.match(css, /\.rv-note-find-mark \{[^}]*var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+		const marks = css.slice(css.indexOf('.rv-note-find-mark {'), css.indexOf('body > .rv-map-grip.is-pinned'));
+		assert.doesNotMatch(marks, /#[0-9a-fA-F]{3,8}/);
+	});
+});
+
+describe('RV-B96 bar search is one joined field', () => {
+	it('insets the field, drops the pill, and rings the host', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-bar-shell > \.rv-locator-search-slot \{[^}]*padding-left:\s*16px;\s*padding-right:\s*16px;/);
+		const fieldStart = css.indexOf('.rv-suggest-host > input,\n.rv-locator-modal .rv-suggest-host > input,\n.rv-locator-search > .rv-locator-search-input {');
+		const field = css.slice(fieldStart, css.indexOf('.rv-suggest-host > input::placeholder', fieldStart));
+		assert.match(field, /height:\s*40px/);
+		assert.match(field, /border-radius:\s*6px 0 0 6px/);
+		assert.match(field, /appearance:\s*none/);
+		assert.match(field, /-webkit-appearance:\s*none/);
+		assert.match(field, /\.rv-suggest-host > input:is\(\[type="date"\][\s\S]*\{[^}]*appearance:\s*auto/);
+		assert.match(field, /\.rv-suggest-host > input\[type\]:focus-visible,\s*\n\.rv-locator-search > \.rv-locator-search-input:focus,\s*\n\.rv-locator-search > \.rv-locator-search-input:focus-visible \{[^}]*box-shadow:\s*none/);
+		assert.match(field, /\.rv-suggest-host:focus-within \{[^}]*box-shadow:\s*0 0 0 2px var\(--rv-modal-accent, var\(--interactive-accent, var\(--rv-hub-accent\)\)\)/);
+		assert.match(css, /\.rv-locator-modal \.rv-suggest-host,\s*\n\.rv-suggest-host \{[^}]*gap:\s*0/);
+		assert.match(css, /\.rv-locator-search > button\.rv-suggest-chevron,\s*\n\.rv-suggest-host > button\.rv-suggest-chevron \{[^}]*border-radius:\s*0 6px 6px 0/);
+	});
+});
+
+describe('RV-B97 bar search caret uses the accent', () => {
+	it('follows the shell accent in the hub and in a note', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-bar-shell \.rv-locator-search\.rv-suggest-host,\s*\n\.rv-bar-shell \.rv-locator-search-input \{[^}]*--caret-color:\s*var\(--rv-modal-accent, var\(--interactive-accent, var\(--rv-hub-accent\)\)\);\s*caret-color:\s*var\(--rv-modal-accent, var\(--interactive-accent, var\(--rv-hub-accent\)\)\)/);
+		const caret = css.slice(css.indexOf('.rv-bar-shell .rv-locator-search.rv-suggest-host,\n.rv-bar-shell .rv-locator-search-input {'), css.indexOf('.rv-suggest-host > input,'));
+		assert.doesNotMatch(caret, /#[0-9a-fA-F]{3,8}/);
+	});
+});
+
+describe('RV-272 hub search words for coverage and snooze', () => {
+	it('matches campaign coverage and snooze before the name', () => {
+		const ada = { name: 'Ada', gender: 'Woman', status: 'Active', age: 40, campaign: 'covered' as const, snoozed: false };
+		const ben = { name: 'Ben', gender: 'Man', status: 'Active', age: 40, campaign: 'open' as const, snoozed: true };
+		const cara = { name: 'Covered Lane', gender: 'Woman', status: 'Active', age: 40, campaign: null, snoozed: false };
+		assert.equal(matchesHubSearch(ada, 'covered'), true);
+		assert.equal(matchesHubSearch(ben, 'covered'), false);
+		assert.equal(matchesHubSearch(cara, 'covered'), false);
+		assert.equal(matchesHubSearch(ben, 'uncovered'), true);
+		assert.equal(matchesHubSearch(ada, 'uncovered'), false);
+		assert.equal(matchesHubSearch(cara, 'uncovered'), false);
+		assert.equal(matchesHubSearch(ben, 'snoozed'), true);
+		assert.equal(matchesHubSearch(ada, 'snoozed'), false);
+		assert.equal(matchesHubSearch({ name: 'Snoozed Sam', gender: 'Man', status: 'Active', age: 20, snoozed: false }, 'snoozed'), false);
+		assert.equal(matchesHubSearch(ada, 'unsnoozed'), true);
+		assert.equal(matchesHubSearch(ben, 'unsnoozed'), false);
+		assert.equal(matchesHubSearch(ada, 'covered unsnoozed'), true);
+		assert.equal(matchesHubSearch(ben, 'covered snoozed'), false);
+		assert.equal(matchesHubSearch({ name: 'Ada', gender: 'Woman', status: 'Active', age: 40 }, 'covered'), false);
+		assert.equal(matchesHubSearch({ name: 'Ada', gender: 'Woman', status: 'Active', age: 40 }, 'uncovered'), false);
+		const glance = source('src/glancable-view.ts');
+		const fields = glance.slice(glance.indexOf('private hubFields'), glance.indexOf('listCardWidth(): number'));
+		assert.match(fields, /campaignMark\(row\.path\)/);
+		assert.match(fields, /snoozeActiveFor\(row\.path\)/);
+	});
+});
+
+describe('RV-273 filter buttons cycle', () => {
+	it('steps Snoozed, Scope, Gender, and Campaign without a menu', () => {
+		const doc = window.document;
+		const bar = doc.createElement('div');
+		bar.className = 'rv-bar-sort rv-app-bar is-scroll';
+		const settings = {
+			...DEFAULT_SETTINGS,
+			distanceTest: true,
+			snoozeListFilter: 'all' as const,
+			returnScope: 'active' as const,
+			genderFilter: 'all' as const,
+			campaignListFilter: 'all' as const,
+		};
+		const calls: string[] = [];
+		const plugin = glancePlugin({ refresh: null }, {
+			settings,
+			barSurface: () => 'hub',
+			sortBarHost: () => bar,
+			followAppBar: () => {},
+			setSnoozeListFilter: (id: typeof settings.snoozeListFilter) => { settings.snoozeListFilter = id; calls.push(`snooze:${id}`); },
+			setReturnScope: (id: typeof settings.returnScope) => { settings.returnScope = id; calls.push(`scope:${id}`); },
+			setGenderFilter: (id: typeof settings.genderFilter) => { settings.genderFilter = id; calls.push(`gender:${id}`); },
+			setCampaignListFilter: (id: typeof settings.campaignListFilter) => { settings.campaignListFilter = id; calls.push(`campaign:${id}`); },
+			setNearbySort: () => { calls.push('sort'); },
+		});
+		const host = doc.createElement('div');
+		doc.body.append(host, bar);
+		const view = new NearbyGlancableView({} as QueryController, host, plugin) as NearbyGlancableView & {
+			sortMenuOpen: boolean;
+			ensureChrome(): void;
+			paintSortPresets(): void;
+		};
+		view.ensureChrome();
+		view.sortMenuOpen = true;
+		view.paintSortPresets();
+		const labelOf = (name: string) => [...bar.querySelectorAll('.rv-app-slot')].find((slot) => slot.querySelector('.rv-app-label')?.textContent === name) as HTMLButtonElement | undefined;
+		assert.equal(labelOf('City')?.classList.contains('is-filter'), false);
+		assert.equal(labelOf('Snoozed + not')?.classList.contains('is-on'), false);
+		labelOf('Snoozed + not')?.click();
+		assert.equal(settings.snoozeListFilter, 'snoozed');
+		assert.equal(labelOf('Snoozed only')?.classList.contains('is-on'), true);
+		assert.equal(labelOf('Snoozed only')?.classList.contains('has-dot'), true);
+		labelOf('Snoozed only')?.click();
+		assert.equal(labelOf('Not snoozed')?.textContent !== undefined, true);
+		labelOf('Not snoozed')?.click();
+		assert.equal(settings.snoozeListFilter, 'all');
+		labelOf('Active')?.click();
+		assert.equal(settings.returnScope, 'rvs');
+		assert.equal(labelOf('RVs Only')?.classList.contains('is-on'), true);
+		labelOf('Men+Women')?.click();
+		assert.equal(settings.genderFilter, 'men');
+		assert.equal(labelOf('Men')?.classList.contains('has-dot'), true);
+		labelOf('All')?.click();
+		assert.equal(settings.campaignListFilter, 'uncovered');
+		assert.equal(labelOf('Uncovered')?.classList.contains('is-on'), true);
+		assert.equal(doc.querySelector('.menu'), null);
+		assert.equal(calls.includes('sort'), false);
+		assert.match(calls.join(','), /snooze:snoozed/);
+		assert.doesNotMatch(source('src/nearby-view.ts'), /openChoiceMenu|new Menu\(/);
+		assert.match(source('src/nearby-view.ts'), /keepMenuOnScreen/);
+		assert.match(source('src/nearby-view.ts'), /scrollIntoView/);
+		host.remove();
+		bar.remove();
+		clearGlanceHold();
+	});
+});
+
+describe('RV-274 filter labels name the current value', () => {
+	it('uses the menu labels and lets a long one size to its text', () => {
+		const css = source('styles.css');
+		assert.match(css, /\.rv-app-bar\.is-scroll > \.rv-app-slot\.is-filter \{[^}]*width:\s*max-content/);
+		assert.match(css, /\.rv-app-bar\.is-scroll > \.rv-app-slot\.is-filter \.rv-app-label \{[^}]*max-width:\s*none/);
+		const nearby = source('src/nearby-view.ts');
+		const row = nearby.slice(nearby.indexOf("bar.createDiv('rv-app-divider')"), nearby.indexOf('private cycleFilter'));
+		assert.match(row, /SNOOZE_FILTER_LABEL\[settings\.snoozeListFilter\]/);
+		assert.match(row, /RETURN_SCOPE_LABEL\[settings\.returnScope\]/);
+		assert.match(row, /GENDER_FILTER_LABEL\[settings\.genderFilter\]/);
+		assert.match(row, /campaignLabel\[settings\.campaignListFilter\]/);
+		assert.match(row, /uncovered: 'Uncovered'/);
+		assert.match(row, /'is-filter'/);
+		assert.match(source('src/status.ts'), /all: 'Snoozed \+ not'/);
+		assert.match(source('src/status.ts'), /snoozed: 'Snoozed only'/);
+		assert.match(source('src/status.ts'), /awake: 'Not snoozed'/);
+		assert.match(source('src/status.ts'), /rvs: 'RVs Only'/);
+		assert.match(source('src/status.ts'), /men: 'Men'/);
+	});
+});

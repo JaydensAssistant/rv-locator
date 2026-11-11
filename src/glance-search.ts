@@ -326,6 +326,9 @@ export interface HubSearchFields {
 	gender: string;
 	status: string;
 	age: number | null;
+	/** Campaign coverage. Null when no campaign is active. `open` is uncovered. */
+	campaign?: 'covered' | 'open' | null;
+	snoozed?: boolean;
 }
 
 const HUB_GENDER: Record<string, string> = {
@@ -340,7 +343,10 @@ const HUB_STATUS = new Set(['study', 'active', 'inactive']);
 /**
  * Every term must match. man/male and woman/female are Gender, a bare number
  * is that Age, 30s is the decade, and study/active/inactive are Status.
- * Anything else is a case-insensitive piece of the RV name.
+ * covered and uncovered are campaign coverage. snoozed and unsnoozed are the
+ * snooze. Those words are checked before the name, so a name that contains
+ * one of them does not match on the letters alone. Anything else is a
+ * case-insensitive piece of the RV name.
  */
 export function matchesHubSearch(fields: HubSearchFields, raw: string): boolean {
 	const terms = raw.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -359,5 +365,9 @@ function hubTermMatches(fields: HubSearchFields, term: string): boolean {
 		return fields.age >= start && fields.age <= start + 9;
 	}
 	if (/^\d+$/.test(term)) return fields.age === Number(term);
+	if (term === 'covered') return fields.campaign === 'covered';
+	if (term === 'uncovered') return fields.campaign === 'open';
+	if (term === 'snoozed') return fields.snoozed === true;
+	if (term === 'unsnoozed') return fields.snoozed !== true;
 	return fields.name.toLowerCase().includes(term);
 }

@@ -1,8 +1,8 @@
-import { BasesView, HoverPopover, Keymap, Menu, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
+import { BasesView, HoverPopover, Keymap, Platform, setIcon, type HoverParent, type QueryController } from 'obsidian';
 import { nextPresetSort, sortDirectionArrow, sortPresetChipLabel, sortPresetShortLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { refillKeepingFocus } from './keep-focus';
 import { applyControlSizedPills, equalizeSortPills, horizontalScrollDelta } from './sort-pills';
-import { CAMPAIGN_LIST_ORDER, GENDER_FILTER_LABEL, GENDER_FILTER_ORDER, RETURN_SCOPE_LABEL, RETURN_SCOPE_ORDER, SNOOZE_FILTER_LABEL, SNOOZE_FILTER_ORDER, type CampaignListFilter } from './status';
+import { GENDER_FILTER_LABEL, RETURN_SCOPE_LABEL, SNOOZE_FILTER_LABEL, nextCampaignListFilter, nextGenderFilter, nextReturnScope, nextSnoozeListFilter, type CampaignListFilter } from './status';
 import { DISTANCE_COLUMN_ID, GEOAPIFY_ATTRIBUTION, HOVER_SOURCE, IDEALITY_COLUMN_ID, NON_AFFILIATION_NOTICE, OSM_ATTRIBUTION } from './constants';
 import { formatGlanceableCounter } from './dates';
 import { Notice } from 'obsidian';
@@ -751,10 +751,19 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 			}
 			bar.createDiv('rv-app-divider');
 			const settings = this.plugin.settings;
-			this.barSlot(bar, 'Snoozed', 'moon', settings.snoozeListFilter !== 'all', (event) => this.openSnoozeMenu(event), settings.snoozeListFilter !== 'all');
-			this.barSlot(bar, 'Scope', 'layers', settings.returnScope !== 'active', (event) => this.openScopeMenu(event), settings.returnScope !== 'active');
-			this.barSlot(bar, 'Gender', 'user', settings.genderFilter !== 'all', (event) => this.openGenderMenu(event), settings.genderFilter !== 'all');
-			this.barSlot(bar, 'Campaign', 'flag', settings.campaignListFilter !== 'all', (event) => this.openCampaignFilterMenu(event), settings.campaignListFilter !== 'all');
+			const campaignLabel: Record<CampaignListFilter, string> = { all: 'All', uncovered: 'Uncovered', covered: 'Covered' };
+			this.barSlot(bar, SNOOZE_FILTER_LABEL[settings.snoozeListFilter], 'moon', settings.snoozeListFilter !== 'all', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setSnoozeListFilter(nextSnoozeListFilter(this.plugin.settings.snoozeListFilter)); });
+			}, settings.snoozeListFilter !== 'all', 'is-filter');
+			this.barSlot(bar, RETURN_SCOPE_LABEL[settings.returnScope], 'layers', settings.returnScope !== 'active', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setReturnScope(nextReturnScope(this.plugin.settings.returnScope)); });
+			}, settings.returnScope !== 'active', 'is-filter');
+			this.barSlot(bar, GENDER_FILTER_LABEL[settings.genderFilter], 'user', settings.genderFilter !== 'all', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setGenderFilter(nextGenderFilter(this.plugin.settings.genderFilter)); });
+			}, settings.genderFilter !== 'all', 'is-filter');
+			this.barSlot(bar, campaignLabel[settings.campaignListFilter], 'flag', settings.campaignListFilter !== 'all', (event) => {
+				this.cycleFilter(event, () => { void this.plugin.setCampaignListFilter(nextCampaignListFilter(this.plugin.settings.campaignListFilter)); });
+			}, settings.campaignListFilter !== 'all', 'is-filter');
 			return;
 		}
 		if (this.sortMenuOpen && surface !== 'hub') this.sortMenuOpen = false;
@@ -777,51 +786,15 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 		});
 	}
 
-	private openSnoozeMenu(event: MouseEvent): void {
-		this.openChoiceMenu(event, SNOOZE_FILTER_ORDER, SNOOZE_FILTER_LABEL, this.plugin.settings.snoozeListFilter, (id) => {
-			void this.plugin.setSnoozeListFilter(id);
-		});
-	}
-
-	private openScopeMenu(event: MouseEvent): void {
-		this.openChoiceMenu(event, RETURN_SCOPE_ORDER, RETURN_SCOPE_LABEL, this.plugin.settings.returnScope, (id) => {
-			void this.plugin.setReturnScope(id);
-		});
-	}
-
-	private openGenderMenu(event: MouseEvent): void {
-		this.openChoiceMenu(event, GENDER_FILTER_ORDER, GENDER_FILTER_LABEL, this.plugin.settings.genderFilter, (id) => {
-			void this.plugin.setGenderFilter(id);
-		});
-	}
-
-	private openCampaignFilterMenu(event: MouseEvent): void {
-		const labels: Record<CampaignListFilter, string> = { all: 'All', uncovered: 'Uncovered', covered: 'Covered' };
-		this.openChoiceMenu(event, CAMPAIGN_LIST_ORDER, labels, this.plugin.settings.campaignListFilter, (id) => {
-			void this.plugin.setCampaignListFilter(id);
-		});
-	}
-
-	private openChoiceMenu<T extends string>(
-		event: MouseEvent,
-		order: readonly T[],
-		labels: Record<T, string>,
-		current: T,
-		choose: (id: T) => void,
-	): void {
-		dismissOpenMenus(event.view?.document ?? this.root.ownerDocument);
-		const menu = new Menu();
-		for (const id of order) {
-			menu.addItem((item) => item
-				.setTitle(labels[id])
-				.setChecked(id === current)
-				.onClick(() => { choose(id); }));
-		}
+	/** One tap moves to the next saved value. The choice menu stays closed. */
+	private cycleFilter(event: MouseEvent, apply: () => void): void {
 		const slot = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
 		if (slot && typeof slot.scrollIntoView === 'function') {
 			try { slot.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* The slot is already on screen. */ }
 		}
-		menu.showAtMouseEvent(event);
+		dismissOpenMenus(event.view?.document ?? this.root.ownerDocument);
+		apply();
+		this.paintSortPresets();
 		keepMenuOnScreen(slot);
 	}
 

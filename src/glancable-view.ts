@@ -919,7 +919,7 @@ export class NearbyGlancableView extends NearbyBasesView {
 		this.renderBody();
 	}
 
-	/** Name, Gender, Status, and Age. Note body text is not a hub search field. */
+	/** Name, Gender, Status, Age, campaign coverage, and snooze. Note body text is not a hub search field. */
 	private hubFields(row: RowModel): HubSearchFields {
 		const facts = this.noteFrontmatter(row.path);
 		const storedAge = ageYears(readProperty(facts, 'Age'));
@@ -928,11 +928,14 @@ export class NearbyGlancableView extends NearbyBasesView {
 		const statusRaw = readProperty(facts, 'Status');
 		const gender = typeof genderRaw === 'string' && genderRaw.trim() ? genderRaw : (row.gender ?? '');
 		const status = typeof statusRaw === 'string' && statusRaw.trim() ? statusRaw : (row.status ?? '');
+		const mark = this.plugin.campaignMark(row.path);
 		return {
 			name: row.name,
 			gender,
 			status,
 			age: storedAge ?? exactAge,
+			campaign: mark === 'covered' || mark === 'open' ? mark : null,
+			snoozed: this.plugin.snoozeActiveFor(row.path) === true,
 		};
 	}
 
