@@ -28,6 +28,19 @@ export function toggleOlderVisits(path: string, root?: HTMLElement | null): bool
 	return next;
 }
 
+/** The same open a heading tap makes: memory, then the class on every host. */
+export function expandOlderVisits(path: string, root: HTMLElement): void {
+	setOlderVisitsOpenState(path, true, root);
+	paintOlderChrome(path, root, true);
+}
+
+/** Classes follow the stored open state. Closing find cannot leave a stale fold. */
+export function syncOlderVisitsChrome(path: string, root: HTMLElement): void {
+	const hasOlder = root.classList.contains('rv-older-collapsed')
+		|| root.querySelector('.rv-older-section, .rv-older-visits') != null;
+	paintOlderChrome(path, root, hasOlder);
+}
+
 export function clearOlderVisitsState(): void {
 	openByPath.clear();
 }

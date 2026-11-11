@@ -7061,9 +7061,13 @@ body.is-phone .rv-urgency-popover > button.rv-urgency-popover-row .rv-urgency-po
 	box-shadow: inset 0 -2px 0 var(--rv-urgency-accent, var(--interactive-accent));
 }
 
-textarea.rv-note-find-mark {
-	outline: 2px solid var(--rv-urgency-accent, var(--interactive-accent));
-	outline-offset: 0;
+textarea.rv-native-notes-area.rv-note-find-mark,
+textarea.rv-native-notes-area.rv-note-find-current {
+	outline: 2px solid var(--rv-urgency-accent, var(--interactive-accent)) !important;
+	outline-style: solid !important;
+	outline-width: 2px !important;
+	outline-color: var(--rv-urgency-accent, var(--interactive-accent)) !important;
+	outline-offset: 2px !important;
 }
 
 body > .rv-map-grip.is-pinned {

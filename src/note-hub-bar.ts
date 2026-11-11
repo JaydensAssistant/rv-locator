@@ -4,7 +4,7 @@ import { setIcon } from 'obsidian';
 import { APP_TABS } from './app-bar';
 import { ensureBarSpacer } from './bar-shell';
 import { hostIsHidden } from './hub-cover';
-import { setOlderVisitsOpenState } from './visit-older';
+import { expandOlderVisits, syncOlderVisitsChrome } from './visit-older';
 
 /** The hub bottom bar, mounted on an RV note so the map does not jump. */
 export interface NoteHubBarHost {
@@ -98,8 +98,10 @@ export function openNoteFind(leaf: HTMLElement, bar?: HTMLElement | null): HTMLE
 
 export function closeNoteFind(leaf: HTMLElement): void {
 	const doc = leaf.ownerDocument;
+	cancelFindFrame(leaf);
 	clearFindMarks(leaf);
 	clearEditorFind();
+	releaseFindFolds();
 	leaf.querySelectorAll('.rv-note-find').forEach((node) => node.remove());
 	doc?.querySelectorAll('.rv-note-find').forEach((node) => node.remove());
 	leaf.classList.remove('is-finding');
@@ -267,21 +269,80 @@ function areaMatches(root: ParentNode, needle: string): HTMLTextAreaElement[] {
 	return notesAreas(root).filter((area) => foldUnits(area.value ?? '').includes(want));
 }
 
-/** Open Older Visits when the current hit sits in that fold. The field stays put. */
-function revealFind(node: HTMLElement): void {
+const openedFolds = new Set<HTMLElement>();
+let findFrame = 0;
+
+function cancelFindFrame(node: Node): void {
+	const view = node.ownerDocument?.defaultView;
+	if (!findFrame || !view || typeof view.cancelAnimationFrame !== 'function') return;
+	view.cancelAnimationFrame(findFrame);
+	findFrame = 0;
+}
+
+/** Layout has the opened section's box before the mark and the scroll. */
+function afterLayout(node: HTMLElement, run: () => void): void {
+	const view = node.ownerDocument?.defaultView;
+	const raf = view?.requestAnimationFrame?.bind(view);
+	if (!raf) {
+		run();
+		return;
+	}
+	cancelFindFrame(node);
+	findFrame = raf(() => {
+		findFrame = 0;
+		run();
+	});
+}
+
+function elementOf(node: Node | null | undefined): HTMLElement | null {
+	if (!node) return null;
+	if (node.nodeType === 1) return node as HTMLElement;
+	const parent = node.parentElement ?? node.parentNode;
+	return parent && parent.nodeType === 1 ? parent as HTMLElement : null;
+}
+
+/**
+ * Heading tap path: stored open, then every reading and preview host drops
+ * `rv-older-collapsed` together. The note text is not written.
+ */
+function expandFold(node: HTMLElement): boolean {
 	const collapsed = typeof node.closest === 'function' ? node.closest('.rv-older-collapsed') : null;
-	if (collapsed && collapsed.nodeType === 1) {
-		const host = collapsed as HTMLElement;
-		host.classList.remove('rv-older-collapsed');
+	if (!collapsed || collapsed.nodeType !== 1) return false;
+	const host = collapsed as HTMLElement;
+	const preview = host.closest('.markdown-reading-view, .markdown-preview-view');
+	const root = preview && preview.nodeType === 1 ? preview as HTMLElement : host;
+	const path = root.dataset?.rvNoteFile
+		?? host.closest?.('[data-rv-note-file]')?.getAttribute('data-rv-note-file')
+		?? '';
+	expandOlderVisits(path, root);
+	openedFolds.add(root);
+	return true;
+}
+
+function releaseFindFolds(): void {
+	openedFolds.forEach((host) => {
+		if (!host.isConnected) return;
 		const path = host.dataset?.rvNoteFile
 			?? host.closest?.('[data-rv-note-file]')?.getAttribute('data-rv-note-file')
 			?? '';
-		setOlderVisitsOpenState(path, true, host);
-		host.querySelectorAll('.rv-older-visits').forEach((heading) => {
-			if (heading.nodeType === 1) (heading as HTMLElement).classList.add('is-open');
-		});
-	}
+		syncOlderVisitsChrome(path, host);
+	});
+	openedFolds.clear();
+}
+
+function scrollFind(node: HTMLElement): void {
 	try { node.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch { /* The note is already in view. */ }
+}
+
+/** Paint now, or on the next frame when this hit had to open Older Visits. */
+function presentFind(target: HTMLElement | null, paint: () => HTMLElement | null): void {
+	const opened = target ? expandFold(target) : false;
+	const finish = (): void => {
+		const shown = paint();
+		if (shown) scrollFind(shown);
+	};
+	if (opened && target) afterLayout(target, finish);
+	else finish();
 }
 
 function markFindClass(host: HTMLElement, current: boolean): void {
@@ -462,9 +523,12 @@ function paintEditorAndNotes(view: EditorView, root: ParentNode, needle: string,
 	slots.sort((left, right) => left.from - right.from || (left.kind === 'doc' ? -1 : 1));
 	const at = wrapIndex(index, slots.length);
 	const current = slots[at];
-	paintEditorMatches(view, hits, current?.kind === 'doc' ? current.hitIndex : -1);
-	for (const area of areas) markFindClass(area, current?.kind === 'area' && current.area === area);
-	if (current?.kind === 'area' && current.area) revealFind(current.area);
+	const target = current?.kind === 'area' ? current.area ?? null : null;
+	presentFind(target, () => {
+		paintEditorMatches(view, hits, current?.kind === 'doc' ? current.hitIndex : -1);
+		for (const area of areas) markFindClass(area, current?.kind === 'area' && current.area === area);
+		return current?.kind === 'area' ? current.area ?? null : null;
+	});
 	return at;
 }
 
@@ -507,10 +571,12 @@ function paintShownDom(root: ParentNode, needle: string, index: number): number 
 	const slots = mergedSlots(pieces, hits, areas);
 	const at = wrapIndex(index, slots.length);
 	const current = slots[at];
-	const lead = paintTextHits(pieces, hits, current?.kind === 'text' ? current.hitIndex ?? -1 : -1);
-	for (const area of areas) markFindClass(area, current?.kind === 'area' && current.area === area);
-	const shown = current?.kind === 'area' ? current.area ?? null : lead;
-	if (shown) revealFind(shown);
+	const target = elementOf(current?.kind === 'area' ? current.area : current?.node);
+	presentFind(target, () => {
+		const lead = paintTextHits(pieces, hits, current?.kind === 'text' ? current.hitIndex ?? -1 : -1);
+		for (const area of areas) markFindClass(area, current?.kind === 'area' && current.area === area);
+		return current?.kind === 'area' ? current.area ?? null : lead;
+	});
 	return at;
 }
 
@@ -523,6 +589,7 @@ function paintShownDom(root: ParentNode, needle: string, index: number): number 
  * next and previous list. A match may cross text nodes that CodeMirror split.
  */
 export function revealNoteMatch(root: ParentNode, query: string, index: number): number {
+	cancelFindFrame(root);
 	clearFindMarks(root);
 	const needle = query.trim().toLowerCase();
 	if (!needle) {

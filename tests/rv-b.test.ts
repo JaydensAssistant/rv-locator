@@ -2922,37 +2922,94 @@ describe('RV-B103 note find reads the visit notes', () => {
 		assert.equal(area.classList.contains('rv-note-find-current'), true);
 		assert.equal(area.value, 'Ada kingdom south');
 		assert.doesNotMatch(sourceOfNote(), /setSelectionRange/);
-		assert.match(source('styles.css'), /textarea\.rv-note-find-mark \{[^}]*outline:\s*2px solid var\(--rv-urgency-accent/);
+		assert.match(source('styles.css'), /textarea\.rv-native-notes-area\.rv-note-find-mark,[\s\S]*?outline:\s*2px solid var\(--rv-urgency-accent, var\(--interactive-accent\)\) !important/);
 		leaf.remove();
 		bar.remove();
 	});
 
-	it('expands a collapsed older visit and finds the note in source mode', () => {
+	it('draws a visible outline on the marked notes field', () => {
+		const css = source('styles.css');
+		const rule = css.match(/textarea\.rv-native-notes-area\.rv-note-find-mark,[\s\S]*?\n\}/)?.[0] ?? '';
+		assert.match(rule, /textarea\.rv-native-notes-area\.rv-note-find-current/);
+		assert.match(rule, /outline:\s*2px solid var\(--rv-urgency-accent, var\(--interactive-accent\)\) !important/);
+		assert.match(rule, /outline-offset:\s*2px !important/);
+		assert.doesNotMatch(rule, /#[0-9a-fA-F]{3,8}/);
+		const page = new JSDOM(`<!doctype html><head><style>
+			:root { --rv-urgency-accent: rgb(214, 161, 0); --interactive-accent: rgb(138, 92, 245); }
+			textarea.rv-native-notes-area { outline: none !important; }
+			${rule}
+		</style></head><body class="theme-dark is-phone"></body>`, { pretendToBeVisual: true });
+		const area = page.window.document.createElement('textarea');
+		area.className = 'rv-native-notes-area rv-note-find-mark rv-note-find-current';
+		page.window.document.body.appendChild(area);
+		const painted = page.window.getComputedStyle(area);
+		assert.notEqual(painted.outlineStyle, 'none');
+		assert.equal(painted.outlineStyle, 'solid');
+		assert.equal(painted.outlineWidth, '2px');
+		page.window.close();
+	});
+
+	it('expands a collapsed older visit and finds the note in source mode', async () => {
+		globalThis.HTMLElement = window.HTMLElement;
+		globalThis.Element = window.Element;
+		globalThis.Node = window.Node;
 		clearOlderVisitsState();
 		const doc = window.document;
+		const style = doc.createElement('style');
+		style.textContent = '.rv-older-collapsed .rv-older-section { display: none !important; }';
+		doc.head.appendChild(style);
 		const content = doc.createElement('div');
 		content.className = 'view-content';
 		const reading = doc.createElement('div');
 		reading.className = 'markdown-reading-view rv-older-collapsed';
 		reading.dataset.rvNoteFile = 'People/Ada.md';
+		const preview = doc.createElement('div');
+		preview.className = 'markdown-preview-view rv-older-collapsed';
 		const section = doc.createElement('div');
-		section.className = 'rv-older-section';
+		section.className = 'rv-older-section rv-older-first';
+		const heading = doc.createElement('h3');
+		heading.className = 'rv-older-visits';
+		heading.textContent = 'Older Visits';
 		const area = doc.createElement('textarea');
 		area.className = 'rv-native-notes-area';
-		area.value = 'hidden kingdom';
-		area.getBoundingClientRect = () => ({ width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0, x: 0, y: 0, toJSON() { return {}; } });
-		section.appendChild(area);
-		reading.appendChild(section);
+		area.dataset.rvNotesKey = 'sVisit1Notes';
+		area.value = 'introduced the kingdom';
+		let focused = 0;
+		area.focus = () => { focused += 1; };
+		area.setSelectionRange = () => { focused += 1; };
+		area.getBoundingClientRect = () => {
+			const hidden = window.getComputedStyle(section).display === 'none';
+			const width = hidden ? 0 : 220;
+			const height = hidden ? 0 : 36;
+			return { width, height, top: 12, left: 8, right: 8 + width, bottom: 12 + height, x: 8, y: 12, toJSON() { return {}; } };
+		};
+		section.append(heading, area);
+		preview.appendChild(section);
+		reading.appendChild(preview);
 		content.appendChild(reading);
 		doc.body.append(content);
+		assert.equal(window.getComputedStyle(section).display, 'none');
 		assert.equal(hostIsHidden(area), true);
-		assert.equal(revealNoteMatch(content, 'kingdom', 0), 0);
+		assert.equal(revealNoteMatch(content, 'introduced', 0), 0);
 		assert.equal(reading.classList.contains('rv-older-collapsed'), false);
+		assert.equal(preview.classList.contains('rv-older-collapsed'), false);
+		assert.equal(heading.classList.contains('is-open'), true);
 		assert.equal(olderVisitsOpen('People/Ada.md', reading), true);
+		await new Promise((resolve) => window.requestAnimationFrame(() => resolve(undefined)));
 		assert.equal(area.classList.contains('rv-note-find-mark'), true);
 		assert.equal(area.classList.contains('rv-note-find-current'), true);
-		assert.equal(area.value, 'hidden kingdom');
+		const box = area.getBoundingClientRect();
+		assert.ok(box.width > 0 && box.height > 0);
+		assert.equal(area.value, 'introduced the kingdom');
+		assert.equal(focused, 0);
+		closeNoteFind(content);
+		assert.equal(area.classList.contains('rv-note-find-mark'), false);
+		assert.equal(reading.classList.contains('rv-older-collapsed'), false);
+		assert.equal(preview.classList.contains('rv-older-collapsed'), false);
+		assert.equal(heading.classList.contains('is-open'), true);
+		assert.equal(area.value, 'introduced the kingdom');
 		content.remove();
+		style.remove();
 
 		const live = doc.createElement('div');
 		live.className = 'view-content';
