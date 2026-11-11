@@ -176,23 +176,33 @@ function boxHidden(node: HTMLElement): boolean {
 	return false;
 }
 
-/** The spacer under the bar. A cover spacer is only a fallback. */
+/**
+ * A spacer that is reserving flow in a live hub, base, or note.
+ * The swap cover does not get one, and it is never a fallback.
+ */
 export function visibleBarSpacer(doc: Document): HTMLElement | null {
 	if (doc == null || typeof doc.querySelectorAll !== 'function') return null;
 	const nodes = doc.querySelectorAll('.rv-bar-spacer');
-	let cover: HTMLElement | null = null;
 	for (let index = 0; index < nodes.length; index += 1) {
 		const node = nodes[index];
 		if (!(node instanceof HTMLElement) || !node.isConnected || boxHidden(node)) continue;
+		if (node.closest('.rv-hub-swap-cover')) continue;
 		const rect = node.getBoundingClientRect();
 		if (rect.width < MIN_BOX || rect.height < MIN_BOX) continue;
-		if (node.closest('.rv-hub-swap-cover')) {
-			cover = node;
-			continue;
-		}
 		return node;
 	}
-	return cover;
+	return null;
+}
+
+/** Keep the bar on the screen bottom. A spacer rect must not move it. */
+export function pinBarToScreen(bar: HTMLElement): void {
+	if (!bar?.style) return;
+	bar.style.top = 'auto';
+	bar.style.bottom = '0';
+	bar.style.left = '0';
+	bar.style.right = '0';
+	bar.style.width = 'auto';
+	bar.style.removeProperty('height');
 }
 
 /**

@@ -4246,7 +4246,7 @@ body.rv-wide-hubs .rv-dashboard .callout[data-callout="quote"]:not(.rv-locator-r
 /* The one map. It is not a child of a leaf, and a view swap cannot detach it. */
 .rv-map-shell {
 	position: fixed;
-	z-index: 30;
+	z-index: var(--layer-cover, 5);
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
@@ -6761,12 +6761,22 @@ body.rv-center-visit-notes .rv-older-heading {
 html {
 	--rv-bar-band: calc(52px + env(safe-area-inset-bottom, 0px));
 	--rv-top-band: calc(env(safe-area-inset-top, 0px) + max(0px, (var(--header-height, 40px) - (var(--font-ui-medium, 16px) * 1.4)) / 2));
+	--rv-hub-top: calc(env(safe-area-inset-top, 0px) + 6px);
 }
 
-/* One tab bar for the hub, bases, and notes. A view swap never detaches it. */
+/* One tab bar for the hub, bases, and notes. A view swap never detaches it.
+   The leaf, tabs, and split trap a descendant z-index, so the bar uses the
+   cover layer plus one: above those panes and the map, under the side drawer. */
 .rv-bar-shell {
 	position: fixed;
-	z-index: 32;
+	z-index: calc(var(--layer-cover, 5) + 1);
+	top: auto !important;
+	right: 0 !important;
+	bottom: 0 !important;
+	left: 0 !important;
+	width: auto !important;
+	height: var(--rv-bar-band) !important;
+	max-height: var(--rv-bar-band) !important;
 	display: flex;
 	flex-direction: column;
 	box-sizing: border-box;
@@ -6775,6 +6785,26 @@ html {
 	padding: 2px 0 env(safe-area-inset-bottom, 0px);
 	background: var(--background-primary);
 	pointer-events: auto;
+}
+
+/* Obsidian overlays stay above the bar. These are the app's own layers. */
+.workspace-drawer {
+	z-index: var(--layer-sidedock, 10);
+}
+
+.modal-container,
+.prompt {
+	z-index: var(--layer-modal, 50);
+}
+
+.notice,
+.notice-container {
+	z-index: var(--layer-notice, 60);
+}
+
+.menu,
+.suggestion-container {
+	z-index: var(--layer-menu, 65);
 }
 
 /* The bar stays under a locator modal. The footer also clears the 52px bar. */
@@ -9540,7 +9570,6 @@ body.is-mobile .workspace-leaf-content :is(.markdown-preview-view, .markdown-sou
    6px the direct base still has so the two tops land together. */
 .markdown-preview-view.rv-locator-full-base,
 .markdown-reading-view.rv-locator-full-base {
-	--rv-hub-top: calc(env(safe-area-inset-top, 0px) + 6px);
 	--view-top-spacing-markdown: env(safe-area-inset-top, 0px);
 	padding-top: var(--rv-hub-top) !important;
 }
@@ -10971,7 +11000,7 @@ body.rv-hub-swapping .mobile-navbar {
 	right: 0 !important;
 	bottom: var(--rv-bar-band) !important;
 	left: 0 !important;
-	z-index: 31 !important;
+	z-index: 1 !important;
 	display: flex;
 	flex-direction: column;
 	width: 100% !important;
@@ -11009,23 +11038,60 @@ body.rv-hub-swapping .mobile-navbar {
 	pointer-events: none;
 }
 
-/* Hub, base, and note share this band. It ends where the centered title used to start. */
+/* Hub, base, note, and the cover share this band. It ends where the centered title used to start.
+   The mobile selectors beat Obsidian's header height and safe-area padding. */
 .workspace-leaf-content.is-rv-app > .view-header,
-.workspace-leaf > .rv-hub-swap-cover > .view-header {
+.workspace-leaf > .rv-hub-swap-cover > .view-header,
+html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app > .view-header,
+html body.is-mobile .workspace-leaf > .rv-hub-swap-cover > .view-header {
 	height: var(--rv-top-band) !important;
 	min-height: var(--rv-top-band) !important;
 	max-height: var(--rv-top-band) !important;
 	padding-top: 0 !important;
 	padding-bottom: 0 !important;
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
 	overflow: hidden !important;
-	box-sizing: border-box;
+	box-sizing: border-box !important;
+}
+
+/* Own rule so a later Obsidian header (height and safe-area padding, often !important)
+   cannot keep the cloned cover header taller than the live one. */
+html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app > .view-header,
+html body.is-mobile .workspace-leaf > .rv-hub-swap-cover > .view-header {
+	height: var(--rv-top-band) !important;
+	min-height: var(--rv-top-band) !important;
+	max-height: var(--rv-top-band) !important;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
+	margin-top: 0 !important;
+	margin-bottom: 0 !important;
+	overflow: hidden !important;
+	box-sizing: border-box !important;
 }
 
 .workspace-leaf-content.is-rv-app > .view-header :is(.view-header-title, .view-header-title-container),
 .workspace-leaf > .rv-hub-swap-cover > .view-header :is(.view-header-title, .view-header-title-container) {
+	min-height: 0 !important;
+	margin: 0 !important;
+	padding-top: 0 !important;
+	padding-bottom: 0 !important;
 	font-size: 0 !important;
 	line-height: 0 !important;
 	color: transparent !important;
+}
+
+/* The cover already ends on the bar band. Its sort row would be a second empty strip. */
+.workspace-leaf > .rv-hub-swap-cover .rv-locator-sortbar,
+.workspace-leaf > .rv-hub-swap-cover .rv-bar-spacer {
+	display: none !important;
+	flex: 0 0 0 !important;
+	height: 0 !important;
+	min-height: 0 !important;
+	max-height: 0 !important;
+	margin: 0 !important;
+	padding: 0 !important;
+	border: 0 !important;
 }
 
 .workspace-leaf > .rv-hub-swap-cover > .view-header :is(
@@ -11051,8 +11117,8 @@ body.rv-hub-swapping .mobile-navbar {
 	opacity: 0 !important;
 }
 
-/* Same top inset the full-base preview uses, so the cover cards sit where the
-   real hub cards sit on both the hub link and a direct base. */
+/* Same top pad as the live full-base preview. `--rv-hub-top` already includes
+   the safe area, and the header band includes it once, so this does not add it again. */
 .rv-hub-snapshot-body {
 	flex: 1 1 auto;
 	min-height: 0;
@@ -11060,7 +11126,7 @@ body.rv-hub-swapping .mobile-navbar {
 	flex-direction: column;
 	overflow: hidden;
 	box-sizing: border-box;
-	padding-top: env(safe-area-inset-top, 0px);
+	padding-top: var(--rv-hub-top);
 	background: var(--background-primary);
 	pointer-events: none;
 }

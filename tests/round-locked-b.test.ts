@@ -591,8 +591,8 @@ describe('phone smoke after 0db3626', () => {
 		const cover = css.slice(css.indexOf('.workspace-leaf > .rv-hub-swap-cover {'), css.indexOf('.workspace-leaf > .rv-hub-swap-cover > .view-header'));
 		assert.match(cover, /pointer-events:\s*none !important/);
 		const snapshot = css.slice(css.indexOf('.rv-hub-snapshot-body {'), css.indexOf('.rv-hub-snapshot-body > .rv-locator-view'));
-		assert.match(snapshot, /padding-top:\s*env\(safe-area-inset-top, 0px\)/);
-		assert.doesNotMatch(snapshot, /\+ 6px/);
+		assert.match(snapshot, /padding-top:\s*var\(--rv-hub-top\)/);
+		assert.doesNotMatch(snapshot, /padding-top:\s*env\(safe-area-inset-top/);
 		assert.match(source('src/glancable-view.ts'), /dropDuplicateCards/);
 		assert.match(css, /\.rv-closed-title \{[^}]*color:\s*var\(--text-faint\)/);
 		assert.match(css, /\.rv-closed-title \{[^}]*font-weight:\s*400/);
@@ -682,9 +682,10 @@ describe('phone smoke after d0b76ff', () => {
 		live.className = 'rv-locator-card';
 		live.setAttribute('data-rv-path', 'Red Lane.md');
 		live.getBoundingClientRect = () => ({ top: 117, bottom: 192, left: 0, right: 0, width: 0, height: 75, x: 0, y: 117, toJSON() { return {}; } });
+		body.style.transform = 'translateY(12px)';
 		doc.body.append(cover, live);
 		alignHubCover(doc);
-		assert.equal(body.style.transform, 'translateY(12px)');
+		assert.equal(body.style.transform, '');
 		const css = source('styles.css');
 		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \* \{[^}]*pointer-events:\s*auto !important/);
 	});

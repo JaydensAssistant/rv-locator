@@ -714,8 +714,12 @@ export abstract class NearbyBasesView extends BasesView implements HoverParent {
 	/** The shared bar stays outside this view. Sort options fill its one row. */
 	private paintGlancableTabs(): void {
 		if (!this.sortEl?.isConnected || this.sortEl.ownerDocument == null) return;
+		// The cover stops above the real bar. A spacer here is a second empty band.
+		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) {
+			this.sortEl.querySelector(':scope > .rv-bar-spacer')?.remove();
+			return;
+		}
 		ensureBarSpacer(this.sortEl);
-		if (typeof this.root.closest === 'function' && this.root.closest('.rv-hub-swap-cover')) return;
 		if (!this.sortMenuOpen) {
 			const file = this.plugin.app.workspace.getActiveFile?.();
 			if (file) this.plugin.syncAppBarFromActive();

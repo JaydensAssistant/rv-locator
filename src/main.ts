@@ -25,7 +25,7 @@ import { newestLessonProgress } from './visit-share';
 import { decorateArchiveButton, decorateMapLink, decorateVisitControls, ensureIconAlias, VisitButtonLongPress, type VisitTarget } from './visit-controls';
 import { applyLiveUrgency, decorateNoteChrome, jumpToDayInRoot, revealAttemptLogWhenReady, type NoteChromeHost } from './note-chrome';
 import { dismissOpenMenus, keepMenuOnScreen, type BarSurface } from './app-bar';
-import { barTabId, createBarShell, dispatchBarTab, paintBarEarth, paintBarLead, paintSurfaceAccent, placeBarOver, visibleBarSpacer, type BarTabHost } from './bar-shell';
+import { barTabId, createBarShell, dispatchBarTab, paintBarEarth, paintBarLead, paintSurfaceAccent, pinBarToScreen, type BarTabHost } from './bar-shell';
 import { clearNoteHubBar, mountNoteHubBar, openNoteFind } from './note-hub-bar';
 import { campaignIsActive, isCovered, localDay, sanitizeCampaign, withCovered, withoutCovered, type CampaignRecord } from './campaign';
 import { askCampaignCovered, CampaignModal } from './campaign-modal';
@@ -3488,9 +3488,7 @@ export default class RVLocatorPlugin extends Plugin {
 	private placeBarNow(): void {
 		const bar = this.appBar;
 		if (!bar?.isConnected || bar.classList.contains('is-away') || bar.ownerDocument == null) return;
-		const spacer = visibleBarSpacer(bar.ownerDocument);
-		placeBarOver(bar, spacer);
-		if (spacer) this.watchBarSpacer(spacer);
+		pinBarToScreen(bar);
 	}
 
 	private watchBarSpacer(spacer: HTMLElement): void {

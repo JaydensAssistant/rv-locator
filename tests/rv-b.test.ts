@@ -15,7 +15,7 @@ import { hubGroupsFromCache, type HubCacheFile } from '../src/hub-cache';
 import { alignHubCover, concealHubList, handoffCoverLanding, holdLeafForHubPaint, hubFrameReady, hubSwapDecision, isHubSwapFile, releaseHubSwapCover } from '../src/hub-cover';
 import { hubClickFrames, hubReturnChoice, paintedHubLeaf } from '../src/hub-open';
 import { embedCapCss, hubEmbedCapPx, landingScrollExact, viewportHeightPx, writeViewportHeight } from '../src/hub-layout';
-import { createBarShell, paintSurfaceAccent, placeBarOver } from '../src/bar-shell';
+import { createBarShell, paintSurfaceAccent, pinBarToScreen, placeBarOver, visibleBarSpacer } from '../src/bar-shell';
 import { defaultUrgencyColors, hubAccentColor, URGENCY_PALETTES } from '../src/urgency-palette';
 import { shouldHideMobileNav } from '../src/status-bar';
 import { LESSONS, emptyShare, studyPrefill, type VisitShare } from '../src/catalog';
@@ -917,7 +917,8 @@ describe('RV-B9 swap cover', () => {
 			assert.match(cover.textContent ?? '', /Dale Red/);
 			assert.equal((cover.textContent ?? '').includes('Recent notes'), false);
 			assert.ok(cover.querySelector('.rv-locator-card'));
-			assert.ok(cover.querySelector('.rv-app-slot, .rv-bar-spacer'));
+			assert.equal(cover.querySelector('.rv-bar-spacer, .rv-app-slot'), null);
+			assert.ok(cover.querySelector('.rv-locator-sortbar'));
 			assert.equal(hubFrameReady(leaf, true), false, 'cards inside the cover are not the real hub');
 			await stopCover();
 
@@ -1053,7 +1054,8 @@ function placeDock(leaf: HTMLElement, sortTop: number): void {
 describe('RV-B7 hub forehead', () => {
 	it('keeps the safe area and the 6px the direct base sits lower', () => {
 		const css = source('styles.css');
-		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--rv-hub-top: calc\(env\(safe-area-inset-top, 0px\) \+ 6px\);\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: var\(--rv-hub-top\) !important;\s*\}/);
+		assert.equal(css.match(/--rv-hub-top:\s*calc\(env\(safe-area-inset-top, 0px\) \+ 6px\)/g)?.length, 1);
+		assert.match(css, /\.markdown-preview-view\.rv-locator-full-base,\s*\n\.markdown-reading-view\.rv-locator-full-base \{\s*--view-top-spacing-markdown: env\(safe-area-inset-top, 0px\);\s*padding-top: var\(--rv-hub-top\) !important;\s*\}/);
 		assert.match(css, /env\(safe-area-inset-top, 0px\)/);
 		assert.equal(css.includes('--view-top-spacing-markdown: 0'), false);
 		const phoneAt = css.indexOf('/* RV-162.');
@@ -1993,10 +1995,11 @@ describe('RV-B91 cover stops above the tab bar', () => {
 		assert.match(cover, /height:\s*auto !important/);
 		assert.doesNotMatch(cover, /inset:\s*0 !important/);
 		assert.doesNotMatch(cover, /height:\s*100% !important/);
-		const bar = css.slice(css.indexOf('.rv-bar-shell {'), css.indexOf('.modal-container:has(.modal.rv-locator-modal)'));
-		const barZ = Number(/z-index:\s*(\d+)/.exec(bar)?.[1]);
-		const coverZ = Number(/z-index:\s*(\d+)/.exec(cover)?.[1]);
-		assert.ok(barZ > coverZ, `bar ${barZ} cover ${coverZ}`);
+		const bar = css.slice(css.indexOf('.rv-bar-shell {'), css.indexOf('.workspace-drawer {'));
+		assert.match(bar, /z-index:\s*calc\(var\(--layer-cover, 5\) \+ 1\)/);
+		assert.match(bar, /bottom:\s*0 !important/);
+		assert.match(bar, /height:\s*var\(--rv-bar-band\) !important/);
+		assert.match(cover, /z-index:\s*1 !important/);
 		assert.match(cover, /pointer-events:\s*none !important/);
 		const hubBar = css.slice(
 			css.indexOf('.rv-locator-glancable.is-hub-map.is-stacked:not(.is-map-fullscreen) > .rv-locator-sortbar {'),
@@ -2060,6 +2063,101 @@ describe('RV-268 shared top band', () => {
 			assert.equal(dom.window.getComputedStyle(title!).fontSize, '0px');
 		}
 		assert.equal(styleOf('cover').bottom, 'var(--rv-bar-band)');
-		assert.ok(Number(styleOf('bar').zIndex) > Number(styleOf('cover').zIndex));
+		assert.equal(styleOf('cover').zIndex, '1');
+		assert.match(styleOf('bar').zIndex, /calc\(var\(--layer-cover,\s*5\) \+ 1\)|^6$/);
+	});
+});
+
+describe('RV-B91 round 2 the bar stays on screen during the cover', () => {
+	it('draws no cover bar, pins the shell, and shares the hub top', () => {
+		const css = source('styles.css');
+		const nearby = source('src/nearby-view.ts');
+		const paint = nearby.slice(nearby.indexOf('private paintGlancableTabs'), nearby.indexOf('private barSlot'));
+		assert.ok(paint.indexOf("closest('.rv-hub-swap-cover')") < paint.indexOf('ensureBarSpacer(this.sortEl)'));
+		assert.match(paint, /querySelector\(':scope > \.rv-bar-spacer'\)\?\.remove\(\)/);
+		assert.match(css, /\.workspace-leaf > \.rv-hub-swap-cover \.rv-locator-sortbar,\s*\n\.workspace-leaf > \.rv-hub-swap-cover \.rv-bar-spacer \{[^}]*display:\s*none !important/);
+		const shell = css.slice(css.indexOf('.rv-bar-shell {'), css.indexOf('.workspace-drawer {'));
+		assert.match(shell, /bottom:\s*0 !important/);
+		assert.match(shell, /top:\s*auto !important/);
+		assert.match(shell, /height:\s*var\(--rv-bar-band\) !important/);
+		assert.match(shell, /z-index:\s*calc\(var\(--layer-cover, 5\) \+ 1\)/);
+		assert.match(css, /\.rv-map-shell \{[^}]*z-index:\s*var\(--layer-cover, 5\)/);
+		assert.match(css, /\.workspace-drawer \{[^}]*z-index:\s*var\(--layer-sidedock, 10\)/);
+		assert.match(css, /\.modal-container,\s*\n\.prompt \{[^}]*z-index:\s*var\(--layer-modal, 50\)/);
+		assert.match(css, /\.notice,\s*\n\.notice-container \{[^}]*z-index:\s*var\(--layer-notice, 60\)/);
+		assert.match(css, /\.menu,\s*\n\.suggestion-container \{[^}]*z-index:\s*var\(--layer-menu, 65\)/);
+		assert.match(css, /\.modal-container:has\(\.modal\.rv-locator-modal\) \{[^}]*z-index:\s*80/);
+		const main = source('src/main.ts');
+		const place = main.slice(main.indexOf('private placeBarNow'), main.indexOf('private watchBarSpacer'));
+		assert.match(place, /pinBarToScreen\(bar\)/);
+		assert.doesNotMatch(place, /placeBarOver|visibleBarSpacer/);
+		const snapshot = css.slice(css.indexOf('.rv-hub-snapshot-body {'), css.indexOf('.rv-hub-snapshot-body > .rv-locator-view'));
+		assert.match(snapshot, /padding-top:\s*var\(--rv-hub-top\)/);
+		assert.doesNotMatch(snapshot, /env\(safe-area-inset-top/);
+		assert.equal(css.match(/--rv-hub-top:/g)?.length, 1);
+		const coverSrc = source('src/hub-cover.ts');
+		const align = coverSrc.slice(coverSrc.indexOf('export function alignHubCover'), coverSrc.indexOf('function copyScroll'));
+		assert.doesNotMatch(align, /translateY|COVER_NUDGE_PX/);
+		assert.match(align, /removeProperty\('transform'\)/);
+
+		const dom = new JSDOM('<!doctype html><body></body>');
+		const win = dom.window;
+		globalThis.HTMLElement = win.HTMLElement;
+		globalThis.Element = win.Element;
+		const doc = win.document;
+		const cover = doc.createElement('div');
+		cover.className = 'rv-hub-swap-cover';
+		const coverSpacer = doc.createElement('div');
+		coverSpacer.className = 'rv-bar-spacer';
+		cover.appendChild(coverSpacer);
+		const liveSpacer = doc.createElement('div');
+		liveSpacer.className = 'rv-bar-spacer';
+		doc.body.append(cover, liveSpacer);
+		const box = (top: number) => ({ top, bottom: top + 52, left: 0, right: 379, width: 379, height: 52, x: 0, y: top, toJSON() { return {}; } });
+		coverSpacer.getBoundingClientRect = () => box(690);
+		liveSpacer.getBoundingClientRect = () => box(742);
+		assert.equal(visibleBarSpacer(doc), liveSpacer);
+		liveSpacer.remove();
+		assert.equal(visibleBarSpacer(doc), null);
+
+		const bar = doc.createElement('div');
+		bar.className = 'rv-bar-shell';
+		doc.body.appendChild(bar);
+		placeBarOver(bar, coverSpacer);
+		assert.equal(bar.style.top, '690px');
+		pinBarToScreen(bar);
+		assert.equal(bar.style.top, 'auto');
+		assert.equal(bar.style.bottom, '0px');
+		assert.equal(bar.style.left, '0px');
+		assert.equal(bar.style.height, '');
+
+		const body = doc.createElement('div');
+		body.className = 'rv-hub-snapshot-body';
+		body.style.transform = 'translateY(12px)';
+		const coverCard = doc.createElement('div');
+		coverCard.className = 'rv-locator-card';
+		coverCard.setAttribute('data-rv-path', 'People/Ada.md');
+		coverCard.getBoundingClientRect = () => box(100);
+		body.appendChild(coverCard);
+		cover.appendChild(body);
+		const live = doc.createElement('div');
+		live.className = 'rv-locator-card';
+		live.setAttribute('data-rv-path', 'People/Ada.md');
+		live.getBoundingClientRect = () => box(112);
+		doc.body.appendChild(live);
+		alignHubCover(doc);
+		assert.equal(body.style.transform, '');
+	});
+
+	it('gives the cover header its own rule so an Obsidian header height cannot win', () => {
+		const css = source('styles.css');
+		const at = css.indexOf('html body.is-mobile .workspace-leaf .workspace-leaf-content.is-rv-app > .view-header,\nhtml body.is-mobile .workspace-leaf > .rv-hub-swap-cover > .view-header {');
+		assert.ok(at > 0);
+		const rule = css.slice(at, css.indexOf('.workspace-leaf-content.is-rv-app > .view-header :is(.view-header-title', at));
+		assert.match(rule, /height:\s*var\(--rv-top-band\) !important/);
+		assert.match(rule, /min-height:\s*var\(--rv-top-band\) !important/);
+		assert.match(rule, /max-height:\s*var\(--rv-top-band\) !important/);
+		assert.match(rule, /padding-top:\s*0 !important/);
+		assert.doesNotMatch(rule, /height:\s*var\(--header-height\)/);
 	});
 });

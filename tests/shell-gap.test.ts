@@ -342,7 +342,8 @@ describe('dark phone layout', () => {
 		const footerBottom = 798 - (pad ?? 0);
 		assert.equal(footerBottom > barBox.top + 1, false);
 		assert.equal(styleOf(layer).zIndex, '80');
-		assert.equal(styleOf(bar).zIndex, '32');
+		assert.match(styleOf(bar).zIndex, /calc\(var\(--layer-cover,\s*5\) \+ 1\)/);
+		assert.ok(Number(styleOf(layer).zIndex) > 6);
 		assert.equal(styleOf(shell).pointerEvents, 'none');
 		assert.equal(styleOf(pin).pointerEvents, 'auto');
 		assert.equal(styleOf(doc.getElementById('suggest-content')!).paddingLeft, '12px');

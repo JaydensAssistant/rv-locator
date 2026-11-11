@@ -7,8 +7,6 @@ export const HUB_SWAP_HOLD_MS = 800;
 const COVER_CLASS = 'rv-hub-swap-cover';
 const SWAP_CLASS = 'rv-hub-swapping';
 const COVER_HELD = 'is-rv-cover-held';
-/** A 12px header miss is a correction. A deep card's 2400px gap is not. */
-const COVER_NUDGE_PX = 16;
 
 /**
  * A direct `.base` open, or the hub note (`cssclass` `rv-locator-full-base`).
@@ -294,38 +292,15 @@ export function handoffCoverLanding(doc: Document, onLand?: (path: string) => vo
 }
 
 /**
- * The cover card and the live card have to share a top. A 12px miss paints
- * every card twice and sends a tap at the cover card into the gap above the
- * live one. Shift the snapshot by whatever is left.
+ * Card tops come from the shared header band and `--rv-hub-top`. A translate
+ * on the snapshot would leave a residual once those already match.
  */
 export function alignHubCover(doc: Document): void {
 	const cover = doc.querySelector(`.${COVER_CLASS}`);
 	if (!isElement(cover)) return;
-	const marked = cover.querySelector('.rv-locator-card.rv-card-land');
-	const coverCard = isElement(marked) ? marked : cover.querySelector('.rv-locator-card');
-	if (!isElement(coverCard) || typeof coverCard.getBoundingClientRect !== 'function') return;
-	const path = coverCard.getAttribute('data-rv-path') ?? '';
-	const escaped = path && typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
-		? CSS.escape(path)
-		: path.replace(/"/g, '\\"');
-	const cards = path
-		? doc.querySelectorAll(`[data-rv-path="${escaped}"]`)
-		: doc.querySelectorAll('.rv-locator-card');
-	let live: HTMLElement | null = null;
-	for (let index = 0; index < cards.length; index += 1) {
-		const node = cards[index];
-		if (isElement(node) && !cover.contains(node)) {
-			live = node;
-			break;
-		}
-	}
-	if (!live || typeof live.getBoundingClientRect !== 'function') return;
-	const delta = live.getBoundingClientRect().top - coverCard.getBoundingClientRect().top;
-	if (!Number.isFinite(delta) || Math.abs(delta) < 0.5 || Math.abs(delta) > COVER_NUDGE_PX) return;
 	const body = cover.querySelector('.rv-hub-snapshot-body');
 	if (!isElement(body)) return;
-	const current = Number.parseFloat(body.style.transform.replace(/[^-0-9.]/g, '')) || 0;
-	body.style.transform = `translateY(${current + delta}px)`;
+	body.style.removeProperty('transform');
 }
 
 function copyScroll(from: Element, to: Element): void {
@@ -384,7 +359,7 @@ export interface HubCoverPaint {
 
 function snapshotReady(host: HTMLElement): boolean {
 	return host.querySelector('.rv-locator-card') != null
-		&& host.querySelector('.rv-locator-toolbar-actions button, .rv-app-slot, .rv-bar-spacer') != null;
+		&& host.querySelector('.rv-locator-toolbar-actions button, .rv-app-slot, .rv-bar-spacer, .rv-locator-sortbar') != null;
 }
 
 const COVER_CRUMB = '.view-header-title-parent, .view-header-breadcrumb, .view-header-breadcrumb-container';
