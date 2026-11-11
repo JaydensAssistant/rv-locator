@@ -28,63 +28,70 @@ export function mountNoteHubBar(leaf: HTMLElement, path: string, _host: NoteHubB
 }
 
 export function clearNoteHubBar(leaf: HTMLElement): void {
-	leaf.querySelector(':scope > .rv-note-find')?.remove();
+	closeNoteFind(leaf);
 	leaf.querySelector(':scope > .rv-note-hub-bar')?.remove();
 	leaf.querySelector(':scope > .rv-bar-spacer')?.remove();
 	leaf.classList.remove('is-rv-note', 'is-finding');
 }
 
-/** In-note find. The field sits on the bar and walks the note text. */
-export function openNoteFind(leaf: HTMLElement): void {
+/**
+ * In-note find. The field uses the hub search classes and lives on the
+ * persistent bar when one is passed. The leaf does not grow a second band.
+ */
+export function openNoteFind(leaf: HTMLElement, bar?: HTMLElement | null): HTMLElement {
 	const doc = leaf.ownerDocument;
-	const bar = leaf.querySelector(':scope > .rv-note-hub-bar');
-	let row = leaf.querySelector(':scope > .rv-note-find, :scope > .rv-note-hub-bar > .rv-note-find');
-	if (!(row instanceof HTMLElement)) {
-		row = doc.createElement('div');
-		row.className = 'rv-note-find';
-		const input = doc.createElement('input');
-		input.type = 'search';
-		input.className = 'rv-note-find-input';
-		input.setAttribute('aria-label', 'Find in note');
-		input.placeholder = 'Find in note';
-		const close = doc.createElement('button');
-		close.type = 'button';
-		close.className = 'rv-note-find-close';
-		close.setAttribute('aria-label', 'Close find');
-		setIcon(close, 'x');
-		let step = 0;
-		const go = (delta: number): void => {
-			const content = leaf.querySelector('.view-content') ?? leaf;
-			step = revealNoteMatch(content, input.value, step + delta);
-		};
-		input.addEventListener('input', () => {
-			step = 0;
-			go(0);
-		});
-		input.addEventListener('keydown', (event) => {
-			if (event.key === 'Escape') {
-				event.preventDefault();
-				closeNoteFind(leaf);
-				return;
-			}
-			if (event.key === 'Enter') {
-				event.preventDefault();
-				go(event.shiftKey ? -1 : 1);
-			}
-		});
-		close.addEventListener('click', () => closeNoteFind(leaf));
-		row.append(input, close);
-		if (bar instanceof HTMLElement) bar.insertBefore(row, bar.firstChild);
-		else leaf.appendChild(row);
-	}
-	leaf.classList.add('is-finding');
-	const field = row.querySelector('input');
-	if (field instanceof HTMLElement && field.tagName === 'INPUT') field.focus();
+	closeNoteFind(leaf);
+	const row = doc.createElement('div');
+	row.className = 'rv-locator-search-slot rv-note-find';
+	const field = doc.createElement('div');
+	field.className = 'rv-locator-search rv-suggest-host';
+	const input = doc.createElement('input');
+	input.type = 'search';
+	input.className = 'rv-locator-search-input rv-note-find-input';
+	input.setAttribute('aria-label', 'Find in note');
+	input.placeholder = 'Find in note';
+	const close = doc.createElement('button');
+	close.type = 'button';
+	close.className = 'rv-suggest-chevron rv-note-find-close';
+	close.setAttribute('aria-label', 'Close find');
+	setIcon(close, 'x');
+	let step = 0;
+	const go = (delta: number): void => {
+		const content = leaf.querySelector('.view-content') ?? leaf;
+		step = revealNoteMatch(content, input.value, step + delta);
+	};
+	input.addEventListener('input', () => {
+		step = 0;
+		go(0);
+	});
+	input.addEventListener('keydown', (event) => {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			closeNoteFind(leaf);
+			return;
+		}
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			go(event.shiftKey ? -1 : 1);
+		}
+	});
+	close.addEventListener('click', () => closeNoteFind(leaf));
+	field.append(input, close);
+	row.appendChild(field);
+	const host = bar && bar.classList ? bar : leaf;
+	host.appendChild(row);
+	if (bar && bar.classList) bar.classList.add('is-search-open');
+	input.focus();
+	return row;
 }
 
 export function closeNoteFind(leaf: HTMLElement): void {
+	const doc = leaf.ownerDocument;
 	leaf.querySelectorAll('.rv-note-find').forEach((node) => node.remove());
+	doc?.querySelectorAll('.rv-note-find').forEach((node) => node.remove());
 	leaf.classList.remove('is-finding');
+	const bar = doc?.querySelector('.rv-bar-shell');
+	if (bar && !bar.querySelector('.rv-locator-search-slot')) bar.classList.remove('is-search-open');
 }
 
 /**
@@ -103,7 +110,7 @@ export function revealNoteMatch(root: ParentNode, query: string, index: number):
 		current = walker.nextNode();
 		if (node.nodeType !== 3) continue;
 		const parent = node.parentElement;
-		if (parent?.closest('.rv-note-find, .rv-note-hub-bar, script, style')) continue;
+		if (parent?.closest('.rv-note-find, .rv-note-hub-bar, .rv-bar-shell, .rv-locator-search, script, style')) continue;
 		const text = node.textContent ?? '';
 		const folded = text.toLowerCase();
 		let from = 0;

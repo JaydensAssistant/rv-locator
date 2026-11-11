@@ -6863,6 +6863,8 @@ body.rv-hub-chrome > .popover {
 .rv-bar-shell > .rv-bar-sort,
 .rv-bar-shell > .rv-locator-search-slot {
 	display: flex;
+	align-items: center;
+	box-sizing: border-box;
 	width: 100%;
 	min-height: 48px;
 }
@@ -6953,39 +6955,69 @@ body.rv-hub-chrome > .popover {
 	background: var(--background-modifier-border);
 }
 
-.rv-note-find {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	width: 100%;
+/* Ring menu. Above the bar (cover + 1) and below modals. Not Obsidian's sheet. */
+.rv-urgency-popover {
+	position: fixed;
+	z-index: calc(var(--layer-cover, 5) + 2);
 	box-sizing: border-box;
-	padding: 4px 8px 0;
+	width: 188px;
+	margin: 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	overflow-x: hidden;
+	overflow-y: auto;
+	background: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--menu-radius, var(--radius-m, 8px));
+	box-shadow: var(--menu-shadow);
+	backdrop-filter: none;
+	-webkit-backdrop-filter: none;
+	color: var(--text-normal);
+	font-family: var(--font-interface);
 }
 
-.rv-note-find-input {
-	flex: 1 1 auto;
-	min-width: 0;
-	height: 32px;
+.rv-urgency-popover-row {
+	position: relative;
+	box-sizing: border-box;
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	width: 100%;
+	height: 44.8px;
+	min-height: 44.8px;
 	margin: 0;
-	padding: 0 8px;
+	padding: 12px 16px;
 	border: 0;
-	border-radius: 8px;
-	background: var(--background-secondary);
+	background: transparent;
 	color: var(--text-normal);
+	font-family: inherit;
+	font-size: 16px;
+	font-weight: 400;
+	line-height: 20.8px;
+	text-align: left;
+	cursor: pointer;
+	outline: none;
 	box-shadow: none;
 }
 
-.rv-note-find-close {
-	flex: 0 0 32px;
-	width: 32px;
-	height: 32px;
-	border: 0;
-	background: transparent;
-	color: var(--text-muted);
+.rv-urgency-popover-icon,
+.rv-urgency-popover-icon svg {
+	width: 16px;
+	height: 16px;
+	flex: 0 0 16px;
+	color: var(--rv-urgency-accent, var(--interactive-accent));
 }
 
-.workspace-leaf-content.is-rv-note.is-finding:not(.is-note-map) > .view-content {
-	padding-bottom: calc(var(--rv-note-bar) + 36px);
+.rv-urgency-popover-row:not(:last-child)::after {
+	content: '';
+	position: absolute;
+	left: 16px;
+	right: 16px;
+	bottom: 0;
+	height: 1px;
+	background: var(--background-modifier-border);
+	pointer-events: none;
 }
 
 body > .rv-map-grip.is-pinned {
@@ -11230,6 +11262,10 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	--rv-modal-accent: var(--rv-hub-accent);
 }
 
+.rv-bar-shell .rv-locator-search.rv-suggest-host {
+	--rv-modal-accent: var(--interactive-accent, var(--rv-hub-accent));
+}
+
 .rv-suggest-host > input,
 .rv-locator-modal .rv-suggest-host > input,
 .rv-locator-search > .rv-locator-search-input {
@@ -11491,8 +11527,8 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron,
 .theme-dark .rv-locator-search > button.rv-suggest-chevron {
-	border-color: var(--rv-modal-accent);
-	color: var(--rv-modal-accent);
+	border-color: var(--rv-modal-accent, var(--interactive-accent, var(--rv-hub-accent)));
+	color: var(--rv-modal-accent, var(--interactive-accent, var(--rv-hub-accent)));
 	background: #2a2a2a;
 }
 
@@ -11512,11 +11548,16 @@ body.is-phone .workspace-leaf-content:has(.rv-locator-full-base) > .view-header 
 	color: var(--rv-modal-accent) !important;
 }
 
-.theme-dark .rv-locator-search > button.rv-suggest-chevron,
 .theme-dark .rv-suggest-host > button.rv-suggest-chevron,
 .theme-dark .modal.rv-locator-modal button.rv-age-symbol {
 	border-color: var(--rv-modal-accent) !important;
 	color: var(--rv-modal-accent) !important;
+	background: #2a2a2a !important;
+}
+
+.theme-dark .rv-locator-search > button.rv-suggest-chevron {
+	border-color: var(--rv-modal-accent, var(--interactive-accent, var(--rv-hub-accent))) !important;
+	color: var(--rv-modal-accent, var(--interactive-accent, var(--rv-hub-accent))) !important;
 	background: #2a2a2a !important;
 }
 

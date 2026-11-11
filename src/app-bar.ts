@@ -1,4 +1,5 @@
 import { setIcon, type IconName } from 'obsidian';
+import { closeUrgencyPopovers } from './urgency-popover';
 
 /** Hub, bases, and the note use this row. One list so the five slots cannot drift. */
 export const APP_TABS: readonly { id: string; label: string; icon: IconName }[] = [
@@ -56,6 +57,7 @@ export function appendAppSlot(
  * another.
  */
 export function dismissOpenMenus(doc: Document | null | undefined): void {
+	closeUrgencyPopovers(doc);
 	if (!doc || typeof doc.querySelectorAll !== 'function') return;
 	const menus = doc.querySelectorAll('.menu');
 	for (let index = 0; index < menus.length; index += 1) menus[index]?.remove();

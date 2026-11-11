@@ -732,7 +732,8 @@ describe('phone smoke after d0b76ff', () => {
 		const urgency = source('src/main.ts');
 		const fn = urgency.slice(urgency.indexOf('promptUrgencyMenu('), urgency.indexOf('private openSnoozeModal'));
 		assert.ok(fn.indexOf('dismissOpenMenus') >= 0);
-		assert.ok(fn.indexOf('dismissOpenMenus') < fn.indexOf('new Menu('));
+		assert.ok(fn.indexOf('dismissOpenMenus') < fn.indexOf('openUrgencyPopover('));
+		assert.equal(fn.includes('new Menu('), false);
 	});
 
 	it('RV-B78 leaves Met at the creation time on disk', () => {

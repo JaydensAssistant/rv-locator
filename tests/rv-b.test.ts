@@ -28,7 +28,9 @@ import { DEFAULT_SETTINGS } from '../src/types';
 import { fillItemStrip } from '../src/visit-controls';
 import { glanceSnapToken } from '../src/glancable-density';
 import { matchesHubSearch } from '../src/glance-search';
-import { revealNoteMatch } from '../src/note-hub-bar';
+import { closeNoteFind, openNoteFind, revealNoteMatch } from '../src/note-hub-bar';
+import { dismissOpenMenus } from '../src/app-bar';
+import { openUrgencyPopover, placeUrgencyPopover, URGENCY_POPOVER_WIDTH, URGENCY_ROW_PX } from '../src/urgency-popover';
 import { TFile, type QueryController } from 'obsidian';
 import type RVLocatorPlugin from '../src/main';
 
@@ -1978,9 +1980,10 @@ describe('RV-267 hub search matches the suggester field', () => {
 		assert.match(field, /\.rv-locator-search > button\.rv-suggest-chevron,/);
 		assert.match(field, /\.rv-suggest-host > button\.rv-suggest-chevron \{[^}]*border-radius:\s*0 6px 6px 0/);
 		assert.match(css, /\.theme-dark \.rv-locator-search > \.rv-locator-search-input,[\s\S]*?background:\s*#2a2a2a/);
-		assert.match(css, /\.theme-dark \.rv-locator-search > button\.rv-suggest-chevron,[\s\S]*?border-color:\s*var\(--rv-modal-accent\) !important/);
+		assert.match(css, /\.theme-dark \.rv-locator-search > button\.rv-suggest-chevron \{[^}]*border-color:\s*var\(--rv-modal-accent, var\(--interactive-accent, var\(--rv-hub-accent\)\)\) !important/);
 		assert.doesNotMatch(field, /#1f8a4c|#14ac87|#d63c3c/);
 		assert.match(css, /\.rv-locator-glancable \.rv-locator-search\.rv-suggest-host \{[^}]*--rv-modal-accent:\s*var\(--rv-hub-accent\)/);
+		assert.match(css, /\.rv-bar-shell \.rv-locator-search\.rv-suggest-host \{[^}]*--rv-modal-accent:\s*var\(--interactive-accent, var\(--rv-hub-accent\)\)/);
 		assert.match(css, /\.rv-suggest-host > input::placeholder,\s*\n\.rv-locator-search > \.rv-locator-search-input::placeholder \{[^}]*color:\s*var\(--text-faint\)/);
 	});
 });
@@ -2196,5 +2199,114 @@ describe('RV-B91 cover cards resnap when the scale or gutter settles', () => {
 		const memory = view.slice(view.indexOf('private rememberScrollbar'), view.indexOf('private measureGutter'));
 		assert.match(memory, /rv-hub-swap-cover'\)\) return/);
 		assert.notEqual(glanceSnapToken(0, '1', '28px'), glanceSnapToken(0, '1', '22px'));
+	});
+});
+
+describe('RV-B93 note find sits in the persistent bar', () => {
+	it('uses the hub search field and does not pad the note', () => {
+		const doc = window.document;
+		const leaf = doc.createElement('div');
+		leaf.className = 'workspace-leaf-content is-rv-note';
+		const content = doc.createElement('div');
+		content.className = 'view-content';
+		content.textContent = '64 South Harrison Street';
+		leaf.appendChild(content);
+		const bar = doc.createElement('div');
+		bar.className = 'rv-bar-shell';
+		const row = doc.createElement('div');
+		row.className = 'rv-bar-row';
+		bar.appendChild(row);
+		doc.body.append(leaf, bar);
+		const slot = openNoteFind(leaf, bar);
+		assert.equal(slot.parentElement, bar);
+		assert.equal(bar.classList.contains('is-search-open'), true);
+		assert.equal(leaf.classList.contains('is-finding'), false);
+		assert.equal(leaf.querySelector('.rv-note-find'), null);
+		const input = slot.querySelector('input');
+		assert.equal(input?.classList.contains('rv-locator-search-input'), true);
+		assert.equal(input?.classList.contains('rv-note-find-input'), true);
+		assert.ok(slot.querySelector('button.rv-suggest-chevron'));
+		closeNoteFind(leaf);
+		assert.equal(bar.querySelector('.rv-note-find'), null);
+		assert.equal(bar.classList.contains('is-search-open'), false);
+		assert.equal(row.classList.contains('rv-bar-row'), true);
+		leaf.remove();
+		bar.remove();
+		const css = source('styles.css');
+		assert.doesNotMatch(css, /is-finding:not\(\.is-note-map\) > \.view-content/);
+		assert.doesNotMatch(css, /var\(--rv-note-bar\) \+ 36px/);
+		const main = source('src/main.ts');
+		const finder = main.slice(main.indexOf('private openNoteFindFor'), main.indexOf('private openNoteHub'));
+		assert.match(finder, /openNoteFind\(/);
+		assert.match(finder, /showBarSearch\(/);
+	});
+});
+
+describe('RV-B94 a note campaign uses that note color', () => {
+	it('passes tone rv from a note and leaves New RV on the hub color', () => {
+		const main = source('src/main.ts');
+		const campaign = main.slice(main.indexOf('openCampaignModal(): void'), main.indexOf('campaignMark(path: string)'));
+		assert.match(campaign, /barSurfaceNow === 'note'/);
+		assert.match(campaign, /this\.buttonAccent\(this\.barNotePath\)/);
+		assert.match(campaign, /generalModalAccent\(this\.settings\)/);
+		assert.match(campaign, /onNote \? 'rv' : 'general'/);
+		assert.match(source('src/campaign-modal.ts'), /markModalTone\(this\.modalEl, 'general', this\.accent\)/);
+		assert.match(source('src/campaign-modal.ts'), /this\.tone === 'rv'\) markModalTone\(this\.modalEl, 'rv', this\.accent\)/);
+		const created = main.slice(main.indexOf('async createNewRv'), main.indexOf('async addHousemate'));
+		assert.match(created, /priorityAccent: urgencyColorsFor\(this\.settings\.urgencyPalette, this\.settings\.urgencyCustomColors\)\[0\]/);
+		assert.doesNotMatch(created, /buttonAccent/);
+		assert.match(source('src/new-rv-modal.ts'), /markModalTone\(this\.modalEl, 'general'/);
+	});
+});
+
+describe('RV-269 the urgency ring opens a popover', () => {
+	it('anchors under the ring and flips up at the bar', () => {
+		const size = { width: URGENCY_POPOVER_WIDTH, height: URGENCY_ROW_PX * 5 };
+		const phone = { left: 0, top: 0, width: 382, height: 829, floor: 777 };
+		const amber = placeUrgencyPopover({ left: 321, top: 242, width: 28, height: 28 }, size, phone);
+		assert.equal(amber.up, false);
+		assert.equal(amber.left, 161);
+		assert.equal(amber.top, 274);
+		const dale = placeUrgencyPopover({ left: 321, top: 674, width: 28, height: 28 }, size, phone);
+		assert.equal(dale.up, true);
+		assert.equal(dale.left, 161);
+		assert.equal(dale.top, 446);
+		const edge = placeUrgencyPopover({ left: 4, top: 242, width: 28, height: 28 }, size, phone);
+		assert.equal(edge.left, 12);
+		const css = source('styles.css');
+		assert.match(css, /\.rv-urgency-popover \{[^}]*z-index:\s*calc\(var\(--layer-cover,\s*5\) \+ 2\)/);
+		assert.match(css, /\.rv-urgency-popover \{[^}]*border-radius:\s*var\(--menu-radius, var\(--radius-m, 8px\)\)/);
+		assert.match(css, /\.rv-urgency-popover-row \{[^}]*height:\s*44\.8px/);
+		assert.match(css, /\.rv-urgency-popover-icon svg \{[^}]*color:\s*var\(--rv-urgency-accent, var\(--interactive-accent\)\)/);
+		assert.doesNotMatch(css, /\.rv-urgency-popover[^}]*backdrop-filter:\s*blur/);
+		const menu = source('src/main.ts');
+		const fn = menu.slice(menu.indexOf('promptUrgencyMenu('), menu.indexOf('private openSnoozeModal'));
+		assert.equal(fn.includes('new Menu('), false);
+		assert.equal(fn.includes('addSeparator'), false);
+		assert.match(fn, /title: 'Home', icon: 'door-open'/);
+		assert.match(fn, /title: 'Snooze', icon: 'moon'/);
+		const calls: string[] = [];
+		const ring = window.document.createElement('button');
+		ring.getBoundingClientRect = () => ({ left: 321, top: 242, width: 28, height: 28, right: 349, bottom: 270, x: 321, y: 242, toJSON() { return {}; } });
+		window.document.body.appendChild(ring);
+		const pop = openUrgencyPopover(ring, [
+			{ title: 'Home', icon: 'door-open', run: () => { calls.push('home'); } },
+			{ title: 'Not home', icon: 'door-closed', run: () => { calls.push('miss'); } },
+			{ title: 'Log past visit', icon: 'rotate-ccw-clock', run: () => { calls.push('past'); } },
+			{ title: 'Archive', icon: 'archive', run: () => { calls.push('archive'); } },
+			{ title: 'Snooze', icon: 'moon', run: () => { calls.push('snooze'); } },
+		], '#d6a100');
+		assert.equal(pop.style.getPropertyValue('--rv-urgency-accent'), '#d6a100');
+		const labels = [...pop.querySelectorAll('.rv-urgency-popover-row')].map((node) => node.getAttribute('aria-label'));
+		assert.deepEqual(labels, ['Home', 'Not home', 'Log past visit', 'Archive', 'Snooze']);
+		assert.equal(pop.querySelector('hr, .menu-separator'), null);
+		(pop.querySelector('[aria-label="Home"]') as HTMLButtonElement).click();
+		assert.deepEqual(calls, ['home']);
+		assert.equal(window.document.querySelector('.rv-urgency-popover'), null);
+		openUrgencyPopover(ring, [{ title: 'Snooze', icon: 'moon', run: () => { calls.push('again'); } }], '#1f8a4c');
+		assert.equal(window.document.querySelectorAll('.rv-urgency-popover').length, 1);
+		dismissOpenMenus(window.document);
+		assert.equal(window.document.querySelector('.rv-urgency-popover'), null);
+		ring.remove();
 	});
 });

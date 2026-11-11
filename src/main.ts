@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view';
-import { MarkdownView, Menu, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type QueryController, type ViewState } from 'obsidian';
+import { MarkdownView, Modal, Notice, Platform, Plugin, TFile, WorkspaceLeaf, getFrontMatterInfo, parseYaml, setIcon, type App, type HoverParent, type IconName, type OpenViewState, type QueryController, type ViewState } from 'obsidian';
 import { nextPresetSort, sortPresetChipLabel, visibleSortPresets, type NearbyScope } from './active-layout';
 import { addressesMatchOneForOne, bindAddressDirections, buildAutocompleteUrl, buildCountySuggestUrl, countyPlaceCacheKey, directionsUrl, normalizeAddress, openExternalUrl, parseGeocodeBody, readCountyPlaceId, recentAddresses, refreshBodyMapLink, type GeocodeBias } from './address';
 import { ADDRESS_SUGGEST_HOME_RADIUS_M, type SuggestFetchResult } from './address-suggest';
@@ -83,6 +83,7 @@ import { idealityScore, insidePriorityFloor, urgencyAccentColor } from './scorin
 import { displayedUrgency } from './row-score';
 import { ageYears, registerRestroomIcons, replacePersonName } from './person-meta';
 import { generalModalAccent } from './modal-chrome';
+import { closeUrgencyPopovers, openUrgencyPopover } from './urgency-popover';
 import { hubAccentColor, urgencyColorsFor } from './urgency-palette';
 import { CancelledError, RequestPacer } from './pacer';
 import { redactSecrets } from './redact';
@@ -655,7 +656,7 @@ export default class RVLocatorPlugin extends Plugin {
 		this.syncAppBarFromActive();
 	}
 
-	/** Search stays in the note. It does not open the hub. */
+	/** Search stays in the note. The field replaces the persistent bar, the same way hub search does. */
 	private openNoteFindFor(path: string): void {
 		const leaves = typeof this.app.workspace.getLeavesOfType === 'function'
 			? this.app.workspace.getLeavesOfType('markdown')
@@ -663,7 +664,9 @@ export default class RVLocatorPlugin extends Plugin {
 		for (const leaf of leaves) {
 			const view = leaf.view;
 			if (!(view instanceof MarkdownView) || view.file?.path !== path) continue;
-			if (view.containerEl instanceof HTMLElement) openNoteFind(view.containerEl);
+			if (!(view.containerEl instanceof HTMLElement)) continue;
+			const slot = openNoteFind(view.containerEl, this.ensureAppBar());
+			this.showBarSearch(slot);
 		}
 	}
 
@@ -3366,9 +3369,10 @@ export default class RVLocatorPlugin extends Plugin {
 	/** One bar. Later calls update the first tab and the map light, and keep the same node. */
 	syncAppBar(surface: BarSurface, notePath: string): void {
 		const bar = this.ensureAppBar();
-		const changed = this.barSurfaceNow !== surface;
+		const changed = this.barSurfaceNow !== surface || this.barNotePath !== notePath;
 		this.barSurfaceNow = surface;
 		this.barNotePath = notePath;
+		if (changed) closeUrgencyPopovers(bar.ownerDocument);
 		paintBarLead(bar, surface);
 		const on = surface === 'note'
 			? earthIsOn('note', this.earthFlags(), notePath)
@@ -3395,6 +3399,9 @@ export default class RVLocatorPlugin extends Plugin {
 	private hideAppBar(): void {
 		const bar = this.appBar;
 		if (!bar) return;
+		this.closeBarSearch();
+		this.closeBarSort();
+		closeUrgencyPopovers(bar.ownerDocument);
 		bar.classList.add('is-away');
 		if (this.barRaf) {
 			bar.ownerDocument.defaultView?.cancelAnimationFrame(this.barRaf);
@@ -4097,12 +4104,13 @@ export default class RVLocatorPlugin extends Plugin {
 	}
 
 	openCampaignModal(): void {
+		const onNote = this.barSurfaceNow === 'note' && Boolean(this.barNotePath);
 		new CampaignModal(this.app, this.campaign, (next) => {
 			this.campaign = next ? sanitizeCampaign({ ...next, covered: next.covered }) : null;
 			void this.persist().then(() => {
 				for (const callback of this.viewRefreshers) callback();
 			});
-		}, generalModalAccent(this.settings)).open();
+		}, onNote ? this.buttonAccent(this.barNotePath) : generalModalAccent(this.settings), onNote ? 'rv' : 'general').open();
 	}
 
 	/** `covered` or `open` while a campaign is active. Null when there is no active campaign. */
@@ -4278,27 +4286,23 @@ export default class RVLocatorPlugin extends Plugin {
 		if (!file) return;
 		const inactive = this.noteIsInactive(file);
 		dismissOpenMenus(event.view?.document ?? document);
-		const menu = new Menu();
-		menu.addItem((item) => item.setTitle('Home').setIcon('door-open').onClick(() => {
-			void this.writeVisit(file, 'home').catch((error: unknown) => new Notice(this.friendlyError(error)));
-		}));
-		menu.addItem((item) => item.setTitle('Not home').setIcon('door-closed').onClick(() => {
-			void this.writeVisit(file, 'miss').catch((error: unknown) => new Notice(this.friendlyError(error)));
-		}));
-		menu.addItem((item) => item.setTitle('Log past visit').setIcon('rotate-ccw-clock').onClick(() => {
-			this.promptPastVisit(file);
-		}));
-		menu.addItem((item) => item
-			.setTitle(inactive ? 'Unarchive' : 'Archive')
-			.setIcon(inactive ? 'archive-restore' : 'archive')
-			.onClick(() => { this.confirmArchive(file); }));
-		menu.addSeparator();
-		menu.addItem((item) => item.setTitle('Snooze').setIcon('moon').onClick(() => { this.openSnoozeModal(path, file.basename); }));
-		const slot = event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
-		if (slot && typeof slot.scrollIntoView === 'function') {
-			try { slot.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch { /* The badge is already on screen. */ }
-		}
-		menu.showAtMouseEvent(event);
+		const slot = event.currentTarget instanceof HTMLElement
+			? event.currentTarget
+			: event.target instanceof HTMLElement
+				? event.target
+				: null;
+		if (!slot) return;
+		openUrgencyPopover(slot, [
+			{ title: 'Home', icon: 'door-open', run: () => { void this.writeVisit(file, 'home').catch((error: unknown) => new Notice(this.friendlyError(error))); } },
+			{ title: 'Not home', icon: 'door-closed', run: () => { void this.writeVisit(file, 'miss').catch((error: unknown) => new Notice(this.friendlyError(error))); } },
+			{ title: 'Log past visit', icon: 'rotate-ccw-clock', run: () => { this.promptPastVisit(file); } },
+			{
+				title: inactive ? 'Unarchive' : 'Archive',
+				icon: inactive ? 'archive-restore' : 'archive',
+				run: () => { this.confirmArchive(file); },
+			},
+			{ title: 'Snooze', icon: 'moon', run: () => { this.openSnoozeModal(path, file.basename); } },
+		], this.buttonAccent(path));
 		keepMenuOnScreen(slot);
 	}
 
